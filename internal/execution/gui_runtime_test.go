@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -101,6 +102,17 @@ func TestGUIRuntimeRejectsExternallyOccupiedPort(t *testing.T) {
 
 	if want := fmt.Sprintf("gui port %d is unavailable", port); err != nil && !strings.Contains(err.Error(), want) {
 		t.Fatalf("Start() error = %v, want substring %q", err, want)
+	}
+}
+
+func TestGUIStatePathUsesConfigDirectory(t *testing.T) {
+	t.Parallel()
+
+	root := mustResolveLocalRoot(t, t.TempDir())
+	want := filepath.Join(root.FlowPath, workspace.ConfigDirName, GUIStateFileName)
+
+	if got := GUIStatePath(root); got != want {
+		t.Fatalf("GUIStatePath() = %q, want %q", got, want)
 	}
 }
 

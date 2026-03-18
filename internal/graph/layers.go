@@ -2,7 +2,6 @@ package graph
 
 import (
 	"fmt"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -813,30 +812,28 @@ func boundaryMarkerID(selectedGraph string, direction BoundaryDirection, graphNa
 }
 
 func taskFeatureSlug(path string) (string, error) {
-	parts := strings.Split(filepath.ToSlash(path), "/")
-	if len(parts) != 4 || parts[0] != "features" || parts[2] != "tasks" {
-		return "", fmt.Errorf("task path %q is not in canonical features/<slug>/tasks/<file>.md layout", path)
-	}
-
-	return parts[1], nil
+	return featureSlugFromWorkspacePath(path, "task")
 }
 
 func noteFeatureSlug(path string) (string, error) {
-	parts := strings.Split(filepath.ToSlash(path), "/")
-	if len(parts) != 4 || parts[0] != "features" || parts[2] != "notes" {
-		return "", fmt.Errorf("note path %q is not in canonical features/<slug>/notes/<file>.md layout", path)
-	}
-
-	return parts[1], nil
+	return featureSlugFromWorkspacePath(path, "note")
 }
 
 func commandFeatureSlug(path string) (string, error) {
-	parts := strings.Split(filepath.ToSlash(path), "/")
-	if len(parts) != 4 || parts[0] != "features" || parts[2] != "commands" {
-		return "", fmt.Errorf("command path %q is not in canonical features/<slug>/commands/<file>.md layout", path)
+	return featureSlugFromWorkspacePath(path, "command")
+}
+
+func featureSlugFromWorkspacePath(path string, documentLabel string) (string, error) {
+	graphPath, ok, err := markdown.GraphPathFromWorkspacePath(path)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", fmt.Errorf("%s path %q is not in canonical data/graphs/<graph-path>/<file>.md layout", documentLabel, path)
 	}
 
-	return parts[1], nil
+	parts := strings.Split(graphPath, "/")
+	return parts[0], nil
 }
 
 func sortTaskIDs(ids []string, nodes map[string]TaskNode) {

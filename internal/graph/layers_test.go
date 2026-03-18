@@ -12,7 +12,7 @@ func TestBuildTaskLayerViewComputesCrossGraphLayers(t *testing.T) {
 
 	view, err := BuildTaskLayerView([]markdown.WorkspaceDocument{
 		{
-			Path: "features/demo/tasks/foundation.md",
+			Path: "data/graphs/planning/foundation.md",
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-0", Type: markdown.TaskType, Graph: "planning", Title: "Foundation"},
@@ -21,7 +21,7 @@ func TestBuildTaskLayerViewComputesCrossGraphLayers(t *testing.T) {
 			},
 		},
 		{
-			Path: "features/demo/tasks/parser.md",
+			Path: "data/graphs/execution/parser.md",
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Parser"},
@@ -31,7 +31,7 @@ func TestBuildTaskLayerViewComputesCrossGraphLayers(t *testing.T) {
 			},
 		},
 		{
-			Path: "features/demo/tasks/tests.md",
+			Path: "data/graphs/execution/tests.md",
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-2", Type: markdown.TaskType, Graph: "execution", Title: "Tests"},
@@ -40,7 +40,7 @@ func TestBuildTaskLayerViewComputesCrossGraphLayers(t *testing.T) {
 			},
 		},
 		{
-			Path: "features/release/tasks/release.md",
+			Path: "data/graphs/release/release.md",
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-3", Type: markdown.TaskType, Graph: "release", Title: "Release"},
@@ -49,7 +49,7 @@ func TestBuildTaskLayerViewComputesCrossGraphLayers(t *testing.T) {
 			},
 		},
 		{
-			Path: "features/demo/notes/architecture.md",
+			Path: "data/graphs/notes/architecture.md",
 			Document: markdown.NoteDocument{
 				Metadata: markdown.NoteMetadata{
 					CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "notes", Title: "Architecture"},
@@ -87,7 +87,7 @@ func TestBuildTaskLayerViewRejectsMissingDependency(t *testing.T) {
 
 	_, err := BuildTaskLayerView([]markdown.WorkspaceDocument{
 		{
-			Path: "features/demo/tasks/parser.md",
+			Path: "data/graphs/execution/parser.md",
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Parser"},
@@ -106,7 +106,7 @@ func TestBuildTaskLayerViewRejectsCycle(t *testing.T) {
 
 	_, err := BuildTaskLayerView([]markdown.WorkspaceDocument{
 		{
-			Path: "features/demo/tasks/a.md",
+			Path: "data/graphs/execution/a.md",
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-a", Type: markdown.TaskType, Graph: "execution", Title: "A"},
@@ -115,7 +115,7 @@ func TestBuildTaskLayerViewRejectsCycle(t *testing.T) {
 			},
 		},
 		{
-			Path: "features/demo/tasks/b.md",
+			Path: "data/graphs/execution/b.md",
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-b", Type: markdown.TaskType, Graph: "execution", Title: "B"},
@@ -134,7 +134,7 @@ func TestBuildCommandLayerViewComputesSelectedGraphLayers(t *testing.T) {
 
 	view, err := BuildCommandLayerView([]markdown.WorkspaceDocument{
 		{
-			Path: "features/release/commands/prepare.md",
+			Path: "data/graphs/setup/prepare.md",
 			Document: markdown.CommandDocument{
 				Metadata: markdown.CommandMetadata{
 					CommonFields: markdown.CommonFields{ID: "cmd-0", Type: markdown.CommandType, Graph: "setup", Title: "Prepare"},
@@ -144,7 +144,7 @@ func TestBuildCommandLayerViewComputesSelectedGraphLayers(t *testing.T) {
 			},
 		},
 		{
-			Path: "features/release/commands/lint.md",
+			Path: "data/graphs/release/lint.md",
 			Document: markdown.CommandDocument{
 				Metadata: markdown.CommandMetadata{
 					CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "release", Title: "Lint"},
@@ -154,7 +154,7 @@ func TestBuildCommandLayerViewComputesSelectedGraphLayers(t *testing.T) {
 			},
 		},
 		{
-			Path: "features/release/commands/build.md",
+			Path: "data/graphs/release/build.md",
 			Document: markdown.CommandDocument{
 				Metadata: markdown.CommandMetadata{
 					CommonFields: markdown.CommonFields{ID: "cmd-2", Type: markdown.CommandType, Graph: "release", Title: "Build"},
@@ -165,7 +165,7 @@ func TestBuildCommandLayerViewComputesSelectedGraphLayers(t *testing.T) {
 			},
 		},
 		{
-			Path: "features/release/commands/package.md",
+			Path: "data/graphs/release/package.md",
 			Document: markdown.CommandDocument{
 				Metadata: markdown.CommandMetadata{
 					CommonFields: markdown.CommonFields{ID: "cmd-3", Type: markdown.CommandType, Graph: "release", Title: "Package"},
@@ -210,7 +210,7 @@ func TestBuildCommandLayerViewRejectsUnknownSelectedGraph(t *testing.T) {
 
 	_, err := BuildCommandLayerView([]markdown.WorkspaceDocument{
 		{
-			Path: "features/release/commands/build.md",
+			Path: "data/graphs/release/build.md",
 			Document: markdown.CommandDocument{
 				Metadata: markdown.CommandMetadata{
 					CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "release", Title: "Build"},
@@ -230,7 +230,7 @@ func TestBuildCommandLayerViewRejectsCycle(t *testing.T) {
 
 	_, err := BuildCommandLayerView([]markdown.WorkspaceDocument{
 		{
-			Path: "features/release/commands/a.md",
+			Path: "data/graphs/release/a.md",
 			Document: markdown.CommandDocument{
 				Metadata: markdown.CommandMetadata{
 					CommonFields: markdown.CommonFields{ID: "cmd-a", Type: markdown.CommandType, Graph: "release", Title: "A"},
@@ -241,7 +241,7 @@ func TestBuildCommandLayerViewRejectsCycle(t *testing.T) {
 			},
 		},
 		{
-			Path: "features/release/commands/b.md",
+			Path: "data/graphs/release/b.md",
 			Document: markdown.CommandDocument{
 				Metadata: markdown.CommandMetadata{
 					CommonFields: markdown.CommonFields{ID: "cmd-b", Type: markdown.CommandType, Graph: "release", Title: "B"},
@@ -262,7 +262,7 @@ func TestBuildNoteGraphViewComputesBidirectionalRelationships(t *testing.T) {
 
 	view, err := BuildNoteGraphView([]markdown.WorkspaceDocument{
 		{
-			Path: "features/demo/notes/alpha.md",
+			Path: "data/graphs/notes/alpha.md",
 			Document: markdown.NoteDocument{
 				Metadata: markdown.NoteMetadata{
 					CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "notes", Title: "Alpha"},
@@ -271,7 +271,7 @@ func TestBuildNoteGraphViewComputesBidirectionalRelationships(t *testing.T) {
 			},
 		},
 		{
-			Path: "features/demo/notes/beta.md",
+			Path: "data/graphs/notes/beta.md",
 			Document: markdown.NoteDocument{
 				Metadata: markdown.NoteMetadata{
 					CommonFields: markdown.CommonFields{ID: "note-2", Type: markdown.NoteType, Graph: "notes", Title: "Beta"},
@@ -280,7 +280,7 @@ func TestBuildNoteGraphViewComputesBidirectionalRelationships(t *testing.T) {
 			},
 		},
 		{
-			Path: "features/research/notes/gamma.md",
+			Path: "data/graphs/research/gamma.md",
 			Document: markdown.NoteDocument{
 				Metadata: markdown.NoteMetadata{
 					CommonFields: markdown.CommonFields{ID: "note-3", Type: markdown.NoteType, Graph: "research", Title: "Gamma"},
@@ -288,7 +288,7 @@ func TestBuildNoteGraphViewComputesBidirectionalRelationships(t *testing.T) {
 			},
 		},
 		{
-			Path: "features/demo/tasks/task.md",
+			Path: "data/graphs/execution/task.md",
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Task"},
@@ -344,7 +344,7 @@ func TestBuildTaskFocusedGraphSnapshotCollapsesAndExpandsBoundaries(t *testing.T
 
 	baseDocuments := []markdown.WorkspaceDocument{
 		{
-			Path: "features/demo/tasks/foundation.md",
+			Path: "data/graphs/planning/foundation.md",
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-0", Type: markdown.TaskType, Graph: "planning", Title: "Foundation"},
@@ -352,7 +352,7 @@ func TestBuildTaskFocusedGraphSnapshotCollapsesAndExpandsBoundaries(t *testing.T
 			},
 		},
 		{
-			Path: "features/demo/tasks/parser.md",
+			Path: "data/graphs/execution/parser.md",
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Parser"},
@@ -361,7 +361,7 @@ func TestBuildTaskFocusedGraphSnapshotCollapsesAndExpandsBoundaries(t *testing.T
 			},
 		},
 		{
-			Path: "features/demo/tasks/tests.md",
+			Path: "data/graphs/execution/tests.md",
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-2", Type: markdown.TaskType, Graph: "execution", Title: "Tests"},
@@ -369,7 +369,7 @@ func TestBuildTaskFocusedGraphSnapshotCollapsesAndExpandsBoundaries(t *testing.T
 			},
 		},
 		{
-			Path: "features/release/tasks/release.md",
+			Path: "data/graphs/release/release.md",
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-3", Type: markdown.TaskType, Graph: "release", Title: "Release"},
@@ -378,7 +378,7 @@ func TestBuildTaskFocusedGraphSnapshotCollapsesAndExpandsBoundaries(t *testing.T
 			},
 		},
 		{
-			Path: "features/release/tasks/follow-up.md",
+			Path: "data/graphs/release/follow-up.md",
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-4", Type: markdown.TaskType, Graph: "release", Title: "Follow Up"},
@@ -427,7 +427,7 @@ func TestBuildCommandFocusedGraphSnapshotExpandsDependencyBoundary(t *testing.T)
 
 	baseDocuments := []markdown.WorkspaceDocument{
 		{
-			Path: "features/demo/commands/prepare.md",
+			Path: "data/graphs/setup/prepare.md",
 			Document: markdown.CommandDocument{
 				Metadata: markdown.CommandMetadata{
 					CommonFields: markdown.CommonFields{ID: "cmd-0", Type: markdown.CommandType, Graph: "setup", Title: "Prepare"},
@@ -437,7 +437,7 @@ func TestBuildCommandFocusedGraphSnapshotExpandsDependencyBoundary(t *testing.T)
 			},
 		},
 		{
-			Path: "features/demo/commands/lint.md",
+			Path: "data/graphs/release/lint.md",
 			Document: markdown.CommandDocument{
 				Metadata: markdown.CommandMetadata{
 					CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "release", Title: "Lint"},
@@ -447,7 +447,7 @@ func TestBuildCommandFocusedGraphSnapshotExpandsDependencyBoundary(t *testing.T)
 			},
 		},
 		{
-			Path: "features/demo/commands/build.md",
+			Path: "data/graphs/release/build.md",
 			Document: markdown.CommandDocument{
 				Metadata: markdown.CommandMetadata{
 					CommonFields: markdown.CommonFields{ID: "cmd-2", Type: markdown.CommandType, Graph: "release", Title: "Build"},
@@ -477,7 +477,7 @@ func TestBuildTaskFocusedGraphSnapshotRejectsUnknownGraph(t *testing.T) {
 
 	_, err := BuildTaskFocusedGraphSnapshot([]markdown.WorkspaceDocument{
 		{
-			Path: "features/demo/tasks/task.md",
+			Path: "data/graphs/execution/task.md",
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Task"},

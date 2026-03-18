@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -21,6 +20,7 @@ CREATE TABLE documents (
 	feature_slug TEXT NOT NULL,
 	graph TEXT NOT NULL,
 	title TEXT NOT NULL,
+	description_text TEXT NOT NULL,
 	path TEXT NOT NULL UNIQUE,
 	body_text TEXT NOT NULL,
 	tags_json TEXT NOT NULL,
@@ -33,6 +33,16 @@ CREATE TABLE documents (
 
 CREATE INDEX documents_type_graph_idx ON documents(type, graph);
 CREATE INDEX documents_feature_type_idx ON documents(feature_slug, type);
+
+CREATE TABLE graph_nodes (
+	graph_path TEXT PRIMARY KEY,
+	display_name TEXT NOT NULL,
+	direct_count INTEGER NOT NULL,
+	total_count INTEGER NOT NULL,
+	has_children INTEGER NOT NULL
+);
+
+CREATE INDEX graph_nodes_total_count_idx ON graph_nodes(total_count, graph_path);
 
 CREATE TABLE hard_dependencies (
 	document_id TEXT NOT NULL,
@@ -73,11 +83,21 @@ CREATE TABLE command_env (
 type indexedDocument struct {
 	relativePath string
 	featureSlug  string
+	graphPath    string
 	document     markdown.Document
 }
 
+// GraphNode summarizes one graph node derived into the SQLite index.
+type GraphNode struct {
+	GraphPath   string
+	DisplayName string
+	DirectCount int
+	TotalCount  int
+	HasChildren bool
+}
+
 // Rebuild recreates the derived index file without touching Markdown sources.
-// When flowPaths[0] is provided, documents under .flow/features are reindexed into SQLite.
+// When flowPaths[0] is provided, documents under .flow/data are reindexed into SQLite.
 func Rebuild(indexPath string, flowPaths ...string) error {
 	if err := os.MkdirAll(filepath.Dir(indexPath), 0o755); err != nil {
 		return fmt.Errorf("create index directory: %w", err)
@@ -121,6 +141,10 @@ func Rebuild(indexPath string, flowPaths ...string) error {
 				return err
 			}
 		}
+
+		if err := insertGraphProjection(transaction, documents); err != nil {
+			return err
+		}
 	}
 
 	if err := transaction.Commit(); err != nil {
@@ -131,17 +155,30 @@ func Rebuild(indexPath string, flowPaths ...string) error {
 }
 
 func collectDocuments(flowPath string) ([]indexedDocument, error) {
-	featuresPath := filepath.Join(flowPath, "features")
-	if _, err := os.Stat(featuresPath); err != nil {
+	dataPath := filepath.Join(flowPath, "data")
+	if _, err := os.Stat(dataPath); err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 
-		return nil, fmt.Errorf("stat features directory: %w", err)
+		return nil, fmt.Errorf("stat data directory: %w", err)
 	}
 
 	documents := []indexedDocument{}
-	err := filepath.WalkDir(featuresPath, func(path string, entry fs.DirEntry, err error) error {
+	if err := collectHomeDocument(flowPath, filepath.Join(dataPath, "home.md"), &documents); err != nil {
+		return nil, err
+	}
+
+	graphsPath := filepath.Join(dataPath, "graphs")
+	if _, err := os.Stat(graphsPath); err != nil {
+		if os.IsNotExist(err) {
+			return documents, nil
+		}
+
+		return nil, fmt.Errorf("stat graphs directory: %w", err)
+	}
+
+	err := filepath.WalkDir(graphsPath, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -150,33 +187,7 @@ func collectDocuments(flowPath string) ([]indexedDocument, error) {
 			return nil
 		}
 
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("read markdown document %s: %w", path, err)
-		}
-
-		document, err := markdown.ParseDocument(data)
-		if err != nil {
-			return fmt.Errorf("parse markdown document %s: %w", path, err)
-		}
-
-		relativePath, err := filepath.Rel(flowPath, path)
-		if err != nil {
-			return fmt.Errorf("resolve relative document path %s: %w", path, err)
-		}
-
-		featureSlug, err := featureSlugFromRelativePath(relativePath, document.Kind())
-		if err != nil {
-			return err
-		}
-
-		documents = append(documents, indexedDocument{
-			relativePath: filepath.ToSlash(relativePath),
-			featureSlug:  featureSlug,
-			document:     document,
-		})
-
-		return nil
+		return appendIndexedDocument(flowPath, path, &documents)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("scan markdown documents: %w", err)
@@ -194,42 +205,27 @@ func collectDocuments(flowPath string) ([]indexedDocument, error) {
 		return nil, fmt.Errorf("validate markdown documents: %w", err)
 	}
 
+	for index := range documents {
+		normalizedDocument, err := markdown.NormalizeWorkspaceDocument(markdown.WorkspaceDocument{
+			Path:     documents[index].relativePath,
+			Document: documents[index].document,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("normalize markdown document: %w", err)
+		}
+
+		documents[index].document = normalizedDocument.Document
+		documents[index].featureSlug = featureSlugFromGraphPath(graphPathForDocument(documents[index].relativePath, normalizedDocument.Document))
+		documents[index].graphPath = graphPathForDocument(documents[index].relativePath, normalizedDocument.Document)
+	}
+
 	return documents, nil
-}
-
-func featureSlugFromRelativePath(relativePath string, documentType markdown.DocumentType) (string, error) {
-	parts := strings.Split(filepath.ToSlash(relativePath), "/")
-	if len(parts) != 4 || parts[0] != "features" {
-		return "", fmt.Errorf("document path %q is not in canonical features/<slug>/<type>/<file>.md layout", relativePath)
-	}
-
-	expectedDirectory, err := directoryNameForType(documentType)
-	if err != nil {
-		return "", err
-	}
-
-	if parts[2] != expectedDirectory {
-		return "", fmt.Errorf("document path %q does not match type %q", relativePath, documentType)
-	}
-
-	return parts[1], nil
-}
-
-func directoryNameForType(documentType markdown.DocumentType) (string, error) {
-	switch documentType {
-	case markdown.NoteType:
-		return "notes", nil
-	case markdown.TaskType:
-		return "tasks", nil
-	case markdown.CommandType:
-		return "commands", nil
-	default:
-		return "", fmt.Errorf("unsupported document type %q", documentType)
-	}
 }
 
 func insertDocument(transaction *sql.Tx, indexed indexedDocument, documentKindsByID map[string]markdown.DocumentType) error {
 	switch document := indexed.document.(type) {
+	case markdown.HomeDocument:
+		return insertHomeDocument(transaction, indexed.relativePath, indexed.featureSlug, document)
 	case markdown.NoteDocument:
 		return insertNoteDocument(transaction, indexed.relativePath, indexed.featureSlug, document, documentKindsByID)
 	case markdown.TaskDocument:
@@ -239,6 +235,10 @@ func insertDocument(transaction *sql.Tx, indexed indexedDocument, documentKindsB
 	default:
 		return fmt.Errorf("unsupported parsed document type %T", indexed.document)
 	}
+}
+
+func insertHomeDocument(transaction *sql.Tx, relativePath string, featureSlug string, document markdown.HomeDocument) error {
+	return insertDocumentRow(transaction, document.Metadata, featureSlug, relativePath, document.Body, "", "", "")
 }
 
 func insertNoteDocument(transaction *sql.Tx, relativePath string, featureSlug string, document markdown.NoteDocument, documentKindsByID map[string]markdown.DocumentType) error {
@@ -335,13 +335,14 @@ func insertDocumentRow(transaction *sql.Tx, fields markdown.CommonFields, featur
 	}
 
 	if _, err := transaction.Exec(
-		`INSERT INTO documents (id, type, feature_slug, graph, title, path, body_text, tags_json, created_at, updated_at, task_status, command_name, command_run)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO documents (id, type, feature_slug, graph, title, description_text, path, body_text, tags_json, created_at, updated_at, task_status, command_name, command_run)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		fields.ID,
 		string(fields.Type),
 		featureSlug,
 		fields.Graph,
 		fields.Title,
+		fields.Description,
 		relativePath,
 		body,
 		string(tagsJSON),
@@ -355,6 +356,244 @@ func insertDocumentRow(transaction *sql.Tx, fields markdown.CommonFields, featur
 	}
 
 	return nil
+}
+
+func insertGraphProjection(transaction *sql.Tx, documents []indexedDocument) error {
+	nodes := buildGraphProjection(documents)
+	for _, node := range nodes {
+		hasChildrenValue := 0
+		if node.HasChildren {
+			hasChildrenValue = 1
+		}
+
+		if _, err := transaction.Exec(
+			`INSERT INTO graph_nodes (graph_path, display_name, direct_count, total_count, has_children) VALUES (?, ?, ?, ?, ?)`,
+			node.GraphPath,
+			node.DisplayName,
+			node.DirectCount,
+			node.TotalCount,
+			hasChildrenValue,
+		); err != nil {
+			return fmt.Errorf("insert graph node %q: %w", node.GraphPath, err)
+		}
+	}
+
+	return nil
+}
+
+func buildGraphProjection(documents []indexedDocument) []GraphNode {
+	directCounts := map[string]int{}
+	totalCounts := map[string]int{}
+	children := map[string]map[string]bool{}
+
+	for _, document := range documents {
+		if document.graphPath == "" {
+			continue
+		}
+
+		directCounts[document.graphPath]++
+		segments := strings.Split(document.graphPath, "/")
+		for index := range segments {
+			nodePath := strings.Join(segments[:index+1], "/")
+			totalCounts[nodePath]++
+			if index > 0 {
+				parentPath := strings.Join(segments[:index], "/")
+				if children[parentPath] == nil {
+					children[parentPath] = map[string]bool{}
+				}
+				children[parentPath][nodePath] = true
+			}
+		}
+	}
+
+	paths := make([]string, 0, len(totalCounts))
+	for path := range totalCounts {
+		if totalCounts[path] > 0 {
+			paths = append(paths, path)
+		}
+	}
+	slices.Sort(paths)
+
+	nodes := make([]GraphNode, 0, len(paths))
+	for _, path := range paths {
+		parts := strings.Split(path, "/")
+		nodes = append(nodes, GraphNode{
+			GraphPath:   path,
+			DisplayName: parts[len(parts)-1],
+			DirectCount: directCounts[path],
+			TotalCount:  totalCounts[path],
+			HasChildren: len(children[path]) > 0,
+		})
+	}
+
+	return nodes
+}
+
+// ReadGraphNodes returns the graph projection derived in the SQLite index.
+func ReadGraphNodes(indexPath string) ([]GraphNode, error) {
+	database, err := sql.Open("sqlite", indexPath)
+	if err != nil {
+		return nil, fmt.Errorf("open index database: %w", err)
+	}
+	defer database.Close()
+
+	rows, err := database.Query(`SELECT graph_path, display_name, direct_count, total_count, has_children FROM graph_nodes ORDER BY graph_path`)
+	if err != nil {
+		return nil, fmt.Errorf("query graph nodes: %w", err)
+	}
+	defer rows.Close()
+
+	nodes := []GraphNode{}
+	for rows.Next() {
+		var node GraphNode
+		var hasChildrenValue int
+		if err := rows.Scan(&node.GraphPath, &node.DisplayName, &node.DirectCount, &node.TotalCount, &hasChildrenValue); err != nil {
+			return nil, fmt.Errorf("scan graph node: %w", err)
+		}
+		node.HasChildren = hasChildrenValue != 0
+		nodes = append(nodes, node)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate graph nodes: %w", err)
+	}
+
+	return nodes, nil
+}
+
+func collectHomeDocument(flowPath string, homePath string, documents *[]indexedDocument) error {
+	data, err := os.ReadFile(homePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+
+		return fmt.Errorf("read markdown document %s: %w", homePath, err)
+	}
+
+	document, err := parseHomeIndexedDocument(data)
+	if err != nil {
+		return fmt.Errorf("parse home document %s: %w", homePath, err)
+	}
+
+	relativePath, err := filepath.Rel(flowPath, homePath)
+	if err != nil {
+		return fmt.Errorf("resolve relative document path %s: %w", homePath, err)
+	}
+
+	*documents = append(*documents, indexedDocument{
+		relativePath: filepath.ToSlash(relativePath),
+		document:     document,
+	})
+
+	return nil
+}
+
+func appendIndexedDocument(flowPath string, path string, documents *[]indexedDocument) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read markdown document %s: %w", path, err)
+	}
+
+	document, err := markdown.ParseDocument(data)
+	if err != nil {
+		return fmt.Errorf("parse markdown document %s: %w", path, err)
+	}
+
+	relativePath, err := filepath.Rel(flowPath, path)
+	if err != nil {
+		return fmt.Errorf("resolve relative document path %s: %w", path, err)
+	}
+
+	normalizedPath := filepath.ToSlash(relativePath)
+	graphPath := graphPathForDocument(normalizedPath, document)
+	*documents = append(*documents, indexedDocument{
+		relativePath: normalizedPath,
+		featureSlug:  featureSlugFromGraphPath(graphPath),
+		graphPath:    graphPath,
+		document:     document,
+	})
+
+	return nil
+}
+
+func graphPathForDocument(relativePath string, document markdown.Document) string {
+	if graphPath, ok, err := markdown.GraphPathFromWorkspacePath(relativePath); err == nil && ok {
+		return graphPath
+	}
+
+	switch value := document.(type) {
+	case markdown.NoteDocument:
+		return value.Metadata.Graph
+	case markdown.TaskDocument:
+		return value.Metadata.Graph
+	case markdown.CommandDocument:
+		return value.Metadata.Graph
+	default:
+		return ""
+	}
+}
+
+func featureSlugFromGraphPath(graphPath string) string {
+	graphPath = strings.TrimSpace(graphPath)
+	if graphPath == "" {
+		return ""
+	}
+
+	parts := strings.Split(graphPath, "/")
+	return parts[0]
+}
+
+func looksLikeFlowDocument(data []byte) bool {
+	normalized := strings.ReplaceAll(string(data), "\r\n", "\n")
+	return strings.HasPrefix(normalized, "---\n")
+}
+
+func parseHomeIndexedDocument(data []byte) (markdown.HomeDocument, error) {
+	normalized := strings.ReplaceAll(string(data), "\r\n", "\n")
+	if looksLikeFlowDocument(data) {
+		document, err := markdown.ParseDocument([]byte(normalized))
+		if err != nil {
+			return markdown.HomeDocument{}, err
+		}
+
+		homeDocument, ok := document.(markdown.HomeDocument)
+		if !ok {
+			return markdown.HomeDocument{}, fmt.Errorf("home.md must use type %q", markdown.HomeType)
+		}
+
+		if strings.TrimSpace(homeDocument.Metadata.ID) == "" {
+			homeDocument.Metadata.ID = "home"
+		}
+		if strings.TrimSpace(homeDocument.Metadata.Title) == "" {
+			homeDocument.Metadata.Title = deriveHomeTitle(homeDocument.Body)
+		}
+		if homeDocument.Metadata.Type == "" {
+			homeDocument.Metadata.Type = markdown.HomeType
+		}
+
+		return homeDocument, nil
+	}
+
+	return markdown.HomeDocument{
+		Metadata: markdown.CommonFields{
+			ID:    "home",
+			Type:  markdown.HomeType,
+			Title: deriveHomeTitle(normalized),
+		},
+		Body: normalized,
+	}, nil
+}
+
+func deriveHomeTitle(body string) string {
+	for _, line := range strings.Split(body, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "# ") {
+			return strings.TrimSpace(strings.TrimPrefix(trimmed, "# "))
+		}
+	}
+
+	return "Home"
 }
 
 func insertDependencies(transaction *sql.Tx, documentID string, dependencyIDs []string) error {
@@ -417,6 +656,8 @@ func canonicalNoteLink(leftNoteID string, rightNoteID string) (string, string) {
 
 func indexedDocumentIdentity(document markdown.Document) (string, markdown.DocumentType, bool) {
 	switch value := document.(type) {
+	case markdown.HomeDocument:
+		return value.Metadata.ID, value.Metadata.Type, true
 	case markdown.NoteDocument:
 		return value.Metadata.ID, value.Metadata.Type, true
 	case markdown.TaskDocument:

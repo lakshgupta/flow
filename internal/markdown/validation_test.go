@@ -166,3 +166,57 @@ func TestValidateWorkspaceDocumentsAllowsCrossGraphSameTypeDependencyAndCrossTyp
 		t.Fatalf("ValidateWorkspaceDocuments() error = %v", err)
 	}
 }
+
+func TestValidateWorkspaceDocumentsUsesGraphPathForCommandValidation(t *testing.T) {
+	t.Parallel()
+
+	err := ValidateWorkspaceDocuments([]WorkspaceDocument{
+		{
+			Path: "data/graphs/release/build.md",
+			Document: CommandDocument{
+				Metadata: CommandMetadata{
+					CommonFields: CommonFields{ID: "cmd-1", Type: CommandType, Graph: ""},
+					Name:         "build",
+					Run:          "go build ./cmd/flow",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ValidateWorkspaceDocuments() error = %v", err)
+	}
+}
+
+func TestNormalizeWorkspaceDocumentUsesGraphPathOverFrontmatter(t *testing.T) {
+	t.Parallel()
+
+	item, err := NormalizeWorkspaceDocument(WorkspaceDocument{
+		Path: "data/graphs/execution/parser/build.md",
+		Document: TaskDocument{
+			Metadata: TaskMetadata{
+				CommonFields: CommonFields{ID: "task-1", Type: TaskType, Graph: "wrong-value"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeWorkspaceDocument() error = %v", err)
+	}
+
+	document := item.Document.(TaskDocument)
+	if document.Metadata.Graph != "execution/parser" {
+		t.Fatalf("document.Metadata.Graph = %q, want execution/parser", document.Metadata.Graph)
+	}
+}
+
+func TestGraphPathFromWorkspacePathRejectsGraphRootFile(t *testing.T) {
+	t.Parallel()
+
+	_, ok, err := GraphPathFromWorkspacePath("data/graphs/build.md")
+	if err == nil {
+		t.Fatal("GraphPathFromWorkspacePath() error = nil, want canonical layout error")
+	}
+
+	if ok {
+		t.Fatal("GraphPathFromWorkspacePath() ok = true, want false")
+	}
+}

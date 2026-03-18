@@ -38,7 +38,7 @@ For each feature:
 
 ## System Overview
 
-Flow is a local-first planning tool for software projects. It stores notes, tasks, and commands as Markdown-backed documents inside a `.flow` directory, uses `.flow/flow.yaml` for workspace configuration, and maintains a rebuildable derived index in `.flow/flow.index` for search and graph queries.
+Flow is a local-first planning tool for software projects. It stores canonical Markdown documents inside `.flow/data`, keeps workspace configuration and runtime files inside `.flow/config`, and maintains a rebuildable derived SQLite index in `.flow/config/flow.index` for search and graph queries.
 
 The system supports:
 
@@ -53,7 +53,9 @@ The system supports:
 The following constraints apply across the system:
 
 - Markdown files are the canonical source of truth.
-- `.flow/flow.index` is derived, rebuildable, and may be recreated from Markdown files.
+- `.flow/config/flow.index` is derived, rebuildable, and may be recreated from Markdown files.
+- File location is authoritative for graph membership when it disagrees with document frontmatter.
+- Graph documents are classified by frontmatter `type`, not by type-specific directories.
 - `flow init` always rebuilds the index and must not modify Markdown note, task, or command files.
 - `flow search` auto-rebuilds a missing index.
 - Local and global workspaces share the same schema and command behavior.
@@ -76,7 +78,7 @@ Approved.
 
 #### Summary
 
-Build a local-first planning tool for Git repositories where every item is stored as a Markdown-backed document inside a `.flow` directory. The workspace configuration lives in `.flow/flow.yaml`, and a rebuildable derived index lives in `.flow/flow.index`.
+Build a local-first planning tool for Git repositories where every item is stored as a Markdown-backed document inside a `.flow` directory. The workspace configuration lives in `.flow/config/flow.yaml`, canonical content lives under `.flow/data`, and a rebuildable derived index lives in `.flow/config/flow.index`.
 
 The product supports both project-local and user-global workspaces, a CLI entrypoint named `flow`, a layered primary view for executable work, a graph canvas for note exploration, and three document types with distinct semantics:
 
@@ -101,9 +103,9 @@ The system must remain Git-friendly and transparent, so Markdown files are the c
 
 #### Goals
 
-- Store notes, tasks, and commands as Markdown files in `.flow`.
-- Store workspace configuration in `.flow/flow.yaml`.
-- Store a rebuildable derived index in `.flow/flow.index`.
+- Store notes, tasks, and commands as Markdown files in `.flow/data`.
+- Store workspace configuration in `.flow/config/flow.yaml`.
+- Store a rebuildable derived index in `.flow/config/flow.index`.
 - Support both local and global workspaces.
 - Provide `flow init`, `flow tui`, `flow gui`, `flow configure`, `flow create`, `flow update`, `flow delete`, `flow search`, and `flow run`.
 - Ship Flow as a single binary for the initial Linux release target.
@@ -127,7 +129,7 @@ The system must remain Git-friendly and transparent, so Markdown files are the c
 Local workspace behavior:
 
 - Commands without `-g` operate on the `.flow` directory in the current working directory.
-- `flow init` creates `.flow/flow.yaml`, creates `.flow/.gitignore` for derived runtime files, and rebuilds `.flow/flow.index`.
+- `flow init` creates `.flow/config/flow.yaml`, creates `.flow/.gitignore` for derived runtime files, and rebuilds `.flow/config/flow.index`.
 - `flow configure` can set the local workspace GUI server port.
 - `flow run <command-id-or-short-name>` resolves a command by ID or unique short name, checks command dependencies, merges command environment variables over the current process environment, and runs the configured shell command from the workspace root.
 - `flow gui` starts or restarts the local workspace GUI server on the configured port and opens the browser UI.
@@ -153,7 +155,7 @@ GUI server behavior:
 Search behavior:
 
 - `flow search` queries the workspace index.
-- If `.flow/flow.index` is missing, search rebuilds it automatically from Markdown files.
+- If `.flow/config/flow.index` is missing, search rebuilds it automatically from Markdown files.
 - `flow init` always rebuilds the index and never modifies Markdown files.
 
 Document-type behavior:
@@ -179,7 +181,7 @@ Recommended stack:
 - `markdown-it` for read-focused Markdown rendering
 - a loopback-only HTTP server for `flow gui` and `flow -g gui`
 - the user's default browser for GUI presentation
-- SQLite stored in `.flow/flow.index`
+- SQLite stored in `.flow/config/flow.index`
 - `modernc.org/sqlite` as the default Go SQLite driver
 
 Suggested package layout:
@@ -197,9 +199,9 @@ Suggested package layout:
 Key responsibilities:
 
 - `internal/workspace`: local versus global workspace resolution, `-g` behavior, and GUI server ownership rules
-- `internal/config`: `.flow/flow.yaml` parsing and validation, including workspace GUI server port configuration
+- `internal/config`: `.flow/config/flow.yaml` parsing and validation, including workspace GUI server port configuration
 - `internal/markdown`: Markdown parsing, serialization, canonical paths, and frontmatter handling that stays close to the current design
-- `internal/index`: `.flow/flow.index` rebuild, search, and graph projections using SQLite
+- `internal/index`: `.flow/config/flow.index` rebuild, search, and graph projections using SQLite
 - `internal/graph`: layer computation, note relationship views, and focused graph snapshots
 - `internal/execution`: explicit command execution, environment resolution, process spawning, and GUI server lifecycle control
 - `internal/httpapi`: embedded asset serving plus read/query APIs first, then mutation APIs later
@@ -208,7 +210,7 @@ Key responsibilities:
 Core architectural rule:
 
 - Markdown files are canonical.
-- `.flow/flow.index` is derived and rebuildable.
+- `.flow/config/flow.index` is derived and rebuildable.
 - UI state is transient.
 - Save flows write Markdown first, then refresh the index.
 - The browser GUI started as a read-only milestone to stabilize the backend query APIs before browser-side editing was introduced.
@@ -217,11 +219,11 @@ Core architectural rule:
 
 Workspace layout:
 
-- `.flow/flow.yaml`
-- `.flow/flow.index`
-- `.flow/features/<feature-slug>/notes/*.md`
-- `.flow/features/<feature-slug>/tasks/*.md`
-- `.flow/features/<feature-slug>/commands/*.md`
+- `.flow/config/flow.yaml`
+- `.flow/config/flow.index`
+- `.flow/config/gui-server.json`
+- `.flow/data/home.md`
+- `.flow/data/graphs/<graph-path>/*.md`
 
 Document semantics:
 
@@ -328,7 +330,7 @@ Save flow:
 
 Graph flow:
 
-- GUI and TUI show graph lists grouped by `Notes`, `Tasks`, and `Commands`.
+- GUI and TUI show a graph tree derived from `.flow/data/graphs`, with document type determined by frontmatter rather than directory buckets.
 - Focused graph views collapse external same-type dependency nodes into boundary markers until expanded.
 - Boundary markers show count only by default.
 
@@ -369,7 +371,7 @@ Delete note flow:
 #### Testing Strategy
 
 - Unit tests for workspace resolution, including local and global targeting
-- Unit tests for `.flow/flow.yaml` parsing and validation
+- Unit tests for `.flow/config/flow.yaml` parsing and validation
 - Unit tests for Markdown parsing and serialization
 - Unit tests for task and command layer computation
 - Unit tests for hard-link and soft-link validation
@@ -400,6 +402,479 @@ Delete note flow:
 
 - None blocking the first rewrite design.
 
+### Feature: Three-Panel Workspace GUI
+
+#### Status
+
+Approved.
+
+#### Summary
+
+Evolve the browser GUI from its current fixed card layout into a desktop-first three-panel workspace with draggable split bars, a dedicated Home surface backed by `.flow/data/home.md`, graph navigation and search in the left rail, and contextual document editing in a right-side panel.
+
+This feature also extends the canonical Markdown model with a shared `description` frontmatter field for every Flow-managed Markdown file, persists GUI panel width ratios in `.flow/config/flow.yaml`, includes Home and descriptions in search, and upgrades the browser editor from form-style Markdown editing to a WYSIWYG document editor with slash commands, a floating text-selection toolbar, and HTML `<mark>` highlight persistence.
+
+#### Problem
+
+The current browser GUI exposes workspace data, but it does not yet behave like a full workspace application.
+
+- Navigation, graph exploration, and editing are not clearly separated.
+- There is no first-class Home document for workspace-level context.
+- The graph canvas is not the dominant center-panel experience.
+- The detail editor is not purely contextual.
+- Panel widths are fixed rather than user-adjustable.
+- The editor experience is still closer to form-based Markdown editing than a WYSIWYG workflow comparable to Logseq or Obsidian.
+- The system lacks a short shared `description` field for panels and search results.
+
+The product needs a stronger desktop information architecture without giving up Markdown as the canonical source of truth.
+
+#### Goals
+
+- Divide the GUI into three vertical desktop panels with draggable resize bars.
+- Default the left panel to roughly one quarter of the page width.
+- Make the left panel contain, in order:
+	- Flow logo
+	- tagline
+	- workspace path
+	- search input
+	- Home entry
+	- grouped graph lists
+- Show Home in the middle panel by default.
+- Have `flow init` create `.flow/data/home.md`.
+- Use frontmatter in `home.md`.
+- Keep Home as a dedicated top-level entry rather than part of graph navigation.
+- Show the selected graph in an infinite canvas in the middle panel.
+- Open the right panel only when a graph node is selected.
+- Use a WYSIWYG editor for Home and graph documents.
+- Support slash commands for headings, bold, italic, bulleted lists, checklists, code blocks, links, block quotes, highlight, and the agreed basic formatting set.
+- Show a floating toolbar when text is selected.
+- Add `description` frontmatter to every Flow-managed Markdown file.
+- Use `description` in panels and search results, but not in graph node rendering.
+- Include Home content and descriptions in search.
+- Persist left and right panel widths as ratios in `.flow/config/flow.yaml`.
+
+#### Non-Goals
+
+- Mobile or responsive redesign.
+- Replacing Markdown as the canonical storage format.
+- Making Home part of the graph lists.
+- Giving Home a distinct visual style from other content surfaces.
+- Showing descriptions on graph nodes.
+- Multi-user editing or sync.
+
+#### User Experience
+
+Desktop shell behavior:
+
+- The GUI opens to Home by default.
+- The left panel is always visible and acts as the workspace navigation rail.
+- The middle panel is always visible and is the primary surface.
+- The right panel is hidden until the user selects a graph node.
+
+Left panel behavior:
+
+- Default width is 25% of available width.
+- The panel shows the Flow logo, tagline, workspace path, search, Home entry, and grouped graph lists.
+- Search results appear in one mixed list with explicit labels such as `Home`, `Note`, `Task`, and `Command`.
+- Home appears once as a dedicated top-level entry and is not duplicated in graph lists.
+
+Middle panel behavior:
+
+- When Home is active, the middle panel shows a WYSIWYG editor for `.flow/data/home.md`.
+- When a graph is active, the middle panel shows the selected graph on an infinite canvas.
+- The middle panel should retain the largest share of workspace width by default.
+
+Right panel behavior:
+
+- The right panel opens only when a graph node is selected.
+- The right panel shows a WYSIWYG editor for the selected note, task, or command.
+- The panel includes title, description, metadata, and body editing.
+
+Editor behavior:
+
+- Typing `/` opens a slash-command menu for the supported block and formatting actions.
+- Selecting text opens a floating toolbar for inline actions such as bold, italic, link, and highlight.
+- Highlight is persisted using HTML `<mark>` inside Markdown content.
+- The editor should feel closer to Logseq or Obsidian than a textarea-driven form.
+
+Description behavior:
+
+- `description` is editable for Home, notes, tasks, and commands.
+- `description` appears in panels and search results.
+- `description` does not appear on graph nodes or graph list buttons.
+
+#### Architecture
+
+Frontend shell:
+
+- Replace the fixed grid/card layout with a split-pane desktop shell.
+- Add a layout controller that owns:
+	- active surface: `home` or `graph`
+	- selected graph type and graph name
+	- selected node/document id
+	- left panel width ratio
+	- right panel width ratio
+	- right-panel visibility
+	- drag-resize behavior
+
+Panel model:
+
+- Left panel is always present.
+- Middle panel is always present and remains the primary surface.
+- Right panel is conditional and appears only when a graph node is selected.
+- Home remains separate from graph navigation state.
+
+Editor architecture:
+
+- Introduce a reusable WYSIWYG editor abstraction used by both Home and note/task/command editing.
+- Use a rich-text engine that supports:
+	- slash commands
+	- floating text-selection toolbar
+	- block editing
+	- inline formatting
+	- Markdown import/export
+- A ProseMirror-derived stack such as Tiptap or Milkdown is the preferred class of solution because it is compatible with Obsidian/Logseq-like workflows and structured editing.
+
+Persistence boundary:
+
+- Editor state is not canonical.
+- Markdown files remain canonical.
+- Save flows serialize editor content back to Markdown plus frontmatter.
+- Supported formatting must be limited to constructs that can be round-tripped safely.
+- Highlight is serialized as inline HTML `<mark>` in Markdown content.
+
+Backend architecture:
+
+- Add Home as a special canonical document at `.flow/data/home.md`.
+- Keep Home outside the graph tree under `.flow/data/graphs/...`.
+- Extend parsing, serialization, validation, indexing, and GUI APIs to support Home, the shared `description` field, and persisted panel width ratios in `.flow/config/flow.yaml`.
+
+State boundaries:
+
+- Canonical:
+	- `.flow/data/home.md`
+	- note/task/command Markdown files
+	- `.flow/config/flow.yaml`
+- Derived:
+	- `.flow/config/flow.index`
+- Transient:
+	- selection state
+	- unsaved editor draft state
+	- drag state
+	- toolbar visibility state
+
+#### Data And Interfaces
+
+New canonical file:
+
+- `.flow/data/home.md`
+
+Suggested `home.md` format:
+
+```yaml
+---
+id: home
+type: home
+title: Home
+description: Workspace home document
+---
+```
+
+Shared frontmatter changes:
+
+- Add `description` to every Flow-managed Markdown file.
+- Shared fields become:
+	- `id`
+	- `type`
+	- `title`
+	- `description`
+	- `tags`
+	- `createdAt`
+	- `updatedAt`
+- Graph-backed files additionally keep:
+	- `graph` where applicable
+	- task/command-specific fields
+
+Workspace config changes:
+
+- Persist panel width ratios inside `.flow/config/flow.yaml`.
+
+Suggested shape:
+
+```yaml
+gui:
+	port: 4317
+	panelWidths:
+		leftRatio: 0.25
+		rightRatio: 0.24
+```
+
+Browser API additions or changes:
+
+- `GET /api/home`
+- `PUT /api/home`
+- Extend document read/update payloads with `description`
+- Extend workspace/config payloads with panel width ratios
+- Extend search result payloads with `description` and explicit type labeling, including `home`
+
+Search contract:
+
+- Search matches title, description, and body.
+- Results appear in one mixed list.
+- Each result includes a type label.
+- Home participates in search but not in graph lists.
+
+Editor command model:
+
+- Slash menu inserts block-level and structural formatting.
+- Floating toolbar applies inline formatting.
+- Highlight persists as HTML `<mark>`.
+
+#### Control Flow
+
+Initialization flow:
+
+- `flow init` creates `.flow/config/flow.yaml` if missing.
+- `flow init` creates `.flow/data/home.md` if missing.
+- `flow init` rebuilds `.flow/config/flow.index`.
+- Default panel width ratios are written into `flow.yaml` if absent.
+
+GUI load flow:
+
+- Load workspace metadata and config.
+- Load Home content.
+- Restore left and right panel width ratios.
+- Set active surface to Home.
+- Render Home editor in the middle panel.
+- Keep the right panel closed.
+
+Navigation flow:
+
+- Selecting Home clears graph and node selection and renders Home in the middle panel.
+- Selecting a graph switches the middle panel to the infinite canvas for that graph.
+- Selecting a node opens the right panel and loads the selected document editor.
+
+Save flow:
+
+- Editor updates local draft state.
+- Draft serializes to Markdown with frontmatter including `description`.
+- Home saves through `PUT /api/home`.
+- Note/task/command saves continue through the document mutation APIs.
+- Backend writes canonical Markdown, then refreshes the derived index.
+
+Search flow:
+
+- The left-panel search matches title, description, and body content.
+- Search results render in one list with explicit type labels.
+- Selecting a Home result switches to Home.
+- Selecting a document result restores graph context if needed and opens the right-side editor.
+
+Formatting flow:
+
+- Typing `/` opens the slash-command menu.
+- Selecting text opens the floating toolbar.
+- Inline or block actions update editor state.
+- Saving persists the content back to Markdown-compatible output.
+
+Resize flow:
+
+- Dragging a divider updates adjacent panel ratios live.
+- Ratios are clamped to usable desktop bounds.
+- On drag end, ratios are persisted to `flow.yaml`.
+
+#### Edge Cases And Failure Modes
+
+- Older workspaces may lack `.flow/data/home.md` or panel width settings; GUI load should create or default them safely.
+- `description` remains optional but must be validated consistently across all Markdown files.
+- Invalid ratio settings in `flow.yaml` should be clamped to sane defaults.
+- `home.md` must not require graph-only fields.
+- Only formatting that round-trips safely should be exposed in the editor.
+- Unsupported imported markup should degrade visibly rather than disappearing silently.
+- Home search results must never be treated as graph nodes.
+- Restored panel ratios should be clamped if they become unusable for the current desktop window size.
+- The feature is desktop-only; narrow screens may remain poor UX until future responsive work.
+
+#### Testing Strategy
+
+- Backend tests for `flow init` creating `.flow/data/home.md`
+- Backend tests for Home frontmatter parsing and serialization
+- Backend tests for shared `description` support across all Markdown types
+- Backend tests for search indexing title, description, body, and Home content
+- Backend tests for config round-tripping ratio-based panel widths
+- API tests for `GET /api/home` and `PUT /api/home`
+- Regression tests for document APIs with `description`
+- Frontend tests for three-panel shell rendering and default Home load
+- Frontend tests for graph selection, node selection, and right-panel opening
+- Frontend tests for drag-resize behavior with persisted ratios
+- Frontend tests for mixed search result rendering with type labels
+- Frontend tests for Home result routing and graph document result routing
+- Frontend tests for slash-command menu, floating text-selection toolbar, and highlight behavior
+- Integration tests for Home editing, document editing, search by description/body, and persisted panel widths
+
+#### Risks And Tradeoffs
+
+- A true WYSIWYG editor is the largest implementation risk because Markdown round-tripping becomes more complex.
+- Persisting highlight as HTML `<mark>` is practical and explicit, but it introduces inline HTML into canonical Markdown files.
+- Persisting layout ratios in `flow.yaml` matches the requested workspace-scoped behavior, but it may create Git churn in shared repositories.
+- Treating Home as a special document is cleaner for UX than forcing it into graph semantics, but it adds special-case code paths.
+- A single mixed search result list is compact and efficient, but it depends on strong type labeling for clarity.
+- Keeping Home visually unstyled relative to other surfaces simplifies the overall shell design.
+
+#### Open Questions
+
+- Should the floating toolbar initially include all inline formatting actions or only the highest-value subset such as bold, italic, link, and highlight?
+- Should non-`<mark>` inline HTML be preserved as-is or normalized during save?
+
+### Feature: Graph Tree Workspace Layout
+
+#### Status
+
+Approved.
+
+#### Summary
+
+Replace the old feature-bucket workspace layout with a graph-tree layout that separates configuration from canonical content. Workspace configuration and runtime state live under `.flow/config`, Home lives at `.flow/data/home.md`, and graph documents live directly inside `.flow/data/graphs/<graph-path>/`.
+
+The graph tree is derived from directory structure and indexed documents. Graph creation accepts full paths such as `execution/parser`, silently creates missing parent directories, and shows counts in `3 direct / 11 total` format.
+
+#### Problem
+
+The old `.flow/features/<feature>/notes|tasks|commands` structure does not match the graph-oriented model used by the GUI and TUI.
+
+- It forces type-oriented storage instead of graph-oriented storage.
+- It makes nested graph organization awkward.
+- It keeps Home outside the canonical data area.
+- It mixes durable configuration and derived runtime files with the rest of the workspace.
+
+The workspace model needs to align storage, indexing, graph navigation, and creation semantics around graphs as first-class filesystem paths.
+
+#### Goals
+
+- Separate workspace config/runtime files from canonical Markdown content.
+- Store Home at `.flow/data/home.md`.
+- Store graph documents directly in `.flow/data/graphs/<graph-path>/`.
+- Support nested graph paths such as `execution/parser`.
+- Silently create missing intermediate parent directories during graph creation.
+- Ignore empty graph directories in indexed and visible graph trees.
+- Use file location as the authoritative source of graph membership.
+- Use frontmatter `type` as the authoritative source of note/task/command classification.
+- Show graph counts as `3 direct / 11 total`.
+
+#### Non-Goals
+
+- Adding per-graph metadata files such as `graph.yaml`.
+- Automatic migration of existing repositories in this feature.
+- Adding type-specific filesystem directories like `notes/`, `tasks/`, or `commands/`.
+- Showing count information for Home.
+
+#### User Experience
+
+Canonical layout:
+
+- `.flow/config/flow.yaml`
+- `.flow/config/flow.index`
+- `.flow/config/gui-server.json`
+- `.flow/data/home.md`
+- `.flow/data/graphs/<graph-path>/*.md`
+
+Behavior:
+
+- `flow init` creates `.flow/config` and `.flow/data`.
+- Home is a dedicated top-level entry and is not part of the graph tree.
+- Users create graphs by full path, for example `execution/parser`.
+- Missing parent directories are created silently during graph creation.
+- A graph becomes visible only when its subtree contains canonical Markdown content.
+- Parent graph nodes display counts as `3 direct / 11 total`.
+
+#### Architecture
+
+Workspace boundaries:
+
+- Config layer: `.flow/config/flow.yaml` and disposable runtime files such as `.flow/config/gui-server.json`
+- Canonical content layer: `.flow/data/home.md` and `.flow/data/graphs/<graph-path>/*.md`
+- Derived index layer: `.flow/config/flow.index`
+
+Major responsibilities:
+
+- `internal/workspace`: resolve config root, data root, graphs root, and Home path
+- `internal/markdown`: parse frontmatter-driven document types and serialize canonical Markdown
+- `internal/index`: walk Home plus graph directories, derive graph counts, and persist the SQLite index
+- `internal/httpapi`: expose graph-tree and Home-aware APIs
+- `internal/tui` and frontend GUI: create graphs by full path and render the derived graph tree
+
+#### Data And Interfaces
+
+Filesystem contracts:
+
+- `.flow/config/flow.yaml`
+- `.flow/config/flow.index`
+- `.flow/config/gui-server.json`
+- `.flow/data/home.md`
+- `.flow/data/graphs/<graph-path>/*.md`
+
+Document rules:
+
+- Home is a standalone canonical document outside the graph tree.
+- Graph documents are stored directly in their graph directory as Markdown files.
+- Frontmatter `type` determines whether a document is a note, task, or command.
+- File location determines graph membership when location and frontmatter `graph` disagree.
+
+API and model expectations:
+
+- Graph tree payloads include graph path, display name, direct count, total count, and child presence.
+- Count formatting is `3 direct / 11 total`.
+- Home is addressable separately from graph navigation and does not expose counts.
+
+#### Control Flow
+
+Graph creation flow:
+
+- Validate the requested full graph path.
+- Create missing parent directories under `.flow/data/graphs`.
+- Create the target graph directory.
+- Defer graph visibility until the subtree contains canonical Markdown content.
+
+Indexing flow:
+
+- Load Home from `.flow/data/home.md` when present.
+- Walk `.flow/data/graphs` recursively.
+- Read Markdown files directly inside each graph directory.
+- Determine document type from frontmatter.
+- Attribute graph membership from filesystem location.
+- Aggregate direct counts per graph.
+- Roll descendant totals up the tree.
+- Persist the derived index in `.flow/config/flow.index`.
+
+#### Edge Cases And Failure Modes
+
+- Invalid graph paths with empty segments or escape attempts must be rejected.
+- Empty parent directories created during graph creation remain invisible until their subtree has content.
+- Empty target graphs remain invisible until at least one canonical document exists in the subtree.
+- Missing Home is tolerated and can be created later.
+- Stale `.flow/config/gui-server.json` may be replaced or deleted without affecting canonical data.
+- Files with missing or invalid `type` frontmatter fail type-specific behaviors until corrected.
+- If frontmatter `graph` disagrees with filesystem location, runtime behavior follows location.
+
+#### Testing Strategy
+
+- Unit tests for workspace path resolution under `.flow/config` and `.flow/data`
+- Unit tests for Home loading from `.flow/data/home.md`
+- Unit tests for graph discovery from flat per-graph file storage
+- Index tests for empty-graph filtering, nested graph traversal, and direct versus total counts
+- Validation tests for file-location authority when frontmatter `graph` disagrees
+- CLI, HTTP, GUI, and TUI tests for full-path graph creation with silent parent creation
+
+#### Risks And Tradeoffs
+
+- Silent parent creation improves usability but leaves empty structural directories on disk.
+- Ignoring empty graphs keeps the UI cleaner but means graph creation and graph visibility are distinct moments.
+- Flat per-graph file storage is simpler than type-specific subdirectories, but large graphs may accumulate many files in one directory.
+- Using filesystem location as the authority simplifies runtime semantics but requires write-path normalization when users move files manually.
+
+#### Open Questions
+
+- None recorded for the approved design.
+
 ## Decision Log
 
 - V1 GUI uses a loopback-only local server plus the user's browser instead of an embedded desktop shell.
@@ -407,8 +882,17 @@ Delete note flow:
 - Repeated `flow gui` launches may restart the server for the same workspace, while cross-workspace port conflicts remain hard errors.
 - The runtime is rewritten in Go and ships as a single binary with an embedded browser frontend.
 - The browser GUI uses React plus targeted supporting libraries, starts with note canvas and layered views, and now supports document update and delete flows in the side panel while richer editing remains deferred.
-- `.flow/flow.index` remains the derived index file name and continues to use SQLite, with `modernc.org/sqlite` preferred for the Go implementation.
+- `.flow/config/flow.index` remains the derived index file name and continues to use SQLite, with `modernc.org/sqlite` preferred for the Go implementation.
 - CI release automation starts with `linux/amd64` binaries before broader platform coverage or CI test execution.
+- The desktop GUI evolves to a three-panel split-pane workspace with Home as a dedicated top-level entry backed by `.flow/data/home.md`.
+- Every Flow-managed Markdown file gains a shared `description` field that is used in panels and search results, but not on graph nodes.
+- GUI panel widths are persisted as ratios in `.flow/config/flow.yaml`.
+- Rich browser editing uses a WYSIWYG editor with slash commands, a floating text-selection toolbar, and HTML `<mark>` highlight persistence.
+- Workspace configuration and runtime files live under `.flow/config`, while canonical Markdown content lives under `.flow/data`.
+- Home is stored at `.flow/data/home.md` and remains outside the graph tree.
+- Graph documents are stored directly inside `.flow/data/graphs/<graph-path>/` with document type determined by frontmatter `type`.
+- File location is authoritative for graph membership when it disagrees with frontmatter `graph`.
+- Graph creation accepts full paths, silently creates missing parent directories, ignores empty graphs in visible graph trees, and displays counts as `3 direct / 11 total`.
 
 ## Open Questions
 

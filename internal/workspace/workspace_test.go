@@ -24,12 +24,28 @@ func TestResolveLocalBuildsCanonicalPaths(t *testing.T) {
 		t.Fatalf("resolved.FlowPath = %q", resolved.FlowPath)
 	}
 
-	if resolved.ConfigPath != filepath.Join(rootDir, DirName, ConfigFileName) {
+	if resolved.ConfigDirPath != filepath.Join(rootDir, DirName, ConfigDirName) {
+		t.Fatalf("resolved.ConfigDirPath = %q", resolved.ConfigDirPath)
+	}
+
+	if resolved.ConfigPath != filepath.Join(rootDir, DirName, ConfigDirName, ConfigFileName) {
 		t.Fatalf("resolved.ConfigPath = %q", resolved.ConfigPath)
 	}
 
-	if resolved.IndexPath != filepath.Join(rootDir, DirName, IndexFileName) {
+	if resolved.IndexPath != filepath.Join(rootDir, DirName, ConfigDirName, IndexFileName) {
 		t.Fatalf("resolved.IndexPath = %q", resolved.IndexPath)
+	}
+
+	if resolved.DataPath != filepath.Join(rootDir, DirName, DataDirName) {
+		t.Fatalf("resolved.DataPath = %q", resolved.DataPath)
+	}
+
+	if resolved.GraphsPath != filepath.Join(rootDir, DirName, DataDirName, GraphsDirName) {
+		t.Fatalf("resolved.GraphsPath = %q", resolved.GraphsPath)
+	}
+
+	if resolved.HomePath != filepath.Join(rootDir, DirName, DataDirName, HomeFileName) {
+		t.Fatalf("resolved.HomePath = %q", resolved.HomePath)
 	}
 }
 
@@ -73,7 +89,7 @@ func TestWriteAndResolveGlobalLocator(t *testing.T) {
 		t.Fatalf("resolved.WorkspacePath = %q, want %q", resolved.WorkspacePath, workspacePath)
 	}
 
-	if resolved.ConfigPath != filepath.Join(workspacePath, DirName, ConfigFileName) {
+	if resolved.ConfigPath != filepath.Join(workspacePath, DirName, ConfigDirName, ConfigFileName) {
 		t.Fatalf("resolved.ConfigPath = %q", resolved.ConfigPath)
 	}
 }

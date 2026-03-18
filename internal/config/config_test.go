@@ -9,13 +9,17 @@ import (
 func TestParseValidWorkspaceConfig(t *testing.T) {
 	t.Parallel()
 
-	workspace, err := Parse([]byte("gui:\n  port: 4317\n"))
+	workspace, err := Parse([]byte("gui:\n  port: 4317\n  panelWidths:\n    leftRatio: 0.28\n    rightRatio: 0.22\n"))
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
 
 	if workspace.GUI.Port != 4317 {
 		t.Fatalf("workspace.GUI.Port = %d, want 4317", workspace.GUI.Port)
+	}
+
+	if workspace.GUI.PanelWidths.LeftRatio != 0.28 || workspace.GUI.PanelWidths.RightRatio != 0.22 {
+		t.Fatalf("workspace.GUI.PanelWidths = %#v, want 0.28/0.22", workspace.GUI.PanelWidths)
 	}
 }
 
@@ -36,7 +40,7 @@ func TestWriteAndReadRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	configPath := filepath.Join(t.TempDir(), ".flow", FileName)
-	input := Workspace{GUI: GUI{Port: 4317}}
+	input := Workspace{GUI: GUI{Port: 4317, PanelWidths: PanelWidths{LeftRatio: 0.27, RightRatio: 0.21}}}
 
 	if err := Write(configPath, input); err != nil {
 		t.Fatalf("Write() error = %v", err)
@@ -58,5 +62,35 @@ func TestDefaultWorkspaceUsesDefaultGUIPort(t *testing.T) {
 	workspace := DefaultWorkspace()
 	if workspace.GUI.Port != DefaultGUIPort {
 		t.Fatalf("DefaultWorkspace().GUI.Port = %d, want %d", workspace.GUI.Port, DefaultGUIPort)
+	}
+
+	if workspace.GUI.PanelWidths.LeftRatio != DefaultLeftPanelRatio || workspace.GUI.PanelWidths.RightRatio != DefaultRightPanelRatio {
+		t.Fatalf("DefaultWorkspace().GUI.PanelWidths = %#v, want default ratios", workspace.GUI.PanelWidths)
+	}
+}
+
+func TestParseDefaultsMissingPanelWidths(t *testing.T) {
+	t.Parallel()
+
+	workspace, err := Parse([]byte("gui:\n  port: 4317\n"))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if workspace.GUI.PanelWidths.LeftRatio != DefaultLeftPanelRatio || workspace.GUI.PanelWidths.RightRatio != DefaultRightPanelRatio {
+		t.Fatalf("workspace.GUI.PanelWidths = %#v, want default ratios", workspace.GUI.PanelWidths)
+	}
+}
+
+func TestParseClampsInvalidPanelWidths(t *testing.T) {
+	t.Parallel()
+
+	workspace, err := Parse([]byte("gui:\n  port: 4317\n  panelWidths:\n    leftRatio: 0.95\n    rightRatio: 0.4\n"))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if workspace.GUI.PanelWidths.LeftRatio != DefaultLeftPanelRatio || workspace.GUI.PanelWidths.RightRatio != DefaultRightPanelRatio {
+		t.Fatalf("workspace.GUI.PanelWidths = %#v, want default ratios after clamp", workspace.GUI.PanelWidths)
 	}
 }

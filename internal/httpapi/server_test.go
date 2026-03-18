@@ -42,6 +42,9 @@ func TestNewMuxServesWorkspaceAndReadQueryAPIs(t *testing.T) {
 	if workspaceResponse.GUIPort != 4812 {
 		t.Fatalf("workspaceResponse.GUIPort = %d, want 4812", workspaceResponse.GUIPort)
 	}
+	if workspaceResponse.HomePath != "data/home.md" {
+		t.Fatalf("workspaceResponse.HomePath = %q, want data/home.md", workspaceResponse.HomePath)
+	}
 
 	noteGraphs := performJSONRequest[graphListResponse](t, handler, http.MethodGet, "/api/graphs/note")
 	if len(noteGraphs.AvailableGraphs) != 1 || noteGraphs.AvailableGraphs[0] != "notes" {
@@ -91,6 +94,158 @@ func TestNewMuxServesWorkspaceAndReadQueryAPIs(t *testing.T) {
 	}
 	if !stopResponse["stopping"] {
 		t.Fatalf("stopResponse = %#v, want stopping=true", stopResponse)
+	}
+}
+
+func TestNewMuxServesHomeAndGraphTreeAPIs(t *testing.T) {
+	t.Parallel()
+
+	root := createGraphTreeHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	workspaceResponse := performJSONRequest[workspaceResponse](t, handler, http.MethodGet, "/api/workspace")
+	if workspaceResponse.PanelWidths.LeftRatio != 0.31 || workspaceResponse.PanelWidths.RightRatio != 0.22 {
+		t.Fatalf("workspaceResponse.PanelWidths = %#v, want 0.31/0.22", workspaceResponse.PanelWidths)
+	}
+
+	home := performJSONRequest[homeResponse](t, handler, http.MethodGet, "/api/home")
+	if home.ID != "home" || home.Type != "home" || home.Path != "data/home.md" {
+		t.Fatalf("home = %#v", home)
+	}
+	if home.Body != "# Home\n" {
+		t.Fatalf("home.Body = %q, want default home body", home.Body)
+	}
+	if home.Description != "" {
+		t.Fatalf("home.Description = %q, want empty", home.Description)
+	}
+
+	graphTree := performJSONRequest[graphTreeResponse](t, handler, http.MethodGet, "/api/graphs")
+	if graphTree.Home.Path != "data/home.md" {
+		t.Fatalf("graphTree.Home = %#v", graphTree.Home)
+	}
+	if len(graphTree.Graphs) != 2 {
+		t.Fatalf("len(graphTree.Graphs) = %d, want 2", len(graphTree.Graphs))
+	}
+
+	if graphTree.Graphs[0].GraphPath != "execution" || graphTree.Graphs[0].DirectCount != 1 || graphTree.Graphs[0].TotalCount != 2 || !graphTree.Graphs[0].HasChildren {
+		t.Fatalf("graphTree.Graphs[0] = %#v", graphTree.Graphs[0])
+	}
+	if graphTree.Graphs[0].CountLabel != "1 direct / 2 total" {
+		t.Fatalf("graphTree.Graphs[0].CountLabel = %q", graphTree.Graphs[0].CountLabel)
+	}
+
+	if graphTree.Graphs[1].GraphPath != "execution/parser" || graphTree.Graphs[1].DirectCount != 1 || graphTree.Graphs[1].TotalCount != 1 || graphTree.Graphs[1].HasChildren {
+		t.Fatalf("graphTree.Graphs[1] = %#v", graphTree.Graphs[1])
+	}
+
+	results := performJSONRequest[[]index.SearchResult](t, handler, http.MethodGet, "/api/search?q=home")
+	if len(results) != 1 {
+		t.Fatalf("len(results) = %d, want 1", len(results))
+	}
+	if results[0].ID != "home" || results[0].Type != "home" {
+		t.Fatalf("results[0] = %#v, want home search result", results[0])
+	}
+	if results[0].Description != "" {
+		t.Fatalf("results[0].Description = %q, want empty", results[0].Description)
+	}
+
+	document := performJSONRequest[documentResponse](t, handler, http.MethodGet, "/api/documents/task-1")
+	if document.Description != "Build graph task" {
+		t.Fatalf("document.Description = %q, want Build graph task", document.Description)
+	}
+}
+
+func TestNewMuxUpdatesHomeAndReindexes(t *testing.T) {
+	t.Parallel()
+
+	root := createGraphTreeHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	updated := performJSONRequestWithBody[homeResponse](t, handler, http.MethodPut, "/api/home", map[string]any{
+		"title":       "Workspace Home",
+		"description": "Workspace overview",
+		"body":        "# Workspace Home\n\nStart here.\n",
+	})
+	if updated.Title != "Workspace Home" {
+		t.Fatalf("updated.Title = %q, want Workspace Home", updated.Title)
+	}
+	if updated.Description != "Workspace overview" {
+		t.Fatalf("updated.Description = %q, want Workspace overview", updated.Description)
+	}
+	if updated.Body != "# Workspace Home\n\nStart here.\n" {
+		t.Fatalf("updated.Body = %q, want updated body", updated.Body)
+	}
+
+	stored, err := os.ReadFile(root.HomePath)
+	if err != nil {
+		t.Fatalf("ReadFile(home) error = %v", err)
+	}
+	if !strings.Contains(string(stored), "type: home") || !strings.Contains(string(stored), "description: Workspace overview") {
+		t.Fatalf("stored home markdown = %q, want canonical home frontmatter", string(stored))
+	}
+
+	results := performJSONRequest[[]index.SearchResult](t, handler, http.MethodGet, "/api/search?q=overview")
+	if len(results) != 1 || results[0].ID != "home" {
+		t.Fatalf("results = %#v, want reindexed home match", results)
+	}
+	if results[0].Description != "Workspace overview" {
+		t.Fatalf("results[0].Description = %q, want Workspace overview", results[0].Description)
+	}
+}
+
+func TestNewMuxUpdatesWorkspacePanelWidths(t *testing.T) {
+	t.Parallel()
+
+	root := createGraphTreeHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	updated := performJSONRequestWithBody[workspaceResponse](t, handler, http.MethodPut, "/api/workspace", map[string]any{
+		"panelWidths": map[string]any{
+			"leftRatio":  0.27,
+			"rightRatio": 0.21,
+		},
+	})
+	if updated.PanelWidths.LeftRatio != 0.27 || updated.PanelWidths.RightRatio != 0.21 {
+		t.Fatalf("updated.PanelWidths = %#v, want 0.27/0.21", updated.PanelWidths)
+	}
+
+	storedConfig, err := config.Read(root.ConfigPath)
+	if err != nil {
+		t.Fatalf("config.Read() error = %v", err)
+	}
+	if storedConfig.GUI.PanelWidths.LeftRatio != 0.27 || storedConfig.GUI.PanelWidths.RightRatio != 0.21 {
+		t.Fatalf("storedConfig.GUI.PanelWidths = %#v, want 0.27/0.21", storedConfig.GUI.PanelWidths)
+	}
+}
+
+func TestNewMuxGraphTreeRebuildsMissingIndex(t *testing.T) {
+	t.Parallel()
+
+	root := createGraphTreeHTTPAPITestWorkspace(t)
+	if err := os.Remove(root.IndexPath); err != nil {
+		t.Fatalf("Remove(index) error = %v", err)
+	}
+
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	graphTree := performJSONRequest[graphTreeResponse](t, handler, http.MethodGet, "/api/graphs")
+	if len(graphTree.Graphs) != 2 {
+		t.Fatalf("len(graphTree.Graphs) = %d, want 2", len(graphTree.Graphs))
+	}
+	if _, err := os.Stat(root.IndexPath); err != nil {
+		t.Fatalf("Stat(index) error = %v", err)
 	}
 }
 
@@ -154,11 +309,11 @@ func TestNewMuxMutatesDocumentsAndReindexes(t *testing.T) {
 		"references":  []string{"note-1"},
 		"body":        "Publish task body\n",
 	})
-	if created.ID != "task-2" || created.Path != "features/demo/tasks/publish.md" {
+	if created.ID != "task-2" || created.Path != "data/graphs/release/publish.md" {
 		t.Fatalf("created = %#v", created)
 	}
 
-	if _, err := os.Stat(filepath.Join(root.FlowPath, "features", "demo", "tasks", "publish.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "graphs", "release", "publish.md")); err != nil {
 		t.Fatalf("Stat(created file) error = %v", err)
 	}
 
@@ -181,7 +336,7 @@ func TestNewMuxMutatesDocumentsAndReindexes(t *testing.T) {
 		t.Fatalf("deleted = %#v", deleted)
 	}
 
-	if _, err := os.Stat(filepath.Join(root.FlowPath, "features", "demo", "tasks", "publish.md")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "graphs", "release", "publish.md")); !os.IsNotExist(err) {
 		t.Fatalf("Stat(deleted file) error = %v, want not exist", err)
 	}
 
@@ -273,13 +428,19 @@ func TestNewMuxUsesFrontendJSONFieldNamesForGraphViews(t *testing.T) {
 	assertJSONHasPath(t, commandLayerPayload, "layers.0.commands.0.path")
 	assertJSONHasPath(t, commandLayerPayload, "commands.cmd-1.run")
 
+	workspacePayload := performRawRequest(t, handler, http.MethodGet, "/api/workspace")
+	assertJSONHasPath(t, workspacePayload, "panelWidths.leftRatio")
+	assertJSONHasPath(t, workspacePayload, "panelWidths.rightRatio")
+
 	searchPayload := performRawRequestArray(t, handler, http.MethodGet, "/api/search?q=parser")
 	assertJSONArrayHasPath(t, searchPayload, 0, "id")
 	assertJSONArrayHasPath(t, searchPayload, 0, "type")
+	assertJSONArrayHasPath(t, searchPayload, 0, "description")
 	assertJSONArrayHasPath(t, searchPayload, 0, "featureSlug")
 	assertJSONArrayHasPath(t, searchPayload, 0, "snippet")
 
 	assertJSONMissingPath(t, noteGraphPayload, "Nodes")
+	assertJSONMissingPath(t, workspacePayload, "PanelWidths")
 	assertJSONMissingPath(t, taskLayerPayload, "Layers")
 	assertJSONMissingPath(t, commandLayerPayload, "SelectedGraph")
 	assertJSONArrayMissingPath(t, searchPayload, 0, "Type")
@@ -295,32 +456,32 @@ func createHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 		t.Fatalf("ResolveLocal() error = %v", err)
 	}
 
-	if err := config.Write(root.ConfigPath, config.Workspace{GUI: config.GUI{Port: 4812}}); err != nil {
+	if err := config.Write(root.ConfigPath, config.Workspace{GUI: config.GUI{Port: 4812, PanelWidths: config.PanelWidths{LeftRatio: 0.31, RightRatio: 0.22}}}); err != nil {
 		t.Fatalf("config.Write() error = %v", err)
 	}
 
-	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "features", "demo", "notes", "architecture.md"), markdown.NoteDocument{
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "notes", "architecture.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "notes", Title: "Architecture"},
 			References:   []string{"note-2", "task-1"},
 		},
 		Body: "Architecture body\n",
 	})
-	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "features", "demo", "notes", "follow-up.md"), markdown.NoteDocument{
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "notes", "follow-up.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "note-2", Type: markdown.NoteType, Graph: "notes", Title: "Follow Up"},
 			References:   []string{"note-1"},
 		},
 		Body: "Follow up body\n",
 	})
-	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "features", "demo", "tasks", "foundation.md"), markdown.TaskDocument{
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "planning", "foundation.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "task-0", Type: markdown.TaskType, Graph: "planning", Title: "Foundation"},
 			Status:       "todo",
 		},
 		Body: "Foundation body\n",
 	})
-	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "features", "demo", "tasks", "parser.md"), markdown.TaskDocument{
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "execution", "parser.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Parser"},
 			Status:       "doing",
@@ -329,7 +490,7 @@ func createHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 		},
 		Body: "Parser body\n",
 	})
-	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "features", "release", "commands", "build.md"), markdown.CommandDocument{
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "release", "build.md"), markdown.CommandDocument{
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "release", Title: "Build"},
 			Name:         "build",
@@ -337,6 +498,48 @@ func createHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 			Run:          "go build ./cmd/flow",
 		},
 		Body: "Build release binary\n",
+	})
+
+	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {
+		t.Fatalf("index.Rebuild() error = %v", err)
+	}
+
+	return root
+}
+
+func createGraphTreeHTTPAPITestWorkspace(t *testing.T) workspace.Root {
+	t.Helper()
+
+	rootDir := t.TempDir()
+	root, err := workspace.ResolveLocal(rootDir)
+	if err != nil {
+		t.Fatalf("ResolveLocal() error = %v", err)
+	}
+
+	if err := config.Write(root.ConfigPath, config.Workspace{GUI: config.GUI{Port: 4812, PanelWidths: config.PanelWidths{LeftRatio: 0.31, RightRatio: 0.22}}}); err != nil {
+		t.Fatalf("config.Write() error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(root.HomePath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(home) error = %v", err)
+	}
+	if err := os.WriteFile(root.HomePath, []byte("# Home\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(home) error = %v", err)
+	}
+
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "execution", "build.md"), markdown.TaskDocument{
+		Metadata: markdown.TaskMetadata{
+			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "wrong", Title: "Build", Description: "Build graph task"},
+			Status:       "todo",
+		},
+		Body: "Build body\n",
+	})
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "execution", "parser", "parse.md"), markdown.CommandDocument{
+		Metadata: markdown.CommandMetadata{
+			CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "wrong", Title: "Parse", Description: "Parse command"},
+			Name:         "parse",
+			Run:          "./parse.sh",
+		},
+		Body: "Parse body\n",
 	})
 
 	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {

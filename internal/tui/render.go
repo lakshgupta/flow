@@ -24,6 +24,11 @@ func Render(root workspace.Root, options Options) (string, error) {
 		return "", err
 	}
 
+	graphNodes, err := index.ReadGraphNodesWorkspace(root.IndexPath, root.FlowPath)
+	if err != nil {
+		return "", err
+	}
+
 	noteView, err := graph.BuildNoteGraphView(documents)
 	if err != nil {
 		return "", err
@@ -62,10 +67,11 @@ func Render(root workspace.Root, options Options) (string, error) {
 	builder.WriteString(fmt.Sprintf("Path: %s\n", root.WorkspacePath))
 	builder.WriteString(fmt.Sprintf("Index: %s\n", root.IndexPath))
 
-	builder.WriteString("\nGraphs\n")
-	builder.WriteString(fmt.Sprintf("Notes: %s\n", joinedOrNone(noteView.AvailableGraphs)))
-	builder.WriteString(fmt.Sprintf("Tasks: %s\n", joinedOrNone(taskGraphs(taskView))))
-	builder.WriteString(fmt.Sprintf("Commands: %s\n", joinedOrNone(commandGraphNames)))
+	builder.WriteString("\nHome\n")
+	builder.WriteString(fmt.Sprintf("Path: %s/%s\n", workspace.DataDirName, workspace.HomeFileName))
+
+	builder.WriteString("\nGraph Tree\n")
+	writeGraphTree(&builder, graphNodes)
 
 	builder.WriteString("\nGrouped Lists\n")
 	writeGroupedDocuments(&builder, "Notes", groupNotes(noteView))
@@ -113,6 +119,21 @@ func Render(root workspace.Root, options Options) (string, error) {
 	return builder.String(), nil
 }
 
+func writeGraphTree(builder *strings.Builder, nodes []index.GraphNode) {
+	if len(nodes) == 0 {
+		builder.WriteString("none\n")
+		return
+	}
+
+	for _, node := range nodes {
+		builder.WriteString(fmt.Sprintf("%s- %s [%d direct / %d total]\n", strings.Repeat("  ", graphTreeDepth(node.GraphPath)), node.GraphPath, node.DirectCount, node.TotalCount))
+	}
+}
+
+func graphTreeDepth(graphPath string) int {
+	return strings.Count(strings.TrimSpace(graphPath), "/")
+}
+
 func commandGraphs(documents []markdown.WorkspaceDocument) []string {
 	seen := map[string]struct{}{}
 	graphs := []string{}
@@ -128,21 +149,6 @@ func commandGraphs(documents []markdown.WorkspaceDocument) []string {
 
 		seen[commandDocument.Metadata.Graph] = struct{}{}
 		graphs = append(graphs, commandDocument.Metadata.Graph)
-	}
-
-	return sortedStrings(graphs)
-}
-
-func taskGraphs(view graph.TaskLayerView) []string {
-	seen := map[string]struct{}{}
-	graphs := []string{}
-	for _, task := range view.Tasks {
-		if _, ok := seen[task.Graph]; ok {
-			continue
-		}
-
-		seen[task.Graph] = struct{}{}
-		graphs = append(graphs, task.Graph)
 	}
 
 	return sortedStrings(graphs)
@@ -224,14 +230,6 @@ func joinCommandLayer(commands []graph.CommandNode) string {
 	}
 
 	return strings.Join(parts, ", ")
-}
-
-func joinedOrNone(values []string) string {
-	if len(values) == 0 {
-		return "none"
-	}
-
-	return strings.Join(values, ", ")
 }
 
 func sortedStrings(values []string) []string {

@@ -1,6 +1,6 @@
 # Flow
 
-Flow is a Go-first local planning tool with Markdown as the canonical workspace format, a rebuildable SQLite index under `.flow/flow.index`, a CLI and TUI, and a browser GUI served by the `flow` binary itself.
+Flow is a Go-first local planning tool with Markdown as the canonical workspace format, a rebuildable SQLite index under `.flow/config/flow.index`, a CLI and TUI, and a browser GUI served by the `flow` binary itself.
 
 The current rewrite targets a first release as a single `linux/amd64` binary with embedded frontend assets.
 
@@ -9,17 +9,70 @@ The current rewrite targets a first release as a single `linux/amd64` binary wit
 Flow stores workspace state in a `.flow` directory inside a local workspace, or in a configured global workspace when commands are prefixed with `-g`.
 
 Canonical files:
-- `.flow/flow.yaml`: workspace configuration
-- `.flow/flow.index`: derived SQLite index rebuilt from Markdown
-- `.flow/features/<feature>/notes/*.md`
-- `.flow/features/<feature>/tasks/*.md`
-- `.flow/features/<feature>/commands/*.md`
+- `.flow/config/flow.yaml`: workspace configuration
+- `.flow/config/flow.index`: derived SQLite index rebuilt from Markdown
+- `.flow/config/gui-server.json`: disposable GUI runtime state
+- `.flow/data/home.md`: top-level Home document outside the graph tree
+- `.flow/data/graphs/<graph-path>/*.md`: canonical graph-backed Markdown documents
 
 Key runtime properties:
 - Markdown files are canonical and remain Git-friendly.
 - The SQLite index is derived and rebuildable.
+- Configuration and canonical content are stored separately under `.flow/config` and `.flow/data`.
+- `.flow/config/flow.yaml` also stores persisted GUI panel width ratios for the desktop browser workspace.
+- Graphs are addressed by full path such as `execution/parser`.
+- Graph visibility is derived from canonical Markdown content; empty graphs stay hidden.
 - `flow gui` serves the browser UI on loopback HTTP and opens the default browser.
 - Local and global workspaces are both supported.
+
+## Workspace Layout
+
+`flow init` creates this baseline workspace structure:
+
+```text
+.flow/
+  config/
+    flow.yaml
+    flow.index
+    gui-server.json
+  data/
+    home.md
+    graphs/
+      <graph-path>/
+        <document>.md
+```
+
+Layout rules:
+- Home is always stored at `.flow/data/home.md` and is not part of the graph tree.
+- Graph documents live directly inside their graph directory; there are no type-specific subdirectories.
+- Frontmatter `type` determines whether a document is `home`, a note, a task, or a command.
+- Filesystem location is authoritative for graph membership when it disagrees with frontmatter `graph`.
+- `flow init` creates `.flow/data/home.md` and writes default GUI panel width ratios when those files or settings are missing.
+- Creating a graph path silently creates missing parent directories, but graphs appear in the visible tree only after their subtree contains canonical Markdown content.
+- Graph counts shown by the TUI and GUI are derived counts in the format `3 direct / 11 total`.
+
+## Browser GUI
+
+`flow gui` opens a desktop-only three-panel workspace in the browser.
+
+- The left rail contains the Flow header, workspace path, search, a dedicated Home entry, and the visible graph tree.
+- Search returns one mixed list with explicit type labels such as `Home`, `Note`, `Task`, and `Command`.
+- Search matches title, `description`, and body content for Home and graph-backed documents.
+- Home participates in search, but it never appears inside graph lists or graph counts.
+- The middle panel defaults to Home and switches to the selected graph canvas when you choose a graph.
+- The right panel stays hidden until you select a graph node, then opens as the contextual editor for that document.
+- The left and right split bars are draggable, and their width ratios persist in `.flow/config/flow.yaml`.
+
+Editing behavior:
+
+- Home is backed by `.flow/data/home.md` and uses the same Markdown-plus-frontmatter model as other Flow-managed content.
+- Home, notes, tasks, and commands all support a shared optional `description` field.
+- `description` is shown in the Home surface, the right-side document panel, and search results.
+- `description` is not shown on graph nodes or graph list buttons.
+- The browser editor is WYSIWYG for Home bodies and graph document bodies.
+- Typing `/` opens the slash-command menu for supported block actions.
+- Selecting text opens a floating toolbar for inline formatting such as bold, italic, links, and highlight.
+- Highlight is persisted as inline HTML `<mark>` inside the canonical Markdown body.
 
 ## Supported Commands
 
@@ -43,7 +96,8 @@ Examples:
 flow init
 flow configure --gui-port 4317
 flow version
-flow create task --feature demo --file parser --id task-1 --graph execution --title "Build parser"
+flow create task --file parser --id task-1 --graph execution/parser --title "Build parser"
+flow create note --file architecture --id note-1 --graph notes --title "Architecture"
 flow search parser
 flow run build
 flow gui
@@ -51,16 +105,26 @@ flow gui
 
 ## Markdown Frontmatter
 
-Flow stores notes, tasks, and commands as Markdown files with YAML frontmatter at the top of each file.
+Flow stores Home, notes, tasks, and commands as Markdown files with YAML frontmatter at the top of each file.
 
 Common fields used by all document types:
 - `id`: required unique document identifier inside the workspace
-- `type`: document kind, one of `note`, `task`, or `command`
-- `graph`: logical graph name used for grouping and graph views
+- `type`: document kind, one of `home`, `note`, `task`, or `command`
 - `title`: human-readable label shown in CLI, TUI, and GUI views
+- `description`: optional short summary shown in GUI panels and search results
 - `tags`: optional list of labels for classification
 - `createdAt`: optional creation timestamp string
 - `updatedAt`: optional last-update timestamp string
+
+Graph-backed fields used by notes, tasks, and commands:
+- `graph`: graph path metadata normalized to the document's filesystem location
+
+Home-specific fields:
+- `id`: always `home`
+- `type`: always `home`
+- `title`: Home title shown in the middle panel
+- `description`: optional Home summary shown in the Home surface and search results
+- Home does not use `graph` or graph-specific metadata
 
 Note-specific fields:
 - `references`: optional list of related document IDs; note-to-note references are treated as relationships, and cross-type references stay soft links
@@ -85,6 +149,7 @@ id: note-1
 type: note
 graph: notes
 title: Architecture
+description: Notes about the system structure and design choices
 tags:
   - design
 references:
@@ -98,8 +163,9 @@ updatedAt: 2026-03-17T11:00:00Z
 ---
 id: task-1
 type: task
-graph: execution
+graph: execution/parser
 title: Build parser
+description: Implement the first parsing pass and wire it into the CLI flow
 status: todo
 dependsOn:
   - task-0
@@ -114,6 +180,7 @@ id: cmd-1
 type: command
 graph: release
 title: Build binary
+description: Produce the release binary for local verification
 name: build
 dependsOn:
   - cmd-0
@@ -123,6 +190,15 @@ env:
   GOOS: linux
   GOARCH: amd64
 run: go build ./cmd/flow
+---
+```
+
+```yaml
+---
+id: home
+type: home
+title: Home
+description: Workspace home document
 ---
 ```
 
@@ -164,6 +240,15 @@ go test ./internal/config ./internal/workspace ./internal/markdown ./internal/gr
 
 The frontend build emits bundled assets into `internal/httpapi/static/`, and the Go binary embeds those assets for `flow gui`.
 Plain `go build` uses the project version from `internal/buildinfo/VERSION` and appends `-dev`; release builds inject the exact release version without the suffix.
+
+## Graph Tree Behavior
+
+The graph tree is derived from canonical files under `.flow/data/graphs` rather than from a separate graph registry.
+
+- A document stored at `.flow/data/graphs/execution/parser/build.md` belongs to the `execution/parser` graph even if its frontmatter says otherwise.
+- Parent graph nodes such as `execution` remain visible when descendants contain content, even if the parent directory has no direct Markdown files.
+- Empty graphs are omitted from visible graph trees in the CLI, TUI, and GUI.
+- Home is a separate top-level surface and is excluded from graph counts.
 
 ## Linux Release Process
 

@@ -1,6 +1,7 @@
 package markdown
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -14,6 +15,7 @@ func TestParseNoteDocument(t *testing.T) {
 		"type: note",
 		"graph: notes",
 		"title: Architecture Note",
+		"description: Shared description",
 		"tags:",
 		"  - design",
 		"references:",
@@ -40,6 +42,10 @@ func TestParseNoteDocument(t *testing.T) {
 		t.Fatalf("document.Metadata.ID = %q, want note-1", document.Metadata.ID)
 	}
 
+	if document.Metadata.Description != "Shared description" {
+		t.Fatalf("document.Metadata.Description = %q, want Shared description", document.Metadata.Description)
+	}
+
 	if document.Metadata.References[0] != "task-1" {
 		t.Fatalf("document.Metadata.References = %#v", document.Metadata.References)
 	}
@@ -58,6 +64,7 @@ func TestParseTaskDocument(t *testing.T) {
 		"type: task",
 		"graph: execution",
 		"title: Implement parser",
+		"description: Shared task description",
 		"status: todo",
 		"dependsOn:",
 		"  - task-0",
@@ -77,6 +84,10 @@ func TestParseTaskDocument(t *testing.T) {
 		t.Fatalf("document.Metadata.Status = %q, want todo", document.Metadata.Status)
 	}
 
+	if document.Metadata.Description != "Shared task description" {
+		t.Fatalf("document.Metadata.Description = %q, want Shared task description", document.Metadata.Description)
+	}
+
 	if document.Metadata.DependsOn[0] != "task-0" {
 		t.Fatalf("document.Metadata.DependsOn = %#v", document.Metadata.DependsOn)
 	}
@@ -91,6 +102,7 @@ func TestParseCommandDocument(t *testing.T) {
 		"type: command",
 		"graph: release",
 		"title: Build binary",
+		"description: Shared command description",
 		"name: build",
 		"dependsOn:",
 		"  - cmd-0",
@@ -112,6 +124,10 @@ func TestParseCommandDocument(t *testing.T) {
 
 	if document.Metadata.Name != "build" {
 		t.Fatalf("document.Metadata.Name = %q, want build", document.Metadata.Name)
+	}
+
+	if document.Metadata.Description != "Shared command description" {
+		t.Fatalf("document.Metadata.Description = %q, want Shared command description", document.Metadata.Description)
 	}
 
 	if document.Metadata.Env["GOOS"] != "linux" {
@@ -143,11 +159,12 @@ func TestSerializeDocumentRoundTripsTask(t *testing.T) {
 	input := TaskDocument{
 		Metadata: TaskMetadata{
 			CommonFields: CommonFields{
-				ID:    "task-1",
-				Type:  TaskType,
-				Graph: "execution",
-				Title: "Round trip",
-				Tags:  []string{"parser", "test"},
+				ID:          "task-1",
+				Type:        TaskType,
+				Graph:       "execution",
+				Title:       "Round trip",
+				Description: "Task description",
+				Tags:        []string{"parser", "test"},
 			},
 			Status:     "todo",
 			DependsOn:  []string{"task-0"},
@@ -170,6 +187,10 @@ func TestSerializeDocumentRoundTripsTask(t *testing.T) {
 		t.Fatalf("parsed.Metadata.ID = %q, want %q", parsed.Metadata.ID, input.Metadata.ID)
 	}
 
+	if parsed.Metadata.Description != input.Metadata.Description {
+		t.Fatalf("parsed.Metadata.Description = %q, want %q", parsed.Metadata.Description, input.Metadata.Description)
+	}
+
 	if CompactMarkdown(parsed.Body) != CompactMarkdown(input.Body) {
 		t.Fatalf("parsed.Body = %q, want %q", parsed.Body, input.Body)
 	}
@@ -181,13 +202,14 @@ func TestSerializeDocumentRoundTripsNote(t *testing.T) {
 	input := NoteDocument{
 		Metadata: NoteMetadata{
 			CommonFields: CommonFields{
-				ID:        "note-1",
-				Type:      NoteType,
-				Graph:     "notes",
-				Title:     "Architecture",
-				Tags:      []string{"design", "reference"},
-				CreatedAt: "2026-03-17T10:00:00Z",
-				UpdatedAt: "2026-03-17T11:00:00Z",
+				ID:          "note-1",
+				Type:        NoteType,
+				Graph:       "notes",
+				Title:       "Architecture",
+				Description: "Note description",
+				Tags:        []string{"design", "reference"},
+				CreatedAt:   "2026-03-17T10:00:00Z",
+				UpdatedAt:   "2026-03-17T11:00:00Z",
 			},
 			References: []string{"note-2", "task-1"},
 		},
@@ -208,6 +230,10 @@ func TestSerializeDocumentRoundTripsNote(t *testing.T) {
 		t.Fatalf("parsed.Metadata.ID = %q, want %q", parsed.Metadata.ID, input.Metadata.ID)
 	}
 
+	if parsed.Metadata.Description != input.Metadata.Description {
+		t.Fatalf("parsed.Metadata.Description = %q, want %q", parsed.Metadata.Description, input.Metadata.Description)
+	}
+
 	if !slicesEqual(parsed.Metadata.References, input.Metadata.References) {
 		t.Fatalf("parsed.Metadata.References = %#v, want %#v", parsed.Metadata.References, input.Metadata.References)
 	}
@@ -223,12 +249,13 @@ func TestSerializeDocumentRoundTripsCommand(t *testing.T) {
 	input := CommandDocument{
 		Metadata: CommandMetadata{
 			CommonFields: CommonFields{
-				ID:        "cmd-1",
-				Type:      CommandType,
-				Graph:     "release",
-				Title:     "Build",
-				Tags:      []string{"release", "cli"},
-				CreatedAt: "2026-03-17T10:00:00Z",
+				ID:          "cmd-1",
+				Type:        CommandType,
+				Graph:       "release",
+				Title:       "Build",
+				Description: "Command description",
+				Tags:        []string{"release", "cli"},
+				CreatedAt:   "2026-03-17T10:00:00Z",
 			},
 			Name:       "build",
 			DependsOn:  []string{"cmd-0"},
@@ -258,6 +285,10 @@ func TestSerializeDocumentRoundTripsCommand(t *testing.T) {
 
 	if parsed.Metadata.Name != input.Metadata.Name {
 		t.Fatalf("parsed.Metadata.Name = %q, want %q", parsed.Metadata.Name, input.Metadata.Name)
+	}
+
+	if parsed.Metadata.Description != input.Metadata.Description {
+		t.Fatalf("parsed.Metadata.Description = %q, want %q", parsed.Metadata.Description, input.Metadata.Description)
 	}
 
 	if !slicesEqual(parsed.Metadata.DependsOn, input.Metadata.DependsOn) {
@@ -297,6 +328,29 @@ func TestRelativeDocumentPath(t *testing.T) {
 
 	if path != "features/rewrite/commands/build.md" {
 		t.Fatalf("RelativeDocumentPath() = %q", path)
+	}
+}
+
+func TestRelativeGraphDocumentPath(t *testing.T) {
+	t.Parallel()
+
+	path, err := RelativeGraphDocumentPath("execution/parser", "build.md")
+	if err != nil {
+		fatalf := t.Fatalf
+		fatalf("RelativeGraphDocumentPath() error = %v", err)
+	}
+
+	if path != filepath.Join("data", "graphs", "execution", "parser", "build.md") {
+		t.Fatalf("RelativeGraphDocumentPath() = %q", path)
+	}
+}
+
+func TestRelativeGraphDocumentPathRejectsInvalidGraph(t *testing.T) {
+	t.Parallel()
+
+	_, err := RelativeGraphDocumentPath("../escape", "build.md")
+	if err == nil {
+		t.Fatal("RelativeGraphDocumentPath() error = nil, want invalid graph path")
 	}
 }
 

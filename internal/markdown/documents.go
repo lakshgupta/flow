@@ -15,6 +15,7 @@ const frontmatterDelimiter = "---"
 type DocumentType string
 
 const (
+	HomeType    DocumentType = "home"
 	NoteType    DocumentType = "note"
 	TaskType    DocumentType = "task"
 	CommandType DocumentType = "command"
@@ -22,13 +23,14 @@ const (
 
 // CommonFields contains the frontmatter shared by all document kinds.
 type CommonFields struct {
-	ID        string       `yaml:"id,omitempty"`
-	Type      DocumentType `yaml:"type,omitempty"`
-	Graph     string       `yaml:"graph,omitempty"`
-	Title     string       `yaml:"title,omitempty"`
-	Tags      []string     `yaml:"tags,omitempty"`
-	CreatedAt string       `yaml:"createdAt,omitempty"`
-	UpdatedAt string       `yaml:"updatedAt,omitempty"`
+	ID          string       `yaml:"id,omitempty"`
+	Type        DocumentType `yaml:"type,omitempty"`
+	Graph       string       `yaml:"graph,omitempty"`
+	Title       string       `yaml:"title,omitempty"`
+	Description string       `yaml:"description,omitempty"`
+	Tags        []string     `yaml:"tags,omitempty"`
+	CreatedAt   string       `yaml:"createdAt,omitempty"`
+	UpdatedAt   string       `yaml:"updatedAt,omitempty"`
 }
 
 // NoteMetadata describes note frontmatter fields.
@@ -53,6 +55,12 @@ type CommandMetadata struct {
 	References   []string          `yaml:"references,omitempty"`
 	Env          map[string]string `yaml:"env,omitempty"`
 	Run          string            `yaml:"run,omitempty"`
+}
+
+// NoteDocument is the parsed representation of a note Markdown file.
+type HomeDocument struct {
+	Metadata CommonFields
+	Body     string
 }
 
 // NoteDocument is the parsed representation of a note Markdown file.
@@ -83,11 +91,14 @@ type Document interface {
 func (document NoteDocument) Kind() DocumentType    { return NoteType }
 func (document TaskDocument) Kind() DocumentType    { return TaskType }
 func (document CommandDocument) Kind() DocumentType { return CommandType }
+func (document HomeDocument) Kind() DocumentType    { return HomeType }
 
+func (document HomeDocument) body() string    { return document.Body }
 func (document NoteDocument) body() string    { return document.Body }
 func (document TaskDocument) body() string    { return document.Body }
 func (document CommandDocument) body() string { return document.Body }
 
+func (document HomeDocument) metadata() any    { return document.Metadata }
 func (document NoteDocument) metadata() any    { return document.Metadata }
 func (document TaskDocument) metadata() any    { return document.Metadata }
 func (document CommandDocument) metadata() any { return document.Metadata }
@@ -105,6 +116,8 @@ func ParseDocument(data []byte) (Document, error) {
 	}
 
 	switch documentType {
+	case HomeType:
+		return ParseHomeDocument(data)
 	case NoteType:
 		return ParseNoteDocument(data)
 	case TaskType:
@@ -114,6 +127,17 @@ func ParseDocument(data []byte) (Document, error) {
 	default:
 		return nil, fmt.Errorf("unsupported document type %q", documentType)
 	}
+}
+
+// ParseHomeDocument parses a Home markdown document with YAML frontmatter.
+func ParseHomeDocument(data []byte) (HomeDocument, error) {
+	var metadata CommonFields
+	body, err := parseTypedDocument(data, HomeType, &metadata)
+	if err != nil {
+		return HomeDocument{}, err
+	}
+
+	return HomeDocument{Metadata: metadata, Body: body}, nil
 }
 
 // ParseNoteDocument parses a note Markdown document.
@@ -170,6 +194,32 @@ func RelativeDocumentPath(featureSlug string, documentType DocumentType, fileNam
 	}
 
 	return filepath.Join("features", featureSlug, directoryName, fileName), nil
+}
+
+// RelativeGraphDocumentPath returns the canonical relative path for a graph-backed document.
+func RelativeGraphDocumentPath(graphPath string, fileName string) (string, error) {
+	trimmedGraphPath := strings.TrimSpace(graphPath)
+	if trimmedGraphPath == "" {
+		return "", fmt.Errorf("graph path must not be empty")
+	}
+
+	if fileName == "" {
+		return "", fmt.Errorf("file name must not be empty")
+	}
+
+	normalizedGraphPath := filepath.ToSlash(filepath.Clean(trimmedGraphPath))
+	if normalizedGraphPath == "." || normalizedGraphPath == ".." || strings.HasPrefix(normalizedGraphPath, "../") || strings.Contains(normalizedGraphPath, "//") {
+		return "", fmt.Errorf("graph path %q is invalid", graphPath)
+	}
+
+	segments := strings.Split(normalizedGraphPath, "/")
+	for _, segment := range segments {
+		if segment == "" || segment == "." || segment == ".." {
+			return "", fmt.Errorf("graph path %q is invalid", graphPath)
+		}
+	}
+
+	return filepath.Join("data", "graphs", filepath.FromSlash(normalizedGraphPath), fileName), nil
 }
 
 func parseTypedDocument(data []byte, expectedType DocumentType, destination any) (string, error) {
@@ -248,6 +298,8 @@ func parseDocumentType(rawMetadata []byte) (DocumentType, error) {
 
 func documentDirectoryName(documentType DocumentType) (string, error) {
 	switch documentType {
+	case HomeType:
+		return "", nil
 	case NoteType:
 		return "notes", nil
 	case TaskType:

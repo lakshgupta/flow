@@ -13,6 +13,8 @@ import (
 type SearchResult struct {
 	ID          string `json:"id"`
 	Type        string `json:"type"`
+	Description string `json:"description"`
+	// FeatureSlug is a legacy compatibility field derived from the first graph segment.
 	FeatureSlug string `json:"featureSlug"`
 	Graph       string `json:"graph"`
 	Title       string `json:"title"`
@@ -32,6 +34,15 @@ func SearchWorkspace(indexPath string, flowPath string, query string, limit int)
 	}
 
 	return Search(indexPath, query, limit)
+}
+
+// ReadGraphNodesWorkspace returns graph projection nodes, rebuilding the index first when needed.
+func ReadGraphNodesWorkspace(indexPath string, flowPath string) ([]GraphNode, error) {
+	if err := ensureIndexExists(indexPath, flowPath); err != nil {
+		return nil, err
+	}
+
+	return ReadGraphNodes(indexPath)
 }
 
 // Search queries the derived SQLite index for document metadata and body text matches.
@@ -55,19 +66,21 @@ func Search(indexPath string, query string, limit int) ([]SearchResult, error) {
 	likeQuery := "%" + normalizedQuery + "%"
 
 	rows, err := database.Query(`
-		SELECT id, type, feature_slug, graph, title, path, body_text
+		SELECT id, type, feature_slug, graph, title, description_text, path, body_text
 		FROM documents
 		WHERE lower(id) LIKE ?
 			OR lower(type) LIKE ?
 			OR lower(feature_slug) LIKE ?
 			OR lower(graph) LIKE ?
 			OR lower(title) LIKE ?
+			OR lower(description_text) LIKE ?
 			OR lower(path) LIKE ?
 			OR lower(body_text) LIKE ?
 		ORDER BY
 			CASE WHEN lower(title) = ? THEN 0 ELSE 1 END,
 			CASE WHEN lower(id) = ? THEN 0 ELSE 1 END,
 			CASE WHEN lower(title) LIKE ? THEN 0 ELSE 1 END,
+			CASE WHEN lower(description_text) LIKE ? THEN 0 ELSE 1 END,
 			CASE WHEN lower(id) LIKE ? THEN 0 ELSE 1 END,
 			CASE WHEN lower(path) LIKE ? THEN 0 ELSE 1 END,
 			CASE WHEN lower(body_text) LIKE ? THEN 1 ELSE 0 END,
@@ -81,8 +94,10 @@ func Search(indexPath string, query string, limit int) ([]SearchResult, error) {
 		likeQuery,
 		likeQuery,
 		likeQuery,
+		likeQuery,
 		normalizedQuery,
 		normalizedQuery,
+		likeQuery,
 		likeQuery,
 		likeQuery,
 		likeQuery,
@@ -104,6 +119,7 @@ func Search(indexPath string, query string, limit int) ([]SearchResult, error) {
 			&result.FeatureSlug,
 			&result.Graph,
 			&result.Title,
+			&result.Description,
 			&result.Path,
 			&bodyText,
 		); err != nil {

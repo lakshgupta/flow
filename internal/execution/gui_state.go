@@ -21,7 +21,7 @@ type GUIState struct {
 
 // GUIStatePath returns the workspace-local GUI state file path.
 func GUIStatePath(root workspace.Root) string {
-	return filepath.Join(root.FlowPath, GUIStateFileName)
+	return filepath.Join(root.ConfigDirPath, GUIStateFileName)
 }
 
 // ReadGUIState loads persisted GUI process metadata for a workspace.
@@ -46,7 +46,7 @@ func WriteGUIState(root workspace.Root, state GUIState) error {
 		return fmt.Errorf("marshal gui state: %w", err)
 	}
 
-	if err := os.MkdirAll(root.FlowPath, 0o755); err != nil {
+	if err := os.MkdirAll(root.ConfigDirPath, 0o755); err != nil {
 		return fmt.Errorf("create gui state directory: %w", err)
 	}
 

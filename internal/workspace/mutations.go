@@ -41,6 +41,7 @@ type CreateDocumentInput struct {
 	ID          string
 	Graph       string
 	Title       string
+	Description string
 	Tags        []string
 	CreatedAt   string
 	UpdatedAt   string
@@ -55,19 +56,20 @@ type CreateDocumentInput struct {
 
 // DocumentPatch describes field updates for one existing Markdown document.
 type DocumentPatch struct {
-	ID         *string
-	Graph      *string
-	Title      *string
-	Tags       *[]string
-	CreatedAt  *string
-	UpdatedAt  *string
-	Body       *string
-	Status     *string
-	DependsOn  *[]string
-	References *[]string
-	Name       *string
-	Env        *map[string]string
-	Run        *string
+	ID          *string
+	Graph       *string
+	Title       *string
+	Description *string
+	Tags        *[]string
+	CreatedAt   *string
+	UpdatedAt   *string
+	Body        *string
+	Status      *string
+	DependsOn   *[]string
+	References  *[]string
+	Name        *string
+	Env         *map[string]string
+	Run         *string
 }
 
 // CreateDocument writes a new canonical Markdown document and rebuilds the index.
@@ -76,9 +78,10 @@ func CreateDocument(root Root, input CreateDocumentInput) (markdown.WorkspaceDoc
 	if err != nil {
 		return markdown.WorkspaceDocument{}, err
 	}
+	document = normalizeDocumentGraphForPath(relativePath, document)
 
 	absolutePath := filepath.Join(root.FlowPath, filepath.FromSlash(relativePath))
-	if err := validateWorkspaceMutation(root.FlowPath, relativePath, document, false); err != nil {
+	if err := validateWorkspaceMutation(root.FlowPath, "", relativePath, document, false); err != nil {
 		return markdown.WorkspaceDocument{}, err
 	}
 
@@ -113,19 +116,32 @@ func UpdateDocumentByPath(root Root, pathValue string, patch DocumentPatch) (mar
 		return markdown.WorkspaceDocument{}, err
 	}
 
-	if err := validateWorkspaceMutation(root.FlowPath, relativePath, updatedDocument, false); err != nil {
+	targetRelativePath, err := targetDocumentPath(relativePath, updatedDocument)
+	if err != nil {
+		return markdown.WorkspaceDocument{}, err
+	}
+	updatedDocument = normalizeDocumentGraphForPath(targetRelativePath, updatedDocument)
+	targetAbsolutePath := filepath.Join(root.FlowPath, filepath.FromSlash(targetRelativePath))
+
+	if err := validateWorkspaceMutation(root.FlowPath, relativePath, targetRelativePath, updatedDocument, false); err != nil {
 		return markdown.WorkspaceDocument{}, err
 	}
 
-	if err := writeDocumentFile(absolutePath, updatedDocument, false); err != nil {
+	failIfExists := targetRelativePath != relativePath
+	if err := writeDocumentFile(targetAbsolutePath, updatedDocument, failIfExists); err != nil {
 		return markdown.WorkspaceDocument{}, err
+	}
+	if targetRelativePath != relativePath {
+		if err := os.Remove(absolutePath); err != nil {
+			return markdown.WorkspaceDocument{}, fmt.Errorf("delete previous document path: %w", err)
+		}
 	}
 
 	if err := rebuildIndex(root); err != nil {
 		return markdown.WorkspaceDocument{}, err
 	}
 
-	return markdown.WorkspaceDocument{Path: relativePath, Document: updatedDocument}, nil
+	return markdown.WorkspaceDocument{Path: targetRelativePath, Document: updatedDocument}, nil
 }
 
 // UpdateDocumentByID updates an existing document selected by document ID.
@@ -208,15 +224,15 @@ func buildCreateWorkspaceDocument(input CreateDocumentInput) (string, markdown.D
 		return "", nil, InvalidMutationError{Err: fmt.Errorf("unsupported document type %q", input.Type)}
 	}
 
-	if input.FeatureSlug == "" || input.FileName == "" || input.ID == "" || input.Graph == "" {
-		return "", nil, InvalidMutationError{Err: fmt.Errorf("document create requires featureSlug, fileName, id, and graph")}
+	if input.FileName == "" || input.ID == "" || input.Graph == "" {
+		return "", nil, InvalidMutationError{Err: fmt.Errorf("document create requires fileName, id, and graph")}
 	}
 
 	if input.Type == markdown.CommandType && (input.Name == "" || input.Run == "") {
 		return "", nil, InvalidMutationError{Err: fmt.Errorf("command document create requires name and run")}
 	}
 
-	relativePath, err := markdown.RelativeDocumentPath(input.FeatureSlug, input.Type, ensureMarkdownFileName(input.FileName))
+	relativePath, err := markdown.RelativeGraphDocumentPath(input.Graph, ensureMarkdownFileName(input.FileName))
 	if err != nil {
 		return "", nil, InvalidMutationError{Err: err}
 	}
@@ -227,13 +243,14 @@ func buildCreateWorkspaceDocument(input CreateDocumentInput) (string, markdown.D
 
 func buildCreateDocument(input CreateDocumentInput) markdown.Document {
 	common := markdown.CommonFields{
-		ID:        input.ID,
-		Type:      input.Type,
-		Graph:     input.Graph,
-		Title:     input.Title,
-		Tags:      cloneStrings(input.Tags),
-		CreatedAt: input.CreatedAt,
-		UpdatedAt: input.UpdatedAt,
+		ID:          input.ID,
+		Type:        input.Type,
+		Graph:       input.Graph,
+		Title:       input.Title,
+		Description: input.Description,
+		Tags:        cloneStrings(input.Tags),
+		CreatedAt:   input.CreatedAt,
+		UpdatedAt:   input.UpdatedAt,
 	}
 
 	switch input.Type {
@@ -327,7 +344,7 @@ func applyDocumentPatch(document markdown.Document, patch DocumentPatch) (markdo
 }
 
 func (patch DocumentPatch) isEmpty() bool {
-	return patch.ID == nil && patch.Graph == nil && patch.Title == nil && patch.Tags == nil && patch.CreatedAt == nil && patch.UpdatedAt == nil && patch.Body == nil && patch.Status == nil && patch.DependsOn == nil && patch.References == nil && patch.Name == nil && patch.Env == nil && patch.Run == nil
+	return patch.ID == nil && patch.Graph == nil && patch.Title == nil && patch.Description == nil && patch.Tags == nil && patch.CreatedAt == nil && patch.UpdatedAt == nil && patch.Body == nil && patch.Status == nil && patch.DependsOn == nil && patch.References == nil && patch.Name == nil && patch.Env == nil && patch.Run == nil
 }
 
 func patchCommonFields(fields *markdown.CommonFields, patch DocumentPatch) {
@@ -339,6 +356,9 @@ func patchCommonFields(fields *markdown.CommonFields, patch DocumentPatch) {
 	}
 	if patch.Title != nil {
 		fields.Title = *patch.Title
+	}
+	if patch.Description != nil {
+		fields.Description = *patch.Description
 	}
 	if patch.CreatedAt != nil {
 		fields.CreatedAt = *patch.CreatedAt
@@ -425,33 +445,33 @@ func writeDocumentFile(path string, document markdown.Document, failIfExists boo
 	return nil
 }
 
-func validateWorkspaceMutation(flowPath string, relativePath string, document markdown.Document, deleting bool) error {
+func validateWorkspaceMutation(flowPath string, currentRelativePath string, targetRelativePath string, document markdown.Document, deleting bool) error {
 	workspaceDocuments, err := LoadDocuments(flowPath)
 	if err != nil {
 		return err
 	}
 
-	return validateWorkspaceMutationDocuments(relativePath, document, deleting, workspaceDocuments)
+	return validateWorkspaceMutationDocuments(currentRelativePath, targetRelativePath, document, deleting, workspaceDocuments)
 }
 
-func validateWorkspaceMutationDocuments(relativePath string, document markdown.Document, deleting bool, workspaceDocuments []markdown.WorkspaceDocument) error {
+func validateWorkspaceMutationDocuments(currentRelativePath string, targetRelativePath string, document markdown.Document, deleting bool, workspaceDocuments []markdown.WorkspaceDocument) error {
 
 	targets := make([]markdown.WorkspaceDocument, 0, len(workspaceDocuments)+1)
 	replaced := false
 	for _, item := range workspaceDocuments {
-		if item.Path != relativePath {
+		if item.Path != currentRelativePath {
 			targets = append(targets, item)
 			continue
 		}
 
 		replaced = true
 		if !deleting {
-			targets = append(targets, markdown.WorkspaceDocument{Path: relativePath, Document: document})
+			targets = append(targets, markdown.WorkspaceDocument{Path: targetRelativePath, Document: document})
 		}
 	}
 
 	if !deleting && !replaced {
-		targets = append(targets, markdown.WorkspaceDocument{Path: relativePath, Document: document})
+		targets = append(targets, markdown.WorkspaceDocument{Path: targetRelativePath, Document: document})
 	}
 
 	if err := markdown.ValidateWorkspaceDocuments(targets); err != nil {
@@ -584,6 +604,43 @@ func rebuildIndex(root Root) error {
 	}
 
 	return nil
+}
+
+func targetDocumentPath(currentRelativePath string, document markdown.Document) (string, error) {
+	graphPath := documentGraph(document)
+	fileName := filepath.Base(filepath.FromSlash(currentRelativePath))
+	if fileName == "." || fileName == string(filepath.Separator) || fileName == "" {
+		return "", InvalidMutationError{Err: fmt.Errorf("document path must point to a Markdown file inside %s", DirName)}
+	}
+
+	relativePath, err := markdown.RelativeGraphDocumentPath(graphPath, fileName)
+	if err != nil {
+		return "", InvalidMutationError{Err: err}
+	}
+
+	return filepath.ToSlash(relativePath), nil
+}
+
+func normalizeDocumentGraphForPath(relativePath string, document markdown.Document) markdown.Document {
+	normalized, err := markdown.NormalizeWorkspaceDocument(markdown.WorkspaceDocument{Path: relativePath, Document: document})
+	if err != nil {
+		return document
+	}
+
+	return normalized.Document
+}
+
+func documentGraph(document markdown.Document) string {
+	switch value := document.(type) {
+	case markdown.NoteDocument:
+		return value.Metadata.Graph
+	case markdown.TaskDocument:
+		return value.Metadata.Graph
+	case markdown.CommandDocument:
+		return value.Metadata.Graph
+	default:
+		return ""
+	}
 }
 
 func cloneStrings(values []string) []string {

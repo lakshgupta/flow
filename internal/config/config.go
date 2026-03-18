@@ -15,6 +15,12 @@ const FileName = "flow.yaml"
 // DefaultGUIPort is used when a workspace config is created without an explicit port.
 const DefaultGUIPort = 4317
 
+// Default panel width ratios for the desktop GUI shell.
+const (
+	DefaultLeftPanelRatio  = 0.25
+	DefaultRightPanelRatio = 0.24
+)
+
 // Workspace holds persisted workspace settings.
 type Workspace struct {
 	GUI GUI `yaml:"gui"`
@@ -22,18 +28,43 @@ type Workspace struct {
 
 // GUI holds loopback server settings for a workspace.
 type GUI struct {
-	Port int `yaml:"port"`
+	Port        int         `yaml:"port"`
+	PanelWidths PanelWidths `yaml:"panelWidths"`
+}
+
+// PanelWidths stores persisted panel width ratios for the desktop GUI shell.
+type PanelWidths struct {
+	LeftRatio  float64 `yaml:"leftRatio"`
+	RightRatio float64 `yaml:"rightRatio"`
 }
 
 // DefaultWorkspace returns the default workspace configuration for new workspaces.
 func DefaultWorkspace() Workspace {
-	return Workspace{GUI: GUI{Port: DefaultGUIPort}}
+	return Workspace{GUI: GUI{
+		Port: DefaultGUIPort,
+		PanelWidths: PanelWidths{
+			LeftRatio:  DefaultLeftPanelRatio,
+			RightRatio: DefaultRightPanelRatio,
+		},
+	}}
 }
 
 // Validate checks the supported workspace configuration fields.
 func (workspace Workspace) Validate() error {
 	if workspace.GUI.Port < 1 || workspace.GUI.Port > 65535 {
 		return fmt.Errorf("gui.port must be between 1 and 65535")
+	}
+
+	if workspace.GUI.PanelWidths.LeftRatio <= 0 || workspace.GUI.PanelWidths.LeftRatio >= 1 {
+		return fmt.Errorf("gui.panelWidths.leftRatio must be between 0 and 1")
+	}
+
+	if workspace.GUI.PanelWidths.RightRatio <= 0 || workspace.GUI.PanelWidths.RightRatio >= 1 {
+		return fmt.Errorf("gui.panelWidths.rightRatio must be between 0 and 1")
+	}
+
+	if workspace.GUI.PanelWidths.LeftRatio+workspace.GUI.PanelWidths.RightRatio >= 0.9 {
+		return fmt.Errorf("gui.panelWidths ratios must leave space for the middle panel")
 	}
 
 	return nil
@@ -47,6 +78,8 @@ func Parse(data []byte) (Workspace, error) {
 		return Workspace{}, fmt.Errorf("parse workspace config: %w", err)
 	}
 
+	workspace = normalizeWorkspace(workspace)
+
 	if err := workspace.Validate(); err != nil {
 		return Workspace{}, err
 	}
@@ -56,6 +89,8 @@ func Parse(data []byte) (Workspace, error) {
 
 // Marshal encodes a workspace configuration as YAML after validation.
 func Marshal(workspace Workspace) ([]byte, error) {
+	workspace = normalizeWorkspace(workspace)
+
 	if err := workspace.Validate(); err != nil {
 		return nil, err
 	}
@@ -99,4 +134,26 @@ func Write(path string, workspace Workspace) error {
 // IsNotFound reports whether the error means the configuration file is missing.
 func IsNotFound(err error) bool {
 	return errors.Is(err, os.ErrNotExist)
+}
+
+func normalizeWorkspace(workspace Workspace) Workspace {
+	defaultWorkspace := DefaultWorkspace()
+
+	if workspace.GUI.Port == 0 {
+		workspace.GUI.Port = defaultWorkspace.GUI.Port
+	}
+
+	if workspace.GUI.PanelWidths.LeftRatio <= 0 || workspace.GUI.PanelWidths.LeftRatio >= 1 {
+		workspace.GUI.PanelWidths.LeftRatio = defaultWorkspace.GUI.PanelWidths.LeftRatio
+	}
+
+	if workspace.GUI.PanelWidths.RightRatio <= 0 || workspace.GUI.PanelWidths.RightRatio >= 1 {
+		workspace.GUI.PanelWidths.RightRatio = defaultWorkspace.GUI.PanelWidths.RightRatio
+	}
+
+	if workspace.GUI.PanelWidths.LeftRatio+workspace.GUI.PanelWidths.RightRatio >= 0.9 {
+		workspace.GUI.PanelWidths = defaultWorkspace.GUI.PanelWidths
+	}
+
+	return workspace
 }

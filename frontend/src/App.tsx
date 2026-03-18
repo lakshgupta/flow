@@ -1,16 +1,20 @@
 import {
   Background,
   Controls,
-  MiniMap,
   ReactFlow,
   ReactFlowProvider,
-  type Edge,
   type Node,
 } from "@xyflow/react";
 import MarkdownIt from "markdown-it";
-import { startTransition, useDeferredValue, useEffect, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useRef, useState } from "react";
 
+import { WysiwygEditor } from "./WysiwygEditor";
 import "./styles.css";
+
+type PanelWidths = {
+  leftRatio: number;
+  rightRatio: number;
+};
 
 type WorkspaceResponse = {
   scope: string;
@@ -18,7 +22,32 @@ type WorkspaceResponse = {
   flowPath: string;
   configPath: string;
   indexPath: string;
+  homePath: string;
   guiPort: number;
+  panelWidths: PanelWidths;
+};
+
+type HomeResponse = {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  path: string;
+  body: string;
+};
+
+type GraphTreeNodeData = {
+  graphPath: string;
+  displayName: string;
+  directCount: number;
+  totalCount: number;
+  hasChildren: boolean;
+  countLabel: string;
+};
+
+type GraphTreeResponse = {
+  home: HomeResponse;
+  graphs: GraphTreeNodeData[];
 };
 
 type GraphItem = {
@@ -33,77 +62,13 @@ type GraphListResponse = {
   graphItems: Record<string, GraphItem[]>;
 };
 
-type TaskNodeData = {
-  id: string;
-  featureSlug: string;
-  graph: string;
-  title: string;
-  status: string;
-  path: string;
-  tags?: string[];
-  createdAt?: string;
-  updatedAt?: string;
-  dependsOn?: string[];
-  references?: string[];
-  layer: number;
-};
-
-type TaskLayerView = {
-  layers: Array<{ index: number; tasks: TaskNodeData[] }>;
-  tasks: Record<string, TaskNodeData>;
-};
-
-type CommandNodeData = {
-  id: string;
-  featureSlug: string;
-  graph: string;
-  title: string;
-  path: string;
-  tags?: string[];
-  createdAt?: string;
-  updatedAt?: string;
-  dependsOn?: string[];
-  references?: string[];
-  name: string;
-  run: string;
-  env?: Record<string, string>;
-  layer: number;
-};
-
-type CommandLayerView = {
-  selectedGraph: string;
-  availableGraphs: string[];
-  graphCommands: Record<string, string[]>;
-  layers: Array<{ index: number; commands: CommandNodeData[] }>;
-  commands: Record<string, CommandNodeData>;
-};
-
-type NoteNodeData = {
-  id: string;
-  featureSlug: string;
-  graph: string;
-  title: string;
-  path: string;
-  tags?: string[];
-  createdAt?: string;
-  updatedAt?: string;
-  references?: string[];
-  relatedNoteIDs?: string[];
-};
-
-type NoteGraphView = {
-  availableGraphs: string[];
-  graphNotes: Record<string, string[]>;
-  nodes: Record<string, NoteNodeData>;
-  edges: Array<{ leftNoteID: string; rightNoteID: string }>;
-};
-
 type DocumentResponse = {
   id: string;
   type: string;
   featureSlug: string;
   graph: string;
   title: string;
+  description: string;
   path: string;
   tags?: string[];
   createdAt?: string;
@@ -121,6 +86,7 @@ type DocumentResponse = {
 type SearchResult = {
   id: string;
   type: string;
+  description: string;
   featureSlug: string;
   graph: string;
   title: string;
@@ -132,6 +98,7 @@ type DocumentFormState = {
   title: string;
   graph: string;
   tags: string;
+  description: string;
   body: string;
   status: string;
   dependsOn: string;
@@ -141,29 +108,51 @@ type DocumentFormState = {
   run: string;
 };
 
+type HomeFormState = {
+  title: string;
+  description: string;
+  body: string;
+};
+
 type DeleteDocumentResponse = {
   deleted: boolean;
   id: string;
   path: string;
 };
 
-type WorkspaceSnapshot = {
-  workspaceData: WorkspaceResponse;
-  noteGraphLists: GraphListResponse;
-  taskGraphLists: GraphListResponse;
-  commandGraphLists: GraphListResponse;
-  taskLayerData: TaskLayerView;
-  noteGraphData: NoteGraphView;
-  commandLayerData: CommandLayerView;
-  nextCommandGraph: string;
+type GraphCollections = {
+  notes: GraphListResponse;
+  tasks: GraphListResponse;
+  commands: GraphListResponse;
 };
 
-const markdown = new MarkdownIt({ linkify: true, breaks: true });
+type WorkspaceSnapshot = {
+  workspaceData: WorkspaceResponse;
+  graphTreeData: GraphTreeResponse;
+  graphCollections: GraphCollections;
+};
+
+type SurfaceState =
+  | { kind: "home" }
+  | { kind: "graph"; graphPath: string };
+
+type GraphCanvasItem = {
+  id: string;
+  type: string;
+  graph: string;
+  title: string;
+  path: string;
+};
+
+type DividerKind = "left" | "right";
+
+const markdown = new MarkdownIt({ html: true, linkify: true, breaks: true });
 
 const emptyDocumentFormState: DocumentFormState = {
   title: "",
   graph: "",
   tags: "",
+  description: "",
   body: "",
   status: "",
   dependsOn: "",
@@ -173,13 +162,20 @@ const emptyDocumentFormState: DocumentFormState = {
   run: "",
 };
 
-const emptyCommandLayerView: CommandLayerView = {
-  selectedGraph: "",
-  availableGraphs: [],
-  graphCommands: {},
-  layers: [],
-  commands: {},
+const emptyHomeFormState: HomeFormState = {
+  title: "Home",
+  description: "",
+  body: "",
 };
+
+const defaultPanelWidths: PanelWidths = {
+  leftRatio: 0.25,
+  rightRatio: 0.24,
+};
+
+const minLeftRatio = 0.18;
+const minRightRatio = 0.18;
+const minMiddleRatio = 0.28;
 
 async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -207,17 +203,36 @@ async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-function formatDocumentType(value: string): string {
-  return value.charAt(0).toUpperCase() + value.slice(1);
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(Math.max(value, minimum), maximum);
 }
 
-function formatGraphTitle(value: string): string {
-  return value.replace(/[-_]/g, " ");
+function normalizeStoredPanelWidths(widths: PanelWidths): PanelWidths {
+  const leftRatio = clamp(widths.leftRatio, minLeftRatio, 1 - minMiddleRatio - minRightRatio);
+  const rightRatio = clamp(widths.rightRatio, minRightRatio, 1 - minMiddleRatio - leftRatio);
+  return { leftRatio, rightRatio };
+}
+
+function clampLeftRatio(leftRatio: number, rightRatio: number, rightOpen: boolean): number {
+  const maximum = rightOpen ? 1 - minMiddleRatio - rightRatio : 1 - minMiddleRatio;
+  return clamp(leftRatio, minLeftRatio, maximum);
+}
+
+function clampRightRatio(leftRatio: number, rightRatio: number): number {
+  return clamp(rightRatio, minRightRatio, 1 - minMiddleRatio - leftRatio);
+}
+
+function formatDocumentType(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function fileNameFromPath(path: string): string {
   const parts = path.split("/");
   return parts[parts.length - 1] ?? path;
+}
+
+function graphDepth(graphPath: string): number {
+  return Math.max(graphPath.split("/").length - 1, 0);
 }
 
 function joinList(values?: string[]): string {
@@ -272,6 +287,7 @@ function createDocumentFormState(document: DocumentResponse | null): DocumentFor
     title: document.title,
     graph: document.graph,
     tags: joinList(document.tags),
+    description: document.description,
     body: document.body,
     status: document.status ?? "",
     dependsOn: joinList(document.dependsOn),
@@ -282,45 +298,157 @@ function createDocumentFormState(document: DocumentResponse | null): DocumentFor
   };
 }
 
-async function loadWorkspaceSnapshot(preferredCommandGraph: string): Promise<WorkspaceSnapshot> {
-  const [workspaceData, noteGraphLists, taskGraphLists, commandGraphLists, taskLayerData, noteGraphData] = await Promise.all([
+function createHomeFormState(home: HomeResponse | null): HomeFormState {
+  if (home === null) {
+    return emptyHomeFormState;
+  }
+
+  return {
+    title: home.title,
+    description: home.description,
+    body: home.body,
+  };
+}
+
+async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
+  const [workspaceData, graphTreeData, noteGraphs, taskGraphs, commandGraphs] = await Promise.all([
     requestJSON<WorkspaceResponse>("/api/workspace"),
+    requestJSON<GraphTreeResponse>("/api/graphs"),
     requestJSON<GraphListResponse>("/api/graphs/note"),
     requestJSON<GraphListResponse>("/api/graphs/task"),
     requestJSON<GraphListResponse>("/api/graphs/command"),
-    requestJSON<TaskLayerView>("/api/layers/tasks"),
-    requestJSON<NoteGraphView>("/api/notes/graph"),
   ]);
-
-  const nextCommandGraph = commandGraphLists.availableGraphs.includes(preferredCommandGraph)
-    ? preferredCommandGraph
-    : (commandGraphLists.availableGraphs[0] ?? "");
-
-  const commandLayerData = nextCommandGraph === ""
-    ? { ...emptyCommandLayerView, availableGraphs: commandGraphLists.availableGraphs }
-    : await requestJSON<CommandLayerView>(`/api/layers/commands?graph=${encodeURIComponent(nextCommandGraph)}`);
 
   return {
     workspaceData,
-    noteGraphLists,
-    taskGraphLists,
-    commandGraphLists,
-    taskLayerData,
-    noteGraphData,
-    commandLayerData,
-    nextCommandGraph,
+    graphTreeData,
+    graphCollections: {
+      notes: noteGraphs,
+      tasks: taskGraphs,
+      commands: commandGraphs,
+    },
   };
+}
+
+function isGraphInSubtree(candidateGraph: string, selectedGraph: string): boolean {
+  return candidateGraph === selectedGraph || candidateGraph.startsWith(`${selectedGraph}/`);
+}
+
+function collectGraphCanvasItems(selectedGraph: string, graphCollections: GraphCollections | null): GraphCanvasItem[] {
+  if (graphCollections === null) {
+    return [];
+  }
+
+  const items: GraphCanvasItem[] = [];
+  const sources = [graphCollections.notes, graphCollections.tasks, graphCollections.commands];
+  for (const source of sources) {
+    for (const [graphPath, graphItems] of Object.entries(source.graphItems)) {
+      if (!isGraphInSubtree(graphPath, selectedGraph)) {
+        continue;
+      }
+
+      for (const item of graphItems) {
+        items.push({
+          id: item.id,
+          type: source.type,
+          graph: graphPath,
+          title: item.title,
+          path: item.path,
+        });
+      }
+    }
+  }
+
+  items.sort((left, right) => {
+    if (left.type !== right.type) {
+      return left.type.localeCompare(right.type);
+    }
+    if (left.graph !== right.graph) {
+      return left.graph.localeCompare(right.graph);
+    }
+    if (left.title !== right.title) {
+      return left.title.localeCompare(right.title);
+    }
+    return left.id.localeCompare(right.id);
+  });
+
+  return items;
+}
+
+function buildGraphCanvasNodes(selectedGraph: string, items: GraphCanvasItem[], selectedDocumentId: string): Node[] {
+  const nodes: Node[] = [];
+  const typeColumns = ["note", "task", "command"];
+
+  typeColumns.forEach((typeName, columnIndex) => {
+    const graphNames = Array.from(new Set(items.filter((item) => item.type === typeName).map((item) => item.graph))).sort();
+    let currentY = 24;
+
+    graphNames.forEach((graphName) => {
+      nodes.push({
+        id: `header:${typeName}:${graphName}`,
+        position: { x: 28 + columnIndex * 320, y: currentY },
+        data: {
+          label: (
+            <div className="canvas-group-card">
+              <span className="canvas-group-type">{formatDocumentType(typeName)}</span>
+              <strong>{graphName === selectedGraph ? "Direct graph" : graphName}</strong>
+            </div>
+          ),
+        },
+        draggable: false,
+        selectable: false,
+        connectable: false,
+        style: {
+          width: 250,
+          border: "none",
+          background: "transparent",
+          boxShadow: "none",
+          padding: 0,
+        },
+      });
+
+      currentY += 72;
+      const graphItems = items.filter((item) => item.type === typeName && item.graph === graphName);
+      graphItems.forEach((item, itemIndex) => {
+        nodes.push({
+          id: item.id,
+          position: { x: 28 + columnIndex * 320, y: currentY + itemIndex * 118 },
+          data: {
+            label: (
+              <div className="canvas-node-card">
+                <span className="canvas-node-type">{formatDocumentType(item.type)}</span>
+                <strong>{item.title}</strong>
+                <span className="canvas-node-graph">{item.graph}</span>
+                <span className="canvas-node-path">{fileNameFromPath(item.path)}</span>
+              </div>
+            ),
+          },
+          draggable: false,
+          connectable: false,
+          style: {
+            width: 250,
+            borderRadius: 22,
+            border: item.id === selectedDocumentId ? "2px solid #a7392b" : "1px solid rgba(26, 44, 43, 0.14)",
+            background: typeName === "command" ? "#fff4ea" : typeName === "task" ? "#f5f1e7" : "#fff7ef",
+            color: "#173230",
+            boxShadow: "0 16px 30px rgba(31, 48, 36, 0.12)",
+            padding: "0.9rem",
+          },
+        });
+      });
+
+      currentY += graphItems.length * 118 + 34;
+    });
+  });
+
+  return nodes;
 }
 
 function FlowApp() {
   const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null);
-  const [noteGraphs, setNoteGraphs] = useState<GraphListResponse | null>(null);
-  const [taskGraphs, setTaskGraphs] = useState<GraphListResponse | null>(null);
-  const [commandGraphs, setCommandGraphs] = useState<GraphListResponse | null>(null);
-  const [taskLayers, setTaskLayers] = useState<TaskLayerView | null>(null);
-  const [commandLayers, setCommandLayers] = useState<CommandLayerView | null>(null);
-  const [noteGraph, setNoteGraph] = useState<NoteGraphView | null>(null);
-  const [selectedCommandGraph, setSelectedCommandGraph] = useState<string>("");
+  const [graphTree, setGraphTree] = useState<GraphTreeResponse | null>(null);
+  const [graphCollections, setGraphCollections] = useState<GraphCollections | null>(null);
+  const [activeSurface, setActiveSurface] = useState<SurfaceState>({ kind: "home" });
   const [selectedDocumentId, setSelectedDocumentId] = useState<string>("");
   const [selectedDocument, setSelectedDocument] = useState<DocumentResponse | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -333,10 +461,36 @@ function FlowApp() {
   const [stoppingGUI, setStoppingGUI] = useState<boolean>(false);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [formState, setFormState] = useState<DocumentFormState>(emptyDocumentFormState);
+  const [isEditingHome, setIsEditingHome] = useState<boolean>(false);
+  const [homeFormState, setHomeFormState] = useState<HomeFormState>(emptyHomeFormState);
   const [mutationError, setMutationError] = useState<string>("");
   const [mutationSuccess, setMutationSuccess] = useState<string>("");
+  const [homeMutationError, setHomeMutationError] = useState<string>("");
+  const [homeMutationSuccess, setHomeMutationSuccess] = useState<string>("");
   const [savingDocument, setSavingDocument] = useState<boolean>(false);
   const [deletingDocument, setDeletingDocument] = useState<boolean>(false);
+  const [savingHome, setSavingHome] = useState<boolean>(false);
+  const [panelWidths, setPanelWidths] = useState<PanelWidths>(defaultPanelWidths);
+  const [draggingDivider, setDraggingDivider] = useState<DividerKind | null>(null);
+
+  const layoutRef = useRef<HTMLDivElement | null>(null);
+  const panelWidthsRef = useRef<PanelWidths>(defaultPanelWidths);
+  const selectedGraphPath = activeSurface.kind === "graph" ? activeSurface.graphPath : "";
+  const isContextPanelOpen = selectedDocumentId !== "" || selectedDocument !== null || panelError !== "" || isEditing;
+
+  const graphCanvasItems = selectedGraphPath === "" ? [] : collectGraphCanvasItems(selectedGraphPath, graphCollections);
+  const graphCanvasNodes = selectedGraphPath === "" ? [] : buildGraphCanvasNodes(selectedGraphPath, graphCanvasItems, selectedDocumentId);
+  const selectedGraphNode = graphTree?.graphs.find((graphNode) => graphNode.graphPath === selectedGraphPath) ?? null;
+
+  useEffect(() => {
+    panelWidthsRef.current = panelWidths;
+  }, [panelWidths]);
+
+  useEffect(() => {
+    if (!isEditingHome) {
+      setHomeFormState(createHomeFormState(graphTree?.home ?? null));
+    }
+  }, [graphTree, isEditingHome]);
 
   useEffect(() => {
     let cancelled = false;
@@ -346,24 +500,18 @@ function FlowApp() {
         setLoading(true);
         setError("");
 
-        const snapshot = await loadWorkspaceSnapshot("");
+        const snapshot = await loadWorkspaceSnapshot();
         if (cancelled) {
           return;
         }
 
+        const nextPanelWidths = normalizeStoredPanelWidths(snapshot.workspaceData.panelWidths);
         setWorkspace(snapshot.workspaceData);
-        setNoteGraphs(snapshot.noteGraphLists);
-        setTaskGraphs(snapshot.taskGraphLists);
-        setCommandGraphs(snapshot.commandGraphLists);
-        setTaskLayers(snapshot.taskLayerData);
-        setNoteGraph(snapshot.noteGraphData);
-        setCommandLayers(snapshot.commandLayerData);
-
-        if (snapshot.nextCommandGraph !== "") {
-          startTransition(() => {
-            setSelectedCommandGraph(snapshot.nextCommandGraph);
-          });
-        }
+        setGraphTree(snapshot.graphTreeData);
+        setGraphCollections(snapshot.graphCollections);
+        setPanelWidths(nextPanelWidths);
+        panelWidthsRef.current = nextPanelWidths;
+        setActiveSurface({ kind: "home" });
       } catch (loadError) {
         if (!cancelled) {
           setError(loadError instanceof Error ? loadError.message : String(loadError));
@@ -381,33 +529,6 @@ function FlowApp() {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (selectedCommandGraph === "") {
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadCommandLayers(): Promise<void> {
-      try {
-        const response = await requestJSON<CommandLayerView>(`/api/layers/commands?graph=${encodeURIComponent(selectedCommandGraph)}`);
-        if (!cancelled) {
-          setCommandLayers(response);
-        }
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : String(loadError));
-        }
-      }
-    }
-
-    void loadCommandLayers();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedCommandGraph]);
 
   useEffect(() => {
     if (selectedDocumentId === "") {
@@ -477,70 +598,34 @@ function FlowApp() {
     };
   }, [deferredSearchQuery]);
 
-  const noteCanvasNodes: Node[] = [];
-  const noteCanvasEdges: Edge[] = [];
-
-  if (noteGraph !== null) {
-    const noteIds = Object.keys(noteGraph.nodes);
-    const radius = 190;
-    noteIds.forEach((noteId, index) => {
-      const angle = (index / Math.max(noteIds.length, 1)) * Math.PI * 2;
-      const note = noteGraph.nodes[noteId];
-      noteCanvasNodes.push({
-        id: noteId,
-        position: {
-          x: Math.cos(angle) * radius + 240,
-          y: Math.sin(angle) * radius + 190,
-        },
-        data: {
-          label: `${note.title}\n${note.graph}`,
-        },
-        style: {
-          width: 168,
-          borderRadius: 22,
-          border: selectedDocumentId === noteId ? "2px solid #a7392b" : "1px solid rgba(26, 44, 43, 0.14)",
-          background: note.graph === "notes" ? "#fff7ef" : "#f5f1e7",
-          color: "#173230",
-          boxShadow: "0 16px 30px rgba(31, 48, 36, 0.12)",
-          padding: "10px 12px",
-          fontSize: "12px",
-          lineHeight: 1.35,
-          whiteSpace: "pre-line",
-        },
-      });
-    });
-
-    noteGraph.edges.forEach((edge) => {
-      noteCanvasEdges.push({
-        id: `${edge.leftNoteID}-${edge.rightNoteID}`,
-        source: edge.leftNoteID,
-        target: edge.rightNoteID,
-        type: "smoothstep",
-        animated: false,
-        style: { stroke: "#4e6863", strokeWidth: 2 },
-      });
-    });
-  }
-
   async function refreshShellViews(options?: { nextDocument?: DocumentResponse | null; nextDocumentId?: string }): Promise<void> {
-    const snapshot = await loadWorkspaceSnapshot(selectedCommandGraph);
+    const snapshot = await loadWorkspaceSnapshot();
+    const nextPanelWidths = normalizeStoredPanelWidths(snapshot.workspaceData.panelWidths);
     setWorkspace(snapshot.workspaceData);
-    setNoteGraphs(snapshot.noteGraphLists);
-    setTaskGraphs(snapshot.taskGraphLists);
-    setCommandGraphs(snapshot.commandGraphLists);
-    setTaskLayers(snapshot.taskLayerData);
-    setNoteGraph(snapshot.noteGraphData);
-    setCommandLayers(snapshot.commandLayerData);
-    if (snapshot.nextCommandGraph !== selectedCommandGraph) {
-      startTransition(() => {
-        setSelectedCommandGraph(snapshot.nextCommandGraph);
-      });
-    }
+    setGraphTree(snapshot.graphTreeData);
+    setGraphCollections(snapshot.graphCollections);
+    setPanelWidths(nextPanelWidths);
+    panelWidthsRef.current = nextPanelWidths;
 
     if (options && "nextDocument" in options) {
       setSelectedDocument(options.nextDocument ?? null);
       setFormState(createDocumentFormState(options.nextDocument ?? null));
       setSelectedDocumentId(options.nextDocumentId ?? "");
+    }
+
+    if (options?.nextDocument !== undefined && options.nextDocument !== null) {
+      startTransition(() => {
+        setActiveSurface({ kind: "graph", graphPath: options.nextDocument?.graph ?? selectedGraphPath });
+      });
+    }
+
+    if (activeSurface.kind === "graph") {
+      const graphStillVisible = snapshot.graphTreeData.graphs.some((graphNode) => graphNode.graphPath === activeSurface.graphPath);
+      if (!graphStillVisible) {
+        startTransition(() => {
+          setActiveSurface({ kind: "home" });
+        });
+      }
     }
 
     if (deferredSearchQuery !== "") {
@@ -552,6 +637,104 @@ function FlowApp() {
 
   function updateFormField(field: keyof DocumentFormState, value: string): void {
     setFormState((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateHomeFormField(field: keyof HomeFormState, value: string): void {
+    setHomeFormState((current) => ({ ...current, [field]: value }));
+  }
+
+  async function persistPanelWidths(nextPanelWidths: PanelWidths): Promise<void> {
+    try {
+      const response = await requestJSON<WorkspaceResponse>("/api/workspace", {
+        method: "PUT",
+        body: JSON.stringify({ panelWidths: nextPanelWidths }),
+      });
+      const normalized = normalizeStoredPanelWidths(response.panelWidths);
+      setWorkspace(response);
+      setPanelWidths(normalized);
+      panelWidthsRef.current = normalized;
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : String(saveError));
+    }
+  }
+
+  function clearContextPanel(): void {
+    setSelectedDocumentId("");
+    setSelectedDocument(null);
+    setFormState(emptyDocumentFormState);
+    setIsEditing(false);
+    setPanelError("");
+    setMutationError("");
+    setMutationSuccess("");
+  }
+
+  function handleSelectHome(): void {
+    clearContextPanel();
+    startTransition(() => {
+      setActiveSurface({ kind: "home" });
+    });
+  }
+
+  function handleSelectGraph(graphPath: string): void {
+    clearContextPanel();
+    startTransition(() => {
+      setActiveSurface({ kind: "graph", graphPath });
+    });
+  }
+
+  function handleSelectDocument(documentId: string, graphPath: string): void {
+    setMutationError("");
+    setMutationSuccess("");
+    setPanelError("");
+    startTransition(() => {
+      setActiveSurface({ kind: "graph", graphPath });
+    });
+    setSelectedDocumentId(documentId);
+  }
+
+  function handleSearchSelection(result: SearchResult): void {
+    if (result.type === "home") {
+      handleSelectHome();
+      return;
+    }
+
+    handleSelectDocument(result.id, result.graph);
+  }
+
+  function handleDividerPointerDown(kind: DividerKind): void {
+    setDraggingDivider(kind);
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const layout = layoutRef.current;
+      if (layout === null) {
+        return;
+      }
+
+      const bounds = layout.getBoundingClientRect();
+      const current = panelWidthsRef.current;
+      if (kind === "left") {
+        const nextLeftRatio = clampLeftRatio((event.clientX - bounds.left) / bounds.width, current.rightRatio, isContextPanelOpen);
+        const nextPanelWidths = { leftRatio: nextLeftRatio, rightRatio: current.rightRatio };
+        panelWidthsRef.current = nextPanelWidths;
+        setPanelWidths(nextPanelWidths);
+        return;
+      }
+
+      const nextRightRatio = clampRightRatio(current.leftRatio, (bounds.right - event.clientX) / bounds.width);
+      const nextPanelWidths = { leftRatio: current.leftRatio, rightRatio: nextRightRatio };
+      panelWidthsRef.current = nextPanelWidths;
+      setPanelWidths(nextPanelWidths);
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      setDraggingDivider(null);
+      void persistPanelWidths(panelWidthsRef.current);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
   }
 
   async function handleStopGUI(): Promise<void> {
@@ -613,6 +796,33 @@ function FlowApp() {
     }
   }
 
+  async function handleSaveHome(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+
+    try {
+      setSavingHome(true);
+      setHomeMutationError("");
+      setHomeMutationSuccess("");
+
+      await requestJSON<HomeResponse>("/api/home", {
+        method: "PUT",
+        body: JSON.stringify({
+          title: homeFormState.title,
+          description: homeFormState.description,
+          body: homeFormState.body,
+        }),
+      });
+
+      await refreshShellViews();
+      setIsEditingHome(false);
+      setHomeMutationSuccess("Home updated.");
+    } catch (mutationFailure) {
+      setHomeMutationError(mutationFailure instanceof Error ? mutationFailure.message : String(mutationFailure));
+    } finally {
+      setSavingHome(false);
+    }
+  }
+
   async function handleDeleteDocument(): Promise<void> {
     if (selectedDocument === null) {
       return;
@@ -648,7 +858,7 @@ function FlowApp() {
         <section className="loading-card">
           <p className="eyebrow">Flow GUI</p>
           <h1>Loading workspace state</h1>
-          <p>Fetching grouped graphs, layers, notes canvas data, and document state.</p>
+          <p>Fetching the Home surface, graph tree, split-pane ratios, and contextual document state.</p>
         </section>
       </main>
     );
@@ -667,11 +877,18 @@ function FlowApp() {
   }
 
   return (
-    <main className="app-shell">
-      <div className="app-grid">
-        <aside className="sidebar-shell">
+    <main className="app-shell app-shell-desktop">
+      <div className="shell-status-row">
+        <p className="shell-status-pill">Desktop three-panel workspace</p>
+        <p className="shell-status-copy">Home is a first-class surface and graph navigation stays in the same shell.</p>
+      </div>
+
+      {error !== "" ? <p className="status-line status-line-error">{error}</p> : null}
+
+      <div ref={layoutRef} className="desktop-shell">
+        <aside className="panel-rail panel-rail-left" style={{ width: `${panelWidths.leftRatio * 100}%` }}>
           <div className="brand-block">
-            <p className="eyebrow">Browser Editing Milestone</p>
+            <p className="eyebrow">Desktop Workspace GUI</p>
             <h1>Flow</h1>
             <p className="workspace-copy">
               {workspace?.scope} workspace on port {workspace?.guiPort}
@@ -688,6 +905,10 @@ function FlowApp() {
                 <dd>{workspace?.workspacePath}</dd>
               </div>
               <div>
+                <dt>Home</dt>
+                <dd>{workspace?.homePath}</dd>
+              </div>
+              <div>
                 <dt>Index</dt>
                 <dd>{workspace?.indexPath}</dd>
               </div>
@@ -701,22 +922,15 @@ function FlowApp() {
             </button>
           </section>
 
-          <section className="sidebar-card">
+          <section className="sidebar-card sidebar-card-grow">
             <header className="sidebar-header">
-              <h2>Graphs</h2>
+              <h2>Home And Graphs</h2>
             </header>
-            <GraphGroup label="Notes" graphs={noteGraphs} selectedGraph="" onSelectGraph={() => {}} interactive={false} />
-            <GraphGroup label="Tasks" graphs={taskGraphs} selectedGraph="" onSelectGraph={() => {}} interactive={false} />
-            <GraphGroup
-              label="Commands"
-              graphs={commandGraphs}
-              selectedGraph={selectedCommandGraph}
-              onSelectGraph={(graphName) => {
-                startTransition(() => {
-                  setSelectedCommandGraph(graphName);
-                });
-              }}
-              interactive
+            <GraphTree
+              graphTree={graphTree}
+              activeSurface={activeSurface}
+              onSelectHome={handleSelectHome}
+              onSelectGraph={handleSelectGraph}
             />
           </section>
 
@@ -729,19 +943,20 @@ function FlowApp() {
               <input
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search notes, tasks, commands"
+                placeholder="Search Home, notes, tasks, commands"
               />
             </label>
             {searchError !== "" ? <p className="status-line status-line-error">{searchError}</p> : null}
             <div className="search-results">
               {searchResults.length === 0 && deferredSearchQuery !== "" ? <p className="empty-state-inline">No indexed matches.</p> : null}
               {searchResults.map((result) => (
-                <button key={result.id} className="search-result" onClick={() => setSelectedDocumentId(result.id)}>
+                <button key={result.id} className="search-result" onClick={() => handleSearchSelection(result)}>
                   <span className="search-result-type">{formatDocumentType(result.type)}</span>
                   <strong>{result.title}</strong>
-                  <span className="item-file-name">{fileNameFromPath(result.path)}</span>
-                  <span>{result.graph}</span>
+                  {result.type === "home" ? <span className="item-file-name">Workspace Home</span> : <span className="item-file-name">{fileNameFromPath(result.path)}</span>}
                   <span className="item-path">{result.path}</span>
+                  {result.type !== "home" ? <span>{result.graph}</span> : null}
+                  {result.description !== "" ? <p className="search-result-description">{result.description}</p> : null}
                   <p>{result.snippet}</p>
                 </button>
               ))}
@@ -749,394 +964,495 @@ function FlowApp() {
           </section>
         </aside>
 
-        <section className="content-shell">
-          {error !== "" ? <p className="status-line status-line-error">{error}</p> : null}
+        <button
+          className={draggingDivider === "left" ? "shell-divider shell-divider-active" : "shell-divider"}
+          aria-label="Resize left panel"
+          onPointerDown={() => handleDividerPointerDown("left")}
+          type="button"
+        />
 
-          <section className="hero-panel">
-            <div>
-              <p className="eyebrow">Workspace Overview</p>
-              <h2>Inspect, update, and remove Markdown-backed documents without leaving the graph view</h2>
-            </div>
-            <div className="hero-pill-row">
-              <span>{noteGraphs?.availableGraphs.length ?? 0} note graphs</span>
-              <span>{taskLayers?.layers.length ?? 0} task layers</span>
-              <span>{commandLayers?.layers.length ?? 0} command layers</span>
-            </div>
-          </section>
-
-          <section className="panel-grid panel-grid-top">
-            <section className="panel-card panel-card-wide">
-              <header className="panel-header">
+        <section className="middle-shell">
+          {activeSurface.kind === "home" ? (
+            <section className="panel-card surface-card surface-card-home">
+              <header className="surface-header">
                 <div>
-                  <p className="section-kicker">Notes Canvas</p>
-                  <h3>Bidirectional note relationships</h3>
+                  <p className="eyebrow">Home</p>
+                  <h2>{graphTree?.home.title ?? "Home"}</h2>
+                  {graphTree?.home.description ? <p className="surface-description">{graphTree.home.description}</p> : null}
                 </div>
-                <span className="meta-chip">Select a note to edit or remove it</span>
-              </header>
-              <div className="canvas-shell">
-                <ReactFlow
-                  fitView
-                  nodes={noteCanvasNodes}
-                  edges={noteCanvasEdges}
-                  onNodeClick={(_, node) => setSelectedDocumentId(node.id)}
-                  nodesDraggable={false}
-                  nodesConnectable={false}
-                  elementsSelectable
-                  fitViewOptions={{ padding: 0.22 }}
-                >
-                  <MiniMap pannable zoomable nodeStrokeWidth={3} />
-                  <Controls showInteractive={false} />
-                  <Background gap={28} color="#d7d0bf" />
-                </ReactFlow>
-              </div>
-            </section>
-
-            <section className="panel-card panel-card-narrow">
-              <header className="panel-header">
-                <div>
-                  <p className="section-kicker">Task Layers</p>
-                  <h3>Dependency-ordered tasks</h3>
+                <div className="hero-pill-row">
+                  <span>{graphTree?.home.path ?? "data/home.md"}</span>
+                  <span>Dedicated top-level surface</span>
                 </div>
               </header>
-              <div className="layer-list">
-                {taskLayers?.layers.map((layer) => (
-                  <div key={layer.index} className="layer-card">
-                    <div className="layer-title">Layer {layer.index}</div>
-                    {layer.tasks.map((task) => (
-                      <button key={task.id} className="layer-item" onClick={() => setSelectedDocumentId(task.id)}>
-                        <strong>{task.title}</strong>
-                        <span className="item-file-name">{fileNameFromPath(task.path)}</span>
-                        <span>{task.graph}</span>
-                        <small className="item-path">{task.path}</small>
-                        <small>{task.status || "todo"}</small>
-                      </button>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </section>
-          </section>
 
-          <section className="panel-card">
-            <header className="panel-header">
-              <div>
-                <p className="section-kicker">Command Layers</p>
-                <h3>{selectedCommandGraph === "" ? "No command graph selected" : `Graph: ${formatGraphTitle(selectedCommandGraph)}`}</h3>
-              </div>
-              <span className="meta-chip">Select a command to update or delete it</span>
-            </header>
-            <div className="command-grid">
-              {commandLayers?.layers.map((layer) => (
-                <div key={layer.index} className="command-column">
-                  <div className="layer-title">Layer {layer.index}</div>
-                  {layer.commands.map((command) => (
-                    <button key={command.id} className="command-card" onClick={() => setSelectedDocumentId(command.id)}>
-                      <strong>{command.title}</strong>
-                      <span className="item-file-name">{fileNameFromPath(command.path)}</span>
-                      <span>{command.name}</span>
-                      <span className="item-path">{command.path}</span>
-                      <code>{command.run}</code>
-                    </button>
-                  ))}
-                </div>
-              ))}
-              {commandLayers !== null && commandLayers.layers.length === 0 ? <p className="empty-state-inline">No command layers available.</p> : null}
-            </div>
-          </section>
-        </section>
+              {homeMutationError !== "" ? <p className="status-line status-line-error">{homeMutationError}</p> : null}
+              {homeMutationSuccess !== "" ? <p className="status-line status-line-success">{homeMutationSuccess}</p> : null}
 
-        <aside className="detail-shell">
-          <section className="detail-card">
-            <header className="panel-header">
-              <div>
-                <p className="section-kicker">Inspector</p>
-                <h3>{selectedDocument?.title ?? "Document panel"}</h3>
-              </div>
-              <div className="detail-actions">
-                {selectedDocument !== null ? <span className="meta-chip">{formatDocumentType(selectedDocument.type)}</span> : null}
-                {selectedDocument !== null && !isEditing ? (
-                  <button
-                    className="secondary-button"
-                    onClick={() => {
-                      setMutationError("");
-                      setMutationSuccess("");
-                      setIsEditing(true);
-                    }}
-                  >
-                    Edit
-                  </button>
-                ) : null}
-              </div>
-            </header>
-
-            {panelError !== "" ? <p className="status-line status-line-error">{panelError}</p> : null}
-            {mutationError !== "" ? <p className="status-line status-line-error">{mutationError}</p> : null}
-            {mutationSuccess !== "" ? <p className="status-line status-line-success">{mutationSuccess}</p> : null}
-
-            {selectedDocument === null ? (
-              <div className="detail-empty">
-                <p>Select a note, task, command, or search result to inspect or mutate its canonical Markdown-backed state.</p>
-              </div>
-            ) : isEditing ? (
-              <form className="editor-form" onSubmit={(event) => void handleSaveDocument(event)}>
-                <label className="editor-field">
-                  <span>Title</span>
-                  <input value={formState.title} onChange={(event) => updateFormField("title", event.target.value)} />
-                </label>
-
-                <label className="editor-field">
-                  <span>Graph</span>
-                  <input value={formState.graph} onChange={(event) => updateFormField("graph", event.target.value)} />
-                </label>
-
-                <label className="editor-field">
-                  <span>Tags</span>
-                  <textarea
-                    rows={2}
-                    value={formState.tags}
-                    onChange={(event) => updateFormField("tags", event.target.value)}
-                    placeholder="One tag per line or comma-separated"
-                  />
-                </label>
-
-                {selectedDocument.type === "task" ? (
+              {isEditingHome ? (
+                <form className="editor-form" onSubmit={(event) => void handleSaveHome(event)}>
                   <label className="editor-field">
-                    <span>Status</span>
-                    <input value={formState.status} onChange={(event) => updateFormField("status", event.target.value)} />
+                    <span>Title</span>
+                    <input value={homeFormState.title} onChange={(event) => updateHomeFormField("title", event.target.value)} />
                   </label>
-                ) : null}
 
-                {(selectedDocument.type === "task" || selectedDocument.type === "command") ? (
                   <label className="editor-field">
-                    <span>Dependencies</span>
+                    <span>Description</span>
                     <textarea
                       rows={3}
-                      value={formState.dependsOn}
-                      onChange={(event) => updateFormField("dependsOn", event.target.value)}
-                      placeholder="One dependency ID per line or comma-separated"
+                      value={homeFormState.description}
+                      onChange={(event) => updateHomeFormField("description", event.target.value)}
+                      placeholder="Workspace overview shown in search and the Home surface"
                     />
                   </label>
-                ) : null}
 
-                <label className="editor-field">
-                  <span>References</span>
-                  <textarea
-                    rows={3}
-                    value={formState.references}
-                    onChange={(event) => updateFormField("references", event.target.value)}
-                    placeholder="One reference ID per line or comma-separated"
+                  <label className="editor-field">
+                    <span>Body</span>
+                    <WysiwygEditor
+                      ariaLabel="Home body editor"
+                      onChange={(value) => updateHomeFormField("body", value)}
+                      placeholder="Type / for headings, lists, quotes, links, and highlight"
+                      value={homeFormState.body}
+                    />
+                  </label>
+
+                  <div className="editor-actions">
+                    <button className="primary-button" type="submit" disabled={savingHome}>
+                      {savingHome ? "Saving..." : "Save Home"}
+                    </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => {
+                        setHomeFormState(createHomeFormState(graphTree?.home ?? null));
+                        setHomeMutationError("");
+                        setHomeMutationSuccess("");
+                        setIsEditingHome(false);
+                      }}
+                      disabled={savingHome}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <div className="detail-toolbar">
+                    <button
+                      className="secondary-button"
+                      onClick={() => {
+                        setHomeMutationError("");
+                        setHomeMutationSuccess("");
+                        setHomeFormState(createHomeFormState(graphTree?.home ?? null));
+                        setIsEditingHome(true);
+                      }}
+                      type="button"
+                    >
+                      Edit Home
+                    </button>
+                  </div>
+
+                  {graphTree?.home.description ? (
+                    <section className="home-description-card">
+                      <p className="section-kicker">Description</p>
+                      <p>{graphTree.home.description}</p>
+                    </section>
+                  ) : (
+                    <div className="detail-empty">
+                      <p>Add a Home description so it appears in the middle panel and search results.</p>
+                    </div>
+                  )}
+
+                  <article
+                    className="markdown-body home-markdown-body"
+                    dangerouslySetInnerHTML={{ __html: markdown.render(graphTree?.home.body ?? "# Home\n") }}
                   />
-                </label>
+                </>
+              )}
+            </section>
+          ) : (
+            <section className="panel-card surface-card surface-card-graph">
+              <header className="surface-header">
+                <div>
+                  <p className="eyebrow">Graph Workspace</p>
+                  <h2>{selectedGraphPath}</h2>
+                </div>
+                <div className="hero-pill-row">
+                  <span>{selectedGraphNode?.countLabel ?? "0 direct / 0 total"}</span>
+                  <span>{graphCanvasItems.length} visible documents</span>
+                </div>
+              </header>
 
-                {selectedDocument.type === "command" ? (
-                  <>
+              {graphCanvasNodes.length === 0 ? (
+                <div className="detail-empty">
+                  <p>No documents are visible in this graph subtree.</p>
+                </div>
+              ) : (
+                <div className="graph-canvas-shell">
+                  <ReactFlow
+                    fitView
+                    fitViewOptions={{ padding: 0.18 }}
+                    nodes={graphCanvasNodes}
+                    edges={[]}
+                    onNodeClick={(_, node) => {
+                      if (node.id.startsWith("header:")) {
+                        return;
+                      }
+                      const item = graphCanvasItems.find((candidate) => candidate.id === node.id);
+                      if (item !== undefined) {
+                        handleSelectDocument(item.id, item.graph);
+                      }
+                    }}
+                    nodesDraggable={false}
+                    nodesConnectable={false}
+                    elementsSelectable
+                    proOptions={{ hideAttribution: true }}
+                  >
+                    <Controls showInteractive={false} />
+                    <Background gap={28} color="#d7d0bf" />
+                  </ReactFlow>
+                </div>
+              )}
+            </section>
+          )}
+        </section>
+
+        {isContextPanelOpen ? (
+          <>
+            <button
+              className={draggingDivider === "right" ? "shell-divider shell-divider-active" : "shell-divider"}
+              aria-label="Resize right panel"
+              onPointerDown={() => handleDividerPointerDown("right")}
+              type="button"
+            />
+
+            <aside className="panel-rail panel-rail-right" style={{ width: `${panelWidths.rightRatio * 100}%` }}>
+              <section className="detail-card detail-card-context">
+                <header className="panel-header">
+                  <div>
+                    <p className="section-kicker">Context Panel</p>
+                    <h3>{selectedDocument?.title ?? "Document panel"}</h3>
+                  </div>
+                  <div className="detail-actions">
+                    {selectedDocument !== null ? <span className="meta-chip">{formatDocumentType(selectedDocument.type)}</span> : null}
+                    <button className="secondary-button" onClick={() => clearContextPanel()} type="button">
+                      Close
+                    </button>
+                  </div>
+                </header>
+
+                {panelError !== "" ? <p className="status-line status-line-error">{panelError}</p> : null}
+                {mutationError !== "" ? <p className="status-line status-line-error">{mutationError}</p> : null}
+                {mutationSuccess !== "" ? <p className="status-line status-line-success">{mutationSuccess}</p> : null}
+
+                {selectedDocument === null ? (
+                  <div className="detail-empty">
+                    <p>Select a graph node or search result to load document context here.</p>
+                  </div>
+                ) : isEditing ? (
+                  <form className="editor-form" onSubmit={(event) => void handleSaveDocument(event)}>
                     <label className="editor-field">
-                      <span>Name</span>
-                      <input value={formState.name} onChange={(event) => updateFormField("name", event.target.value)} />
+                      <span>Title</span>
+                      <input value={formState.title} onChange={(event) => updateFormField("title", event.target.value)} />
                     </label>
 
                     <label className="editor-field">
-                      <span>Environment</span>
-                      <textarea
-                        rows={4}
-                        value={formState.env}
-                        onChange={(event) => updateFormField("env", event.target.value)}
-                        placeholder="KEY=VALUE"
+                      <span>Graph Path</span>
+                      <input
+                        value={formState.graph}
+                        onChange={(event) => updateFormField("graph", event.target.value)}
+                        placeholder="execution/parser"
                       />
                     </label>
 
                     <label className="editor-field">
-                      <span>Run</span>
-                      <textarea rows={4} value={formState.run} onChange={(event) => updateFormField("run", event.target.value)} />
+                      <span>Tags</span>
+                      <textarea
+                        rows={2}
+                        value={formState.tags}
+                        onChange={(event) => updateFormField("tags", event.target.value)}
+                        placeholder="One tag per line or comma-separated"
+                      />
                     </label>
-                  </>
-                ) : null}
 
-                <label className="editor-field">
-                  <span>Body</span>
-                  <textarea rows={10} value={formState.body} onChange={(event) => updateFormField("body", event.target.value)} />
-                </label>
+                    <label className="editor-field">
+                      <span>Description</span>
+                      <textarea
+                        rows={3}
+                        value={formState.description}
+                        onChange={(event) => updateFormField("description", event.target.value)}
+                        placeholder="Shown in the contextual panel and search results"
+                      />
+                    </label>
 
-                <div className="editor-actions">
-                  <button className="primary-button" type="submit" disabled={savingDocument || deletingDocument}>
-                    {savingDocument ? "Saving..." : "Save changes"}
-                  </button>
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={() => {
-                      setFormState(createDocumentFormState(selectedDocument));
-                      setMutationError("");
-                      setMutationSuccess("");
-                      setIsEditing(false);
-                    }}
-                    disabled={savingDocument || deletingDocument}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className="danger-button-inline"
-                    type="button"
-                    onClick={() => void handleDeleteDocument()}
-                    disabled={savingDocument || deletingDocument}
-                  >
-                    {deletingDocument ? "Deleting..." : "Delete document"}
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <>
-                <dl className="detail-meta">
-                  <div>
-                    <dt>ID</dt>
-                    <dd>{selectedDocument.id}</dd>
-                  </div>
-                  <div>
-                    <dt>Graph</dt>
-                    <dd>{selectedDocument.graph}</dd>
-                  </div>
-                  <div>
-                    <dt>Feature</dt>
-                    <dd>{selectedDocument.featureSlug}</dd>
-                  </div>
-                  <div>
-                    <dt>Path</dt>
-                    <dd>{selectedDocument.path}</dd>
-                  </div>
-                  {selectedDocument.status ? (
-                    <div>
-                      <dt>Status</dt>
-                      <dd>{selectedDocument.status}</dd>
+                    {selectedDocument.type === "task" ? (
+                      <label className="editor-field">
+                        <span>Status</span>
+                        <input value={formState.status} onChange={(event) => updateFormField("status", event.target.value)} />
+                      </label>
+                    ) : null}
+
+                    {(selectedDocument.type === "task" || selectedDocument.type === "command") ? (
+                      <label className="editor-field">
+                        <span>Dependencies</span>
+                        <textarea
+                          rows={3}
+                          value={formState.dependsOn}
+                          onChange={(event) => updateFormField("dependsOn", event.target.value)}
+                          placeholder="One dependency ID per line or comma-separated"
+                        />
+                      </label>
+                    ) : null}
+
+                    <label className="editor-field">
+                      <span>References</span>
+                      <textarea
+                        rows={3}
+                        value={formState.references}
+                        onChange={(event) => updateFormField("references", event.target.value)}
+                        placeholder="One reference ID per line or comma-separated"
+                      />
+                    </label>
+
+                    {selectedDocument.type === "command" ? (
+                      <>
+                        <label className="editor-field">
+                          <span>Name</span>
+                          <input value={formState.name} onChange={(event) => updateFormField("name", event.target.value)} />
+                        </label>
+
+                        <label className="editor-field">
+                          <span>Environment</span>
+                          <textarea
+                            rows={4}
+                            value={formState.env}
+                            onChange={(event) => updateFormField("env", event.target.value)}
+                            placeholder="KEY=VALUE"
+                          />
+                        </label>
+
+                        <label className="editor-field">
+                          <span>Run</span>
+                          <textarea rows={4} value={formState.run} onChange={(event) => updateFormField("run", event.target.value)} />
+                        </label>
+                      </>
+                    ) : null}
+
+                    <label className="editor-field">
+                      <span>Body</span>
+                      <WysiwygEditor
+                        ariaLabel="Document body editor"
+                        onChange={(value) => updateFormField("body", value)}
+                        placeholder="Type / for headings, lists, quotes, links, and highlight"
+                        value={formState.body}
+                      />
+                    </label>
+
+                    <div className="editor-actions">
+                      <button className="primary-button" type="submit" disabled={savingDocument || deletingDocument}>
+                        {savingDocument ? "Saving..." : "Save changes"}
+                      </button>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => {
+                          setFormState(createDocumentFormState(selectedDocument));
+                          setMutationError("");
+                          setMutationSuccess("");
+                          setIsEditing(false);
+                        }}
+                        disabled={savingDocument || deletingDocument}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="danger-button-inline"
+                        type="button"
+                        onClick={() => void handleDeleteDocument()}
+                        disabled={savingDocument || deletingDocument}
+                      >
+                        {deletingDocument ? "Deleting..." : "Delete document"}
+                      </button>
                     </div>
-                  ) : null}
-                  {selectedDocument.name ? (
-                    <div>
-                      <dt>Name</dt>
-                      <dd>{selectedDocument.name}</dd>
-                    </div>
-                  ) : null}
-                </dl>
-
-                <div className="chip-list">
-                  {(selectedDocument.tags ?? []).map((tag) => (
-                    <span key={tag} className="meta-chip meta-chip-tag">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-
-                <div className="detail-toolbar">
-                  <button className="secondary-button" onClick={() => setIsEditing(true)}>
-                    Edit document
-                  </button>
-                  <button className="danger-button-inline" onClick={() => void handleDeleteDocument()} disabled={deletingDocument}>
-                    {deletingDocument ? "Deleting..." : "Delete document"}
-                  </button>
-                </div>
-
-                {(selectedDocument.dependsOn ?? []).length > 0 ? (
-                  <section className="detail-section">
-                    <h4>Dependencies</h4>
-                    <div className="link-list">
-                      {(selectedDocument.dependsOn ?? []).map((dependencyId) => (
-                        <button key={dependencyId} className="link-pill" onClick={() => setSelectedDocumentId(dependencyId)}>
-                          {dependencyId}
-                        </button>
-                      ))}
-                    </div>
-                  </section>
-                ) : null}
-
-                {(selectedDocument.references ?? []).length > 0 ? (
-                  <section className="detail-section">
-                    <h4>References</h4>
-                    <div className="link-list">
-                      {(selectedDocument.references ?? []).map((referenceId) => (
-                        <button key={referenceId} className="link-pill" onClick={() => setSelectedDocumentId(referenceId)}>
-                          {referenceId}
-                        </button>
-                      ))}
-                    </div>
-                  </section>
-                ) : null}
-
-                {(selectedDocument.relatedNoteIds ?? []).length > 0 ? (
-                  <section className="detail-section">
-                    <h4>Related Notes</h4>
-                    <div className="link-list">
-                      {(selectedDocument.relatedNoteIds ?? []).map((noteId) => (
-                        <button key={noteId} className="link-pill" onClick={() => setSelectedDocumentId(noteId)}>
-                          {noteId}
-                        </button>
-                      ))}
-                    </div>
-                  </section>
-                ) : null}
-
-                {selectedDocument.env !== undefined && Object.keys(selectedDocument.env).length > 0 ? (
-                  <section className="detail-section">
-                    <h4>Environment</h4>
-                    <div className="env-grid">
-                      {Object.entries(selectedDocument.env).map(([key, value]) => (
-                        <div key={key} className="env-row">
-                          <span>{key}</span>
-                          <code>{value}</code>
+                  </form>
+                ) : (
+                  <>
+                    <dl className="detail-meta">
+                      <div>
+                        <dt>ID</dt>
+                        <dd>{selectedDocument.id}</dd>
+                      </div>
+                      <div>
+                        <dt>Graph Path</dt>
+                        <dd>{selectedDocument.graph}</dd>
+                      </div>
+                      <div>
+                        <dt>Feature</dt>
+                        <dd>{selectedDocument.featureSlug}</dd>
+                      </div>
+                      <div>
+                        <dt>Path</dt>
+                        <dd>{selectedDocument.path}</dd>
+                      </div>
+                      {selectedDocument.status ? (
+                        <div>
+                          <dt>Status</dt>
+                          <dd>{selectedDocument.status}</dd>
                         </div>
+                      ) : null}
+                      {selectedDocument.name ? (
+                        <div>
+                          <dt>Name</dt>
+                          <dd>{selectedDocument.name}</dd>
+                        </div>
+                      ) : null}
+                    </dl>
+
+                    {selectedDocument.description ? (
+                      <section className="detail-section">
+                        <h4>Description</h4>
+                        <p className="detail-description">{selectedDocument.description}</p>
+                      </section>
+                    ) : null}
+
+                    <div className="chip-list">
+                      {(selectedDocument.tags ?? []).map((tag) => (
+                        <span key={tag} className="meta-chip meta-chip-tag">
+                          {tag}
+                        </span>
                       ))}
                     </div>
-                  </section>
-                ) : null}
 
-                {selectedDocument.run ? (
-                  <section className="detail-section">
-                    <h4>Run</h4>
-                    <pre className="run-block">{selectedDocument.run}</pre>
-                  </section>
-                ) : null}
+                    <div className="detail-toolbar">
+                      <button className="secondary-button" onClick={() => setIsEditing(true)} type="button">
+                        Edit document
+                      </button>
+                      <button className="danger-button-inline" onClick={() => void handleDeleteDocument()} disabled={deletingDocument} type="button">
+                        {deletingDocument ? "Deleting..." : "Delete document"}
+                      </button>
+                    </div>
 
-                <section className="detail-section">
-                  <h4>Body</h4>
-                  <article
-                    className="markdown-body"
-                    dangerouslySetInnerHTML={{ __html: markdown.render(selectedDocument.body) }}
-                  />
-                </section>
-              </>
-            )}
-          </section>
-        </aside>
+                    {(selectedDocument.dependsOn ?? []).length > 0 ? (
+                      <section className="detail-section">
+                        <h4>Dependencies</h4>
+                        <div className="link-list">
+                          {(selectedDocument.dependsOn ?? []).map((dependencyId) => (
+                            <button key={dependencyId} className="link-pill" onClick={() => setSelectedDocumentId(dependencyId)} type="button">
+                              {dependencyId}
+                            </button>
+                          ))}
+                        </div>
+                      </section>
+                    ) : null}
+
+                    {(selectedDocument.references ?? []).length > 0 ? (
+                      <section className="detail-section">
+                        <h4>References</h4>
+                        <div className="link-list">
+                          {(selectedDocument.references ?? []).map((referenceId) => (
+                            <button key={referenceId} className="link-pill" onClick={() => setSelectedDocumentId(referenceId)} type="button">
+                              {referenceId}
+                            </button>
+                          ))}
+                        </div>
+                      </section>
+                    ) : null}
+
+                    {(selectedDocument.relatedNoteIds ?? []).length > 0 ? (
+                      <section className="detail-section">
+                        <h4>Related Notes</h4>
+                        <div className="link-list">
+                          {(selectedDocument.relatedNoteIds ?? []).map((noteId) => (
+                            <button key={noteId} className="link-pill" onClick={() => setSelectedDocumentId(noteId)} type="button">
+                              {noteId}
+                            </button>
+                          ))}
+                        </div>
+                      </section>
+                    ) : null}
+
+                    {selectedDocument.env !== undefined && Object.keys(selectedDocument.env).length > 0 ? (
+                      <section className="detail-section">
+                        <h4>Environment</h4>
+                        <div className="env-grid">
+                          {Object.entries(selectedDocument.env).map(([key, value]) => (
+                            <div key={key} className="env-row">
+                              <span>{key}</span>
+                              <code>{value}</code>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    ) : null}
+
+                    {selectedDocument.run ? (
+                      <section className="detail-section">
+                        <h4>Run</h4>
+                        <pre className="run-block">{selectedDocument.run}</pre>
+                      </section>
+                    ) : null}
+
+                    <section className="detail-section">
+                      <h4>Body</h4>
+                      <article
+                        className="markdown-body"
+                        dangerouslySetInnerHTML={{ __html: markdown.render(selectedDocument.body) }}
+                      />
+                    </section>
+                  </>
+                )}
+              </section>
+            </aside>
+          </>
+        ) : null}
       </div>
     </main>
   );
 }
 
-type GraphGroupProps = {
-  label: string;
-  graphs: GraphListResponse | null;
-  selectedGraph: string;
+type GraphTreeProps = {
+  graphTree: GraphTreeResponse | null;
+  activeSurface: SurfaceState;
+  onSelectHome: () => void;
   onSelectGraph: (graphName: string) => void;
-  interactive: boolean;
 };
 
-function GraphGroup({ label, graphs, selectedGraph, onSelectGraph, interactive }: GraphGroupProps) {
+function GraphTree({ graphTree, activeSurface, onSelectHome, onSelectGraph }: GraphTreeProps) {
   return (
     <div className="graph-group">
-      <h3>{label}</h3>
+      <button
+        className={activeSurface.kind === "home" ? "graph-button graph-button-home graph-button-active" : "graph-button graph-button-home"}
+        onClick={onSelectHome}
+        type="button"
+      >
+        <span className="graph-button-labels">
+          <strong>{graphTree?.home.title ?? "Home"}</strong>
+          <span className="graph-path">{graphTree?.home.path ?? "data/home.md"}</span>
+        </span>
+        <span className="graph-count">Top level</span>
+      </button>
+
+      <h3>Visible Graph Tree</h3>
       <div className="graph-list">
-        {(graphs?.availableGraphs ?? []).map((graphName) => {
-          const count = graphs?.graphItems[graphName]?.length ?? 0;
+        {(graphTree?.graphs ?? []).map((graphNode) => {
+          const isActive = activeSurface.kind === "graph" && activeSurface.graphPath === graphNode.graphPath;
           return (
             <button
-              key={graphName}
-              className={interactive && selectedGraph === graphName ? "graph-button graph-button-active" : "graph-button"}
-              disabled={!interactive}
-              onClick={() => onSelectGraph(graphName)}
+              key={graphNode.graphPath}
+              className={isActive ? "graph-button graph-button-active" : "graph-button"}
+              onClick={() => onSelectGraph(graphNode.graphPath)}
+              style={{ paddingLeft: `${0.9 + graphDepth(graphNode.graphPath) * 1.05}rem` }}
+              type="button"
             >
-              <span>{formatGraphTitle(graphName)}</span>
-              <strong>{count}</strong>
+              <span className="graph-button-labels">
+                <strong>{graphNode.displayName}</strong>
+                <span className="graph-path">{graphNode.graphPath}</span>
+              </span>
+              <span className="graph-count">{graphNode.countLabel}</span>
             </button>
           );
         })}
+        {graphTree !== null && graphTree.graphs.length === 0 ? <p className="empty-state-inline">No non-empty graphs yet.</p> : null}
       </div>
     </div>
   );

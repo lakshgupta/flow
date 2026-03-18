@@ -11,10 +11,18 @@ import (
 const (
 	// DirName is the canonical Flow metadata directory inside a workspace.
 	DirName = ".flow"
+	// ConfigDirName is the directory that stores workspace config and runtime files.
+	ConfigDirName = "config"
+	// DataDirName is the directory that stores canonical Markdown content.
+	DataDirName = "data"
 	// ConfigFileName is the persisted workspace configuration file name.
 	ConfigFileName = "flow.yaml"
 	// IndexFileName is the derived workspace index file name.
 	IndexFileName = "flow.index"
+	// GraphsDirName is the directory that stores graph-backed Markdown content.
+	GraphsDirName = "graphs"
+	// HomeFileName is the canonical home document file name.
+	HomeFileName = "home.md"
 	// AppConfigDirName is the platform-config subdirectory used by Flow.
 	AppConfigDirName = "flow"
 	// GlobalLocatorFileName stores the configured global workspace location.
@@ -34,8 +42,12 @@ type Root struct {
 	Scope         Scope
 	WorkspacePath string
 	FlowPath      string
+	ConfigDirPath string
 	ConfigPath    string
 	IndexPath     string
+	DataPath      string
+	GraphsPath    string
+	HomePath      string
 }
 
 // GlobalLocator stores the configured global workspace root path.
@@ -148,12 +160,18 @@ func newRoot(scope Scope, workspacePath string) (Root, error) {
 	}
 
 	flowPath := filepath.Join(absPath, DirName)
+	configDirPath := filepath.Join(flowPath, ConfigDirName)
+	dataPath := filepath.Join(flowPath, DataDirName)
 
 	return Root{
 		Scope:         scope,
 		WorkspacePath: absPath,
 		FlowPath:      flowPath,
-		ConfigPath:    filepath.Join(flowPath, ConfigFileName),
-		IndexPath:     filepath.Join(flowPath, IndexFileName),
+		ConfigDirPath: configDirPath,
+		ConfigPath:    filepath.Join(configDirPath, ConfigFileName),
+		IndexPath:     filepath.Join(configDirPath, IndexFileName),
+		DataPath:      dataPath,
+		GraphsPath:    filepath.Join(dataPath, GraphsDirName),
+		HomePath:      filepath.Join(dataPath, HomeFileName),
 	}, nil
 }

@@ -53,11 +53,21 @@ func ValidateCommandDocument(document CommandDocument) error {
 
 // ValidateWorkspaceDocuments applies workspace-wide document validation rules.
 func ValidateWorkspaceDocuments(documents []WorkspaceDocument) error {
+	normalizedDocuments := make([]WorkspaceDocument, 0, len(documents))
+	for _, item := range documents {
+		normalizedItem, err := NormalizeWorkspaceDocument(item)
+		if err != nil {
+			return err
+		}
+
+		normalizedDocuments = append(normalizedDocuments, normalizedItem)
+	}
+
 	commandNames := map[string]string{}
 	documentKindsByID := map[string]DocumentType{}
 	documentsByID := map[string]WorkspaceDocument{}
 
-	for _, item := range documents {
+	for _, item := range normalizedDocuments {
 		switch document := item.Document.(type) {
 		case NoteDocument:
 			if strings.TrimSpace(document.Metadata.ID) == "" {
@@ -100,7 +110,7 @@ func ValidateWorkspaceDocuments(documents []WorkspaceDocument) error {
 		}
 	}
 
-	for _, item := range documents {
+	for _, item := range normalizedDocuments {
 		sourceID, sourceType, dependencyIDs, referenceIDs := linkTargets(item.Document)
 
 		for _, dependencyID := range dependencyIDs {
@@ -126,6 +136,63 @@ func ValidateWorkspaceDocuments(documents []WorkspaceDocument) error {
 	}
 
 	return nil
+}
+
+// NormalizeWorkspaceDocument applies path-derived metadata rules for canonical workspace paths.
+func NormalizeWorkspaceDocument(item WorkspaceDocument) (WorkspaceDocument, error) {
+	graphPath, ok, err := GraphPathFromWorkspacePath(item.Path)
+	if err != nil {
+		return WorkspaceDocument{}, err
+	}
+
+	if !ok {
+		return item, nil
+	}
+
+	switch document := item.Document.(type) {
+	case NoteDocument:
+		document.Metadata.Graph = graphPath
+		item.Document = document
+	case TaskDocument:
+		document.Metadata.Graph = graphPath
+		item.Document = document
+	case CommandDocument:
+		document.Metadata.Graph = graphPath
+		item.Document = document
+	}
+
+	return item, nil
+}
+
+// GraphPathFromWorkspacePath returns the canonical graph path for a graph-backed document path.
+func GraphPathFromWorkspacePath(path string) (string, bool, error) {
+	normalizedPath := strings.TrimPrefix(strings.ReplaceAll(path, "\\", "/"), "./")
+	normalizedPath = strings.TrimPrefix(normalizedPath, "/")
+
+	const graphRoot = "data/graphs/"
+	if !strings.HasPrefix(normalizedPath, graphRoot) {
+		return "", false, nil
+	}
+
+	remainder := strings.TrimPrefix(normalizedPath, graphRoot)
+	parts := strings.Split(remainder, "/")
+	if len(parts) < 2 {
+		return "", false, fmt.Errorf("document path %q is not in canonical data/graphs/<graph-path>/<file>.md layout", path)
+	}
+
+	segments := parts[:len(parts)-1]
+	fileName := parts[len(parts)-1]
+	if strings.TrimSpace(fileName) == "" || !strings.HasSuffix(fileName, ".md") {
+		return "", false, fmt.Errorf("document path %q is not in canonical data/graphs/<graph-path>/<file>.md layout", path)
+	}
+
+	for _, segment := range segments {
+		if segment == "" || segment == "." || segment == ".." {
+			return "", false, fmt.Errorf("document path %q is not in canonical data/graphs/<graph-path>/<file>.md layout", path)
+		}
+	}
+
+	return strings.Join(segments, "/"), true, nil
 }
 
 func linkTargets(document Document) (string, DocumentType, []string, []string) {

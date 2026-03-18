@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,7 +31,37 @@ type workspaceResponse struct {
 	FlowPath      string          `json:"flowPath"`
 	ConfigPath    string          `json:"configPath"`
 	IndexPath     string          `json:"indexPath"`
+	HomePath      string          `json:"homePath"`
 	GUIPort       int             `json:"guiPort"`
+	PanelWidths   panelWidths     `json:"panelWidths"`
+}
+
+type panelWidths struct {
+	LeftRatio  float64 `json:"leftRatio"`
+	RightRatio float64 `json:"rightRatio"`
+}
+
+type homeResponse struct {
+	ID          string `json:"id"`
+	Type        string `json:"type"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Path        string `json:"path"`
+	Body        string `json:"body"`
+}
+
+type graphTreeNodeResponse struct {
+	GraphPath   string `json:"graphPath"`
+	DisplayName string `json:"displayName"`
+	DirectCount int    `json:"directCount"`
+	TotalCount  int    `json:"totalCount"`
+	HasChildren bool   `json:"hasChildren"`
+	CountLabel  string `json:"countLabel"`
+}
+
+type graphTreeResponse struct {
+	Home   homeResponse            `json:"home"`
+	Graphs []graphTreeNodeResponse `json:"graphs"`
 }
 
 type graphItem struct {
@@ -51,6 +82,7 @@ type documentResponse struct {
 	FeatureSlug    string            `json:"featureSlug"`
 	Graph          string            `json:"graph"`
 	Title          string            `json:"title"`
+	Description    string            `json:"description"`
 	Path           string            `json:"path"`
 	Tags           []string          `json:"tags,omitempty"`
 	CreatedAt      string            `json:"createdAt,omitempty"`
@@ -76,6 +108,7 @@ type createDocumentRequest struct {
 	ID          string            `json:"id"`
 	Graph       string            `json:"graph"`
 	Title       string            `json:"title"`
+	Description string            `json:"description"`
 	Tags        []string          `json:"tags"`
 	CreatedAt   string            `json:"createdAt"`
 	UpdatedAt   string            `json:"updatedAt"`
@@ -89,19 +122,30 @@ type createDocumentRequest struct {
 }
 
 type updateDocumentRequest struct {
-	ID         *string            `json:"id"`
-	Graph      *string            `json:"graph"`
-	Title      *string            `json:"title"`
-	Tags       *[]string          `json:"tags"`
-	CreatedAt  *string            `json:"createdAt"`
-	UpdatedAt  *string            `json:"updatedAt"`
-	Body       *string            `json:"body"`
-	Status     *string            `json:"status"`
-	DependsOn  *[]string          `json:"dependsOn"`
-	References *[]string          `json:"references"`
-	Name       *string            `json:"name"`
-	Env        *map[string]string `json:"env"`
-	Run        *string            `json:"run"`
+	ID          *string            `json:"id"`
+	Graph       *string            `json:"graph"`
+	Title       *string            `json:"title"`
+	Description *string            `json:"description"`
+	Tags        *[]string          `json:"tags"`
+	CreatedAt   *string            `json:"createdAt"`
+	UpdatedAt   *string            `json:"updatedAt"`
+	Body        *string            `json:"body"`
+	Status      *string            `json:"status"`
+	DependsOn   *[]string          `json:"dependsOn"`
+	References  *[]string          `json:"references"`
+	Name        *string            `json:"name"`
+	Env         *map[string]string `json:"env"`
+	Run         *string            `json:"run"`
+}
+
+type updateHomeRequest struct {
+	Title       *string `json:"title"`
+	Description *string `json:"description"`
+	Body        *string `json:"body"`
+}
+
+type updateWorkspaceRequest struct {
+	PanelWidths *panelWidths `json:"panelWidths"`
 }
 
 type deleteDocumentResponse struct {
@@ -138,6 +182,14 @@ func (handler *apiHandler) ServeHTTP(writer http.ResponseWriter, request *http.R
 	switch {
 	case request.URL.Path == "/api/documents" && request.Method == http.MethodPost:
 		handler.handleCreateDocument(writer, request)
+	case request.URL.Path == "/api/home" && request.Method == http.MethodGet:
+		handler.handleHome(writer, request)
+	case request.URL.Path == "/api/home" && request.Method == http.MethodPut:
+		handler.handleUpdateHome(writer, request)
+	case request.URL.Path == "/api/workspace" && request.Method == http.MethodPut:
+		handler.handleUpdateWorkspace(writer, request)
+	case request.URL.Path == "/api/graphs" && request.Method == http.MethodGet:
+		handler.handleGraphTree(writer, request)
 	case request.URL.Path == "/api/workspace" && request.Method == http.MethodGet:
 		handler.handleWorkspace(writer, request)
 	case request.URL.Path == "/api/layers/tasks" && request.Method == http.MethodGet:
@@ -178,6 +230,7 @@ func (handler *apiHandler) handleCreateDocument(writer http.ResponseWriter, requ
 		ID:          strings.TrimSpace(payload.ID),
 		Graph:       strings.TrimSpace(payload.Graph),
 		Title:       payload.Title,
+		Description: payload.Description,
 		Tags:        payload.Tags,
 		CreatedAt:   payload.CreatedAt,
 		UpdatedAt:   payload.UpdatedAt,
@@ -216,8 +269,100 @@ func (handler *apiHandler) handleWorkspace(writer http.ResponseWriter, _ *http.R
 		FlowPath:      handler.options.Root.FlowPath,
 		ConfigPath:    handler.options.Root.ConfigPath,
 		IndexPath:     handler.options.Root.IndexPath,
+		HomePath:      filepath.ToSlash(filepath.Join(workspace.DataDirName, workspace.HomeFileName)),
 		GUIPort:       workspaceConfig.GUI.Port,
+		PanelWidths: panelWidths{
+			LeftRatio:  workspaceConfig.GUI.PanelWidths.LeftRatio,
+			RightRatio: workspaceConfig.GUI.PanelWidths.RightRatio,
+		},
 	})
+}
+
+func (handler *apiHandler) handleUpdateWorkspace(writer http.ResponseWriter, request *http.Request) {
+	var payload updateWorkspaceRequest
+	if err := decodeJSONRequest(request, &payload); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	workspaceConfig, err := readWorkspaceConfig(handler.options.Root)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if payload.PanelWidths != nil {
+		workspaceConfig.GUI.PanelWidths = config.PanelWidths{
+			LeftRatio:  payload.PanelWidths.LeftRatio,
+			RightRatio: payload.PanelWidths.RightRatio,
+		}
+	}
+
+	if err := config.Write(handler.options.Root.ConfigPath, workspaceConfig); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	handler.handleWorkspace(writer, request)
+}
+
+func (handler *apiHandler) handleHome(writer http.ResponseWriter, _ *http.Request) {
+	home, err := loadHomeResponse(handler.options.Root)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, home)
+}
+
+func (handler *apiHandler) handleUpdateHome(writer http.ResponseWriter, request *http.Request) {
+	var payload updateHomeRequest
+	if err := decodeJSONRequest(request, &payload); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := writeHomeDocument(handler.options.Root, payload); err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	home, err := loadHomeResponse(handler.options.Root)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, home)
+}
+
+func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.Request) {
+	nodes, err := index.ReadGraphNodesWorkspace(handler.options.Root.IndexPath, handler.options.Root.FlowPath)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	home, err := loadHomeResponse(handler.options.Root)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response := graphTreeResponse{Home: home, Graphs: make([]graphTreeNodeResponse, 0, len(nodes))}
+	for _, node := range nodes {
+		response.Graphs = append(response.Graphs, graphTreeNodeResponse{
+			GraphPath:   node.GraphPath,
+			DisplayName: node.DisplayName,
+			DirectCount: node.DirectCount,
+			TotalCount:  node.TotalCount,
+			HasChildren: node.HasChildren,
+			CountLabel:  fmt.Sprintf("%d direct / %d total", node.DirectCount, node.TotalCount),
+		})
+	}
+
+	writeJSON(writer, http.StatusOK, response)
 }
 
 func (handler *apiHandler) handleGraphs(writer http.ResponseWriter, request *http.Request) {
@@ -344,19 +489,20 @@ func (handler *apiHandler) handleUpdateDocument(writer http.ResponseWriter, requ
 	}
 
 	workspaceDocument, err := workspace.UpdateDocumentByID(handler.options.Root, documentID, workspace.DocumentPatch{
-		ID:         payload.ID,
-		Graph:      payload.Graph,
-		Title:      payload.Title,
-		Tags:       payload.Tags,
-		CreatedAt:  payload.CreatedAt,
-		UpdatedAt:  payload.UpdatedAt,
-		Body:       payload.Body,
-		Status:     payload.Status,
-		DependsOn:  payload.DependsOn,
-		References: payload.References,
-		Name:       payload.Name,
-		Env:        payload.Env,
-		Run:        payload.Run,
+		ID:          payload.ID,
+		Graph:       payload.Graph,
+		Title:       payload.Title,
+		Description: payload.Description,
+		Tags:        payload.Tags,
+		CreatedAt:   payload.CreatedAt,
+		UpdatedAt:   payload.UpdatedAt,
+		Body:        payload.Body,
+		Status:      payload.Status,
+		DependsOn:   payload.DependsOn,
+		References:  payload.References,
+		Name:        payload.Name,
+		Env:         payload.Env,
+		Run:         payload.Run,
 	})
 	if err != nil {
 		writeMutationError(writer, err)
@@ -522,6 +668,7 @@ func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteG
 			FeatureSlug:    featureSlug,
 			Graph:          document.Metadata.Graph,
 			Title:          document.Metadata.Title,
+			Description:    document.Metadata.Description,
 			Path:           item.Path,
 			Tags:           cloneStrings(document.Metadata.Tags),
 			CreatedAt:      document.Metadata.CreatedAt,
@@ -542,6 +689,7 @@ func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteG
 			FeatureSlug: featureSlug,
 			Graph:       document.Metadata.Graph,
 			Title:       document.Metadata.Title,
+			Description: document.Metadata.Description,
 			Path:        item.Path,
 			Tags:        cloneStrings(document.Metadata.Tags),
 			CreatedAt:   document.Metadata.CreatedAt,
@@ -563,6 +711,7 @@ func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteG
 			FeatureSlug: featureSlug,
 			Graph:       document.Metadata.Graph,
 			Title:       document.Metadata.Title,
+			Description: document.Metadata.Description,
 			Path:        item.Path,
 			Tags:        cloneStrings(document.Metadata.Tags),
 			CreatedAt:   document.Metadata.CreatedAt,
@@ -626,12 +775,20 @@ func sortedTaskGraphs(view graph.TaskLayerView) []string {
 }
 
 func featureSlugFromPath(path string) (string, error) {
-	parts := strings.Split(path, "/")
-	if len(parts) < 4 || parts[0] != "features" {
-		return "", fmt.Errorf("document path %q is not in canonical features/<slug>/... layout", path)
+	graphPath, ok, err := markdown.GraphPathFromWorkspacePath(path)
+	if err != nil {
+		return "", err
+	}
+	if ok {
+		parts := strings.Split(graphPath, "/")
+		return parts[0], nil
 	}
 
-	return parts[1], nil
+	if path == filepath.ToSlash(filepath.Join(workspace.DataDirName, workspace.HomeFileName)) {
+		return "", nil
+	}
+
+	return "", fmt.Errorf("document path %q is not in canonical data/graphs/<graph-path>/<file>.md layout", path)
 }
 
 func cloneStrings(values []string) []string {
@@ -733,6 +890,128 @@ func documentIDForResponse(document markdown.Document) string {
 	default:
 		return ""
 	}
+}
+
+func loadHomeResponse(root workspace.Root) (homeResponse, error) {
+	relativePath := filepath.ToSlash(filepath.Join(workspace.DataDirName, workspace.HomeFileName))
+	data, err := os.ReadFile(root.HomePath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return homeResponse{ID: "home", Type: "home", Title: "Home", Description: "", Path: relativePath, Body: ""}, nil
+		}
+		return homeResponse{}, fmt.Errorf("read home document: %w", err)
+	}
+
+	home, err := parseHomeResponse(data)
+	if err != nil {
+		return homeResponse{}, fmt.Errorf("parse home document: %w", err)
+	}
+
+	home.Path = relativePath
+	return home, nil
+}
+
+func parseHomeResponse(data []byte) (homeResponse, error) {
+	if !looksLikeFlowDocument(data) {
+		body := normalizeMarkdownText(string(data))
+		return homeResponse{
+			ID:          "home",
+			Type:        string(markdown.HomeType),
+			Title:       deriveHomeTitle(body),
+			Description: "",
+			Body:        body,
+		}, nil
+	}
+
+	document, err := markdown.ParseDocument([]byte(normalizeMarkdownText(string(data))))
+	if err != nil {
+		return homeResponse{}, err
+	}
+
+	homeDocument, ok := document.(markdown.HomeDocument)
+	if !ok {
+		return homeResponse{}, fmt.Errorf("home.md must use type %q", markdown.HomeType)
+	}
+
+	id := strings.TrimSpace(homeDocument.Metadata.ID)
+	if id == "" {
+		id = "home"
+	}
+	title := strings.TrimSpace(homeDocument.Metadata.Title)
+	if title == "" {
+		title = deriveHomeTitle(homeDocument.Body)
+	}
+
+	return homeResponse{
+		ID:          id,
+		Type:        string(markdown.HomeType),
+		Title:       title,
+		Description: homeDocument.Metadata.Description,
+		Body:        normalizeMarkdownText(homeDocument.Body),
+	}, nil
+}
+
+func writeHomeDocument(root workspace.Root, payload updateHomeRequest) error {
+	title := "Home"
+	if payload.Title != nil && strings.TrimSpace(*payload.Title) != "" {
+		title = *payload.Title
+	}
+
+	description := ""
+	if payload.Description != nil {
+		description = *payload.Description
+	}
+
+	body := ""
+	if payload.Body != nil {
+		body = normalizeMarkdownText(*payload.Body)
+	}
+
+	data, err := markdown.SerializeDocument(markdown.HomeDocument{
+		Metadata: markdown.CommonFields{
+			ID:          "home",
+			Type:        markdown.HomeType,
+			Title:       title,
+			Description: description,
+		},
+		Body: body,
+	})
+	if err != nil {
+		return fmt.Errorf("serialize home document: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(root.HomePath), 0o755); err != nil {
+		return fmt.Errorf("create home directory: %w", err)
+	}
+
+	if err := os.WriteFile(root.HomePath, data, 0o644); err != nil {
+		return fmt.Errorf("write home document: %w", err)
+	}
+
+	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {
+		return fmt.Errorf("rebuild index: %w", err)
+	}
+
+	return nil
+}
+
+func looksLikeFlowDocument(data []byte) bool {
+	return strings.HasPrefix(normalizeMarkdownText(string(data)), "---\n")
+}
+
+func normalizeMarkdownText(value string) string {
+	return strings.ReplaceAll(value, "\r\n", "\n")
+}
+
+func deriveHomeTitle(body string) string {
+	for _, line := range strings.Split(body, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "# ") {
+			return strings.TrimSpace(strings.TrimPrefix(trimmed, "# "))
+		}
+	}
+
+	return "Home"
 }
 
 func fileExists(path string) bool {

@@ -20,11 +20,11 @@ func TestCreateDocumentWritesMarkdownAndRebuildsIndex(t *testing.T) {
 
 	workspaceDocument, err := CreateDocument(root, CreateDocumentInput{
 		Type:        markdown.TaskType,
-		FeatureSlug: "demo",
 		FileName:    "publish",
 		ID:          "task-1",
-		Graph:       "release",
+		Graph:       "release/publish",
 		Title:       "Publish",
+		Description: "Publish release task",
 		Status:      "todo",
 		Body:        "Publish body\n",
 	})
@@ -32,12 +32,21 @@ func TestCreateDocumentWritesMarkdownAndRebuildsIndex(t *testing.T) {
 		t.Fatalf("CreateDocument() error = %v", err)
 	}
 
-	if workspaceDocument.Path != "features/demo/tasks/publish.md" {
-		t.Fatalf("workspaceDocument.Path = %q, want features/demo/tasks/publish.md", workspaceDocument.Path)
+	if workspaceDocument.Path != "data/graphs/release/publish/publish.md" {
+		t.Fatalf("workspaceDocument.Path = %q, want data/graphs/release/publish/publish.md", workspaceDocument.Path)
 	}
 
-	if _, err := os.Stat(filepath.Join(root.FlowPath, "features", "demo", "tasks", "publish.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "graphs", "release", "publish", "publish.md")); err != nil {
 		t.Fatalf("Stat(created file) error = %v", err)
+	}
+
+	createdTask, ok := workspaceDocument.Document.(markdown.TaskDocument)
+	if !ok {
+		t.Fatalf("workspaceDocument.Document = %T, want markdown.TaskDocument", workspaceDocument.Document)
+	}
+
+	if createdTask.Metadata.Description != "Publish release task" {
+		t.Fatalf("createdTask.Metadata.Description = %q, want Publish release task", createdTask.Metadata.Description)
 	}
 
 	if _, err := os.Stat(root.IndexPath); err != nil {
@@ -50,9 +59,11 @@ func TestUpdateDocumentByIDAppliesPatchAndRebuildsIndex(t *testing.T) {
 
 	root := createMutationWorkspace(t)
 	workspaceDocument, err := UpdateDocumentByID(root, "task-1", DocumentPatch{
-		Title:  stringPointer("Updated parser"),
-		Status: stringPointer("done"),
-		Body:   stringPointer("Updated body\n"),
+		Graph:       stringPointer("release/parser"),
+		Title:       stringPointer("Updated parser"),
+		Description: stringPointer("Updated task description"),
+		Status:      stringPointer("done"),
+		Body:        stringPointer("Updated body\n"),
 	})
 	if err != nil {
 		t.Fatalf("UpdateDocumentByID() error = %v", err)
@@ -65,6 +76,15 @@ func TestUpdateDocumentByIDAppliesPatchAndRebuildsIndex(t *testing.T) {
 
 	if updatedTask.Metadata.Title != "Updated parser" || updatedTask.Metadata.Status != "done" {
 		t.Fatalf("updatedTask.Metadata = %#v", updatedTask.Metadata)
+	}
+	if updatedTask.Metadata.Description != "Updated task description" {
+		t.Fatalf("updatedTask.Metadata.Description = %q, want Updated task description", updatedTask.Metadata.Description)
+	}
+	if workspaceDocument.Path != "data/graphs/release/parser/parser.md" {
+		t.Fatalf("workspaceDocument.Path = %q, want data/graphs/release/parser/parser.md", workspaceDocument.Path)
+	}
+	if updatedTask.Metadata.Graph != "release/parser" {
+		t.Fatalf("updatedTask.Metadata.Graph = %q, want release/parser", updatedTask.Metadata.Graph)
 	}
 
 	results, err := index.Search(root.IndexPath, "updated", 10)
@@ -85,11 +105,11 @@ func TestDeleteDocumentByIDRemovesMarkdownAndReportsMissingDocument(t *testing.T
 		t.Fatalf("DeleteDocumentByID() error = %v", err)
 	}
 
-	if relativePath != "features/demo/tasks/parser.md" {
-		t.Fatalf("relativePath = %q, want features/demo/tasks/parser.md", relativePath)
+	if relativePath != "data/graphs/demo/execution/parser.md" {
+		t.Fatalf("relativePath = %q, want data/graphs/demo/execution/parser.md", relativePath)
 	}
 
-	if _, err := os.Stat(filepath.Join(root.FlowPath, "features", "demo", "tasks", "parser.md")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "graphs", "demo", "execution", "parser.md")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("Stat(deleted file) error = %v, want not exist", err)
 	}
 
@@ -109,15 +129,15 @@ func TestDeleteDocumentByIDCleansUpNoteRelationshipsAndSoftReferences(t *testing
 		t.Fatalf("DeleteDocumentByID() error = %v", err)
 	}
 
-	if relativePath != "features/demo/notes/architecture.md" {
-		t.Fatalf("relativePath = %q, want features/demo/notes/architecture.md", relativePath)
+	if relativePath != "data/graphs/demo/notes/architecture.md" {
+		t.Fatalf("relativePath = %q, want data/graphs/demo/notes/architecture.md", relativePath)
 	}
 
-	if _, err := os.Stat(filepath.Join(root.FlowPath, "features", "demo", "notes", "architecture.md")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "graphs", "demo", "notes", "architecture.md")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("Stat(deleted note) error = %v, want not exist", err)
 	}
 
-	followUpDocument, err := readDocumentFile(filepath.Join(root.FlowPath, "features", "demo", "notes", "follow-up.md"))
+	followUpDocument, err := readDocumentFile(filepath.Join(root.FlowPath, "data", "graphs", "demo", "notes", "follow-up.md"))
 	if err != nil {
 		t.Fatalf("readDocumentFile(follow-up) error = %v", err)
 	}
@@ -129,7 +149,7 @@ func TestDeleteDocumentByIDCleansUpNoteRelationshipsAndSoftReferences(t *testing
 		t.Fatalf("followUpNote.Metadata.References = %#v, want empty", followUpNote.Metadata.References)
 	}
 
-	taskDocument, err := readDocumentFile(filepath.Join(root.FlowPath, "features", "demo", "tasks", "parser.md"))
+	taskDocument, err := readDocumentFile(filepath.Join(root.FlowPath, "data", "graphs", "demo", "execution", "parser.md"))
 	if err != nil {
 		t.Fatalf("readDocumentFile(task) error = %v", err)
 	}
@@ -141,7 +161,7 @@ func TestDeleteDocumentByIDCleansUpNoteRelationshipsAndSoftReferences(t *testing
 		t.Fatalf("task.Metadata.References = %#v, want empty", task.Metadata.References)
 	}
 
-	commandDocument, err := readDocumentFile(filepath.Join(root.FlowPath, "features", "release", "commands", "build.md"))
+	commandDocument, err := readDocumentFile(filepath.Join(root.FlowPath, "data", "graphs", "release", "build.md"))
 	if err != nil {
 		t.Fatalf("readDocumentFile(command) error = %v", err)
 	}
@@ -172,31 +192,31 @@ func createMutationWorkspace(t *testing.T) Root {
 		t.Fatalf("ResolveLocal() error = %v", err)
 	}
 
-	writeMutationDocument(t, filepath.Join(root.FlowPath, "features", "demo", "notes", "architecture.md"), markdown.NoteDocument{
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "demo", "notes", "architecture.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
-			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "notes", Title: "Architecture"},
+			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "wrong", Title: "Architecture", Description: "Architecture description"},
 			References:   []string{"note-2"},
 		},
 		Body: "Architecture body\n",
 	})
-	writeMutationDocument(t, filepath.Join(root.FlowPath, "features", "demo", "notes", "follow-up.md"), markdown.NoteDocument{
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "demo", "notes", "follow-up.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
-			CommonFields: markdown.CommonFields{ID: "note-2", Type: markdown.NoteType, Graph: "notes", Title: "Follow Up"},
+			CommonFields: markdown.CommonFields{ID: "note-2", Type: markdown.NoteType, Graph: "wrong", Title: "Follow Up", Description: "Follow up description"},
 			References:   []string{"note-1"},
 		},
 		Body: "Follow up body\n",
 	})
-	writeMutationDocument(t, filepath.Join(root.FlowPath, "features", "demo", "tasks", "parser.md"), markdown.TaskDocument{
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "demo", "execution", "parser.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
-			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Parser"},
+			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "wrong", Title: "Parser", Description: "Parser description"},
 			Status:       "doing",
 			References:   []string{"note-1"},
 		},
 		Body: "Parser body\n",
 	})
-	writeMutationDocument(t, filepath.Join(root.FlowPath, "features", "release", "commands", "build.md"), markdown.CommandDocument{
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "release", "build.md"), markdown.CommandDocument{
 		Metadata: markdown.CommandMetadata{
-			CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "release", Title: "Build"},
+			CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "wrong", Title: "Build", Description: "Build description"},
 			Name:         "build",
 			References:   []string{"note-1"},
 			Run:          "go build ./cmd/flow",
