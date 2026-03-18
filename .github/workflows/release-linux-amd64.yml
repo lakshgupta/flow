@@ -1,0 +1,67 @@
+name: Release Linux amd64
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Git tag to publish, for example v0.1.0 or 0.1.0
+        required: true
+        type: string
+  push:
+    tags:
+      - 'v*'
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  package-linux-amd64:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Read project version
+        id: project-version
+        run: echo "value=$(tr -d '[:space:]' < internal/buildinfo/VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Validate release tag matches project version
+        run: |
+          version="${{ steps.project-version.outputs.value }}"
+          tag="$RELEASE_TAG"
+          if [[ "$tag" != "$version" && "$tag" != "v$version" ]]; then
+            echo "Release tag $tag does not match project version $version" >&2
+            exit 1
+          fi
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build linux/amd64 release artifacts
+        env:
+          FLOW_VERSION: ${{ steps.project-version.outputs.value }}
+        run: bash ./scripts/build-release-linux-amd64.sh
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: Flow ${{ steps.project-version.outputs.value }}
+          generate_release_notes: true
+          files: |
+            dist/flow-${{ steps.project-version.outputs.value }}-linux-amd64.tar.gz
+            dist/flow-${{ steps.project-version.outputs.value }}-linux-amd64.sha256
+            dist/install.sh
