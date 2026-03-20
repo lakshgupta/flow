@@ -63,6 +63,21 @@ Layout rules:
 - The right panel stays hidden until you select a graph node, then opens as the contextual editor for that document.
 - The left and right split bars are draggable, and their width ratios persist in `.flow/config/flow.yaml`.
 
+Graph canvas behavior:
+
+- Home remains a page-style document in the middle panel and is never rendered as a canvas.
+- Selecting a graph opens an infinite canvas for that graph scope in the middle panel.
+- Notes, tasks, and commands share the same canvas card structure and are differentiated by type color and label.
+- Nodes show type and title at rest, and reveal `description` on hover.
+- Single click selects a node and highlights directly connected edges only.
+- Double click opens the right-side document editor without recentering or zooming the canvas.
+- Dragging moves nodes freely; persistence happens only on drag end.
+- Dragged positions are stored as derived GUI state in `.flow/config/flow.index`, not in canonical Markdown.
+- If a node has no saved position, Flow seeds its placement from graph relationships using layered columns derived from incoming and downstream links.
+- Cycles use a stable pseudo-topological fallback based on creation time so unsaved layouts stay predictable.
+- Dragging near a layer band applies only a slight magnetic pull rather than a hard snap during movement.
+- When a selected graph canvas has no visible documents, the canvas shows inline create actions for note, task, and command documents.
+
 Editing behavior:
 
 - Home is backed by `.flow/data/home.md` and uses the same Markdown-plus-frontmatter model as other Flow-managed content.

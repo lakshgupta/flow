@@ -1,12 +1,16 @@
 import {
+  applyNodeChanges,
   Background,
   Controls,
+  MarkerType,
   ReactFlow,
   ReactFlowProvider,
+  type Edge,
   type Node,
+  type NodeChange,
 } from "@xyflow/react";
 import MarkdownIt from "markdown-it";
-import { startTransition, useDeferredValue, useEffect, useRef, useState } from "react";
+import { type ReactNode, startTransition, useDeferredValue, useEffect, useRef, useState } from "react";
 
 import { WysiwygEditor } from "./WysiwygEditor";
 import "./styles.css";
@@ -136,12 +140,107 @@ type SurfaceState =
   | { kind: "home" }
   | { kind: "graph"; graphPath: string };
 
-type GraphCanvasItem = {
+type GraphCanvasPosition = {
+  x: number;
+  y: number;
+};
+
+type GraphCanvasLayerGuide = {
+  layer: number;
+  x: number;
+};
+
+type GraphCanvasLayerGuidance = {
+  magneticThresholdPx: number;
+  guides: GraphCanvasLayerGuide[];
+};
+
+type GraphCanvasNodePayload = {
   id: string;
   type: string;
   graph: string;
   title: string;
+  description: string;
   path: string;
+  featureSlug: string;
+  tags?: string[];
+  createdAt?: string;
+  updatedAt?: string;
+  position: GraphCanvasPosition;
+  positionPersisted: boolean;
+};
+
+type GraphCanvasEdgePayload = {
+  id: string;
+  source: string;
+  target: string;
+  kind: string;
+};
+
+type GraphCanvasResponse = {
+  selectedGraph: string;
+  availableGraphs: string[];
+  layerGuidance: GraphCanvasLayerGuidance;
+  nodes: GraphCanvasNodePayload[];
+  edges: GraphCanvasEdgePayload[];
+};
+
+type GraphCanvasResponseWire = {
+  selectedGraph?: string;
+  availableGraphs?: string[] | null;
+  layerGuidance?: {
+    magneticThresholdPx?: number;
+    guides?: GraphCanvasLayerGuide[] | null;
+  } | null;
+  nodes?: GraphCanvasNodePayload[] | null;
+  edges?: GraphCanvasEdgePayload[] | null;
+};
+
+type GraphLayoutPositionPayload = {
+  documentId: string;
+  x: number;
+  y: number;
+};
+
+type GraphLayoutResponse = {
+  graph: string;
+  positions: GraphLayoutPositionPayload[];
+};
+
+type CreateDocumentPayload = {
+  type: string;
+  featureSlug: string;
+  fileName: string;
+  id: string;
+  graph: string;
+  title: string;
+  description: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+  body: string;
+  status?: string;
+  dependsOn?: string[];
+  references?: string[];
+  name?: string;
+  env?: Record<string, string>;
+  run?: string;
+};
+
+type GraphCreateType = "note" | "task" | "command";
+
+type GraphCanvasFlowNodeData = {
+  label: ReactNode;
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  graph: string;
+  featureSlug: string;
+  fileName: string;
+  positionPersisted: boolean;
+  isCanvasSelected: boolean;
+  isPanelDocument: boolean;
 };
 
 type DividerKind = "left" | "right";
@@ -233,6 +332,61 @@ function fileNameFromPath(path: string): string {
 
 function graphDepth(graphPath: string): number {
   return Math.max(graphPath.split("/").length - 1, 0);
+}
+
+function featureSlugFromGraphPath(graphPath: string): string {
+  return graphPath.split("/")[0] ?? graphPath;
+}
+
+function slugifyValue(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized === "" ? "item" : normalized;
+}
+
+function createGraphDocumentPayload(type: GraphCreateType, graphPath: string): CreateDocumentPayload {
+  const suffix = Date.now().toString(36);
+  const title = type === "note" ? "New Note" : type === "task" ? "New Task" : "New Command";
+  const titleSlug = slugifyValue(title);
+  const isoTimestamp = new Date().toISOString();
+  const basePayload: CreateDocumentPayload = {
+    type,
+    featureSlug: featureSlugFromGraphPath(graphPath),
+    fileName: `${titleSlug}-${suffix}`,
+    id: `${type}-${suffix}`,
+    graph: graphPath,
+    title,
+    description: "",
+    tags: [],
+    createdAt: isoTimestamp,
+    updatedAt: isoTimestamp,
+    body: "",
+    references: [],
+  };
+
+  if (type === "task") {
+    return {
+      ...basePayload,
+      status: "todo",
+      dependsOn: [],
+    };
+  }
+
+  if (type === "command") {
+    return {
+      ...basePayload,
+      name: `command-${suffix}`,
+      dependsOn: [],
+      env: {},
+      run: `echo \"Describe ${title.toLowerCase()}\"`,
+    };
+  }
+
+  return basePayload;
 }
 
 function joinList(values?: string[]): string {
@@ -330,124 +484,203 @@ async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
   };
 }
 
-function isGraphInSubtree(candidateGraph: string, selectedGraph: string): boolean {
-  return candidateGraph === selectedGraph || candidateGraph.startsWith(`${selectedGraph}/`);
+function graphCanvasTypeLabel(value: string): string {
+  return value === "command" ? "Cmd" : formatDocumentType(value);
 }
 
-function collectGraphCanvasItems(selectedGraph: string, graphCollections: GraphCollections | null): GraphCanvasItem[] {
-  if (graphCollections === null) {
+function graphCanvasTypeClassName(value: string): string {
+  if (value === "task" || value === "command") {
+    return value;
+  }
+
+  return "note";
+}
+
+function renderGraphCanvasNodeLabel(data: GraphCanvasFlowNodeData): ReactNode {
+  return (
+    <article
+      className={[
+        "graph-canvas-node",
+        `graph-canvas-node-${graphCanvasTypeClassName(data.type)}`,
+        data.isCanvasSelected ? "graph-canvas-node-selected" : "",
+        data.isPanelDocument ? "graph-canvas-node-panel" : "",
+      ]
+        .filter((value) => value !== "")
+        .join(" ")}
+    >
+      <div className="graph-canvas-node-topline">
+        <span className="graph-canvas-node-badge">{graphCanvasTypeLabel(data.type)}</span>
+        <span className="graph-canvas-node-file">{data.fileName}</span>
+      </div>
+      <strong className="graph-canvas-node-title">{data.title}</strong>
+      <div className="graph-canvas-node-meta-row">
+        <span>{data.graph}</span>
+        <span>{data.positionPersisted ? "Saved" : "Seeded"}</span>
+      </div>
+      {data.description !== "" ? <p className="graph-canvas-node-description">{data.description}</p> : null}
+    </article>
+  );
+}
+
+function buildGraphCanvasFlowNodes(
+  graphCanvasData: GraphCanvasResponse | null,
+  graphCanvasPositions: Record<string, GraphCanvasPosition>,
+  selectedCanvasNodeId: string,
+  selectedDocumentId: string,
+): Node<GraphCanvasFlowNodeData>[] {
+  if (graphCanvasData === null) {
     return [];
   }
 
-  const items: GraphCanvasItem[] = [];
-  const sources = [graphCollections.notes, graphCollections.tasks, graphCollections.commands];
-  for (const source of sources) {
-    for (const [graphPath, graphItems] of Object.entries(source.graphItems)) {
-      if (!isGraphInSubtree(graphPath, selectedGraph)) {
-        continue;
-      }
+  return graphCanvasData.nodes.map((item) => ({
+    id: item.id,
+    position: graphCanvasPositions[item.id] ?? item.position,
+    data: {
+      label: renderGraphCanvasNodeLabel({
+        id: item.id,
+        type: item.type,
+        title: item.title,
+        description: item.description,
+        graph: item.graph,
+        featureSlug: item.featureSlug,
+        fileName: fileNameFromPath(item.path),
+        positionPersisted: item.positionPersisted,
+        isCanvasSelected: item.id === selectedCanvasNodeId,
+        isPanelDocument: item.id === selectedDocumentId,
+      }),
+      id: item.id,
+      type: item.type,
+      title: item.title,
+      description: item.description,
+      graph: item.graph,
+      featureSlug: item.featureSlug,
+      fileName: fileNameFromPath(item.path),
+      positionPersisted: item.positionPersisted,
+      isCanvasSelected: item.id === selectedCanvasNodeId,
+      isPanelDocument: item.id === selectedDocumentId,
+    },
+    className: "graph-canvas-ghost-node",
+    style: {
+      width: "18rem",
+      padding: 0,
+      border: "none",
+      borderRadius: 0,
+      background: "transparent",
+      boxShadow: "none",
+      opacity: 0,
+      pointerEvents: "none",
+    },
+    draggable: true,
+    connectable: false,
+    selectable: true,
+  }));
+}
 
-      for (const item of graphItems) {
-        items.push({
-          id: item.id,
-          type: source.type,
-          graph: graphPath,
-          title: item.title,
-          path: item.path,
-        });
-      }
+function buildGraphCanvasFlowEdges(graphCanvasData: GraphCanvasResponse | null, selectedCanvasNodeId: string): Edge[] {
+  if (graphCanvasData === null) {
+    return [];
+  }
+
+  const hasSelection = selectedCanvasNodeId !== "";
+  return graphCanvasData.edges.map((edge) => {
+    const isConnected = selectedCanvasNodeId !== "" && (edge.source === selectedCanvasNodeId || edge.target === selectedCanvasNodeId);
+    const isReference = edge.kind === "reference";
+
+    return {
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      type: "smoothstep",
+      selectable: false,
+      animated: false,
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        width: 18,
+        height: 18,
+        color: hasSelection ? (isConnected ? "#a7392b" : "rgba(82, 101, 97, 0.32)") : isReference ? "#7d5a3d" : "#244b47",
+      },
+      style: {
+        stroke: hasSelection ? (isConnected ? "#a7392b" : "rgba(82, 101, 97, 0.32)") : isReference ? "#7d5a3d" : "#244b47",
+        strokeWidth: hasSelection ? (isConnected ? 2.6 : 1.25) : isReference ? 1.8 : 2.1,
+        strokeDasharray: isReference ? "7 6" : undefined,
+        opacity: hasSelection ? (isConnected ? 1 : 0.22) : 0.72,
+      },
+    };
+  });
+}
+
+function selectedGraphCanvasNode(graphCanvasData: GraphCanvasResponse | null, selectedCanvasNodeId: string): GraphCanvasNodePayload | null {
+  if (graphCanvasData === null || selectedCanvasNodeId === "") {
+    return null;
+  }
+
+  return graphCanvasData.nodes.find((node) => node.id === selectedCanvasNodeId) ?? null;
+}
+
+function countConnectedGraphCanvasEdges(graphCanvasData: GraphCanvasResponse | null, selectedCanvasNodeId: string): number {
+  if (graphCanvasData === null || selectedCanvasNodeId === "") {
+    return 0;
+  }
+
+  return graphCanvasData.edges.filter((edge) => edge.source === selectedCanvasNodeId || edge.target === selectedCanvasNodeId).length;
+}
+
+function graphCanvasPositionMap(graphCanvasData: GraphCanvasResponse | null): Record<string, GraphCanvasPosition> {
+  if (graphCanvasData === null) {
+    return {};
+  }
+
+  return Object.fromEntries(graphCanvasData.nodes.map((node) => [node.id, node.position]));
+}
+
+function applyGraphCanvasLayerGuidance(position: GraphCanvasPosition, layerGuidance: GraphCanvasLayerGuidance | null): GraphCanvasPosition {
+  if (layerGuidance === null || layerGuidance.guides.length === 0) {
+    return position;
+  }
+
+  let snappedX = position.x;
+  let shortestDistance = Number.POSITIVE_INFINITY;
+  for (const guide of layerGuidance.guides) {
+    const distance = Math.abs(position.x - guide.x);
+    if (distance <= layerGuidance.magneticThresholdPx && distance < shortestDistance) {
+      shortestDistance = distance;
+      snappedX = guide.x;
     }
   }
 
-  items.sort((left, right) => {
-    if (left.type !== right.type) {
-      return left.type.localeCompare(right.type);
-    }
-    if (left.graph !== right.graph) {
-      return left.graph.localeCompare(right.graph);
-    }
-    if (left.title !== right.title) {
-      return left.title.localeCompare(right.title);
-    }
-    return left.id.localeCompare(right.id);
-  });
-
-  return items;
+  return shortestDistance === Number.POSITIVE_INFINITY ? position : { x: snappedX, y: position.y };
 }
 
-function buildGraphCanvasNodes(selectedGraph: string, items: GraphCanvasItem[], selectedDocumentId: string): Node[] {
-  const nodes: Node[] = [];
-  const typeColumns = ["note", "task", "command"];
+function normalizeGraphCanvasResponse(response: GraphCanvasResponseWire): GraphCanvasResponse {
+  return {
+    selectedGraph: response.selectedGraph ?? "",
+    availableGraphs: response.availableGraphs ?? [],
+    layerGuidance: {
+      magneticThresholdPx: response.layerGuidance?.magneticThresholdPx ?? 18,
+      guides: response.layerGuidance?.guides ?? [],
+    },
+    nodes: response.nodes ?? [],
+    edges: response.edges ?? [],
+  };
+}
 
-  typeColumns.forEach((typeName, columnIndex) => {
-    const graphNames = Array.from(new Set(items.filter((item) => item.type === typeName).map((item) => item.graph))).sort();
-    let currentY = 24;
-
-    graphNames.forEach((graphName) => {
-      nodes.push({
-        id: `header:${typeName}:${graphName}`,
-        position: { x: 28 + columnIndex * 320, y: currentY },
-        data: {
-          label: (
-            <div className="canvas-group-card">
-              <span className="canvas-group-type">{formatDocumentType(typeName)}</span>
-              <strong>{graphName === selectedGraph ? "Direct graph" : graphName}</strong>
-            </div>
-          ),
-        },
-        draggable: false,
-        selectable: false,
-        connectable: false,
-        style: {
-          width: 250,
-          border: "none",
-          background: "transparent",
-          boxShadow: "none",
-          padding: 0,
-        },
-      });
-
-      currentY += 72;
-      const graphItems = items.filter((item) => item.type === typeName && item.graph === graphName);
-      graphItems.forEach((item, itemIndex) => {
-        nodes.push({
-          id: item.id,
-          position: { x: 28 + columnIndex * 320, y: currentY + itemIndex * 118 },
-          data: {
-            label: (
-              <div className="canvas-node-card">
-                <span className="canvas-node-type">{formatDocumentType(item.type)}</span>
-                <strong>{item.title}</strong>
-                <span className="canvas-node-graph">{item.graph}</span>
-                <span className="canvas-node-path">{fileNameFromPath(item.path)}</span>
-              </div>
-            ),
-          },
-          draggable: false,
-          connectable: false,
-          style: {
-            width: 250,
-            borderRadius: 22,
-            border: item.id === selectedDocumentId ? "2px solid #a7392b" : "1px solid rgba(26, 44, 43, 0.14)",
-            background: typeName === "command" ? "#fff4ea" : typeName === "task" ? "#f5f1e7" : "#fff7ef",
-            color: "#173230",
-            boxShadow: "0 16px 30px rgba(31, 48, 36, 0.12)",
-            padding: "0.9rem",
-          },
-        });
-      });
-
-      currentY += graphItems.length * 118 + 34;
-    });
-  });
-
-  return nodes;
+function graphCanvasOverlayPosition(node: Node<GraphCanvasFlowNodeData>): GraphCanvasPosition {
+  return { x: node.position.x, y: node.position.y };
 }
 
 function FlowApp() {
   const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null);
   const [graphTree, setGraphTree] = useState<GraphTreeResponse | null>(null);
   const [graphCollections, setGraphCollections] = useState<GraphCollections | null>(null);
+  const [graphCanvasData, setGraphCanvasData] = useState<GraphCanvasResponse | null>(null);
+  const [graphCanvasLoading, setGraphCanvasLoading] = useState<boolean>(false);
+  const [graphCanvasError, setGraphCanvasError] = useState<string>("");
+  const [graphCanvasPositions, setGraphCanvasPositions] = useState<Record<string, GraphCanvasPosition>>({});
+  const [graphCanvasReloadToken, setGraphCanvasReloadToken] = useState<number>(0);
+  const [selectedCanvasNodeId, setSelectedCanvasNodeId] = useState<string>("");
+  const [graphCreatePendingType, setGraphCreatePendingType] = useState<GraphCreateType | "">("");
+  const [graphCreateError, setGraphCreateError] = useState<string>("");
+  const [autoEditDocumentId, setAutoEditDocumentId] = useState<string>("");
   const [activeSurface, setActiveSurface] = useState<SurfaceState>({ kind: "home" });
   const [selectedDocumentId, setSelectedDocumentId] = useState<string>("");
   const [selectedDocument, setSelectedDocument] = useState<DocumentResponse | null>(null);
@@ -474,13 +707,24 @@ function FlowApp() {
   const [draggingDivider, setDraggingDivider] = useState<DividerKind | null>(null);
 
   const layoutRef = useRef<HTMLDivElement | null>(null);
+  const graphCanvasShellRef = useRef<HTMLDivElement | null>(null);
   const panelWidthsRef = useRef<PanelWidths>(defaultPanelWidths);
+  const graphCanvasDragRef = useRef<{
+    documentId: string;
+    offsetX: number;
+    offsetY: number;
+    shellLeft: number;
+    shellTop: number;
+    moved: boolean;
+  } | null>(null);
   const selectedGraphPath = activeSurface.kind === "graph" ? activeSurface.graphPath : "";
   const isContextPanelOpen = selectedDocumentId !== "" || selectedDocument !== null || panelError !== "" || isEditing;
 
-  const graphCanvasItems = selectedGraphPath === "" ? [] : collectGraphCanvasItems(selectedGraphPath, graphCollections);
-  const graphCanvasNodes = selectedGraphPath === "" ? [] : buildGraphCanvasNodes(selectedGraphPath, graphCanvasItems, selectedDocumentId);
+  const graphCanvasNodes = buildGraphCanvasFlowNodes(graphCanvasData, graphCanvasPositions, selectedCanvasNodeId, selectedDocumentId);
+  const graphCanvasEdges = buildGraphCanvasFlowEdges(graphCanvasData, selectedCanvasNodeId);
   const selectedGraphNode = graphTree?.graphs.find((graphNode) => graphNode.graphPath === selectedGraphPath) ?? null;
+  const selectedCanvasNode = selectedGraphCanvasNode(graphCanvasData, selectedCanvasNodeId);
+  const selectedCanvasNodeEdgeCount = countConnectedGraphCanvasEdges(graphCanvasData, selectedCanvasNodeId);
 
   useEffect(() => {
     panelWidthsRef.current = panelWidths;
@@ -535,6 +779,7 @@ function FlowApp() {
       setSelectedDocument(null);
       setFormState(emptyDocumentFormState);
       setIsEditing(false);
+      setAutoEditDocumentId("");
       setPanelError("");
       return;
     }
@@ -548,13 +793,17 @@ function FlowApp() {
         if (!cancelled) {
           setSelectedDocument(response);
           setFormState(createDocumentFormState(response));
-          setIsEditing(false);
+          setIsEditing(autoEditDocumentId === response.id);
+          if (autoEditDocumentId === response.id) {
+            setAutoEditDocumentId("");
+          }
         }
       } catch (loadError) {
         if (!cancelled) {
           setSelectedDocument(null);
           setFormState(emptyDocumentFormState);
           setIsEditing(false);
+          setAutoEditDocumentId("");
           setPanelError(loadError instanceof Error ? loadError.message : String(loadError));
         }
       }
@@ -565,7 +814,7 @@ function FlowApp() {
     return () => {
       cancelled = true;
     };
-  }, [selectedDocumentId]);
+  }, [selectedDocumentId, autoEditDocumentId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -598,6 +847,58 @@ function FlowApp() {
     };
   }, [deferredSearchQuery]);
 
+  useEffect(() => {
+    setGraphCanvasPositions(graphCanvasPositionMap(graphCanvasData));
+  }, [graphCanvasData]);
+
+  useEffect(() => {
+    if (selectedGraphPath === "") {
+      setGraphCanvasData(null);
+      setGraphCanvasLoading(false);
+      setGraphCanvasError("");
+      setGraphCanvasPositions({});
+      setGraphCreateError("");
+      setGraphCreatePendingType("");
+      setSelectedCanvasNodeId("");
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadGraphCanvas(): Promise<void> {
+      try {
+        setGraphCanvasLoading(true);
+        setGraphCanvasError("");
+
+        const response = normalizeGraphCanvasResponse(
+          await requestJSON<GraphCanvasResponseWire>(`/api/graph-canvas?graph=${encodeURIComponent(selectedGraphPath)}`),
+        );
+        if (cancelled) {
+          return;
+        }
+
+        setGraphCanvasData(response);
+        setSelectedCanvasNodeId((current) => (response.nodes.some((node) => node.id === current) ? current : ""));
+      } catch (loadError) {
+        if (!cancelled) {
+          setGraphCanvasData(null);
+          setGraphCanvasError(loadError instanceof Error ? loadError.message : String(loadError));
+          setSelectedCanvasNodeId("");
+        }
+      } finally {
+        if (!cancelled) {
+          setGraphCanvasLoading(false);
+        }
+      }
+    }
+
+    void loadGraphCanvas();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedGraphPath, graphCanvasReloadToken]);
+
   async function refreshShellViews(options?: { nextDocument?: DocumentResponse | null; nextDocumentId?: string }): Promise<void> {
     const snapshot = await loadWorkspaceSnapshot();
     const nextPanelWidths = normalizeStoredPanelWidths(snapshot.workspaceData.panelWidths);
@@ -617,6 +918,7 @@ function FlowApp() {
       startTransition(() => {
         setActiveSurface({ kind: "graph", graphPath: options.nextDocument?.graph ?? selectedGraphPath });
       });
+      setSelectedCanvasNodeId(options.nextDocument.id);
     }
 
     if (activeSurface.kind === "graph") {
@@ -625,6 +927,12 @@ function FlowApp() {
         startTransition(() => {
           setActiveSurface({ kind: "home" });
         });
+        setGraphCanvasData(null);
+        setGraphCanvasError("");
+        setGraphCanvasPositions({});
+        setSelectedCanvasNodeId("");
+      } else {
+        setGraphCanvasReloadToken((current) => current + 1);
       }
     }
 
@@ -670,6 +978,9 @@ function FlowApp() {
 
   function handleSelectHome(): void {
     clearContextPanel();
+    setGraphCanvasError("");
+    setGraphCreateError("");
+    setSelectedCanvasNodeId("");
     startTransition(() => {
       setActiveSurface({ kind: "home" });
     });
@@ -677,8 +988,73 @@ function FlowApp() {
 
   function handleSelectGraph(graphPath: string): void {
     clearContextPanel();
+    setGraphCanvasError("");
+    setGraphCreateError("");
+    setSelectedCanvasNodeId("");
     startTransition(() => {
       setActiveSurface({ kind: "graph", graphPath });
+    });
+  }
+
+  function handleOpenCanvasDocument(documentId: string): void {
+    setMutationError("");
+    setMutationSuccess("");
+    setPanelError("");
+    setSelectedCanvasNodeId(documentId);
+    setSelectedDocumentId(documentId);
+  }
+
+  function updateGraphCanvasNodePosition(documentId: string, position: GraphCanvasPosition): void {
+    setGraphCanvasPositions((current) => ({ ...current, [documentId]: position }));
+  }
+
+  async function persistGraphCanvasPosition(documentId: string, position: GraphCanvasPosition): Promise<void> {
+    if (selectedGraphPath === "") {
+      return;
+    }
+
+    try {
+      setGraphCanvasError("");
+      const response = await requestJSON<GraphLayoutResponse>("/api/graph-layout", {
+        method: "PUT",
+        body: JSON.stringify({
+          graph: selectedGraphPath,
+          positions: [{ documentId, x: position.x, y: position.y }],
+        }),
+      });
+      const persistedPosition = response.positions[0];
+      if (persistedPosition === undefined) {
+        return;
+      }
+
+      setGraphCanvasData((current) => {
+        if (current === null) {
+          return current;
+        }
+
+        return {
+          ...current,
+          nodes: current.nodes.map((node) =>
+            node.id === documentId
+              ? {
+                  ...node,
+                  position: { x: persistedPosition.x, y: persistedPosition.y },
+                  positionPersisted: true,
+                }
+              : node,
+          ),
+        };
+      });
+    } catch (saveError) {
+      setGraphCanvasError(saveError instanceof Error ? saveError.message : String(saveError));
+    }
+  }
+
+  function handleGraphCanvasNodesChange(changes: NodeChange<Node<GraphCanvasFlowNodeData>>[]): void {
+    setGraphCanvasPositions((current) => {
+      const currentNodes = graphCanvasNodes.map((node) => ({ ...node, position: current[node.id] ?? node.position }));
+      const nextNodes = applyNodeChanges(changes, currentNodes);
+      return Object.fromEntries(nextNodes.map((node) => [node.id, node.position]));
     });
   }
 
@@ -689,6 +1065,7 @@ function FlowApp() {
     startTransition(() => {
       setActiveSurface({ kind: "graph", graphPath });
     });
+    setSelectedCanvasNodeId(documentId);
     setSelectedDocumentId(documentId);
   }
 
@@ -699,6 +1076,109 @@ function FlowApp() {
     }
 
     handleSelectDocument(result.id, result.graph);
+  }
+
+  async function handleCreateGraphDocument(type: GraphCreateType): Promise<void> {
+    if (selectedGraphPath === "") {
+      return;
+    }
+
+    try {
+      setGraphCreatePendingType(type);
+      setGraphCreateError("");
+      const createdDocument = await requestJSON<DocumentResponse>("/api/documents", {
+        method: "POST",
+        body: JSON.stringify(createGraphDocumentPayload(type, selectedGraphPath)),
+      });
+
+      setAutoEditDocumentId(createdDocument.id);
+      await refreshShellViews({ nextDocument: createdDocument, nextDocumentId: createdDocument.id });
+      setSelectedDocument(createdDocument);
+      setFormState(createDocumentFormState(createdDocument));
+      setSelectedCanvasNodeId(createdDocument.id);
+      setMutationError("");
+      setMutationSuccess(`${formatDocumentType(createdDocument.type)} created.`);
+    } catch (createError) {
+      setGraphCreateError(createError instanceof Error ? createError.message : String(createError));
+    } finally {
+      setGraphCreatePendingType("");
+    }
+  }
+
+  function handleGraphCanvasOverlayPointerDown(event: React.PointerEvent<HTMLDivElement>, documentId: string): void {
+    if (event.button !== 0) {
+      return;
+    }
+
+    const shell = graphCanvasShellRef.current;
+    if (shell === null) {
+      return;
+    }
+
+    const node = graphCanvasNodes.find((candidate) => candidate.id === documentId);
+    if (node === undefined) {
+      return;
+    }
+
+    const shellBounds = shell.getBoundingClientRect();
+    const position = graphCanvasOverlayPosition(node);
+    graphCanvasDragRef.current = {
+      documentId,
+      offsetX: event.clientX - shellBounds.left - position.x,
+      offsetY: event.clientY - shellBounds.top - position.y,
+      shellLeft: shellBounds.left,
+      shellTop: shellBounds.top,
+      moved: false,
+    };
+    event.preventDefault();
+
+    const handlePointerMove = (pointerEvent: PointerEvent) => {
+      const dragState = graphCanvasDragRef.current;
+      if (dragState === null) {
+        return;
+      }
+
+      const nextX = pointerEvent.clientX - dragState.shellLeft - dragState.offsetX;
+      const nextY = pointerEvent.clientY - dragState.shellTop - dragState.offsetY;
+      if (!dragState.moved && (Math.abs(nextX - position.x) > 3 || Math.abs(nextY - position.y) > 3)) {
+        dragState.moved = true;
+      }
+
+      const nextPosition = applyGraphCanvasLayerGuidance(
+        {
+          x: nextX,
+          y: nextY,
+        },
+        graphCanvasData?.layerGuidance ?? null,
+      );
+      if (dragState.moved) {
+        updateGraphCanvasNodePosition(dragState.documentId, nextPosition);
+      }
+    };
+
+    const handlePointerUp = (pointerEvent: PointerEvent) => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+
+      const dragState = graphCanvasDragRef.current;
+      graphCanvasDragRef.current = null;
+      if (dragState === null || !dragState.moved) {
+        return;
+      }
+
+      const nextPosition = applyGraphCanvasLayerGuidance(
+        {
+          x: pointerEvent.clientX - dragState.shellLeft - dragState.offsetX,
+          y: pointerEvent.clientY - dragState.shellTop - dragState.offsetY,
+        },
+        graphCanvasData?.layerGuidance ?? null,
+      );
+      updateGraphCanvasNodePosition(dragState.documentId, nextPosition);
+      void persistGraphCanvasPosition(dragState.documentId, nextPosition);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
   }
 
   function handleDividerPointerDown(kind: DividerKind): void {
@@ -879,22 +1359,18 @@ function FlowApp() {
   return (
     <main className="app-shell app-shell-desktop">
       <div className="shell-status-row">
-        <p className="shell-status-pill">Desktop three-panel workspace</p>
-        <p className="shell-status-copy">Home is a first-class surface and graph navigation stays in the same shell.</p>
+        <div className="brand-block shell-top-brand">
+          <h1>Flow</h1>
+          <button className="danger-button-inline shell-stop-button" onClick={() => void handleStopGUI()} disabled={stoppingGUI}>
+            {stoppingGUI ? "Stopping GUI..." : "Stop"}
+          </button>
+        </div>
       </div>
 
       {error !== "" ? <p className="status-line status-line-error">{error}</p> : null}
 
       <div ref={layoutRef} className="desktop-shell">
         <aside className="panel-rail panel-rail-left" style={{ width: `${panelWidths.leftRatio * 100}%` }}>
-          <div className="brand-block">
-            <p className="eyebrow">Desktop Workspace GUI</p>
-            <h1>Flow</h1>
-            <p className="workspace-copy">
-              {workspace?.scope} workspace on port {workspace?.guiPort}
-            </p>
-          </div>
-
           <section className="sidebar-card">
             <header className="sidebar-header">
               <h2>Workspace</h2>
@@ -905,33 +1381,10 @@ function FlowApp() {
                 <dd>{workspace?.workspacePath}</dd>
               </div>
               <div>
-                <dt>Home</dt>
-                <dd>{workspace?.homePath}</dd>
-              </div>
-              <div>
-                <dt>Index</dt>
-                <dd>{workspace?.indexPath}</dd>
-              </div>
-              <div>
-                <dt>Config</dt>
-                <dd>{workspace?.configPath}</dd>
+                <dt>Server</dt>
+                <dd>127.0.0.1:{workspace?.guiPort}</dd>
               </div>
             </dl>
-            <button className="danger-button" onClick={() => void handleStopGUI()} disabled={stoppingGUI}>
-              {stoppingGUI ? "Stopping GUI..." : "Stop GUI"}
-            </button>
-          </section>
-
-          <section className="sidebar-card sidebar-card-grow">
-            <header className="sidebar-header">
-              <h2>Home And Graphs</h2>
-            </header>
-            <GraphTree
-              graphTree={graphTree}
-              activeSurface={activeSurface}
-              onSelectHome={handleSelectHome}
-              onSelectGraph={handleSelectGraph}
-            />
           </section>
 
           <section className="sidebar-card">
@@ -961,6 +1414,18 @@ function FlowApp() {
                 </button>
               ))}
             </div>
+          </section>
+
+          <section className="sidebar-card sidebar-card-grow">
+            <header className="sidebar-header">
+              <h2>Home And Graphs</h2>
+            </header>
+            <GraphTree
+              graphTree={graphTree}
+              activeSurface={activeSurface}
+              onSelectHome={handleSelectHome}
+              onSelectGraph={handleSelectGraph}
+            />
           </section>
         </aside>
 
@@ -1079,31 +1544,116 @@ function FlowApp() {
                 </div>
                 <div className="hero-pill-row">
                   <span>{selectedGraphNode?.countLabel ?? "0 direct / 0 total"}</span>
-                  <span>{graphCanvasItems.length} visible documents</span>
+                  <span>{graphCanvasData?.nodes.length ?? 0} visible documents</span>
+                  <span>{graphCanvasData?.edges.length ?? 0} projected edges</span>
                 </div>
               </header>
 
-              {graphCanvasNodes.length === 0 ? (
+              {graphCanvasError !== "" ? <p className="status-line status-line-error">{graphCanvasError}</p> : null}
+
+              {selectedCanvasNode !== null ? (
+                <section className="graph-canvas-selection-bar">
+                  <div>
+                    <p className="section-kicker">Selected Node</p>
+                    <strong>{selectedCanvasNode.title}</strong>
+                  </div>
+                  <div className="hero-pill-row">
+                    <span>{graphCanvasTypeLabel(selectedCanvasNode.type)}</span>
+                    <span>{selectedCanvasNodeEdgeCount} connected edges highlighted</span>
+                  </div>
+                </section>
+              ) : null}
+
+              {graphCanvasError !== "" ? (
                 <div className="detail-empty">
-                  <p>No documents are visible in this graph subtree.</p>
+                  <p>Graph canvas data could not be loaded for this graph.</p>
+                </div>
+              ) : graphCanvasLoading ? (
+                <div className="detail-empty">
+                  <p>Loading graph canvas nodes and projected edges.</p>
+                </div>
+              ) : graphCanvasData !== null && graphCanvasData.nodes.length === 0 ? (
+                <section className="graph-empty-state">
+                  <div className="graph-empty-state-copy">
+                    <p className="section-kicker">Empty Graph</p>
+                    <h3>Start this canvas with the first document.</h3>
+                    <p>
+                      Create a note, task, or command directly in <strong>{selectedGraphPath}</strong>. The new document will open in the
+                      right-side editor immediately.
+                    </p>
+                  </div>
+
+                  {graphCreateError !== "" ? <p className="status-line status-line-error">{graphCreateError}</p> : null}
+
+                  <div className="graph-create-grid">
+                    <button
+                      className="graph-create-action graph-create-action-note"
+                      onClick={() => void handleCreateGraphDocument("note")}
+                      disabled={graphCreatePendingType !== ""}
+                      type="button"
+                    >
+                      <span className="graph-create-action-type">Note</span>
+                      <strong>Capture context</strong>
+                      <span>Start a knowledge card for design details, references, or working notes.</span>
+                    </button>
+                    <button
+                      className="graph-create-action graph-create-action-task"
+                      onClick={() => void handleCreateGraphDocument("task")}
+                      disabled={graphCreatePendingType !== ""}
+                      type="button"
+                    >
+                      <span className="graph-create-action-type">Task</span>
+                      <strong>Define work</strong>
+                      <span>Drop in a dependency-ready task and refine status, references, and body in the editor.</span>
+                    </button>
+                    <button
+                      className="graph-create-action graph-create-action-command"
+                      onClick={() => void handleCreateGraphDocument("command")}
+                      disabled={graphCreatePendingType !== ""}
+                      type="button"
+                    >
+                      <span className="graph-create-action-type">Command</span>
+                      <strong>Add execution</strong>
+                      <span>Seed a runnable command document with a placeholder name and shell step.</span>
+                    </button>
+                  </div>
+
+                  {graphCreatePendingType !== "" ? <p className="empty-state-inline">Creating {graphCreatePendingType}...</p> : null}
+                </section>
+              ) : graphCanvasData === null ? (
+                <div className="detail-empty">
+                  <p>Graph canvas data is not available yet.</p>
                 </div>
               ) : (
-                <div className="graph-canvas-shell">
+                <div ref={graphCanvasShellRef} className="graph-canvas-shell">
                   <ReactFlow
-                    fitView
-                    fitViewOptions={{ padding: 0.18 }}
+                    key={selectedGraphPath}
+                    defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+                    minZoom={0.5}
+                    maxZoom={1.6}
                     nodes={graphCanvasNodes}
-                    edges={[]}
+                    edges={graphCanvasEdges}
+                    onNodesChange={handleGraphCanvasNodesChange}
                     onNodeClick={(_, node) => {
-                      if (node.id.startsWith("header:")) {
-                        return;
-                      }
-                      const item = graphCanvasItems.find((candidate) => candidate.id === node.id);
-                      if (item !== undefined) {
-                        handleSelectDocument(item.id, item.graph);
-                      }
+                      setSelectedCanvasNodeId(node.id);
                     }}
+                    onNodeDoubleClick={(_, node) => {
+                      handleOpenCanvasDocument(node.id);
+                    }}
+                    onNodeDrag={(_, node) => {
+                      updateGraphCanvasNodePosition(node.id, applyGraphCanvasLayerGuidance(node.position, graphCanvasData?.layerGuidance ?? null));
+                    }}
+                    onNodeDragStop={(_, node) => {
+                      const nextPosition = applyGraphCanvasLayerGuidance(node.position, graphCanvasData?.layerGuidance ?? null);
+                      updateGraphCanvasNodePosition(node.id, nextPosition);
+                      void persistGraphCanvasPosition(node.id, nextPosition);
+                    }}
+                    onPaneClick={() => setSelectedCanvasNodeId("")}
                     nodesDraggable={false}
+                    panOnDrag={false}
+                    zoomOnScroll
+                    zoomOnPinch
+                    zoomOnDoubleClick={false}
                     nodesConnectable={false}
                     elementsSelectable
                     proOptions={{ hideAttribution: true }}
@@ -1111,6 +1661,30 @@ function FlowApp() {
                     <Controls showInteractive={false} />
                     <Background gap={28} color="#d7d0bf" />
                   </ReactFlow>
+                  <div className="graph-canvas-overlay" onClick={() => setSelectedCanvasNodeId("")}
+                  >
+                    {graphCanvasNodes.map((node) => {
+                      const position = graphCanvasOverlayPosition(node);
+                      return (
+                        <div
+                          key={node.id}
+                          className="graph-canvas-overlay-node"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSelectedCanvasNodeId(node.id);
+                          }}
+                          onDoubleClick={(event) => {
+                            event.stopPropagation();
+                            handleOpenCanvasDocument(node.id);
+                          }}
+                          onPointerDown={(event) => handleGraphCanvasOverlayPointerDown(event, node.id)}
+                          style={{ transform: `translate(${position.x}px, ${position.y}px)` }}
+                        >
+                          {node.data.label}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </section>

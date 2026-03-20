@@ -64,6 +64,24 @@ type graphTreeResponse struct {
 	Graphs []graphTreeNodeResponse `json:"graphs"`
 }
 
+type graphCanvasResponse = graph.GraphCanvasView
+
+type graphLayoutPositionRequest struct {
+	DocumentID string  `json:"documentId"`
+	X          float64 `json:"x"`
+	Y          float64 `json:"y"`
+}
+
+type graphLayoutRequest struct {
+	Graph     string                       `json:"graph"`
+	Positions []graphLayoutPositionRequest `json:"positions"`
+}
+
+type graphLayoutResponse struct {
+	Graph     string                       `json:"graph"`
+	Positions []graphLayoutPositionRequest `json:"positions"`
+}
+
 type graphItem struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
@@ -190,6 +208,10 @@ func (handler *apiHandler) ServeHTTP(writer http.ResponseWriter, request *http.R
 		handler.handleUpdateWorkspace(writer, request)
 	case request.URL.Path == "/api/graphs" && request.Method == http.MethodGet:
 		handler.handleGraphTree(writer, request)
+	case request.URL.Path == "/api/graph-canvas" && request.Method == http.MethodGet:
+		handler.handleGraphCanvas(writer, request)
+	case request.URL.Path == "/api/graph-layout" && request.Method == http.MethodPut:
+		handler.handleGraphLayout(writer, request)
 	case request.URL.Path == "/api/workspace" && request.Method == http.MethodGet:
 		handler.handleWorkspace(writer, request)
 	case request.URL.Path == "/api/layers/tasks" && request.Method == http.MethodGet:
@@ -380,6 +402,113 @@ func (handler *apiHandler) handleGraphs(writer http.ResponseWriter, request *htt
 	}
 
 	writeJSON(writer, http.StatusOK, response)
+}
+
+func (handler *apiHandler) handleGraphCanvas(writer http.ResponseWriter, request *http.Request) {
+	selectedGraph := strings.TrimSpace(request.URL.Query().Get("graph"))
+	if selectedGraph == "" {
+		writeError(writer, http.StatusBadRequest, "graph query parameter must not be empty")
+		return
+	}
+
+	documents, err := workspace.LoadDocuments(handler.options.Root.FlowPath)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	layoutPositions, err := index.ReadGraphLayoutPositionsWorkspace(handler.options.Root.IndexPath, handler.options.Root.FlowPath, selectedGraph)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "must not be empty") {
+			status = http.StatusBadRequest
+		}
+
+		writeError(writer, status, err.Error())
+		return
+	}
+
+	persistedPositions := make(map[string]graph.GraphCanvasPosition, len(layoutPositions))
+	for _, position := range layoutPositions {
+		persistedPositions[position.DocumentID] = graph.GraphCanvasPosition{X: position.X, Y: position.Y}
+	}
+
+	view, err := graph.BuildGraphCanvasView(documents, selectedGraph, persistedPositions)
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, graphCanvasResponse(view))
+}
+
+func (handler *apiHandler) handleGraphLayout(writer http.ResponseWriter, request *http.Request) {
+	var payload graphLayoutRequest
+	if err := decodeJSONRequest(request, &payload); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	selectedGraph := strings.TrimSpace(payload.Graph)
+	if selectedGraph == "" {
+		writeError(writer, http.StatusBadRequest, "graph must not be empty")
+		return
+	}
+	if len(payload.Positions) == 0 {
+		writeError(writer, http.StatusBadRequest, "positions must not be empty")
+		return
+	}
+
+	documents, err := workspace.LoadDocuments(handler.options.Root.FlowPath)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	view, err := graph.BuildGraphCanvasView(documents, selectedGraph, nil)
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	visibleDocumentIDs := make(map[string]struct{}, len(view.Nodes))
+	for _, node := range view.Nodes {
+		visibleDocumentIDs[node.ID] = struct{}{}
+	}
+
+	positions := make([]index.GraphLayoutPosition, 0, len(payload.Positions))
+	responsePositions := make([]graphLayoutPositionRequest, 0, len(payload.Positions))
+	for _, position := range payload.Positions {
+		documentID := strings.TrimSpace(position.DocumentID)
+		if documentID == "" {
+			writeError(writer, http.StatusBadRequest, "documentId must not be empty")
+			return
+		}
+
+		if _, ok := visibleDocumentIDs[documentID]; !ok {
+			writeError(writer, http.StatusBadRequest, fmt.Sprintf("document %q is not visible in graph %q", documentID, selectedGraph))
+			return
+		}
+
+		positions = append(positions, index.GraphLayoutPosition{
+			GraphPath:  selectedGraph,
+			DocumentID: documentID,
+			X:          position.X,
+			Y:          position.Y,
+		})
+		responsePositions = append(responsePositions, graphLayoutPositionRequest{
+			DocumentID: documentID,
+			X:          position.X,
+			Y:          position.Y,
+		})
+	}
+
+	if err := index.WriteGraphLayoutPositionsWorkspace(handler.options.Root.IndexPath, handler.options.Root.FlowPath, positions); err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, graphLayoutResponse{Graph: selectedGraph, Positions: responsePositions})
 }
 
 func (handler *apiHandler) handleTaskLayers(writer http.ResponseWriter, _ *http.Request) {

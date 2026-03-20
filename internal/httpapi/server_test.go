@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -73,6 +74,30 @@ func TestNewMuxServesWorkspaceAndReadQueryAPIs(t *testing.T) {
 	noteGraph := performJSONRequest[graph.NoteGraphView](t, handler, http.MethodGet, "/api/notes/graph")
 	if len(noteGraph.Edges) != 1 {
 		t.Fatalf("len(noteGraph.Edges) = %d, want 1", len(noteGraph.Edges))
+	}
+
+	graphCanvas := performJSONRequest[graph.GraphCanvasView](t, handler, http.MethodGet, "/api/graph-canvas?graph=release")
+	if graphCanvas.SelectedGraph != "release" {
+		t.Fatalf("graphCanvas.SelectedGraph = %q, want release", graphCanvas.SelectedGraph)
+	}
+	if len(graphCanvas.Nodes) != 1 || graphCanvas.Nodes[0].ID != "cmd-1" {
+		t.Fatalf("graphCanvas.Nodes = %#v, want release command node", graphCanvas.Nodes)
+	}
+
+	layoutUpdate := performJSONRequestWithBody[graphLayoutResponse](t, handler, http.MethodPut, "/api/graph-layout", map[string]any{
+		"graph": "release",
+		"positions": []map[string]any{{
+			"documentId": "cmd-1",
+			"x":          512,
+			"y":          224,
+		}},
+	})
+	if layoutUpdate.Graph != "release" || len(layoutUpdate.Positions) != 1 {
+		t.Fatalf("layoutUpdate = %#v, want release update payload", layoutUpdate)
+	}
+	graphCanvas = performJSONRequest[graph.GraphCanvasView](t, handler, http.MethodGet, "/api/graph-canvas?graph=release")
+	if !graphCanvas.Nodes[0].PositionPersisted || graphCanvas.Nodes[0].Position.X != 512 || graphCanvas.Nodes[0].Position.Y != 224 {
+		t.Fatalf("graphCanvas.Nodes[0] = %#v, want persisted release layout", graphCanvas.Nodes[0])
 	}
 
 	document := performJSONRequest[documentResponse](t, handler, http.MethodGet, "/api/documents/note-1")
@@ -259,6 +284,11 @@ func TestNewMuxRejectsUnknownOrInvalidAPIRequests(t *testing.T) {
 	}
 
 	assertStatus(t, handler, http.MethodGet, "/api/graphs/unknown", http.StatusBadRequest)
+	assertStatus(t, handler, http.MethodGet, "/api/graph-canvas", http.StatusBadRequest)
+	assertStatus(t, handler, http.MethodGet, "/api/graph-canvas?graph=missing", http.StatusBadRequest)
+	assertStatusWithBody(t, handler, http.MethodPut, "/api/graph-layout", map[string]any{"graph": "", "positions": []map[string]any{{"documentId": "cmd-1", "x": 1, "y": 2}}}, http.StatusBadRequest)
+	assertStatusWithBody(t, handler, http.MethodPut, "/api/graph-layout", map[string]any{"graph": "release", "positions": []map[string]any{}}, http.StatusBadRequest)
+	assertStatusWithBody(t, handler, http.MethodPut, "/api/graph-layout", map[string]any{"graph": "release", "positions": []map[string]any{{"documentId": "missing", "x": 1, "y": 2}}}, http.StatusBadRequest)
 	assertStatus(t, handler, http.MethodGet, "/api/search", http.StatusBadRequest)
 	assertStatus(t, handler, http.MethodGet, "/api/search?limit=bad", http.StatusBadRequest)
 	assertStatus(t, handler, http.MethodGet, "/api/documents/missing", http.StatusNotFound)
@@ -428,6 +458,26 @@ func TestNewMuxUsesFrontendJSONFieldNamesForGraphViews(t *testing.T) {
 	assertJSONHasPath(t, commandLayerPayload, "layers.0.commands.0.path")
 	assertJSONHasPath(t, commandLayerPayload, "commands.cmd-1.run")
 
+	graphCanvasPayload := performRawRequest(t, handler, http.MethodGet, "/api/graph-canvas?graph=release")
+	assertJSONHasPath(t, graphCanvasPayload, "selectedGraph")
+	assertJSONHasPath(t, graphCanvasPayload, "layerGuidance.magneticThresholdPx")
+	assertJSONHasPath(t, graphCanvasPayload, "layerGuidance.guides.0.x")
+	assertJSONHasPath(t, graphCanvasPayload, "nodes.0.position.x")
+	assertJSONHasPath(t, graphCanvasPayload, "nodes.0.positionPersisted")
+	assertJSONHasPath(t, graphCanvasPayload, "edges")
+
+	graphLayoutPayload := performRawRequestWithBody(t, handler, http.MethodPut, "/api/graph-layout", map[string]any{
+		"graph": "release",
+		"positions": []map[string]any{{
+			"documentId": "cmd-1",
+			"x":          440,
+			"y":          180,
+		}},
+	})
+	assertJSONHasPath(t, graphLayoutPayload, "graph")
+	assertJSONHasPath(t, graphLayoutPayload, "positions.0.documentId")
+	assertJSONHasPath(t, graphLayoutPayload, "positions.0.x")
+
 	workspacePayload := performRawRequest(t, handler, http.MethodGet, "/api/workspace")
 	assertJSONHasPath(t, workspacePayload, "panelWidths.leftRatio")
 	assertJSONHasPath(t, workspacePayload, "panelWidths.rightRatio")
@@ -440,11 +490,174 @@ func TestNewMuxUsesFrontendJSONFieldNamesForGraphViews(t *testing.T) {
 	assertJSONArrayHasPath(t, searchPayload, 0, "snippet")
 
 	assertJSONMissingPath(t, noteGraphPayload, "Nodes")
+	assertJSONMissingPath(t, graphCanvasPayload, "SelectedGraph")
 	assertJSONMissingPath(t, workspacePayload, "PanelWidths")
 	assertJSONMissingPath(t, taskLayerPayload, "Layers")
 	assertJSONMissingPath(t, commandLayerPayload, "SelectedGraph")
 	assertJSONArrayMissingPath(t, searchPayload, 0, "Type")
 	assertJSONArrayMissingPath(t, searchPayload, 0, "FeatureSlug")
+}
+
+func TestNewMuxServesGraphCanvasScopeWithPersistedAndSeededPositions(t *testing.T) {
+	t.Parallel()
+
+	root := createGraphCanvasHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	view := performJSONRequest[graph.GraphCanvasView](t, handler, http.MethodGet, "/api/graph-canvas?graph=execution")
+	if view.SelectedGraph != "execution" {
+		t.Fatalf("view.SelectedGraph = %q, want execution", view.SelectedGraph)
+	}
+
+	if len(view.Nodes) != 4 {
+		t.Fatalf("len(view.Nodes) = %d, want 4", len(view.Nodes))
+	}
+	if view.LayerGuidance.MagneticThresholdPx != 18 {
+		t.Fatalf("view.LayerGuidance.MagneticThresholdPx = %v, want 18", view.LayerGuidance.MagneticThresholdPx)
+	}
+
+	note := graphCanvasNodeByID(t, view.Nodes, "note-1")
+	if !note.PositionPersisted || note.Position.X != 640 || note.Position.Y != 180 {
+		t.Fatalf("note = %#v, want persisted 640/180", note)
+	}
+
+	command := graphCanvasNodeByID(t, view.Nodes, "cmd-1")
+	if command.Graph != "execution/parser" {
+		t.Fatalf("command.Graph = %q, want execution/parser", command.Graph)
+	}
+	if command.PositionPersisted {
+		t.Fatal("command.PositionPersisted = true, want false")
+	}
+	if command.Position.X != 780 || command.Position.Y != 120 {
+		t.Fatalf("command.Position = %#v, want layer-2 seeded position", command.Position)
+	}
+
+	task := graphCanvasNodeByID(t, view.Nodes, "task-1")
+	if task.Position.X != 140 || task.Position.Y != 120 {
+		t.Fatalf("task.Position = %#v, want layer-0 seeded position", task.Position)
+	}
+
+	if len(view.Edges) != 3 {
+		t.Fatalf("len(view.Edges) = %d, want 3", len(view.Edges))
+	}
+	assertGraphCanvasEdgeIDs(t, view.Edges, []string{
+		"reference:note-1:cmd-1",
+		"reference:task-1:note-1",
+		"reference:note-2:note-1",
+	})
+}
+
+func TestNewMuxGraphCanvasRebuildsMissingIndex(t *testing.T) {
+	t.Parallel()
+
+	root := createGraphCanvasHTTPAPITestWorkspace(t)
+	if err := os.Remove(root.IndexPath); err != nil {
+		t.Fatalf("Remove(index) error = %v", err)
+	}
+
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	view := performJSONRequest[graph.GraphCanvasView](t, handler, http.MethodGet, "/api/graph-canvas?graph=execution")
+	if len(view.Nodes) != 4 {
+		t.Fatalf("len(view.Nodes) = %d, want 4", len(view.Nodes))
+	}
+	if _, err := os.Stat(root.IndexPath); err != nil {
+		t.Fatalf("Stat(index) error = %v", err)
+	}
+	if graphCanvasNodeByID(t, view.Nodes, "note-1").PositionPersisted {
+		t.Fatal("note position remained persisted after index rebuild, want seeded fallback")
+	}
+}
+
+func TestNewMuxGraphLayoutRebuildsMissingIndexAndPersistsPositions(t *testing.T) {
+	t.Parallel()
+
+	root := createGraphCanvasHTTPAPITestWorkspace(t)
+	if err := os.Remove(root.IndexPath); err != nil {
+		t.Fatalf("Remove(index) error = %v", err)
+	}
+
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	updated := performJSONRequestWithBody[graphLayoutResponse](t, handler, http.MethodPut, "/api/graph-layout", map[string]any{
+		"graph": "execution",
+		"positions": []map[string]any{{
+			"documentId": "note-1",
+			"x":          702,
+			"y":          206,
+		}},
+	})
+	if updated.Graph != "execution" || len(updated.Positions) != 1 {
+		t.Fatalf("updated = %#v, want execution graph layout response", updated)
+	}
+	if _, err := os.Stat(root.IndexPath); err != nil {
+		t.Fatalf("Stat(index) error = %v", err)
+	}
+
+	view := performJSONRequest[graph.GraphCanvasView](t, handler, http.MethodGet, "/api/graph-canvas?graph=execution")
+	note := graphCanvasNodeByID(t, view.Nodes, "note-1")
+	if !note.PositionPersisted || note.Position.X != 702 || note.Position.Y != 206 {
+		t.Fatalf("note = %#v, want rebuilt index plus persisted layout", note)
+	}
+}
+
+func TestNewMuxCreateDocumentAddsCanvasNodeForNewGraph(t *testing.T) {
+	t.Parallel()
+
+	root := createGraphCanvasHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	created := performJSONRequestWithBody[documentResponse](t, handler, http.MethodPost, "/api/documents", map[string]any{
+		"type":        "note",
+		"featureSlug": "execution",
+		"fileName":    "first-note",
+		"id":          "note-new",
+		"graph":       "execution/empty",
+		"title":       "First Note",
+		"references":  []string{},
+		"body":        "First note body\n",
+	})
+	if created.ID != "note-new" || created.Graph != "execution/empty" {
+		t.Fatalf("created = %#v, want note-new in execution/empty", created)
+	}
+
+	view := performJSONRequest[graph.GraphCanvasView](t, handler, http.MethodGet, "/api/graph-canvas?graph=execution/empty")
+	if view.SelectedGraph != "execution/empty" {
+		t.Fatalf("view.SelectedGraph = %q, want execution/empty", view.SelectedGraph)
+	}
+	if len(view.Nodes) != 1 {
+		t.Fatalf("len(view.Nodes) = %d, want 1", len(view.Nodes))
+	}
+
+	node := graphCanvasNodeByID(t, view.Nodes, "note-new")
+	if node.PositionPersisted {
+		t.Fatal("node.PositionPersisted = true, want false for seeded first placement")
+	}
+	if node.Position.X != 140 || node.Position.Y != 120 {
+		t.Fatalf("node.Position = %#v, want seeded first-node position", node.Position)
+	}
+	if len(view.LayerGuidance.Guides) != 1 || view.LayerGuidance.Guides[0].X != 140 {
+		t.Fatalf("view.LayerGuidance.Guides = %#v, want single layer-0 guide", view.LayerGuidance.Guides)
+	}
+
+	graphTree := performJSONRequest[graphTreeResponse](t, handler, http.MethodGet, "/api/graphs")
+	if !slices.ContainsFunc(graphTree.Graphs, func(node graphTreeNodeResponse) bool {
+		return node.GraphPath == "execution/empty" && node.TotalCount == 1
+	}) {
+		t.Fatalf("graphTree.Graphs = %#v, want execution/empty with one document", graphTree.Graphs)
+	}
 }
 
 func createHTTPAPITestWorkspace(t *testing.T) workspace.Root {
@@ -560,6 +773,98 @@ func createHTTPAPITestWorkspaceWithoutIndex(t *testing.T) workspace.Root {
 	return root
 }
 
+func createGraphCanvasHTTPAPITestWorkspace(t *testing.T) workspace.Root {
+	t.Helper()
+
+	rootDir := t.TempDir()
+	root, err := workspace.ResolveLocal(rootDir)
+	if err != nil {
+		t.Fatalf("ResolveLocal() error = %v", err)
+	}
+
+	if err := config.Write(root.ConfigPath, config.Workspace{GUI: config.GUI{Port: 4812, PanelWidths: config.PanelWidths{LeftRatio: 0.31, RightRatio: 0.22}}}); err != nil {
+		t.Fatalf("config.Write() error = %v", err)
+	}
+
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "planning", "foundation.md"), markdown.TaskDocument{
+		Metadata: markdown.TaskMetadata{
+			CommonFields: markdown.CommonFields{ID: "task-0", Type: markdown.TaskType, Graph: "planning", Title: "Foundation"},
+		},
+		Body: "Foundation body\n",
+	})
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "execution", "overview.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "execution", Title: "Overview", Description: "Execution overview"},
+			References:   []string{"cmd-1"},
+		},
+		Body: "Overview body\n",
+	})
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "execution", "build.md"), markdown.TaskDocument{
+		Metadata: markdown.TaskMetadata{
+			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Build"},
+			DependsOn:    []string{"task-0"},
+			References:   []string{"note-1"},
+		},
+		Body: "Build body\n",
+	})
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "execution", "parser", "details.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-2", Type: markdown.NoteType, Graph: "execution/parser", Title: "Parser Details"},
+			References:   []string{"note-1"},
+		},
+		Body: "Parser details\n",
+	})
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "execution", "parser", "run.md"), markdown.CommandDocument{
+		Metadata: markdown.CommandMetadata{
+			CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "execution/parser", Title: "Run Parser"},
+			Name:         "parser",
+			Run:          "./parser.sh",
+		},
+		Body: "Run parser\n",
+	})
+
+	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {
+		t.Fatalf("index.Rebuild() error = %v", err)
+	}
+
+	if err := index.WriteGraphLayoutPositions(root.IndexPath, []index.GraphLayoutPosition{{
+		GraphPath:  "execution",
+		DocumentID: "note-1",
+		X:          640,
+		Y:          180,
+	}}); err != nil {
+		t.Fatalf("WriteGraphLayoutPositions() error = %v", err)
+	}
+
+	return root
+}
+
+func graphCanvasNodeByID(t *testing.T, nodes []graph.GraphCanvasNode, id string) graph.GraphCanvasNode {
+	t.Helper()
+
+	for _, node := range nodes {
+		if node.ID == id {
+			return node
+		}
+	}
+
+	t.Fatalf("graph canvas nodes missing %q in %#v", id, nodes)
+	return graph.GraphCanvasNode{}
+}
+
+func assertGraphCanvasEdgeIDs(t *testing.T, edges []graph.GraphCanvasEdge, want []string) {
+	t.Helper()
+
+	got := make([]string, 0, len(edges))
+	for _, edge := range edges {
+		got = append(got, edge.ID)
+	}
+
+	if !slices.Equal(got, want) {
+		t.Fatalf("edge ids = %#v, want %#v", got, want)
+	}
+}
+
 func writeWorkspaceDocument(t *testing.T, path string, document markdown.Document) {
 	t.Helper()
 
@@ -641,6 +946,32 @@ func performRawRequest(t *testing.T, handler http.Handler, method string, path s
 	}
 
 	return payload
+}
+
+func performRawRequestWithBody(t *testing.T, handler http.Handler, method string, path string, body any) map[string]any {
+	t.Helper()
+
+	data, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(method, path, bytes.NewReader(data))
+	request.Header.Set("Content-Type", "application/json")
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code < 200 || recorder.Code >= 300 {
+		responseBody, _ := io.ReadAll(recorder.Body)
+		t.Fatalf("status = %d, want 2xx, body = %s", recorder.Code, string(responseBody))
+	}
+
+	var value map[string]any
+	if err := json.NewDecoder(recorder.Body).Decode(&value); err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+
+	return value
 }
 
 func performRawRequestArray(t *testing.T, handler http.Handler, method string, path string) []any {

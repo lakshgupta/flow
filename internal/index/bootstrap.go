@@ -78,6 +78,17 @@ CREATE TABLE command_env (
 	env_value TEXT NOT NULL,
 	PRIMARY KEY (document_id, env_key)
 );
+
+CREATE TABLE graph_layout_positions (
+	graph_path TEXT NOT NULL,
+	document_id TEXT NOT NULL,
+	x REAL NOT NULL,
+	y REAL NOT NULL,
+	updated_at TEXT NOT NULL,
+	PRIMARY KEY (graph_path, document_id)
+);
+
+CREATE INDEX graph_layout_positions_graph_idx ON graph_layout_positions(graph_path, document_id);
 `
 
 type indexedDocument struct {
@@ -99,6 +110,8 @@ type GraphNode struct {
 // Rebuild recreates the derived index file without touching Markdown sources.
 // When flowPaths[0] is provided, documents under .flow/data are reindexed into SQLite.
 func Rebuild(indexPath string, flowPaths ...string) error {
+	preservedLayouts, _ := loadExistingGraphLayoutPositions(indexPath)
+
 	if err := os.MkdirAll(filepath.Dir(indexPath), 0o755); err != nil {
 		return fmt.Errorf("create index directory: %w", err)
 	}
@@ -145,10 +158,42 @@ func Rebuild(indexPath string, flowPaths ...string) error {
 		if err := insertGraphProjection(transaction, documents); err != nil {
 			return err
 		}
+
+		if err := reinsertPreservedGraphLayoutPositions(transaction, documents, preservedLayouts); err != nil {
+			return err
+		}
 	}
 
 	if err := transaction.Commit(); err != nil {
 		return fmt.Errorf("commit rebuild transaction: %w", err)
+	}
+
+	return nil
+}
+
+func reinsertPreservedGraphLayoutPositions(transaction *sql.Tx, documents []indexedDocument, preserved []GraphLayoutPosition) error {
+	if len(preserved) == 0 {
+		return nil
+	}
+
+	allowed := make(map[string]struct{}, len(documents))
+	for _, document := range documents {
+		id, _, ok := indexedDocumentIdentity(document.document)
+		if !ok || document.graphPath == "" {
+			continue
+		}
+
+		allowed[graphLayoutKey(document.graphPath, id)] = struct{}{}
+	}
+
+	for _, position := range preserved {
+		if _, ok := allowed[graphLayoutKey(position.GraphPath, position.DocumentID)]; !ok {
+			continue
+		}
+
+		if err := insertGraphLayoutPosition(transaction, position); err != nil {
+			return err
+		}
 	}
 
 	return nil

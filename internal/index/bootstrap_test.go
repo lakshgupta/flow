@@ -32,6 +32,14 @@ func TestRebuildCreatesSchemaDatabase(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("documents table count = %d, want 1", count)
 	}
+
+	if err := database.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'graph_layout_positions'`).Scan(&count); err != nil {
+		t.Fatalf("QueryRow(graph_layout_positions) error = %v", err)
+	}
+
+	if count != 1 {
+		t.Fatalf("graph_layout_positions table count = %d, want 1", count)
+	}
 }
 
 func TestRebuildIndexesMarkdownDocuments(t *testing.T) {
@@ -271,6 +279,99 @@ func TestRebuildStoresBidirectionalNoteLinksOnce(t *testing.T) {
 
 	if documentID != "note-1" || referenceID != "task-1" {
 		t.Fatalf("soft reference = %q %q, want note-1 task-1", documentID, referenceID)
+	}
+}
+
+func TestGraphLayoutPositionsRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	flowPath := filepath.Join(rootDir, ".flow")
+	indexPath := filepath.Join(flowPath, "config", "flow.index")
+
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "graphs", "demo", "alpha.md"), "---\nid: note-1\ntype: note\ngraph: demo\ntitle: Alpha\n---\n\nAlpha\n")
+
+	if err := Rebuild(indexPath, flowPath); err != nil {
+		t.Fatalf("Rebuild() error = %v", err)
+	}
+
+	if err := WriteGraphLayoutPositions(indexPath, []GraphLayoutPosition{{
+		GraphPath:  "demo",
+		DocumentID: "note-1",
+		X:          120.5,
+		Y:          340.25,
+	}}); err != nil {
+		t.Fatalf("WriteGraphLayoutPositions() error = %v", err)
+	}
+
+	positions, err := ReadGraphLayoutPositions(indexPath, "demo")
+	if err != nil {
+		t.Fatalf("ReadGraphLayoutPositions() error = %v", err)
+	}
+
+	if len(positions) != 1 {
+		t.Fatalf("len(positions) = %d, want 1", len(positions))
+	}
+
+	if positions[0].GraphPath != "demo" || positions[0].DocumentID != "note-1" {
+		t.Fatalf("positions[0] = %#v", positions[0])
+	}
+
+	if positions[0].X != 120.5 || positions[0].Y != 340.25 {
+		t.Fatalf("positions[0] coordinates = (%v, %v), want (120.5, 340.25)", positions[0].X, positions[0].Y)
+	}
+
+	if positions[0].UpdatedAt == "" {
+		t.Fatal("positions[0].UpdatedAt = empty, want timestamp")
+	}
+}
+
+func TestRebuildPreservesGraphLayoutPositionsForSurvivingDocuments(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	flowPath := filepath.Join(rootDir, ".flow")
+	indexPath := filepath.Join(flowPath, "config", "flow.index")
+	alphaPath := filepath.Join(flowPath, "data", "graphs", "demo", "alpha.md")
+	betaPath := filepath.Join(flowPath, "data", "graphs", "demo", "beta.md")
+
+	writeMarkdownDocument(t, alphaPath, "---\nid: note-1\ntype: note\ngraph: demo\ntitle: Alpha\n---\n\nAlpha\n")
+	writeMarkdownDocument(t, betaPath, "---\nid: task-1\ntype: task\ngraph: demo\ntitle: Beta\nstatus: todo\n---\n\nBeta\n")
+
+	if err := Rebuild(indexPath, flowPath); err != nil {
+		t.Fatalf("Rebuild() first error = %v", err)
+	}
+
+	if err := WriteGraphLayoutPositions(indexPath, []GraphLayoutPosition{
+		{GraphPath: "demo", DocumentID: "note-1", X: 10, Y: 20, UpdatedAt: "2026-03-18T10:00:00Z"},
+		{GraphPath: "demo", DocumentID: "task-1", X: 30, Y: 40, UpdatedAt: "2026-03-18T10:01:00Z"},
+	}); err != nil {
+		t.Fatalf("WriteGraphLayoutPositions() error = %v", err)
+	}
+
+	if err := os.Remove(betaPath); err != nil {
+		t.Fatalf("Remove(betaPath) error = %v", err)
+	}
+
+	if err := Rebuild(indexPath, flowPath); err != nil {
+		t.Fatalf("Rebuild() second error = %v", err)
+	}
+
+	positions, err := ReadGraphLayoutPositions(indexPath, "demo")
+	if err != nil {
+		t.Fatalf("ReadGraphLayoutPositions() error = %v", err)
+	}
+
+	if len(positions) != 1 {
+		t.Fatalf("len(positions) = %d, want 1", len(positions))
+	}
+
+	if positions[0].DocumentID != "note-1" || positions[0].X != 10 || positions[0].Y != 20 {
+		t.Fatalf("positions[0] = %#v", positions[0])
+	}
+
+	if positions[0].UpdatedAt != "2026-03-18T10:00:00Z" {
+		t.Fatalf("positions[0].UpdatedAt = %q, want preserved timestamp", positions[0].UpdatedAt)
 	}
 }
 
