@@ -1,0 +1,5 @@
+gui:
+    port: 4317
+    panelWidths:
+        leftRatio: 0.206690126523986
+        rightRatio: 0.2723916236390459

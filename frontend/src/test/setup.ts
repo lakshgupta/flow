@@ -10,23 +10,12 @@ if (!("ResizeObserver" in globalThis)) {
   globalThis.ResizeObserver = ResizeObserverStub as typeof ResizeObserver;
 }
 
-if (!("matchMedia" in window)) {
-  window.matchMedia = () => ({
-    matches: false,
-    media: "",
-    onchange: null,
-    addEventListener() {},
-    removeEventListener() {},
-    addListener() {},
-    removeListener() {},
-    dispatchEvent() {
-      return false;
-    },
-  });
-}
-
 if (!("elementFromPoint" in document)) {
   document.elementFromPoint = () => document.body;
+}
+
+if (!("getAnimations" in HTMLElement.prototype)) {
+  HTMLElement.prototype.getAnimations = () => [];
 }
 
 const zeroRect = () => ({
@@ -45,6 +34,10 @@ const zeroRect = () => ({
 
 if (!("getBoundingClientRect" in HTMLElement.prototype)) {
   HTMLElement.prototype.getBoundingClientRect = zeroRect;
+}
+
+if (!("scrollIntoView" in HTMLElement.prototype)) {
+  HTMLElement.prototype.scrollIntoView = function() {};
 }
 
 if (!("getClientRects" in HTMLElement.prototype)) {
@@ -66,3 +59,17 @@ if (!("getClientRects" in Range.prototype)) {
     [Symbol.iterator]: function* iterator() {},
   }) as DOMRectList;
 }
+
+Object.defineProperty(window, "matchMedia", {
+  writable: true,
+  value: (query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  })
+});

@@ -1,3 +1,4 @@
+import { ThemeProvider } from "./lib/theme";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -83,6 +84,28 @@ const emptyGraphLists = {
   commands: { type: "command", availableGraphs: [], graphItems: {} },
 };
 
+const graphTreeResponse = {
+  home: homeResponse,
+  graphs: [
+    {
+      graphPath: "execution",
+      displayName: "Execution",
+      directCount: 1,
+      totalCount: 1,
+      hasChildren: false,
+      countLabel: "1 direct / 1 total",
+    },
+  ],
+};
+
+function noteGraphs(...paths: string[]) {
+  return {
+    type: "note",
+    availableGraphs: paths,
+    graphItems: Object.fromEntries(paths.map((p) => [p, []])),
+  };
+}
+
 function jsonResponse(body: unknown, options?: MockResponseOptions): Response {
   return new Response(JSON.stringify(body), {
     status: options?.status ?? 200,
@@ -135,19 +158,6 @@ describe("App graph canvas flows", () => {
   });
 
   it("opens the right panel on node double click and persists snapped drag-end positions", async () => {
-    const graphTreeResponse = {
-      home: homeResponse,
-      graphs: [
-        {
-          graphPath: "execution",
-          displayName: "Execution",
-          directCount: 1,
-          totalCount: 1,
-          hasChildren: false,
-          countLabel: "1 direct / 1 total",
-        },
-      ],
-    };
     const graphCanvasResponse = {
       selectedGraph: "execution",
       availableGraphs: ["execution"],
@@ -201,7 +211,7 @@ describe("App graph canvas flows", () => {
       }
 
       if (url === "/api/graphs/note") {
-        return emptyGraphLists.notes;
+        return noteGraphs("execution");
       }
 
       if (url === "/api/graphs/task") {
@@ -231,17 +241,17 @@ describe("App graph canvas flows", () => {
     });
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
-    await screen.findByText("Home And Graphs");
+    await screen.findByText("Content");
 
-    const executionButton = screen.getByText("execution").closest("button");
+    const executionButton = screen.getByText("Execution").closest("button");
     if (executionButton === null) {
       throw new Error("missing execution graph button");
     }
 
     await user.click(executionButton);
-    await screen.findByText("Graph Workspace");
+    await screen.findByText("Graph Canvas");
     await screen.findByTestId("flow-node-note-1");
 
     await user.click(screen.getByRole("button", { name: "Select note-1" }));
@@ -251,7 +261,6 @@ describe("App graph canvas flows", () => {
 
     await user.dblClick(screen.getByRole("button", { name: "Open note-1" }));
 
-    expect(await screen.findByText("Context Panel")).toBeInTheDocument();
     expect(await screen.findByText("Overview body")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Drag stop note-1" }));
@@ -308,7 +317,7 @@ describe("App graph canvas flows", () => {
       }
 
       if (url === "/api/graphs/note") {
-        return emptyGraphLists.notes;
+        return noteGraphs("execution/empty");
       }
 
       if (url === "/api/graphs/task") {
@@ -362,11 +371,11 @@ describe("App graph canvas flows", () => {
     });
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
-    await screen.findByText("Home And Graphs");
+    await screen.findByText("Content");
 
-    const emptyGraphButton = screen.getByText("execution/empty").closest("button");
+    const emptyGraphButton = screen.getByText("Empty").closest("button");
     if (emptyGraphButton === null) {
       throw new Error("missing empty graph button");
     }
@@ -413,7 +422,7 @@ describe("App graph canvas flows", () => {
       }
 
       if (url === "/api/graphs/note") {
-        return emptyGraphLists.notes;
+        return noteGraphs("execution");
       }
 
       if (url === "/api/graphs/task") {
@@ -450,20 +459,76 @@ describe("App graph canvas flows", () => {
     });
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<ThemeProvider><App /></ThemeProvider>);
 
-    await screen.findByText("Home And Graphs");
+    await screen.findByText("Content");
 
-    const executionButton = screen.getByText("execution").closest("button");
+    const executionButton = screen.getByText("Execution").closest("button");
     if (executionButton === null) {
       throw new Error("missing execution graph button");
     }
 
     await user.click(executionButton);
 
-    expect(await screen.findByText("Graph Workspace")).toBeInTheDocument();
+    expect(await screen.findByText("Graph Canvas")).toBeInTheDocument();
     expect(await screen.findByTestId("flow-node-note-1")).toBeInTheDocument();
     expect(screen.getByText("0 projected edges")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith("/api/graph-canvas?graph=execution", expect.anything());
+  });
+
+  it("switches to the Home workspace from a Graph and renders the HomeRichTextEditor properly", async () => {
+    installFetchMock((url) => {
+      if (url === "/api/workspace") return workspaceResponse;
+      if (url === "/api/graphs") return graphTreeResponse;
+      if (url === "/api/graphs/note") return noteGraphs("execution");
+      if (url === "/api/graphs/task") return emptyGraphLists.tasks;
+      if (url === "/api/graphs/command") return emptyGraphLists.commands;
+      if (url === "/api/graph-canvas?graph=execution") {
+        return {
+          selectedGraph: "execution",
+          availableGraphs: ["execution"],
+          layerGuidance: { magneticThresholdPx: 18, guides: [] },
+          nodes: [
+            {
+              id: "note-1",
+              type: "note",
+              graph: "execution",
+              title: "Overview",
+              description: "",
+              path: "data/graphs/execution/overview.md",
+              featureSlug: "execution",
+              position: { x: 140, y: 120 },
+              positionPersisted: false,
+            },
+          ],
+          edges: [],
+        };
+      }
+      throw new Error(`Unhandled request: GET ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Content");
+
+    // Initial state: home surface is selected
+    expect(await screen.findByLabelText("Document title")).toBeInTheDocument();
+    expect(screen.getByLabelText("Home body editor")).toBeInTheDocument();
+    expect(screen.queryByTestId("react-flow-mock")).not.toBeInTheDocument();
+
+    // Click a graph to switch to the canvas view
+    const graphButton = (await screen.findByText("Execution")).closest("button");
+    if (graphButton) await user.click(graphButton);
+
+    expect(await screen.findByTestId("react-flow-mock")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Document title")).not.toBeInTheDocument();
+
+    // Navigate back to Home
+    const homeBtn = screen.getByText("Home").closest("button");
+    if (homeBtn) await user.click(homeBtn);
+
+    expect(await screen.findByLabelText("Document title")).toBeInTheDocument();
+    expect(screen.queryByTestId("react-flow-mock")).not.toBeInTheDocument();
   });
 });

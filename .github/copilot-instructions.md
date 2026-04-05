@@ -19,6 +19,7 @@
 ## Persistent Rules
 
 - Keep [docs/architecture.md](../docs/architecture.md) as the approved design source for feature work.
+- For UI design work, refer to the UI Design Guidelines in [docs/architecture.md](../docs/architecture.md).
 - Keep [docs/backlog.md](../docs/backlog.md) as the execution source of truth for planned feature work.
 - Use backlog feature IDs in the format `FEAT-YYYYMMDD-dddd`.
 - Run relevant validation after code changes whenever feasible.
