@@ -26,7 +26,7 @@ func TestLoadDocumentsScansGraphTreeAndNormalizesGraphFromPath(t *testing.T) {
 		t.Fatalf("len(documents) = %d, want 1", len(documents))
 	}
 
-	if documents[0].Path != "data/graphs/execution/parser/build.md" {
+	if documents[0].Path != "data/content/execution/parser/build.md" {
 		t.Fatalf("documents[0].Path = %q", documents[0].Path)
 	}
 

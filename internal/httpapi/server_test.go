@@ -339,11 +339,11 @@ func TestNewMuxMutatesDocumentsAndReindexes(t *testing.T) {
 		"references":  []string{"note-1"},
 		"body":        "Publish task body\n",
 	})
-	if created.ID != "task-2" || created.Path != "data/graphs/release/publish.md" {
+	if created.ID != "task-2" || created.Path != "data/content/release/publish.md" {
 		t.Fatalf("created = %#v", created)
 	}
 
-	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "graphs", "release", "publish.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "content", "release", "publish.md")); err != nil {
 		t.Fatalf("Stat(created file) error = %v", err)
 	}
 
@@ -366,7 +366,7 @@ func TestNewMuxMutatesDocumentsAndReindexes(t *testing.T) {
 		t.Fatalf("deleted = %#v", deleted)
 	}
 
-	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "graphs", "release", "publish.md")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "content", "release", "publish.md")); !os.IsNotExist(err) {
 		t.Fatalf("Stat(deleted file) error = %v, want not exist", err)
 	}
 
@@ -673,28 +673,28 @@ func createHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 		t.Fatalf("config.Write() error = %v", err)
 	}
 
-	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "notes", "architecture.md"), markdown.NoteDocument{
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "notes", "architecture.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "notes", Title: "Architecture"},
 			References:   []string{"note-2", "task-1"},
 		},
 		Body: "Architecture body\n",
 	})
-	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "notes", "follow-up.md"), markdown.NoteDocument{
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "notes", "follow-up.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "note-2", Type: markdown.NoteType, Graph: "notes", Title: "Follow Up"},
 			References:   []string{"note-1"},
 		},
 		Body: "Follow up body\n",
 	})
-	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "planning", "foundation.md"), markdown.TaskDocument{
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "planning", "foundation.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "task-0", Type: markdown.TaskType, Graph: "planning", Title: "Foundation"},
 			Status:       "todo",
 		},
 		Body: "Foundation body\n",
 	})
-	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "execution", "parser.md"), markdown.TaskDocument{
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "execution", "parser.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Parser"},
 			Status:       "doing",
@@ -703,7 +703,7 @@ func createHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 		},
 		Body: "Parser body\n",
 	})
-	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "release", "build.md"), markdown.CommandDocument{
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "release", "build.md"), markdown.CommandDocument{
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "release", Title: "Build"},
 			Name:         "build",
@@ -739,14 +739,14 @@ func createGraphTreeHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 		t.Fatalf("WriteFile(home) error = %v", err)
 	}
 
-	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "execution", "build.md"), markdown.TaskDocument{
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "execution", "build.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "wrong", Title: "Build", Description: "Build graph task"},
 			Status:       "todo",
 		},
 		Body: "Build body\n",
 	})
-	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "execution", "parser", "parse.md"), markdown.CommandDocument{
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "execution", "parser", "parse.md"), markdown.CommandDocument{
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "wrong", Title: "Parse", Description: "Parse command"},
 			Name:         "parse",
@@ -786,20 +786,20 @@ func createGraphCanvasHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 		t.Fatalf("config.Write() error = %v", err)
 	}
 
-	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "planning", "foundation.md"), markdown.TaskDocument{
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "planning", "foundation.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "task-0", Type: markdown.TaskType, Graph: "planning", Title: "Foundation"},
 		},
 		Body: "Foundation body\n",
 	})
-	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "execution", "overview.md"), markdown.NoteDocument{
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "execution", "overview.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "execution", Title: "Overview", Description: "Execution overview"},
 			References:   []string{"cmd-1"},
 		},
 		Body: "Overview body\n",
 	})
-	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "execution", "build.md"), markdown.TaskDocument{
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "execution", "build.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Build"},
 			DependsOn:    []string{"task-0"},
@@ -807,14 +807,14 @@ func createGraphCanvasHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 		},
 		Body: "Build body\n",
 	})
-	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "execution", "parser", "details.md"), markdown.NoteDocument{
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "execution", "parser", "details.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "note-2", Type: markdown.NoteType, Graph: "execution/parser", Title: "Parser Details"},
 			References:   []string{"note-1"},
 		},
 		Body: "Parser details\n",
 	})
-	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "execution", "parser", "run.md"), markdown.CommandDocument{
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "execution", "parser", "run.md"), markdown.CommandDocument{
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "execution/parser", Title: "Run Parser"},
 			Name:         "parser",

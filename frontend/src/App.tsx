@@ -4,10 +4,11 @@ import {
   Controls,
   ReactFlow,
   ReactFlowProvider,
+  useViewport,
   type Node,
   type NodeChange,
 } from "@xyflow/react";
-import { CalendarDays, FileText, Info, List, PaintbrushVertical, PanelRight, PencilLine, Search, Settings, Trash2, TriangleAlert, X } from "lucide-react";
+import { CalendarDays, FileText, Info, List, PaintbrushVertical, PanelRight, Search, Settings, Trash2, TriangleAlert, X } from "lucide-react";
 import { startTransition, useDeferredValue, useEffect, useRef, useState } from "react";
 
 import { AppSidebar } from "./components/AppSidebar";
@@ -35,7 +36,7 @@ import { Label } from "./components/ui/label";
 import { RadioGroup, RadioGroupItem } from "./components/ui/radio-group";
 import { Separator } from "./components/ui/separator";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger } from "./components/ui/sidebar";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
+
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./components/ui/tooltip";
 import { requestJSON, loadWorkspaceSnapshot } from "./lib/api";
 import {
@@ -62,7 +63,7 @@ import {
 } from "./lib/graphCanvasUtils";
 import { useTheme } from "./lib/theme";
 import { todayString } from "./lib/dateEntries";
-import { markdownToHTML } from "./richText";
+
 import { RichTextEditor } from "./components/editor/RichTextEditor";
 import type {
   DeleteDocumentResponse,
@@ -87,6 +88,7 @@ import "./styles.css";
 
 function FlowApp() {
   const { theme, setTheme } = useTheme();
+  const rfViewport = useViewport();
   const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null);
   const [graphTree, setGraphTree] = useState<GraphTreeResponse | null>(null);
   const [graphCanvasData, setGraphCanvasData] = useState<GraphCanvasResponse | null>(null);
@@ -97,7 +99,6 @@ function FlowApp() {
   const [selectedCanvasNodeId, setSelectedCanvasNodeId] = useState<string>("");
   const [graphCreatePendingType, setGraphCreatePendingType] = useState<GraphCreateType | "">("");
   const [graphCreateError, setGraphCreateError] = useState<string>("");
-  const [autoEditDocumentId, setAutoEditDocumentId] = useState<string>("");
   const [activeSurface, setActiveSurface] = useState<SurfaceState>({ kind: "home" });
   const [selectedDocumentId, setSelectedDocumentId] = useState<string>("");
   const [selectedDocument, setSelectedDocument] = useState<DocumentResponse | null>(null);
@@ -111,9 +112,7 @@ function FlowApp() {
   const [stoppingGUI, setStoppingGUI] = useState<boolean>(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState<boolean>(false);
   const [settingsTab, setSettingsTab] = useState<"general" | "theme" | "stop">("general");
-  const [isEditing, setIsEditing] = useState<boolean>(false);
   const [formState, setFormState] = useState<DocumentFormState>(emptyDocumentFormState);
-  const [graphSurfaceTab, setGraphSurfaceTab] = useState<"canvas" | "overview">("canvas");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false);
   const [homeFormState, setHomeFormState] = useState<HomeFormState>(emptyHomeFormState);
   const [mutationError, setMutationError] = useState<string>("");
@@ -131,6 +130,9 @@ function FlowApp() {
   const graphCanvasShellRef = useRef<HTMLDivElement | null>(null);
   const homeFormStateRef = useRef<HomeFormState>(emptyHomeFormState);
   const homeAutoSaveTimerRef = useRef<number | null>(null);
+  const documentAutoSaveTimerRef = useRef<number | null>(null);
+  const formStateRef = useRef<DocumentFormState>(emptyDocumentFormState);
+  const selectedDocumentRef = useRef<DocumentResponse | null>(null);
   const graphCanvasDragRef = useRef<{
     documentId: string;
     offsetX: number;
@@ -140,7 +142,7 @@ function FlowApp() {
     moved: boolean;
   } | null>(null);
   const selectedGraphPath = activeSurface.kind === "graph" ? activeSurface.graphPath : "";
-  const [rightRailCollapsed, setRightRailCollapsed] = useState<boolean>(false);
+  const [rightRailCollapsed, setRightRailCollapsed] = useState<boolean>(true);
 
   const [rightPanelTab, setRightPanelTab] = useState<"calendar" | "toc" | "document" | "search">("document");
   const [scrollTargetId, setScrollTargetId] = useState<string | null>(null);
@@ -151,16 +153,14 @@ function FlowApp() {
   const selectedGraphNode = graphTree?.graphs.find((graphNode) => graphNode.graphPath === selectedGraphPath) ?? null;
   const selectedCanvasNode = selectedGraphCanvasNode(graphCanvasData, selectedCanvasNodeId);
   const selectedCanvasNodeEdgeCount = countConnectedGraphCanvasEdges(graphCanvasData, selectedCanvasNodeId);
-  const workspaceSurfaceSection = activeSurface.kind === "graph" ? "Graphs" : "Home";
+  const workspaceSurfaceSection = activeSurface.kind === "graph" ? "Content" : "Home";
   const workspaceSurfaceTitle = activeSurface.kind === "graph" ? selectedGraphNode?.displayName ?? selectedGraphPath : null;
 
   useEffect(() => {
     if (activeSurface.kind === "home") {
       setRightPanelTab("toc");
-      setRightRailCollapsed(false);
     } else if (selectedDocumentId !== "") {
       setRightPanelTab("document");
-      setRightRailCollapsed(false);
     }
   }, [selectedDocumentId, activeSurface.kind]);
 
@@ -215,11 +215,16 @@ function FlowApp() {
   }, []);
 
   useEffect(() => {
+    if (documentAutoSaveTimerRef.current !== null) {
+      clearTimeout(documentAutoSaveTimerRef.current);
+      documentAutoSaveTimerRef.current = null;
+    }
+
     if (selectedDocumentId === "") {
       setSelectedDocument(null);
+      selectedDocumentRef.current = null;
       setFormState(emptyDocumentFormState);
-      setIsEditing(false);
-      setAutoEditDocumentId("");
+      formStateRef.current = emptyDocumentFormState;
       setPanelError("");
       return;
     }
@@ -232,18 +237,17 @@ function FlowApp() {
         const response = await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(selectedDocumentId)}`);
         if (!cancelled) {
           setSelectedDocument(response);
-          setFormState(createDocumentFormState(response));
-          setIsEditing(autoEditDocumentId === response.id);
-          if (autoEditDocumentId === response.id) {
-            setAutoEditDocumentId("");
-          }
+          selectedDocumentRef.current = response;
+          const nextFormState = createDocumentFormState(response);
+          setFormState(nextFormState);
+          formStateRef.current = nextFormState;
         }
       } catch (loadError) {
         if (!cancelled) {
           setSelectedDocument(null);
+          selectedDocumentRef.current = null;
           setFormState(emptyDocumentFormState);
-          setIsEditing(false);
-          setAutoEditDocumentId("");
+          formStateRef.current = emptyDocumentFormState;
           setPanelError(loadError instanceof Error ? loadError.message : String(loadError));
         }
       }
@@ -380,7 +384,20 @@ function FlowApp() {
   }
 
   function updateFormField(field: keyof DocumentFormState, value: string): void {
-    setFormState((current) => ({ ...current, [field]: value }));
+    setFormState((current) => {
+      const next = { ...current, [field]: value };
+      formStateRef.current = next;
+      return next;
+    });
+    if (documentAutoSaveTimerRef.current !== null) {
+      clearTimeout(documentAutoSaveTimerRef.current);
+    }
+    documentAutoSaveTimerRef.current = window.setTimeout(() => {
+      documentAutoSaveTimerRef.current = null;
+      if (selectedDocumentRef.current !== null) {
+        void handleSaveDocument(selectedDocumentRef.current, formStateRef.current);
+      }
+    }, 800);
   }
 
   function updateHomeFormField(field: keyof HomeFormState, value: string): void {
@@ -399,10 +416,13 @@ function FlowApp() {
   }
 
   function clearContextPanel(): void {
+    if (documentAutoSaveTimerRef.current !== null) {
+      clearTimeout(documentAutoSaveTimerRef.current);
+      documentAutoSaveTimerRef.current = null;
+    }
     setSelectedDocumentId("");
     setSelectedDocument(null);
     setFormState(emptyDocumentFormState);
-    setIsEditing(false);
     setDeleteDialogOpen(false);
     setPanelError("");
     setMutationError("");
@@ -414,7 +434,6 @@ function FlowApp() {
     setGraphCanvasError("");
     setGraphCreateError("");
     setSelectedCanvasNodeId("");
-    setGraphSurfaceTab("canvas");
     startTransition(() => {
       setActiveSurface({ kind: "home" });
     });
@@ -425,21 +444,9 @@ function FlowApp() {
     setGraphCanvasError("");
     setGraphCreateError("");
     setSelectedCanvasNodeId("");
-    setGraphSurfaceTab("canvas");
     startTransition(() => {
       setActiveSurface({ kind: "graph", graphPath });
     });
-  }
-
-  function startEditingDocument(): void {
-    if (selectedDocument === null) {
-      return;
-    }
-
-    setFormState(createDocumentFormState(selectedDocument));
-    setMutationError("");
-    setMutationSuccess("");
-    setIsEditing(true);
   }
 
   function handleOpenCanvasDocument(documentId: string): void {
@@ -448,6 +455,8 @@ function FlowApp() {
     setPanelError("");
     setSelectedCanvasNodeId(documentId);
     setSelectedDocumentId(documentId);
+    setRightPanelTab("document");
+    setRightRailCollapsed(false);
   }
 
   function updateGraphCanvasNodePosition(documentId: string, position: GraphCanvasPosition): void {
@@ -550,11 +559,9 @@ function FlowApp() {
         body: JSON.stringify(createGraphDocumentPayload(type, selectedGraphPath)),
       });
 
-      setAutoEditDocumentId(createdDocument.id);
       await refreshShellViews({ nextDocument: createdDocument, nextDocumentId: createdDocument.id });
       setSelectedDocument(createdDocument);
       setFormState(createDocumentFormState(createdDocument));
-      setIsEditing(true);
       setSelectedCanvasNodeId(createdDocument.id);
       setMutationError("");
       setMutationSuccess(`${formatDocumentType(createdDocument.type)} created.`);
@@ -582,10 +589,13 @@ function FlowApp() {
 
     const shellBounds = shell.getBoundingClientRect();
     const position = graphCanvasOverlayPosition(node);
+    const { x: vpX, y: vpY, zoom } = rfViewport;
+    const screenX = position.x * zoom + vpX;
+    const screenY = position.y * zoom + vpY;
     graphCanvasDragRef.current = {
       documentId,
-      offsetX: event.clientX - shellBounds.left - position.x,
-      offsetY: event.clientY - shellBounds.top - position.y,
+      offsetX: event.clientX - shellBounds.left - screenX,
+      offsetY: event.clientY - shellBounds.top - screenY,
       shellLeft: shellBounds.left,
       shellTop: shellBounds.top,
       moved: false,
@@ -598,8 +608,10 @@ function FlowApp() {
         return;
       }
 
-      const nextX = pointerEvent.clientX - dragState.shellLeft - dragState.offsetX;
-      const nextY = pointerEvent.clientY - dragState.shellTop - dragState.offsetY;
+      const nextScreenX = pointerEvent.clientX - dragState.shellLeft - dragState.offsetX;
+      const nextScreenY = pointerEvent.clientY - dragState.shellTop - dragState.offsetY;
+      const nextX = (nextScreenX - vpX) / zoom;
+      const nextY = (nextScreenY - vpY) / zoom;
       if (!dragState.moved && (Math.abs(nextX - position.x) > 3 || Math.abs(nextY - position.y) > 3)) {
         dragState.moved = true;
       }
@@ -628,8 +640,8 @@ function FlowApp() {
 
       const nextPosition = applyGraphCanvasLayerGuidance(
         {
-          x: pointerEvent.clientX - dragState.shellLeft - dragState.offsetX,
-          y: pointerEvent.clientY - dragState.shellTop - dragState.offsetY,
+          x: (pointerEvent.clientX - dragState.shellLeft - dragState.offsetX - vpX) / zoom,
+          y: (pointerEvent.clientY - dragState.shellTop - dragState.offsetY - vpY) / zoom,
         },
         graphCanvasData?.layerGuidance ?? null,
       );
@@ -696,46 +708,42 @@ function FlowApp() {
     }
   }
 
-  async function handleSaveDocument(): Promise<void> {
-    if (selectedDocument === null) {
-      return;
-    }
-
+  async function handleSaveDocument(doc: DocumentResponse, state: DocumentFormState): Promise<void> {
     try {
       setSavingDocument(true);
       setMutationError("");
-      setMutationSuccess("");
 
       const payload: Record<string, unknown> = {
-        title: formState.title,
-        graph: formState.graph,
-        tags: splitList(formState.tags),
-        body: formState.body,
-        references: splitList(formState.references),
+        title: state.title,
+        graph: state.graph,
+        tags: splitList(state.tags),
+        body: state.body,
+        references: splitList(state.references),
       };
 
-      if (selectedDocument.type === "task") {
-        payload.status = formState.status;
-        payload.dependsOn = splitList(formState.dependsOn);
+      if (doc.type === "task") {
+        payload.status = state.status;
+        payload.dependsOn = splitList(state.dependsOn);
       }
 
-      if (selectedDocument.type === "command") {
-        payload.name = formState.name;
-        payload.run = formState.run;
-        payload.dependsOn = splitList(formState.dependsOn);
-        payload.env = parseEnv(formState.env);
+      if (doc.type === "command") {
+        payload.name = state.name;
+        payload.run = state.run;
+        payload.dependsOn = splitList(state.dependsOn);
+        payload.env = parseEnv(state.env);
       }
 
-      const updatedDocument = await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(selectedDocument.id)}`, {
+      const updatedDocument = await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(doc.id)}`, {
         method: "PUT",
         body: JSON.stringify(payload),
       });
 
       await refreshShellViews({ nextDocument: updatedDocument, nextDocumentId: updatedDocument.id });
       setSelectedDocument(updatedDocument);
-      setFormState(createDocumentFormState(updatedDocument));
-      setIsEditing(false);
-      setMutationSuccess(`${formatDocumentType(updatedDocument.type)} updated.`);
+      selectedDocumentRef.current = updatedDocument;
+      const nextFormState = createDocumentFormState(updatedDocument);
+      setFormState(nextFormState);
+      formStateRef.current = nextFormState;
     } catch (mutationFailure) {
       setMutationError(mutationFailure instanceof Error ? mutationFailure.message : String(mutationFailure));
     } finally {
@@ -780,7 +788,6 @@ function FlowApp() {
       });
 
       await refreshShellViews({ nextDocument: null, nextDocumentId: "" });
-      setIsEditing(false);
       setMutationSuccess(`${formatDocumentType(selectedDocument.type)} deleted from ${response.path}.`);
     } catch (mutationFailure) {
       setMutationError(mutationFailure instanceof Error ? mutationFailure.message : String(mutationFailure));
@@ -881,78 +888,7 @@ function FlowApp() {
               />
             </div>
           ) : (
-            <Card className="surface-card surface-card-graph shell-surface-card">
-              <CardHeader className="surface-header shell-surface-header">
-                <Breadcrumb className="shell-surface-breadcrumb">
-                  <BreadcrumbList>
-                    <BreadcrumbItem>Workspace</BreadcrumbItem>
-                    <BreadcrumbSeparator />
-                    <BreadcrumbItem>Graphs</BreadcrumbItem>
-                    <BreadcrumbSeparator />
-                    <BreadcrumbItem>
-                      <BreadcrumbPage>{selectedGraphPath}</BreadcrumbPage>
-                    </BreadcrumbItem>
-                  </BreadcrumbList>
-                </Breadcrumb>
-                <div className="shell-surface-topline">
-                  <div>
-                    <p className="eyebrow">Graph Canvas</p>
-                    <h2 className="shell-surface-title">{selectedGraphPath}</h2>
-                  </div>
-                  <div className="hero-pill-row">
-                    <span>{selectedGraphNode?.countLabel ?? "0 direct / 0 total"}</span>
-                    <span>{graphCanvasData?.nodes.length ?? 0} visible documents</span>
-                    <span>{graphCanvasData?.edges.length ?? 0} projected edges</span>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="shell-surface-content">
-                {graphCanvasError !== "" ? <p className="status-line status-line-error">{graphCanvasError}</p> : null}
-
-                <Tabs className="shell-surface-tabs" onValueChange={(value) => setGraphSurfaceTab(value as "canvas" | "overview")} value={graphSurfaceTab}>
-                  <div className="shell-tab-header-row">
-                    <TabsList>
-                      <TabsTrigger value="canvas">Canvas</TabsTrigger>
-                      <TabsTrigger value="overview">Overview</TabsTrigger>
-                    </TabsList>
-                  </div>
-                  <TabsContent value="overview">
-                    <div className="shell-overview-grid">
-                      <section className="shell-overview-panel shell-inner-card">
-                        <p className="section-kicker">Graph Summary</p>
-                        <div className="hero-pill-row">
-                          <span>{selectedGraphNode?.countLabel ?? "0 direct / 0 total"}</span>
-                          <span>{graphCanvasData?.nodes.length ?? 0} visible documents</span>
-                          <span>{graphCanvasData?.edges.length ?? 0} projected edges</span>
-                        </div>
-                      </section>
-                      <section className="shell-overview-panel shell-inner-card">
-                        <p className="section-kicker">Selection</p>
-                        {selectedCanvasNode !== null ? (
-                          <>
-                            <strong>{selectedCanvasNode.title}</strong>
-                            <p>{graphCanvasTypeLabel(selectedCanvasNode.type)} with {selectedCanvasNodeEdgeCount} connected edges highlighted.</p>
-                          </>
-                        ) : (
-                          <p>No canvas node is selected yet.</p>
-                        )}
-                      </section>
-                    </div>
-                  </TabsContent>
-                  <TabsContent value="canvas">
-                    {selectedCanvasNode !== null ? (
-                      <section className="graph-canvas-selection-bar">
-                        <div>
-                          <p className="section-kicker">Selected Node</p>
-                          <strong>{selectedCanvasNode.title}</strong>
-                        </div>
-                        <div className="hero-pill-row">
-                          <span>{graphCanvasTypeLabel(selectedCanvasNode.type)}</span>
-                          <span>{selectedCanvasNodeEdgeCount} connected edges highlighted</span>
-                        </div>
-                      </section>
-                    ) : null}
-
+            <div className="graph-canvas-outer">
                     {graphCanvasError !== "" ? (
                       <div className="detail-empty shell-inner-card">
                         <p>Graph canvas data could not be loaded for this graph.</p>
@@ -1014,7 +950,7 @@ function FlowApp() {
                         <p>Graph canvas data is not available yet.</p>
                       </div>
                     ) : (
-                      <div ref={graphCanvasShellRef} className="graph-canvas-shell shell-inner-card">
+                      <div ref={graphCanvasShellRef} className="graph-canvas-shell">
                         <ReactFlow
                           key={selectedGraphPath}
                           defaultViewport={{ x: 0, y: 0, zoom: 1 }}
@@ -1039,7 +975,7 @@ function FlowApp() {
                           }}
                           onPaneClick={() => setSelectedCanvasNodeId("")}
                           nodesDraggable={false}
-                          panOnDrag={false}
+                          panOnDrag
                           zoomOnScroll
                           zoomOnPinch
                           zoomOnDoubleClick={false}
@@ -1050,10 +986,11 @@ function FlowApp() {
                           <Controls showInteractive={false} />
                           <Background gap={32} color="var(--muted-foreground)" />
                         </ReactFlow>
-                        <div className="graph-canvas-overlay" onClick={() => setSelectedCanvasNodeId("")}
-                        >
+                        <div className="graph-canvas-overlay">
                           {graphCanvasNodes.map((node) => {
                             const position = graphCanvasOverlayPosition(node);
+                            const screenX = position.x * rfViewport.zoom + rfViewport.x;
+                            const screenY = position.y * rfViewport.zoom + rfViewport.y;
                             return (
                               <div
                                 key={node.id}
@@ -1067,7 +1004,7 @@ function FlowApp() {
                                   handleOpenCanvasDocument(node.id);
                                 }}
                                 onPointerDown={(event) => handleGraphCanvasOverlayPointerDown(event, node.id)}
-                                style={{ transform: `translate(${position.x}px, ${position.y}px)` }}
+                                style={{ transform: `translate(${screenX}px, ${screenY}px) scale(${rfViewport.zoom})`, transformOrigin: 'top left' }}
                               >
                                 {node.data.label}
                               </div>
@@ -1076,10 +1013,7 @@ function FlowApp() {
                         </div>
                       </div>
                     )}
-                  </TabsContent>
-                </Tabs>
-              </CardContent>
-            </Card>
+            </div>
           )}
         </section>
         <aside
@@ -1091,7 +1025,7 @@ function FlowApp() {
             <div className="right-sidebar-resize-handle" onMouseDown={handleRightSidebarMouseDown} />
           )}
           <div className="right-sidebar-panel">
-            {rightPanelTab === "search" ? (
+            {!rightRailCollapsed && (rightPanelTab === "search" ? (
               <Card className="detail-card-context shell-context-card">
                 <CardHeader className="panel-header shell-context-header">
                   <div>
@@ -1164,7 +1098,7 @@ function FlowApp() {
                                 type="button"
                                 className="toc-link"
                                 onClick={() => {
-                                  if (activeSurface.kind === "home" || isEditing) {
+                                  if (activeSurface.kind === "home" || selectedDocument !== null) {
                                     setEditorScrollTarget(item.id);
                                   } else {
                                     const element = document.getElementById(item.id);
@@ -1188,177 +1122,135 @@ function FlowApp() {
                   </CardContent>
                 </Card>
               ) : rightPanelTab === "document" ? (
-              <Card className="detail-card-context shell-context-card">
-                <CardHeader className="panel-header shell-context-header">
-                  <div>
-                    <h3>{selectedDocument?.title ?? "Document"}</h3>
-                  </div>
-                  <div className="detail-actions">
+              <div className="sidebar-document-panel">
+                <div className="sidebar-document-toolbar">
+                  {selectedDocument !== null && (
+                    <Badge variant="outline">{formatDocumentType(selectedDocument.type)}</Badge>
+                  )}
+                  {savingDocument && <span className="home-save-success">Saving…</span>}
+                  <div className="sidebar-document-toolbar-actions">
                     {selectedDocument !== null && (
-                      <Badge variant="outline">{formatDocumentType(selectedDocument.type)}</Badge>
+                      <Button onClick={() => setDeleteDialogOpen(true)} disabled={deletingDocument} type="button" variant="ghost" size="sm">
+                        <Trash2 size={16} />
+                      </Button>
                     )}
-                    <Button onClick={() => clearContextPanel()} type="button" variant="ghost" size="sm">
-                      <X size={16} /> Close
+                    <Button onClick={() => { clearContextPanel(); setRightRailCollapsed(true); }} type="button" variant="ghost" size="sm">
+                      <X size={16} />
                     </Button>
                   </div>
-                </CardHeader>
-                <CardContent className="shell-context-content">
-                  {panelError !== "" ? <p className="status-line status-line-error">{panelError}</p> : null}
-                  {mutationError !== "" ? <p className="status-line status-line-error">{mutationError}</p> : null}
-                  {mutationSuccess !== "" ? <p className="status-line status-line-success">{mutationSuccess}</p> : null}
+                </div>
 
-                  <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Delete document?</DialogTitle>
-                        <DialogDescription>
-                          This removes the current document from the workspace and clears it from the context panel.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="shell-dialog-actions">
-                        <Button onClick={() => setDeleteDialogOpen(false)} type="button" variant="secondary">
-                          Cancel
-                        </Button>
-                        <Button
-                          disabled={savingDocument || deletingDocument || selectedDocument === null}
-                          onClick={() => {
-                            setDeleteDialogOpen(false);
-                            void handleDeleteDocument();
-                          }}
-                          type="button"
-                          variant="destructive"
-                        >
-                          {deletingDocument ? "Deleting..." : "Delete document"}
-                        </Button>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
+                {panelError !== "" ? <p className="status-line status-line-error">{panelError}</p> : null}
+                {mutationError !== "" ? <p className="status-line status-line-error">{mutationError}</p> : null}
+                {mutationSuccess !== "" ? <p className="status-line status-line-success">{mutationSuccess}</p> : null}
 
-                  {selectedDocument === null ? (
-                    <div className="detail-empty">
-                      <p>Select a graph node or search result to view document content here.</p>
+                <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Delete document?</DialogTitle>
+                      <DialogDescription>
+                        This removes the current document from the workspace and clears it from the context panel.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="shell-dialog-actions">
+                      <Button onClick={() => setDeleteDialogOpen(false)} type="button" variant="secondary">
+                        Cancel
+                      </Button>
+                      <Button
+                        disabled={savingDocument || deletingDocument || selectedDocument === null}
+                        onClick={() => {
+                          setDeleteDialogOpen(false);
+                          void handleDeleteDocument();
+                        }}
+                        type="button"
+                        variant="destructive"
+                      >
+                        {deletingDocument ? "Deleting..." : "Delete document"}
+                      </Button>
                     </div>
-                  ) : isEditing ? (
-                    <div className="home-document">
-                      <div className="home-document-header">
-                        <input
-                          className="home-document-title"
-                          placeholder="Document title"
-                          value={formState.title}
-                          onChange={(event) => updateFormField("title", event.target.value)}
-                          aria-label="Document title"
-                        />
-                        <input
-                          className="home-document-description"
-                          placeholder="Add a brief description…"
-                          value={formState.description}
-                          onChange={(event) => updateFormField("description", event.target.value)}
-                          aria-label="Document description"
-                        />
-                      </div>
-                      <div className="home-document-body">
-                        <RichTextEditor
-                          ariaLabel="Document body editor"
-                          onChange={(value) => updateFormField("body", value)}
-                          onScrollCompleted={() => setEditorScrollTarget(null)}
-                          placeholder="Type / for headings, lists, quotes, links, and highlights"
-                          scrollToHeadingSlug={editorScrollTarget}
-                          value={formState.body}
-                        />
-                      </div>
-                      <div className="home-document-footer">
-                        {savingDocument && <span className="home-save-success">Saving…</span>}
-                        <div className="editor-actions">
-                          <Button onClick={() => void handleSaveDocument()} disabled={savingDocument || deletingDocument}>
-                            {savingDocument ? "Saving..." : "Save changes"}
-                          </Button>
-                          <Button
-                            type="button"
-                            onClick={() => {
-                              setFormState(createDocumentFormState(selectedDocument));
-                              setIsEditing(false);
-                            }}
-                            disabled={savingDocument || deletingDocument}
-                            variant="secondary"
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      {selectedDocument.description && (
-                        <section className="detail-section">
-                          <h4>Description</h4>
-                          <p className="detail-description">{selectedDocument.description}</p>
-                        </section>
-                      )}
+                  </DialogContent>
+                </Dialog>
 
+                {selectedDocument === null ? (
+                  <div className="detail-empty">
+                    <p>Select a graph node or search result to view document content here.</p>
+                  </div>
+                ) : (
+                  <div className="home-document">
+                    <div className="home-document-header">
+                      <input
+                        className="home-document-title"
+                        placeholder="Document title"
+                        value={formState.title}
+                        onChange={(event) => updateFormField("title", event.target.value)}
+                        aria-label="Document title"
+                      />
+                      <input
+                        className="home-document-description"
+                        placeholder="Add a brief description…"
+                        value={formState.description}
+                        onChange={(event) => updateFormField("description", event.target.value)}
+                        aria-label="Document description"
+                      />
+                    </div>
+                    <div className="home-document-body sidebar-document-body">
+                      <RichTextEditor
+                        ariaLabel="Document body editor"
+                        onChange={(value) => updateFormField("body", value)}
+                        onScrollCompleted={() => setEditorScrollTarget(null)}
+                        placeholder="Type / for headings, lists, quotes, links, and highlights"
+                        scrollToHeadingSlug={editorScrollTarget}
+                        value={formState.body}
+                      />
+                    </div>
+
+                    {(selectedDocument.tags ?? []).length > 0 && (
+                      <div className="chip-list">
+                        {(selectedDocument.tags ?? []).map((tag) => (
+                          <Badge key={tag} variant="secondary">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+
+                    {(selectedDocument.dependsOn ?? []).length > 0 && (
                       <section className="detail-section">
-                        <h4>Content</h4>
-                        <article
-                          className="markdown-body"
-                          dangerouslySetInnerHTML={{ __html: markdownToHTML(selectedDocument.body) }}
-                        />
-                      </section>
-
-                      {(selectedDocument.tags ?? []).length > 0 && (
-                        <div className="chip-list">
-                          {(selectedDocument.tags ?? []).map((tag) => (
-                            <Badge key={tag} variant="secondary">
-                              {tag}
-                            </Badge>
+                        <h4>Dependencies</h4>
+                        <div className="link-list">
+                          {(selectedDocument.dependsOn ?? []).map((dependencyId) => (
+                            <Button key={dependencyId} variant="outline" size="sm" onClick={() => setSelectedDocumentId(dependencyId)} className="rounded-full h-7 px-3 text-xs" type="button">
+                              {dependencyId}
+                            </Button>
                           ))}
                         </div>
-                      )}
+                      </section>
+                    )}
 
-                      {(selectedDocument.dependsOn ?? []).length > 0 && (
-                        <section className="detail-section">
-                          <h4>Dependencies</h4>
-                          <div className="link-list">
-                            {(selectedDocument.dependsOn ?? []).map((dependencyId) => (
-                              <Button key={dependencyId} variant="outline" size="sm" onClick={() => setSelectedDocumentId(dependencyId)} className="rounded-full h-7 px-3 text-xs" type="button">
-                                {dependencyId}
-                              </Button>
-                            ))}
-                          </div>
-                        </section>
-                      )}
+                    {(selectedDocument.references ?? []).length > 0 && (
+                      <section className="detail-section">
+                        <h4>References</h4>
+                        <div className="link-list">
+                          {(selectedDocument.references ?? []).map((referenceId) => (
+                            <Button key={referenceId} variant="outline" size="sm" onClick={() => setSelectedDocumentId(referenceId)} className="rounded-full h-7 px-3 text-xs" type="button">
+                              {referenceId}
+                            </Button>
+                          ))}
+                        </div>
+                      </section>
+                    )}
 
-                      {(selectedDocument.references ?? []).length > 0 && (
-                        <section className="detail-section">
-                          <h4>References</h4>
-                          <div className="link-list">
-                            {(selectedDocument.references ?? []).map((referenceId) => (
-                              <Button key={referenceId} variant="outline" size="sm" onClick={() => setSelectedDocumentId(referenceId)} className="rounded-full h-7 px-3 text-xs" type="button">
-                                {referenceId}
-                              </Button>
-                            ))}
-                          </div>
-                        </section>
-                      )}
+                    {selectedDocument.run && (
+                      <section className="detail-section">
+                        <h4>Run Command</h4>
+                        <pre className="run-block">{selectedDocument.run}</pre>
+                      </section>
+                    )}
 
-                      {selectedDocument.run && (
-                        <section className="detail-section">
-                          <h4>Run Command</h4>
-                          <pre className="run-block">{selectedDocument.run}</pre>
-                        </section>
-                      )}
-
-                      <div className="detail-toolbar">
-                        <Button onClick={startEditingDocument} type="button" variant="secondary">
-                          <PencilLine size={16} className="mr-2" /> Edit document
-                        </Button>
-                        <Button onClick={() => setDeleteDialogOpen(true)} disabled={deletingDocument} type="button" variant="destructive">
-                          <Trash2 size={16} className="mr-2" /> {deletingDocument ? "Deleting..." : "Delete"}
-                        </Button>
-                      </div>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-              ) : null}
+                  </div>
+                )}
+              </div>
+              ) : null)}
           </div>
         </aside>
         </div>
@@ -1483,6 +1375,7 @@ function FlowApp() {
                     type="button"
                     className="right-rail-icon-btn"
                     onClick={() => setRightRailCollapsed(c => !c)}
+                    style={activeSurface.kind === "graph" ? { display: "none" } : undefined}
                   >
                     <PanelRight size={18} />
                   </button>

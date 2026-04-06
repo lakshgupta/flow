@@ -214,7 +214,7 @@ func collectDocuments(flowPath string) ([]indexedDocument, error) {
 		return nil, err
 	}
 
-	graphsPath := filepath.Join(dataPath, "graphs")
+	graphsPath := filepath.Join(dataPath, "content")
 	if _, err := os.Stat(graphsPath); err != nil {
 		if os.IsNotExist(err) {
 			return documents, nil

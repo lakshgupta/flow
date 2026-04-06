@@ -11,7 +11,7 @@ func TestBuildGraphCanvasViewProjectsScopedNodesEdgesAndPositions(t *testing.T) 
 
 	view, err := BuildGraphCanvasView([]markdown.WorkspaceDocument{
 		{
-			Path: "data/graphs/planning/foundation.md",
+			Path: "data/content/planning/foundation.md",
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-0", Type: markdown.TaskType, Graph: "planning", Title: "Foundation"},
@@ -19,7 +19,7 @@ func TestBuildGraphCanvasViewProjectsScopedNodesEdgesAndPositions(t *testing.T) 
 			},
 		},
 		{
-			Path: "data/graphs/execution/overview.md",
+			Path: "data/content/execution/overview.md",
 			Document: markdown.NoteDocument{
 				Metadata: markdown.NoteMetadata{
 					CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "execution", Title: "Overview", Description: "Execution overview"},
@@ -28,7 +28,7 @@ func TestBuildGraphCanvasViewProjectsScopedNodesEdgesAndPositions(t *testing.T) 
 			},
 		},
 		{
-			Path: "data/graphs/execution/build.md",
+			Path: "data/content/execution/build.md",
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Build"},
@@ -38,7 +38,7 @@ func TestBuildGraphCanvasViewProjectsScopedNodesEdgesAndPositions(t *testing.T) 
 			},
 		},
 		{
-			Path: "data/graphs/execution/parser/run.md",
+			Path: "data/content/execution/parser/run.md",
 			Document: markdown.CommandDocument{
 				Metadata: markdown.CommandMetadata{
 					CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "execution/parser", Title: "Run Parser"},
@@ -96,7 +96,7 @@ func TestBuildGraphCanvasViewUsesStablePseudoTopologicalOrderingForCycles(t *tes
 
 	view, err := BuildGraphCanvasView([]markdown.WorkspaceDocument{
 		{
-			Path: "data/graphs/execution/alpha.md",
+			Path: "data/content/execution/alpha.md",
 			Document: markdown.NoteDocument{
 				Metadata: markdown.NoteMetadata{
 					CommonFields: markdown.CommonFields{ID: "note-a", Type: markdown.NoteType, Graph: "execution", Title: "Alpha", CreatedAt: "2026-03-17T08:00:00Z"},
@@ -105,7 +105,7 @@ func TestBuildGraphCanvasViewUsesStablePseudoTopologicalOrderingForCycles(t *tes
 			},
 		},
 		{
-			Path: "data/graphs/execution/beta.md",
+			Path: "data/content/execution/beta.md",
 			Document: markdown.NoteDocument{
 				Metadata: markdown.NoteMetadata{
 					CommonFields: markdown.CommonFields{ID: "note-b", Type: markdown.NoteType, Graph: "execution", Title: "Beta", CreatedAt: "2026-03-17T09:00:00Z"},
@@ -131,7 +131,7 @@ func TestBuildGraphCanvasViewRejectsUnknownGraph(t *testing.T) {
 
 	_, err := BuildGraphCanvasView([]markdown.WorkspaceDocument{
 		{
-			Path: "data/graphs/execution/overview.md",
+			Path: "data/content/execution/overview.md",
 			Document: markdown.NoteDocument{
 				Metadata: markdown.NoteMetadata{
 					CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "execution", Title: "Overview"},

@@ -829,7 +829,7 @@ func featureSlugFromWorkspacePath(path string, documentLabel string) (string, er
 		return "", err
 	}
 	if !ok {
-		return "", fmt.Errorf("%s path %q is not in canonical data/graphs/<graph-path>/<file>.md layout", documentLabel, path)
+		return "", fmt.Errorf("%s path %q is not in canonical data/content/<graph-path>/<file>.md layout", documentLabel, path)
 	}
 
 	parts := strings.Split(graphPath, "/")

@@ -20,7 +20,7 @@ const (
 	// IndexFileName is the derived workspace index file name.
 	IndexFileName = "flow.index"
 	// GraphsDirName is the directory that stores graph-backed Markdown content.
-	GraphsDirName = "graphs"
+	GraphsDirName = "content"
 	// HomeFileName is the canonical home document file name.
 	HomeFileName = "home.md"
 	// AppConfigDirName is the platform-config subdirectory used by Flow.

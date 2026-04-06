@@ -219,7 +219,7 @@ func RelativeGraphDocumentPath(graphPath string, fileName string) (string, error
 		}
 	}
 
-	return filepath.Join("data", "graphs", filepath.FromSlash(normalizedGraphPath), fileName), nil
+	return filepath.Join("data", "content", filepath.FromSlash(normalizedGraphPath), fileName), nil
 }
 
 func parseTypedDocument(data []byte, expectedType DocumentType, destination any) (string, error) {

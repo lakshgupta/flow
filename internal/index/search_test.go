@@ -14,8 +14,8 @@ func TestSearchFindsIndexedDocuments(t *testing.T) {
 	indexPath := filepath.Join(flowPath, "config", "flow.index")
 
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "home.md"), "---\ntype: home\ntitle: Home\ndescription: Build dashboard\n---\n\nWelcome home.\n")
-	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "graphs", "demo", "architecture.md"), "---\nid: note-1\ntype: note\ngraph: notes\ntitle: Architecture\ndescription: Build pipeline overview\n---\n\nBuild pipeline design and release notes.\n")
-	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "graphs", "release", "build.md"), "---\nid: cmd-1\ntype: command\ngraph: release\ntitle: Build release\nname: build\nrun: go build ./cmd/flow\n---\n\nBuild the release binary.\n")
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "demo", "architecture.md"), "---\nid: note-1\ntype: note\ngraph: notes\ntitle: Architecture\ndescription: Build pipeline overview\n---\n\nBuild pipeline design and release notes.\n")
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "release", "build.md"), "---\nid: cmd-1\ntype: command\ngraph: release\ntitle: Build release\nname: build\nrun: go build ./cmd/flow\n---\n\nBuild the release binary.\n")
 
 	if err := Rebuild(indexPath, flowPath); err != nil {
 		t.Fatalf("Rebuild() error = %v", err)
@@ -62,7 +62,7 @@ func TestSearchMatchesDescriptionWithoutBodyHit(t *testing.T) {
 	flowPath := filepath.Join(rootDir, ".flow")
 	indexPath := filepath.Join(flowPath, "config", "flow.index")
 
-	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "graphs", "demo", "plan.md"), "---\nid: note-1\ntype: note\ngraph: demo\ntitle: Planning\ndescription: Parser migration checklist\n---\n\nGeneral notes only.\n")
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "demo", "plan.md"), "---\nid: note-1\ntype: note\ngraph: demo\ntitle: Planning\ndescription: Parser migration checklist\n---\n\nGeneral notes only.\n")
 
 	if err := Rebuild(indexPath, flowPath); err != nil {
 		t.Fatalf("Rebuild() error = %v", err)
@@ -102,7 +102,7 @@ func TestSearchWorkspaceRebuildsMissingIndex(t *testing.T) {
 	flowPath := filepath.Join(rootDir, ".flow")
 	indexPath := filepath.Join(flowPath, "config", "flow.index")
 
-	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "graphs", "demo", "architecture.md"), "---\nid: note-1\ntype: note\ngraph: notes\ntitle: Architecture\n---\n\nBuild architecture notes.\n")
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "demo", "architecture.md"), "---\nid: note-1\ntype: note\ngraph: notes\ntitle: Architecture\n---\n\nBuild architecture notes.\n")
 
 	results, err := SearchWorkspace(indexPath, flowPath, "build", 10)
 	if err != nil {

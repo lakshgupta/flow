@@ -169,7 +169,7 @@ func GraphPathFromWorkspacePath(path string) (string, bool, error) {
 	normalizedPath := strings.TrimPrefix(strings.ReplaceAll(path, "\\", "/"), "./")
 	normalizedPath = strings.TrimPrefix(normalizedPath, "/")
 
-	const graphRoot = "data/graphs/"
+	const graphRoot = "data/content/"
 	if !strings.HasPrefix(normalizedPath, graphRoot) {
 		return "", false, nil
 	}
@@ -177,18 +177,18 @@ func GraphPathFromWorkspacePath(path string) (string, bool, error) {
 	remainder := strings.TrimPrefix(normalizedPath, graphRoot)
 	parts := strings.Split(remainder, "/")
 	if len(parts) < 2 {
-		return "", false, fmt.Errorf("document path %q is not in canonical data/graphs/<graph-path>/<file>.md layout", path)
+		return "", false, fmt.Errorf("document path %q is not in canonical data/content/<graph-path>/<file>.md layout", path)
 	}
 
 	segments := parts[:len(parts)-1]
 	fileName := parts[len(parts)-1]
 	if strings.TrimSpace(fileName) == "" || !strings.HasSuffix(fileName, ".md") {
-		return "", false, fmt.Errorf("document path %q is not in canonical data/graphs/<graph-path>/<file>.md layout", path)
+		return "", false, fmt.Errorf("document path %q is not in canonical data/content/<graph-path>/<file>.md layout", path)
 	}
 
 	for _, segment := range segments {
 		if segment == "" || segment == "." || segment == ".." {
-			return "", false, fmt.Errorf("document path %q is not in canonical data/graphs/<graph-path>/<file>.md layout", path)
+			return "", false, fmt.Errorf("document path %q is not in canonical data/content/<graph-path>/<file>.md layout", path)
 		}
 	}
 

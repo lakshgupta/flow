@@ -340,7 +340,7 @@ func TestRelativeGraphDocumentPath(t *testing.T) {
 		fatalf("RelativeGraphDocumentPath() error = %v", err)
 	}
 
-	if path != filepath.Join("data", "graphs", "execution", "parser", "build.md") {
+	if path != filepath.Join("data", "content", "execution", "parser", "build.md") {
 		t.Fatalf("RelativeGraphDocumentPath() = %q", path)
 	}
 }

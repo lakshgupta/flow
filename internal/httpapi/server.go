@@ -917,7 +917,7 @@ func featureSlugFromPath(path string) (string, error) {
 		return "", nil
 	}
 
-	return "", fmt.Errorf("document path %q is not in canonical data/graphs/<graph-path>/<file>.md layout", path)
+	return "", fmt.Errorf("document path %q is not in canonical data/content/<graph-path>/<file>.md layout", path)
 }
 
 func cloneStrings(values []string) []string {

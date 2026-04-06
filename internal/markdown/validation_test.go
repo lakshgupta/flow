@@ -172,7 +172,7 @@ func TestValidateWorkspaceDocumentsUsesGraphPathForCommandValidation(t *testing.
 
 	err := ValidateWorkspaceDocuments([]WorkspaceDocument{
 		{
-			Path: "data/graphs/release/build.md",
+			Path: "data/content/release/build.md",
 			Document: CommandDocument{
 				Metadata: CommandMetadata{
 					CommonFields: CommonFields{ID: "cmd-1", Type: CommandType, Graph: ""},
@@ -191,7 +191,7 @@ func TestNormalizeWorkspaceDocumentUsesGraphPathOverFrontmatter(t *testing.T) {
 	t.Parallel()
 
 	item, err := NormalizeWorkspaceDocument(WorkspaceDocument{
-		Path: "data/graphs/execution/parser/build.md",
+		Path: "data/content/execution/parser/build.md",
 		Document: TaskDocument{
 			Metadata: TaskMetadata{
 				CommonFields: CommonFields{ID: "task-1", Type: TaskType, Graph: "wrong-value"},
@@ -211,7 +211,7 @@ func TestNormalizeWorkspaceDocumentUsesGraphPathOverFrontmatter(t *testing.T) {
 func TestGraphPathFromWorkspacePathRejectsGraphRootFile(t *testing.T) {
 	t.Parallel()
 
-	_, ok, err := GraphPathFromWorkspacePath("data/graphs/build.md")
+	_, ok, err := GraphPathFromWorkspacePath("data/content/build.md")
 	if err == nil {
 		t.Fatal("GraphPathFromWorkspacePath() error = nil, want canonical layout error")
 	}

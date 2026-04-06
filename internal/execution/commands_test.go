@@ -14,14 +14,14 @@ func TestPrepareCommandExecutionResolvesShortNameAndMergesEnv(t *testing.T) {
 	t.Parallel()
 
 	root := createExecutionTestWorkspace(t)
-	writeExecutionDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "release", "prepare.md"), markdown.CommandDocument{
+	writeExecutionDocument(t, filepath.Join(root.FlowPath, "data", "content", "release", "prepare.md"), markdown.CommandDocument{
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{ID: "cmd-0", Type: markdown.CommandType, Graph: "release", Title: "Prepare"},
 			Name:         "prepare",
 			Run:          "printf prepare",
 		},
 	})
-	writeExecutionDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "release", "build.md"), markdown.CommandDocument{
+	writeExecutionDocument(t, filepath.Join(root.FlowPath, "data", "content", "release", "build.md"), markdown.CommandDocument{
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "release", Title: "Build"},
 			Name:         "build",
@@ -68,7 +68,7 @@ func TestPrepareCommandExecutionResolvesByID(t *testing.T) {
 	t.Parallel()
 
 	root := createExecutionTestWorkspace(t)
-	writeExecutionDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "release", "build.md"), markdown.CommandDocument{
+	writeExecutionDocument(t, filepath.Join(root.FlowPath, "data", "content", "release", "build.md"), markdown.CommandDocument{
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "release", Title: "Build"},
 			Name:         "build",
@@ -90,7 +90,7 @@ func TestPrepareCommandExecutionRejectsMissingDependency(t *testing.T) {
 	t.Parallel()
 
 	root := createExecutionTestWorkspace(t)
-	writeExecutionDocument(t, filepath.Join(root.FlowPath, "data", "graphs", "release", "build.md"), markdown.CommandDocument{
+	writeExecutionDocument(t, filepath.Join(root.FlowPath, "data", "content", "release", "build.md"), markdown.CommandDocument{
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "release", Title: "Build"},
 			Name:         "build",
