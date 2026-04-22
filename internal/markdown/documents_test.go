@@ -46,7 +46,7 @@ func TestParseNoteDocument(t *testing.T) {
 		t.Fatalf("document.Metadata.Description = %q, want Shared description", document.Metadata.Description)
 	}
 
-	if document.Metadata.References[0] != "task-1" {
+	if document.Metadata.References[0].Node != "task-1" {
 		t.Fatalf("document.Metadata.References = %#v", document.Metadata.References)
 	}
 
@@ -168,7 +168,7 @@ func TestSerializeDocumentRoundTripsTask(t *testing.T) {
 			},
 			Status:     "todo",
 			DependsOn:  []string{"task-0"},
-			References: []string{"note-1"},
+			References: []NodeReference{{Node: "note-1"}},
 		},
 		Body: "Task body\n",
 	}
@@ -211,7 +211,7 @@ func TestSerializeDocumentRoundTripsNote(t *testing.T) {
 				CreatedAt:   "2026-03-17T10:00:00Z",
 				UpdatedAt:   "2026-03-17T11:00:00Z",
 			},
-			References: []string{"note-2", "task-1"},
+			References: []NodeReference{{Node: "note-2"}, {Node: "task-1"}},
 		},
 		Body: "# Note\n\nRound-trip body\n",
 	}
@@ -234,7 +234,7 @@ func TestSerializeDocumentRoundTripsNote(t *testing.T) {
 		t.Fatalf("parsed.Metadata.Description = %q, want %q", parsed.Metadata.Description, input.Metadata.Description)
 	}
 
-	if !slicesEqual(parsed.Metadata.References, input.Metadata.References) {
+	if !slicesEqual(NodeReferenceIDs(parsed.Metadata.References), NodeReferenceIDs(input.Metadata.References)) {
 		t.Fatalf("parsed.Metadata.References = %#v, want %#v", parsed.Metadata.References, input.Metadata.References)
 	}
 
@@ -259,7 +259,7 @@ func TestSerializeDocumentRoundTripsCommand(t *testing.T) {
 			},
 			Name:       "build",
 			DependsOn:  []string{"cmd-0"},
-			References: []string{"note-1"},
+			References: []NodeReference{{Node: "note-1"}},
 			Env: map[string]string{
 				"GOOS":   "linux",
 				"GOARCH": "amd64",
@@ -377,5 +377,54 @@ func TestParseTaskDocumentRejectsMismatchedType(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "does not match expected") {
 		t.Fatalf("ParseTaskDocument() error = %v", err)
+	}
+}
+
+func TestParseNoteDocumentInlineReferences(t *testing.T) {
+	t.Parallel()
+
+	input := strings.Join([]string{
+		"---",
+		"id: note-1",
+		"type: note",
+		"graph: notes",
+		"title: Reference Note",
+		"references:",
+		"  - plain-id",
+		"  - node: rich-id",
+		"    context: informs the approach",
+		"---",
+		"",
+	}, "\n")
+
+	document, err := ParseNoteDocument([]byte(input))
+	if err != nil {
+		t.Fatalf("ParseNoteDocument() error = %v", err)
+	}
+
+	if len(document.Metadata.References) != 2 {
+		t.Fatalf("len(References) = %d, want 2", len(document.Metadata.References))
+	}
+
+	if document.Metadata.References[0].Node != "plain-id" || document.Metadata.References[0].Context != "" {
+		t.Fatalf("References[0] = %+v, want {Node: plain-id, Context: }", document.Metadata.References[0])
+	}
+
+	if document.Metadata.References[1].Node != "rich-id" || document.Metadata.References[1].Context != "informs the approach" {
+		t.Fatalf("References[1] = %+v, want {Node: rich-id, Context: informs the approach}", document.Metadata.References[1])
+	}
+}
+
+func TestParseDocumentRejectsEdgeType(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("---\ntype: edge\nfrom: a\nto: b\n---\n\nBody\n")
+	_, err := ParseDocument(input)
+	if err == nil {
+		t.Fatal("ParseDocument() error = nil, want error for unsupported type edge")
+	}
+
+	if !strings.Contains(err.Error(), "unsupported document type") {
+		t.Fatalf("ParseDocument() error = %v, want containing unsupported document type", err)
 	}
 }

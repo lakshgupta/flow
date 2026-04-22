@@ -109,11 +109,11 @@ func resolveCommandDependencies(commandID string, commandsByID map[string]comman
 		}
 
 		visiting[currentID] = true
-		for _, dependencyID := range record.document.Metadata.DependsOn {
-			if _, ok := commandsByID[dependencyID]; !ok {
-				return fmt.Errorf("command %q depends on missing command %q", currentID, dependencyID)
+		for _, depID := range record.document.Metadata.DependsOn {
+			if _, ok := commandsByID[depID]; !ok {
+				return fmt.Errorf("command %q depends on missing command %q", currentID, depID)
 			}
-			if err := visit(dependencyID); err != nil {
+			if err := visit(depID); err != nil {
 				return err
 			}
 		}

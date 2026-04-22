@@ -1,7 +1,7 @@
 import { GalleryVerticalEnd } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarHeader, useSidebar } from "./ui/sidebar";
+import { Sidebar, SidebarContent, SidebarGroup, SidebarHeader, useSidebar } from "./ui/sidebar";
 
 type AppSidebarProps = {
   navigationContent: ReactNode;
@@ -45,7 +45,6 @@ export function AppSidebar({
         aria-orientation="vertical"
         aria-label="Resize sidebar"
       />
-      <SidebarFooter className="shell-sidebar-footer" />
     </Sidebar>
   );
 }

@@ -195,14 +195,14 @@ func createMutationWorkspace(t *testing.T) Root {
 	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "demo", "notes", "architecture.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "wrong", Title: "Architecture", Description: "Architecture description"},
-			References:   []string{"note-2"},
+			References:   []markdown.NodeReference{{Node: "note-2"}},
 		},
 		Body: "Architecture body\n",
 	})
 	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "demo", "notes", "follow-up.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "note-2", Type: markdown.NoteType, Graph: "wrong", Title: "Follow Up", Description: "Follow up description"},
-			References:   []string{"note-1"},
+			References:   []markdown.NodeReference{{Node: "note-1"}},
 		},
 		Body: "Follow up body\n",
 	})
@@ -210,7 +210,7 @@ func createMutationWorkspace(t *testing.T) Root {
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "wrong", Title: "Parser", Description: "Parser description"},
 			Status:       "doing",
-			References:   []string{"note-1"},
+			References:   []markdown.NodeReference{{Node: "note-1"}},
 		},
 		Body: "Parser body\n",
 	})
@@ -218,7 +218,7 @@ func createMutationWorkspace(t *testing.T) Root {
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "wrong", Title: "Build", Description: "Build description"},
 			Name:         "build",
-			References:   []string{"note-1"},
+			References:   []markdown.NodeReference{{Node: "note-1"}},
 			Run:          "go build ./cmd/flow",
 		},
 		Body: "Build body\n",
@@ -245,6 +245,227 @@ func writeMutationDocument(t *testing.T, path string, document markdown.Document
 
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
+	}
+}
+
+// TestDeleteDocumentByIDCleansUpDependsOnInChildTasks verifies that when a parent task
+// is deleted, every task that listed it in dependsOn has the deleted ID removed.
+func TestDeleteDocumentByIDCleansUpDependsOnInChildTasks(t *testing.T) {
+	t.Parallel()
+
+	root := createDependencyCleanupWorkspace(t)
+
+	_, err := DeleteDocumentByID(root, "parent-task")
+	if err != nil {
+		t.Fatalf("DeleteDocumentByID() error = %v", err)
+	}
+
+	// child-task had dependsOn: ["parent-task"] — must now be empty.
+	childTaskDoc, err := readDocumentFile(filepath.Join(root.FlowPath, "data", "content", "proj", "child-task.md"))
+	if err != nil {
+		t.Fatalf("readDocumentFile(child-task) error = %v", err)
+	}
+	childTask, ok := childTaskDoc.(markdown.TaskDocument)
+	if !ok {
+		t.Fatalf("childTaskDoc = %T, want markdown.TaskDocument", childTaskDoc)
+	}
+	if len(childTask.Metadata.DependsOn) != 0 {
+		t.Fatalf("childTask.Metadata.DependsOn = %v, want empty after parent deletion", childTask.Metadata.DependsOn)
+	}
+}
+
+// TestDeleteDocumentByIDCleansUpDependsOnInChildCommands verifies that when a parent
+// command is deleted, every command that listed it in dependsOn has the deleted ID removed.
+func TestDeleteDocumentByIDCleansUpDependsOnInChildCommands(t *testing.T) {
+	t.Parallel()
+
+	root := createDependencyCleanupWorkspace(t)
+
+	_, err := DeleteDocumentByID(root, "parent-cmd")
+	if err != nil {
+		t.Fatalf("DeleteDocumentByID() error = %v", err)
+	}
+
+	// child-cmd had dependsOn: ["parent-cmd"] — must now be empty.
+	childCmdDoc, err := readDocumentFile(filepath.Join(root.FlowPath, "data", "content", "proj", "child-cmd.md"))
+	if err != nil {
+		t.Fatalf("readDocumentFile(child-cmd) error = %v", err)
+	}
+	childCmd, ok := childCmdDoc.(markdown.CommandDocument)
+	if !ok {
+		t.Fatalf("childCmdDoc = %T, want markdown.CommandDocument", childCmdDoc)
+	}
+	if len(childCmd.Metadata.DependsOn) != 0 {
+		t.Fatalf("childCmd.Metadata.DependsOn = %v, want empty after parent deletion", childCmd.Metadata.DependsOn)
+	}
+}
+
+// TestDeleteDocumentByIDCleansUpReferencesToDeletedTaskOrCommand verifies that when a
+// task or command is deleted, every document that listed it in references has the
+// deleted ID removed.
+func TestDeleteDocumentByIDCleansUpReferencesToDeletedTaskOrCommand(t *testing.T) {
+	t.Parallel()
+
+	root := createDependencyCleanupWorkspace(t)
+
+	_, err := DeleteDocumentByID(root, "parent-task")
+	if err != nil {
+		t.Fatalf("DeleteDocumentByID() error = %v", err)
+	}
+
+	// ref-note had references: ["parent-task"] — must now be empty.
+	refNoteDoc, err := readDocumentFile(filepath.Join(root.FlowPath, "data", "content", "proj", "ref-note.md"))
+	if err != nil {
+		t.Fatalf("readDocumentFile(ref-note) error = %v", err)
+	}
+	refNote, ok := refNoteDoc.(markdown.NoteDocument)
+	if !ok {
+		t.Fatalf("refNoteDoc = %T, want markdown.NoteDocument", refNoteDoc)
+	}
+	if len(refNote.Metadata.References) != 0 {
+		t.Fatalf("refNote.Metadata.References = %v, want empty after target deletion", refNote.Metadata.References)
+	}
+}
+
+// createDependencyCleanupWorkspace builds a minimal workspace for testing graph
+// edge cleanup on deletion.
+//
+//	parent-task  ←  child-task (task dependsOn)
+//	parent-cmd   ←  child-cmd  (command dependsOn)
+//	parent-task  ←  ref-note   (references)
+func createDependencyCleanupWorkspace(t *testing.T) Root {
+	t.Helper()
+
+	root, err := ResolveLocal(t.TempDir())
+	if err != nil {
+		t.Fatalf("ResolveLocal() error = %v", err)
+	}
+
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "proj", "parent-task.md"), markdown.TaskDocument{
+		Metadata: markdown.TaskMetadata{
+			CommonFields: markdown.CommonFields{ID: "parent-task", Type: markdown.TaskType, Graph: "proj", Title: "Parent Task"},
+			Status:       "todo",
+		},
+		Body: "Parent body\n",
+	})
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "proj", "child-task.md"), markdown.TaskDocument{
+		Metadata: markdown.TaskMetadata{
+			CommonFields: markdown.CommonFields{ID: "child-task", Type: markdown.TaskType, Graph: "proj", Title: "Child Task"},
+			Status:       "todo",
+			DependsOn:    []string{"parent-task"},
+		},
+		Body: "Child task body\n",
+	})
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "proj", "parent-cmd.md"), markdown.CommandDocument{
+		Metadata: markdown.CommandMetadata{
+			CommonFields: markdown.CommonFields{ID: "parent-cmd", Type: markdown.CommandType, Graph: "proj", Title: "Parent Command"},
+			Name:         "parent-cmd",
+			Run:          "echo parent",
+		},
+	})
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "proj", "child-cmd.md"), markdown.CommandDocument{
+		Metadata: markdown.CommandMetadata{
+			CommonFields: markdown.CommonFields{ID: "child-cmd", Type: markdown.CommandType, Graph: "proj", Title: "Child Command"},
+			Name:         "child-cmd",
+			DependsOn:    []string{"parent-cmd"},
+			Run:          "echo child",
+		},
+	})
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "proj", "ref-note.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "ref-note", Type: markdown.NoteType, Graph: "proj", Title: "Ref Note"},
+			References:   []markdown.NodeReference{{Node: "parent-task"}},
+		},
+		Body: "Ref note body\n",
+	})
+
+	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {
+		t.Fatalf("index.Rebuild() error = %v", err)
+	}
+
+	return root
+}
+
+// TestAddReferenceAppendsInlineReference verifies that AddReference adds an entry
+// to the source node's inline references list.
+func TestAddReferenceAppendsInlineReference(t *testing.T) {
+	t.Parallel()
+
+	root, err := ResolveLocal(t.TempDir())
+	if err != nil {
+		t.Fatalf("ResolveLocal() error = %v", err)
+	}
+
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "proj", "note-a.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-a", Type: markdown.NoteType, Graph: "proj", Title: "Alpha"},
+		},
+	})
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "proj", "note-b.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-b", Type: markdown.NoteType, Graph: "proj", Title: "Beta"},
+		},
+	})
+	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {
+		t.Fatalf("index.Rebuild() error = %v", err)
+	}
+
+	if err := AddReference(root, "note-a", "note-b", "informs"); err != nil {
+		t.Fatalf("AddReference() error = %v", err)
+	}
+
+	doc, err := findDocumentByID(root.FlowPath, "note-a")
+	if err != nil {
+		t.Fatalf("findDocumentByID(note-a) error = %v", err)
+	}
+	note, ok := doc.Document.(markdown.NoteDocument)
+	if !ok {
+		t.Fatalf("note-a document is not a NoteDocument")
+	}
+	if len(note.Metadata.References) != 1 || note.Metadata.References[0].Node != "note-b" || note.Metadata.References[0].Context != "informs" {
+		t.Fatalf("note-a.references = %+v, want [{Node:note-b Context:informs}]", note.Metadata.References)
+	}
+}
+
+// TestRemoveReferenceRemovesInlineReference verifies that RemoveReference removes
+// the matching entry from the source node's inline references list.
+func TestRemoveReferenceRemovesInlineReference(t *testing.T) {
+	t.Parallel()
+
+	root, err := ResolveLocal(t.TempDir())
+	if err != nil {
+		t.Fatalf("ResolveLocal() error = %v", err)
+	}
+
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "proj", "note-a.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-a", Type: markdown.NoteType, Graph: "proj", Title: "Alpha"},
+			References:   []markdown.NodeReference{{Node: "note-b", Context: "informs"}},
+		},
+	})
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "proj", "note-b.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-b", Type: markdown.NoteType, Graph: "proj", Title: "Beta"},
+		},
+	})
+	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {
+		t.Fatalf("index.Rebuild() error = %v", err)
+	}
+
+	if err := RemoveReference(root, "note-a", "note-b"); err != nil {
+		t.Fatalf("RemoveReference() error = %v", err)
+	}
+
+	doc, err := findDocumentByID(root.FlowPath, "note-a")
+	if err != nil {
+		t.Fatalf("findDocumentByID(note-a) error = %v", err)
+	}
+	note, ok := doc.Document.(markdown.NoteDocument)
+	if !ok {
+		t.Fatalf("note-a document is not a NoteDocument")
+	}
+	if len(note.Metadata.References) != 0 {
+		t.Fatalf("note-a.references = %+v, want empty after removal", note.Metadata.References)
 	}
 }
 

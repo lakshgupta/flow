@@ -189,19 +189,27 @@ func TestRebuildBuildsGraphProjectionWithDirectAndTotalCounts(t *testing.T) {
 		t.Fatalf("ReadGraphNodes() error = %v", err)
 	}
 
-	if len(nodes) != 2 {
-		t.Fatalf("len(nodes) = %d, want 2", len(nodes))
+	if len(nodes) != 4 {
+		t.Fatalf("len(nodes) = %d, want 4", len(nodes))
 	}
 
-	if nodes[0].GraphPath != "execution" || nodes[0].DirectCount != 1 || nodes[0].TotalCount != 3 || !nodes[0].HasChildren {
-		t.Fatalf("nodes[0] = %#v", nodes[0])
+	if nodes[0].GraphPath != "empty" || nodes[0].DirectCount != 0 || nodes[0].TotalCount != 0 || !nodes[0].HasChildren {
+		t.Fatalf("nodes[0] (empty) = %#v", nodes[0])
 	}
 
-	if nodes[1].GraphPath != "execution/parser" || nodes[1].DirectCount != 2 || nodes[1].TotalCount != 2 || nodes[1].HasChildren {
-		t.Fatalf("nodes[1] = %#v", nodes[1])
+	if nodes[1].GraphPath != "empty/nested" || nodes[1].DirectCount != 0 || nodes[1].TotalCount != 0 || nodes[1].HasChildren {
+		t.Fatalf("nodes[1] (empty/nested) = %#v", nodes[1])
 	}
-	if nodes[1].DisplayName != "parser" {
-		t.Fatalf("nodes[1].DisplayName = %q, want parser", nodes[1].DisplayName)
+
+	if nodes[2].GraphPath != "execution" || nodes[2].DirectCount != 1 || nodes[2].TotalCount != 3 || !nodes[2].HasChildren {
+		t.Fatalf("nodes[2] = %#v", nodes[2])
+	}
+
+	if nodes[3].GraphPath != "execution/parser" || nodes[3].DirectCount != 2 || nodes[3].TotalCount != 2 || nodes[3].HasChildren {
+		t.Fatalf("nodes[3] = %#v", nodes[3])
+	}
+	if nodes[3].DisplayName != "parser" {
+		t.Fatalf("nodes[3].DisplayName = %q, want parser", nodes[3].DisplayName)
 	}
 }
 
@@ -398,4 +406,71 @@ func assertQueryCount(t *testing.T, database *sql.DB, query string, want int) {
 	if got != want {
 		t.Fatalf("QueryRow(%q) = %d, want %d", query, got, want)
 	}
+}
+
+func TestRebuildSkipsLegacyEdgeFiles(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	flowPath := filepath.Join(rootDir, ".flow")
+	indexPath := filepath.Join(flowPath, "config", "flow.index")
+
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "proj", "note-a.md"),
+		"---\nid: note-a\ntype: note\ngraph: proj\ntitle: Alpha\n---\n\nAlpha body\n")
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "proj", "note-b.md"),
+		"---\nid: note-b\ntype: note\ngraph: proj\ntitle: Beta\n---\n\nBeta body\n")
+	// Legacy edge file: should be silently skipped.
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "proj", "note-a--note-b.md"),
+		"---\nid: edge-1\ntype: edge\ngraph: proj\nfrom: note-a\nto: note-b\nlabel: enables\n---\n\nEdge description.\n")
+
+	if err := Rebuild(indexPath, flowPath); err != nil {
+		t.Fatalf("Rebuild() error = %v", err)
+	}
+
+	database, err := sql.Open("sqlite", indexPath)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer database.Close()
+
+	// Only the two notes should be indexed; the legacy edge file is skipped.
+	assertQueryCount(t, database, `SELECT COUNT(*) FROM documents WHERE type != 'home'`, 2)
+	assertQueryCount(t, database, `SELECT COUNT(*) FROM edges`, 0)
+
+	nodes, err := ReadGraphNodes(indexPath)
+	if err != nil {
+		t.Fatalf("ReadGraphNodes() error = %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("len(nodes) = %d, want 1", len(nodes))
+	}
+	if nodes[0].DirectCount != 2 {
+		t.Fatalf("nodes[0].DirectCount = %d, want 2", nodes[0].DirectCount)
+	}
+}
+
+func TestRebuildIndexesInlineReferences(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	flowPath := filepath.Join(rootDir, ".flow")
+	indexPath := filepath.Join(flowPath, "config", "flow.index")
+
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "proj", "note-a.md"),
+		"---\nid: note-a\ntype: note\ngraph: proj\ntitle: Alpha\nreferences:\n  - {node: note-b, context: relates to}\n---\n\nAlpha body\n")
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "proj", "note-b.md"),
+		"---\nid: note-b\ntype: note\ngraph: proj\ntitle: Beta\n---\n\nBeta body\n")
+
+	if err := Rebuild(indexPath, flowPath); err != nil {
+		t.Fatalf("Rebuild() error = %v", err)
+	}
+
+	database, err := sql.Open("sqlite", indexPath)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer database.Close()
+
+	// Inline reference between two notes becomes a note_link.
+	assertQueryCount(t, database, `SELECT COUNT(*) FROM note_links`, 1)
 }

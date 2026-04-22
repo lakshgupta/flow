@@ -3,7 +3,37 @@ export type DateEntry = {
   content: string;
 };
 
-const DATE_HEADING_RE = /^## (\d{4}-\d{2}-\d{2})(\s|$)/m;
+const DATE_HEADING_LINE_RE = /^## (\d{4}-\d{2}-\d{2})(\s|$)/;
+const DATE_HEADING_RE = new RegExp(DATE_HEADING_LINE_RE.source, "m");
+
+function splitLines(body: string): string[] {
+  return body.split("\n")
+}
+
+function collectNonEmptyBlocks(body: string): string[] {
+  const blocks: string[] = []
+  let currentLines: string[] = []
+
+  function flushBlock() {
+    const block = currentLines.join("\n").trim()
+    if (block.length > 0) {
+      blocks.push(block)
+    }
+    currentLines = []
+  }
+
+  for (const line of splitLines(body)) {
+    if (line.trim() === "") {
+      flushBlock()
+      continue
+    }
+
+    currentLines.push(line)
+  }
+
+  flushBlock()
+  return blocks
+}
 
 /**
  * Parse markdown body into date-keyed sections.
@@ -11,13 +41,12 @@ const DATE_HEADING_RE = /^## (\d{4}-\d{2}-\d{2})(\s|$)/m;
  * or end of string. Content is the text *after* the heading line, trimmed.
  */
 export function parseDateEntries(body: string): DateEntry[] {
-  const lines = body.split('\n')
   const entries: DateEntry[] = []
   let currentDate: string | null = null
   let currentLines: string[] = []
 
-  for (const line of lines) {
-    const match = /^## (\d{4}-\d{2}-\d{2})(\s|$)/.exec(line)
+  for (const line of splitLines(body)) {
+    const match = DATE_HEADING_LINE_RE.exec(line)
     if (match) {
       if (currentDate !== null) {
         entries.push({ date: currentDate, content: currentLines.join('\n').trim() })
@@ -50,11 +79,14 @@ export function datesWithEntries(body: string): Set<string> {
 }
 
 export function todayString(): string {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
+  return toISODateString(new Date())
+}
+
+export function toISODateString(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 export function formatDisplayDate(dateStr: string): string {
@@ -74,27 +106,7 @@ export function formatDisplayDate(dateStr: string): string {
  * document order.
  */
 export function findAllDateMentions(body: string, date: string): string[] {
-  // Walk lines; collect blocks separated by blank lines that contain `date`
-  const blocks: string[] = []
-  const lines = body.split('\n')
-  let current: string[] = []
-
-  function flushBlock() {
-    const block = current.join('\n').trim()
-    if (block.length > 0) blocks.push(block)
-    current = []
-  }
-
-  for (const line of lines) {
-    if (line.trim() === '') {
-      flushBlock()
-    } else {
-      current.push(line)
-    }
-  }
-  flushBlock()
-
-  return blocks.filter((b) => b.includes(date))
+  return collectNonEmptyBlocks(body).filter((block) => block.includes(date))
 }
 
 export { DATE_HEADING_RE }

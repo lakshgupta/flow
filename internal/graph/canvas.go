@@ -50,16 +50,17 @@ type GraphCanvasNode struct {
 	Position          GraphCanvasPosition `json:"position"`
 	PositionPersisted bool                `json:"positionPersisted"`
 	dependsOn         []string
-	references        []string
+	references        []markdown.NodeReference
 	orderIndex        int
 }
 
 // GraphCanvasEdge stores one projected relationship between two visible canvas nodes.
 type GraphCanvasEdge struct {
-	ID     string `json:"id"`
-	Source string `json:"source"`
-	Target string `json:"target"`
-	Kind   string `json:"kind"`
+	ID      string `json:"id"`
+	Source  string `json:"source"`
+	Target  string `json:"target"`
+	Kind    string `json:"kind"`
+	Context string `json:"context,omitempty"`
 }
 
 // GraphCanvasView is the unified graph payload consumed by the canvas surface.
@@ -160,7 +161,7 @@ func buildGraphCanvasNode(item markdown.WorkspaceDocument) (GraphCanvasNode, str
 			Tags:        cloneStrings(document.Metadata.Tags),
 			CreatedAt:   document.Metadata.CreatedAt,
 			UpdatedAt:   document.Metadata.UpdatedAt,
-			references:  cloneStrings(document.Metadata.References),
+			references:  cloneNodeReferences(document.Metadata.References),
 		}, graphPath, true, nil
 	case markdown.TaskDocument:
 		return GraphCanvasNode{
@@ -175,7 +176,7 @@ func buildGraphCanvasNode(item markdown.WorkspaceDocument) (GraphCanvasNode, str
 			CreatedAt:   document.Metadata.CreatedAt,
 			UpdatedAt:   document.Metadata.UpdatedAt,
 			dependsOn:   cloneStrings(document.Metadata.DependsOn),
-			references:  cloneStrings(document.Metadata.References),
+			references:  cloneNodeReferences(document.Metadata.References),
 		}, graphPath, true, nil
 	case markdown.CommandDocument:
 		return GraphCanvasNode{
@@ -190,7 +191,7 @@ func buildGraphCanvasNode(item markdown.WorkspaceDocument) (GraphCanvasNode, str
 			CreatedAt:   document.Metadata.CreatedAt,
 			UpdatedAt:   document.Metadata.UpdatedAt,
 			dependsOn:   cloneStrings(document.Metadata.DependsOn),
-			references:  cloneStrings(document.Metadata.References),
+			references:  cloneNodeReferences(document.Metadata.References),
 		}, graphPath, true, nil
 	default:
 		return GraphCanvasNode{}, "", false, nil
@@ -302,19 +303,19 @@ func buildGraphCanvasAdjacency(nodesByID map[string]GraphCanvasNode) (map[string
 			indegree[node.ID]++
 		}
 
-		for _, referenceID := range node.references {
-			if _, ok := nodesByID[referenceID]; !ok {
+		for _, ref := range node.references {
+			if _, ok := nodesByID[ref.Node]; !ok {
 				continue
 			}
 
-			edgeID := graphCanvasEdgeID("reference", node.ID, referenceID)
+			edgeID := graphCanvasEdgeID("reference", node.ID, ref.Node)
 			if _, ok := edgeSeen[edgeID]; ok {
 				continue
 			}
 
 			edgeSeen[edgeID] = struct{}{}
-			adjacency[node.ID] = append(adjacency[node.ID], referenceID)
-			indegree[referenceID]++
+			adjacency[node.ID] = append(adjacency[node.ID], ref.Node)
+			indegree[ref.Node]++
 		}
 	}
 
@@ -424,16 +425,17 @@ func buildGraphCanvasEdges(nodesByID map[string]GraphCanvasNode) []GraphCanvasEd
 			edgeByID[edge.ID] = edge
 		}
 
-		for _, referenceID := range node.references {
-			if _, ok := nodesByID[referenceID]; !ok {
+		for _, ref := range node.references {
+			if _, ok := nodesByID[ref.Node]; !ok {
 				continue
 			}
 
 			edge := GraphCanvasEdge{
-				ID:     graphCanvasEdgeID("reference", node.ID, referenceID),
-				Source: node.ID,
-				Target: referenceID,
-				Kind:   "reference",
+				ID:      graphCanvasEdgeID("reference", node.ID, ref.Node),
+				Source:  node.ID,
+				Target:  ref.Node,
+				Kind:    "reference",
+				Context: ref.Context,
 			}
 			edgeByID[edge.ID] = edge
 		}

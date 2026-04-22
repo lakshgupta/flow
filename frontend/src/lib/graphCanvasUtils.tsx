@@ -1,5 +1,6 @@
-import { MarkerType } from "@xyflow/react";
-import type { Edge, Node } from "@xyflow/react";
+import { EdgeLabelRenderer, MarkerType, Position, BaseEdge, getSmoothStepPath } from "@xyflow/react";
+import type { Edge, EdgeProps, Node } from "@xyflow/react";
+import { createContext, useContext } from "react";
 
 import { fileNameFromPath } from "./docUtils";
 import type {
@@ -12,6 +13,78 @@ import type {
   GraphCanvasResponse,
   GraphCanvasResponseWire,
 } from "../types";
+
+export type GraphCanvasFlowEdgeData = {
+  context: string;
+  sourceId: string;
+  targetId: string;
+  kind: string;
+};
+
+export type EdgeEditHandler = (sourceId: string, targetId: string, context: string) => void;
+export const EdgeEditContext = createContext<EdgeEditHandler>(() => {});
+
+/** @deprecated use EdgeEditContext */
+export const EdgeDoubleClickContext = EdgeEditContext;
+export type EdgeDoubleClickHandler = EdgeEditHandler;
+
+/**
+ * ContextEdge renders a smoothstep edge.
+ * - Hover: shows a tooltip with the context annotation.
+ * - Selected: shows a clickable HTML label via EdgeLabelRenderer to edit context.
+ */
+export function ContextEdge({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  style,
+  markerEnd,
+  data,
+  selected,
+}: EdgeProps<Edge<GraphCanvasFlowEdgeData>>) {
+  const onEditContext = useContext(EdgeEditContext);
+  const [edgePath, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
+  const context = data?.context ?? "";
+
+  return (
+    <>
+      <BaseEdge
+        id={id}
+        path={edgePath}
+        style={{ ...style, cursor: "pointer" }}
+        markerEnd={markerEnd}
+        interactionWidth={32}
+      />
+      {selected && (
+        <EdgeLabelRenderer>
+          <div
+            className="graph-edge-label-anchor nodrag nopan"
+            style={{
+              position: "absolute",
+              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+              pointerEvents: "all",
+            }}
+          >
+            <button
+              className="graph-edge-edit-btn"
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditContext(data?.sourceId ?? "", data?.targetId ?? "", context);
+              }}
+            >
+              {context !== "" ? context : "Add context..."}
+            </button>
+          </div>
+        </EdgeLabelRenderer>
+      )}
+    </>
+  );
+}
 
 export function graphCanvasTypeLabel(value: string): string {
   return value === "command" ? "Cmd" : value.charAt(0).toUpperCase() + value.slice(1);
@@ -38,13 +111,9 @@ export function renderGraphCanvasNodeLabel(data: GraphCanvasFlowNodeInput): Reac
     >
       <div className="graph-canvas-node-topline">
         <span className="graph-canvas-node-badge">{graphCanvasTypeLabel(data.type)}</span>
-        <span className="graph-canvas-node-file">{data.fileName}</span>
+        <span className="graph-canvas-node-graph">{data.graph}</span>
       </div>
       <strong className="graph-canvas-node-title">{data.title}</strong>
-      <div className="graph-canvas-node-meta-row">
-        <span>{data.graph}</span>
-        <span>{data.positionPersisted ? "Saved" : "Seeded"}</span>
-      </div>
       {data.description !== "" ? <p className="graph-canvas-node-description">{data.description}</p> : null}
     </article>
   );
@@ -88,8 +157,11 @@ export function buildGraphCanvasFlowNodes(
       isPanelDocument: item.id === selectedDocumentId,
     },
     className: "graph-canvas-ghost-node",
+    width: 288,
+    height: 130,
     style: {
-      width: "18rem",
+      width: "288px",
+      height: "130px",
       padding: 0,
       border: "none",
       borderRadius: 0,
@@ -98,16 +170,16 @@ export function buildGraphCanvasFlowNodes(
       opacity: 0,
       pointerEvents: "none",
     },
-    draggable: true,
+    draggable: false,
     connectable: false,
-    selectable: true,
+    selectable: false,
   }));
 }
 
 export function buildGraphCanvasFlowEdges(
   graphCanvasData: GraphCanvasResponse | null,
   selectedCanvasNodeId: string,
-): Edge[] {
+): Edge<GraphCanvasFlowEdgeData>[] {
   if (graphCanvasData === null) {
     return [];
   }
@@ -117,38 +189,32 @@ export function buildGraphCanvasFlowEdges(
     const isConnected =
       selectedCanvasNodeId !== "" &&
       (edge.source === selectedCanvasNodeId || edge.target === selectedCanvasNodeId);
-    const isReference = edge.kind === "reference";
+    const edgeColor = hasSelection
+      ? isConnected
+        ? "var(--graph-edge)"
+        : "var(--graph-edge-dim)"
+      : "var(--graph-edge)";
 
     return {
       id: edge.id,
       source: edge.source,
       target: edge.target,
-      type: "smoothstep",
-      selectable: false,
+      type: edge.kind === "reference" ? "contextEdge" : "smoothstep",
+      selectable: edge.kind === "reference",
       animated: false,
+      data: edge.kind === "reference"
+        ? { context: edge.context ?? "", sourceId: edge.source, targetId: edge.target, kind: edge.kind }
+        : undefined,
       markerEnd: {
         type: MarkerType.ArrowClosed,
         width: 18,
         height: 18,
-        color: hasSelection
-          ? isConnected
-            ? "#a7392b"
-            : "rgba(82, 101, 97, 0.32)"
-          : isReference
-            ? "#7d5a3d"
-            : "#244b47",
+        color: edgeColor,
       },
       style: {
-        stroke: hasSelection
-          ? isConnected
-            ? "#a7392b"
-            : "rgba(82, 101, 97, 0.32)"
-          : isReference
-            ? "#7d5a3d"
-            : "#244b47",
-        strokeWidth: hasSelection ? (isConnected ? 2.6 : 1.25) : isReference ? 1.8 : 2.1,
-        strokeDasharray: isReference ? "7 6" : undefined,
-        opacity: hasSelection ? (isConnected ? 1 : 0.22) : 0.72,
+        stroke: edgeColor,
+        strokeWidth: hasSelection ? (isConnected ? 2.6 : 1.25) : 2,
+        opacity: hasSelection ? (isConnected ? 1 : 0.25) : 0.85,
       },
     };
   });
@@ -183,6 +249,171 @@ export function graphCanvasPositionMap(
     return {};
   }
   return Object.fromEntries(graphCanvasData.nodes.map((node) => [node.id, node.position]));
+}
+
+// NODE_W / NODE_H are the exact rendered dimensions of a canvas node card set in buildGraphCanvasFlowNodes.
+export const CANVAS_NODE_W = 288;
+export const CANVAS_NODE_H = 130;
+// NODE_W used by the force-layout collision radius (slightly wider for padding).
+const NODE_W = 290;
+const NODE_H = CANVAS_NODE_H;
+const COLLIDE_R = Math.sqrt(NODE_W * NODE_W + NODE_H * NODE_H) / 2 + 28;
+
+type PortSpec = { x: number; y: number; position: Position };
+
+function getNodePorts(pos: GraphCanvasPosition): PortSpec[] {
+  return [
+    { x: pos.x + CANVAS_NODE_W / 2, y: pos.y, position: Position.Top },
+    { x: pos.x + CANVAS_NODE_W, y: pos.y + CANVAS_NODE_H / 2, position: Position.Right },
+    { x: pos.x + CANVAS_NODE_W / 2, y: pos.y + CANVAS_NODE_H, position: Position.Bottom },
+    { x: pos.x, y: pos.y + CANVAS_NODE_H / 2, position: Position.Left },
+  ];
+}
+
+/**
+ * pickBestEdgePorts returns the source and target port that minimise the
+ * straight-line distance between the two nodes, so that edges automatically
+ * re-route to the closest pair of connection points as nodes are dragged.
+ */
+export function pickBestEdgePorts(
+  sourcePos: GraphCanvasPosition,
+  targetPos: GraphCanvasPosition,
+): { sourceX: number; sourceY: number; sourcePosition: Position; targetX: number; targetY: number; targetPosition: Position } {
+  const sourcePorts = getNodePorts(sourcePos);
+  const targetPorts = getNodePorts(targetPos);
+
+  let bestDistSq = Infinity;
+  let bestSrc = sourcePorts[2]; // default: bottom
+  let bestTgt = targetPorts[0]; // default: top
+
+  for (const s of sourcePorts) {
+    for (const t of targetPorts) {
+      const dx = t.x - s.x;
+      const dy = t.y - s.y;
+      const distSq = dx * dx + dy * dy;
+      if (distSq < bestDistSq) {
+        bestDistSq = distSq;
+        bestSrc = s;
+        bestTgt = t;
+      }
+    }
+  }
+
+  return {
+    sourceX: bestSrc.x,
+    sourceY: bestSrc.y,
+    sourcePosition: bestSrc.position,
+    targetX: bestTgt.x,
+    targetY: bestTgt.y,
+    targetPosition: bestTgt.position,
+  };
+}
+
+/**
+ * applyForceLayout runs a simple spring-embedder force simulation to produce
+ * a force-directed layout.  Nodes with `positionPersisted === true` are treated
+ * as pinned (their position does not change).  Returns a position map keyed by
+ * node id.
+ */
+export function applyForceLayout(
+  nodes: GraphCanvasNodePayload[],
+  edges: GraphCanvasEdgePayload[],
+): Record<string, GraphCanvasPosition> {
+  if (nodes.length === 0) return {};
+
+  // Simulation parameters
+  const REPEL = 120_000;
+  const SPRING_LEN = 420;
+  const SPRING_K = 0.05;
+  const GRAVITY = 0.015;
+  const DAMPING = 0.72;
+  const STEPS = 320;
+  const CX = 680;
+  const CY = 440;
+
+  type SN = { id: string; x: number; y: number; vx: number; vy: number; pinned: boolean };
+
+  const sn: SN[] = nodes.map((n) => ({
+    id: n.id,
+    x: n.position.x,
+    y: n.position.y,
+    vx: (Math.random() - 0.5) * 4,
+    vy: (Math.random() - 0.5) * 4,
+    pinned: n.positionPersisted,
+  }));
+
+  const idx = new Map(sn.map((n, i) => [n.id, i]));
+
+  for (let step = 0; step < STEPS; step++) {
+    const alpha = Math.max(0.01, 1 - step / (STEPS * 0.85));
+
+    // Repulsion between every pair of nodes
+    for (let i = 0; i < sn.length; i++) {
+      for (let j = i + 1; j < sn.length; j++) {
+        const a = sn[i], b = sn[j];
+        const dx = b.x - a.x || 0.1;
+        const dy = b.y - a.y || 0.1;
+        const d2 = dx * dx + dy * dy;
+        const d = Math.sqrt(d2);
+        const f = (REPEL / d2) * alpha;
+        const fx = (dx / d) * f;
+        const fy = (dy / d) * f;
+        if (!a.pinned) { a.vx -= fx; a.vy -= fy; }
+        if (!b.pinned) { b.vx += fx; b.vy += fy; }
+      }
+    }
+
+    // Spring attraction along edges
+    for (const e of edges) {
+      const si = idx.get(e.source);
+      const ti = idx.get(e.target);
+      if (si === undefined || ti === undefined) continue;
+      const a = sn[si], b = sn[ti];
+      const dx = b.x - a.x || 0.1;
+      const dy = b.y - a.y || 0.1;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      const f = ((d - SPRING_LEN) * SPRING_K) * alpha;
+      const fx = (dx / d) * f;
+      const fy = (dy / d) * f;
+      if (!a.pinned) { a.vx += fx; a.vy += fy; }
+      if (!b.pinned) { b.vx -= fx; b.vy -= fy; }
+    }
+
+    // Weak gravity toward canvas centre
+    for (const n of sn) {
+      if (n.pinned) continue;
+      n.vx += (CX - n.x) * GRAVITY * alpha;
+      n.vy += (CY - n.y) * GRAVITY * alpha;
+    }
+
+    // Overlap separation (collision)
+    for (let i = 0; i < sn.length; i++) {
+      for (let j = i + 1; j < sn.length; j++) {
+        const a = sn[i], b = sn[j];
+        const dx = b.x - a.x || 0.1;
+        const dy = b.y - a.y || 0.1;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < COLLIDE_R * 2) {
+          const push = (COLLIDE_R * 2 - d) / 2 + 1;
+          const px = (dx / d) * push;
+          const py = (dy / d) * push;
+          if (!a.pinned) { a.x -= px; a.y -= py; }
+          if (!b.pinned) { b.x += px; b.y += py; }
+        }
+      }
+    }
+
+    // Integrate
+    for (const n of sn) {
+      if (n.pinned) continue;
+      n.vx *= DAMPING;
+      n.vy *= DAMPING;
+      n.x += n.vx;
+      n.y += n.vy;
+    }
+  }
+
+  return Object.fromEntries(sn.map((n) => [n.id, { x: Math.round(n.x), y: Math.round(n.y) }]));
 }
 
 export function applyGraphCanvasLayerGuidance(

@@ -21,6 +21,29 @@ const (
 	CommandType DocumentType = "command"
 )
 
+// NodeReference is an inline reference from one document to another, with optional context.
+type NodeReference struct {
+	Node    string `yaml:"node"`
+	Context string `yaml:"context,omitempty"`
+}
+
+// UnmarshalYAML implements custom decoding so that a plain scalar string (legacy format) is
+// treated as NodeReference{Node: value}.
+func (r *NodeReference) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.ScalarNode {
+		r.Node = value.Value
+		r.Context = ""
+		return nil
+	}
+	type plain NodeReference
+	var p plain
+	if err := value.Decode(&p); err != nil {
+		return err
+	}
+	*r = NodeReference(p)
+	return nil
+}
+
 // CommonFields contains the frontmatter shared by all document kinds.
 type CommonFields struct {
 	ID          string       `yaml:"id,omitempty"`
@@ -36,15 +59,15 @@ type CommonFields struct {
 // NoteMetadata describes note frontmatter fields.
 type NoteMetadata struct {
 	CommonFields `yaml:",inline"`
-	References   []string `yaml:"references,omitempty"`
+	References   []NodeReference `yaml:"references,omitempty"`
 }
 
 // TaskMetadata describes task frontmatter fields.
 type TaskMetadata struct {
 	CommonFields `yaml:",inline"`
-	Status       string   `yaml:"status,omitempty"`
-	DependsOn    []string `yaml:"dependsOn,omitempty"`
-	References   []string `yaml:"references,omitempty"`
+	Status       string          `yaml:"status,omitempty"`
+	DependsOn    []string        `yaml:"dependsOn,omitempty"`
+	References   []NodeReference `yaml:"references,omitempty"`
 }
 
 // CommandMetadata describes command frontmatter fields.
@@ -52,12 +75,12 @@ type CommandMetadata struct {
 	CommonFields `yaml:",inline"`
 	Name         string            `yaml:"name,omitempty"`
 	DependsOn    []string          `yaml:"dependsOn,omitempty"`
-	References   []string          `yaml:"references,omitempty"`
+	References   []NodeReference   `yaml:"references,omitempty"`
 	Env          map[string]string `yaml:"env,omitempty"`
 	Run          string            `yaml:"run,omitempty"`
 }
 
-// NoteDocument is the parsed representation of a note Markdown file.
+// HomeDocument is the parsed representation of the home Markdown file.
 type HomeDocument struct {
 	Metadata CommonFields
 	Body     string
@@ -315,4 +338,16 @@ func documentDirectoryName(documentType DocumentType) (string, error) {
 func CompactMarkdown(body string) string {
 	normalized := strings.ReplaceAll(body, "\r\n", "\n")
 	return string(bytes.TrimRight([]byte(normalized), "\n"))
+}
+
+// NodeReferenceIDs extracts the node IDs from a slice of NodeReference values.
+func NodeReferenceIDs(refs []NodeReference) []string {
+	if len(refs) == 0 {
+		return nil
+	}
+	ids := make([]string, len(refs))
+	for i, r := range refs {
+		ids[i] = r.Node
+	}
+	return ids
 }

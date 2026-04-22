@@ -1,4 +1,4 @@
-import type { GraphTreeResponse, WorkspaceResponse, WorkspaceSnapshot } from "../types";
+import type { CalendarDocumentResponse, GraphTreeResponse, WorkspaceResponse, WorkspaceSnapshot } from "../types";
 
 export async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -33,4 +33,8 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
   ]);
 
   return { workspaceData, graphTreeData };
+}
+
+export async function loadCalendarDocuments(): Promise<CalendarDocumentResponse[]> {
+  return requestJSON<CalendarDocumentResponse[]>("/api/calendar-documents");
 }

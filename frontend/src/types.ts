@@ -19,6 +19,15 @@ export type HomeResponse = {
   body: string;
 };
 
+export type CalendarDocumentResponse = {
+  id: string;
+  type: string;
+  graph: string;
+  title: string;
+  path: string;
+  body: string;
+};
+
 export type GraphTreeNodeData = {
   graphPath: string;
   displayName: string;
@@ -31,6 +40,11 @@ export type GraphTreeNodeData = {
 export type GraphTreeResponse = {
   home: HomeResponse;
   graphs: GraphTreeNodeData[];
+};
+
+export type NodeReference = {
+  node: string;
+  context?: string;
 };
 
 export type DocumentResponse = {
@@ -47,7 +61,7 @@ export type DocumentResponse = {
   body: string;
   status?: string;
   dependsOn?: string[];
-  references?: string[];
+  references?: NodeReference[];
   name?: string;
   env?: Record<string, string>;
   run?: string;
@@ -135,6 +149,7 @@ export type GraphCanvasEdgePayload = {
   source: string;
   target: string;
   kind: string;
+  context?: string;
 };
 
 export type GraphCanvasResponse = {
@@ -181,7 +196,7 @@ export type CreateDocumentPayload = {
   body: string;
   status?: string;
   dependsOn?: string[];
-  references?: string[];
+  references?: NodeReference[];
   name?: string;
   env?: Record<string, string>;
   run?: string;

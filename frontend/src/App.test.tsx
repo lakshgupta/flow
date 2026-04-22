@@ -1,5 +1,5 @@
 import { ThemeProvider } from "./lib/theme";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -45,6 +45,7 @@ vi.mock("@xyflow/react", async () => {
     ),
     Background: () => <div data-testid="flow-background" />,
     Controls: () => <div data-testid="flow-controls" />,
+    useViewport: () => ({ x: 0, y: 0, zoom: 1 }),
     applyNodeChanges: (_changes: unknown, nodes: unknown) => nodes,
     MarkerType: { ArrowClosed: "arrowclosed" },
   };
@@ -116,6 +117,11 @@ function jsonResponse(body: unknown, options?: MockResponseOptions): Response {
 function installFetchMock(handler: MockFetchHandler) {
   const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+
+    if (url === "/api/calendar-documents") {
+      return jsonResponse([]);
+    }
+
     const result = handler(url, init);
 
     if (result instanceof Response) {
@@ -245,19 +251,13 @@ describe("App graph canvas flows", () => {
 
     await screen.findByText("Content");
 
-    const executionButton = screen.getByText("Execution").closest("button");
+    const executionButton = (await screen.findByText("Execution")).closest('[data-sidebar="menu-sub-button"]');
     if (executionButton === null) {
       throw new Error("missing execution graph button");
     }
 
     await user.click(executionButton);
-    await screen.findByText("Graph Canvas");
     await screen.findByTestId("flow-node-note-1");
-
-    await user.click(screen.getByRole("button", { name: "Select note-1" }));
-
-    expect(await screen.findByText("Selected Node")).toBeInTheDocument();
-    expect(screen.getByText("0 connected edges highlighted")).toBeInTheDocument();
 
     await user.dblClick(screen.getByRole("button", { name: "Open note-1" }));
 
@@ -276,6 +276,299 @@ describe("App graph canvas flows", () => {
           }),
         }),
       );
+    });
+  });
+
+  it("allows ctrl-click multi-select to enable merge actions", async () => {
+    const graphCanvasResponse = {
+      selectedGraph: "execution",
+      availableGraphs: ["execution"],
+      layerGuidance: {
+        magneticThresholdPx: 18,
+        guides: [
+          { layer: 0, x: 140 },
+          { layer: 1, x: 460 },
+        ],
+      },
+      nodes: [
+        {
+          id: "note-1",
+          type: "note",
+          graph: "execution",
+          title: "Overview",
+          description: "Execution overview",
+          path: "data/graphs/execution/overview.md",
+          featureSlug: "execution",
+          position: { x: 140, y: 120 },
+          positionPersisted: false,
+        },
+        {
+          id: "note-2",
+          type: "note",
+          graph: "execution",
+          title: "Follow Up",
+          description: "Execution follow-up",
+          path: "data/graphs/execution/follow-up.md",
+          featureSlug: "execution",
+          position: { x: 460, y: 120 },
+          positionPersisted: false,
+        },
+      ],
+      edges: [],
+    };
+
+    installFetchMock((url) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/graphs/note") {
+        return noteGraphs("execution");
+      }
+
+      if (url === "/api/graphs/task") {
+        return emptyGraphLists.tasks;
+      }
+
+      if (url === "/api/graphs/command") {
+        return emptyGraphLists.commands;
+      }
+
+      if (url === "/api/graph-canvas?graph=execution") {
+        return graphCanvasResponse;
+      }
+
+      throw new Error(`Unhandled request: GET ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Content");
+
+    const executionButton = (await screen.findByText("Execution")).closest('[data-sidebar="menu-sub-button"]');
+    if (executionButton === null) {
+      throw new Error("missing execution graph button");
+    }
+
+    await user.click(executionButton);
+    await screen.findByTestId("flow-node-note-1");
+
+    const firstNode = document.querySelector('[data-nodeid="note-1"]');
+    const secondNode = document.querySelector('[data-nodeid="note-2"]');
+    if (!(firstNode instanceof HTMLElement) || !(secondNode instanceof HTMLElement)) {
+      throw new Error("missing graph overlay nodes");
+    }
+
+    fireEvent.click(firstNode, { ctrlKey: true });
+    fireEvent.click(secondNode, { ctrlKey: true });
+
+    expect(await screen.findByText("2 selected")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Merge" })).toBeInTheDocument();
+  });
+
+  it("restores the open document panel when calendar is toggled off from focus mode", async () => {
+    const graphCanvasResponse = {
+      selectedGraph: "execution",
+      availableGraphs: ["execution"],
+      layerGuidance: {
+        magneticThresholdPx: 18,
+        guides: [
+          { layer: 0, x: 140 },
+          { layer: 1, x: 460 },
+        ],
+      },
+      nodes: [
+        {
+          id: "note-1",
+          type: "note",
+          graph: "execution",
+          title: "Overview",
+          description: "Execution overview",
+          path: "data/graphs/execution/overview.md",
+          featureSlug: "execution",
+          position: { x: 140, y: 120 },
+          positionPersisted: false,
+        },
+      ],
+      edges: [],
+    };
+    const documentResponse = {
+      id: "note-1",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Overview",
+      description: "Execution overview",
+      path: "data/graphs/execution/overview.md",
+      tags: [],
+      body: "Overview body\n",
+      references: [],
+      relatedNoteIds: [],
+    };
+
+    installFetchMock((url) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/graphs/note") {
+        return noteGraphs("execution");
+      }
+
+      if (url === "/api/graphs/task") {
+        return emptyGraphLists.tasks;
+      }
+
+      if (url === "/api/graphs/command") {
+        return emptyGraphLists.commands;
+      }
+
+      if (url === "/api/graph-canvas?graph=execution") {
+        return graphCanvasResponse;
+      }
+
+      if (url === "/api/documents/note-1") {
+        return documentResponse;
+      }
+
+      throw new Error(`Unhandled request: GET ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Content");
+
+    const executionButton = (await screen.findByText("Execution")).closest('[data-sidebar="menu-sub-button"]');
+    if (executionButton === null) {
+      throw new Error("missing execution graph button");
+    }
+
+    await user.click(executionButton);
+    await screen.findByTestId("flow-node-note-1");
+
+    await user.dblClick(screen.getByRole("button", { name: "Open note-1" }));
+    expect(await screen.findByText("Overview body")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Focus mode" }));
+    await user.click(screen.getByRole("button", { name: "Calendar" }));
+    expect(await screen.findByText("No entries for this day.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Calendar" }));
+    expect(await screen.findByText("Overview body")).toBeInTheDocument();
+    expect(screen.queryByText("No entries for this day.")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Document" }));
+    await waitFor(() => {
+      expect(screen.queryByText("Overview body")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows a document table of contents in focus mode and returns focus to the editor on click", async () => {
+    const graphCanvasResponse = {
+      selectedGraph: "execution",
+      availableGraphs: ["execution"],
+      layerGuidance: {
+        magneticThresholdPx: 18,
+        guides: [
+          { layer: 0, x: 140 },
+          { layer: 1, x: 460 },
+        ],
+      },
+      nodes: [
+        {
+          id: "note-1",
+          type: "note",
+          graph: "execution",
+          title: "Overview",
+          description: "Execution overview",
+          path: "data/graphs/execution/overview.md",
+          featureSlug: "execution",
+          position: { x: 140, y: 120 },
+          positionPersisted: false,
+        },
+      ],
+      edges: [],
+    };
+    const documentResponse = {
+      id: "note-1",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Overview",
+      description: "Execution overview",
+      path: "data/graphs/execution/overview.md",
+      tags: [],
+      body: "# Intro Heading\n\nBody text\n\n## Deep Section\n\nMore detail\n",
+      references: [],
+      relatedNoteIds: [],
+    };
+
+    installFetchMock((url) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/graphs/note") {
+        return noteGraphs("execution");
+      }
+
+      if (url === "/api/graphs/task") {
+        return emptyGraphLists.tasks;
+      }
+
+      if (url === "/api/graphs/command") {
+        return emptyGraphLists.commands;
+      }
+
+      if (url === "/api/graph-canvas?graph=execution") {
+        return graphCanvasResponse;
+      }
+
+      if (url === "/api/documents/note-1") {
+        return documentResponse;
+      }
+
+      throw new Error(`Unhandled request: GET ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Content");
+
+    const executionButton = (await screen.findByText("Execution")).closest('[data-sidebar="menu-sub-button"]');
+    if (executionButton === null) {
+      throw new Error("missing execution graph button");
+    }
+
+    await user.click(executionButton);
+    await screen.findByTestId("flow-node-note-1");
+
+    await user.dblClick(screen.getByRole("button", { name: "Open note-1" }));
+    await user.click(screen.getByRole("button", { name: "Focus mode" }));
+
+    const toc = await screen.findByLabelText("Document table of contents");
+    const deepSectionLink = within(toc).getByRole("button", { name: "Deep Section" });
+
+    await user.click(deepSectionLink);
+
+    await waitFor(() => {
+      const editorSurface = screen.getByLabelText("Document body editor");
+      expect(editorSurface.contains(document.activeElement)).toBe(true);
     });
   });
 
@@ -375,7 +668,7 @@ describe("App graph canvas flows", () => {
 
     await screen.findByText("Content");
 
-    const emptyGraphButton = screen.getByText("Empty").closest("button");
+    const emptyGraphButton = (await screen.findByText("Empty")).closest('[data-sidebar="menu-sub-button"]');
     if (emptyGraphButton === null) {
       throw new Error("missing empty graph button");
     }
@@ -385,6 +678,8 @@ describe("App graph canvas flows", () => {
     expect(await screen.findByText("Start this canvas with the first document.")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Capture context/i }));
+    await user.type(await screen.findByLabelText("File name"), "new-note");
+    await user.click(screen.getByRole("button", { name: /^Create$/i }));
 
     await waitFor(() => {
       const payload = getRequestBody(fetchMock, "/api/documents", "POST");
@@ -394,9 +689,7 @@ describe("App graph canvas flows", () => {
       expect(payload.title).toBe("New Note");
     });
 
-    expect(await screen.findByDisplayValue("New Note")).toBeInTheDocument();
-    expect(screen.getByText("Note created.")).toBeInTheDocument();
-    expect(screen.getByText("1 visible documents")).toBeInTheDocument();
+    expect(await screen.findByTestId("flow-node-note-new")).toBeInTheDocument();
   });
 
   it("tolerates null graph-canvas arrays from the API when selecting a graph", async () => {
@@ -463,16 +756,14 @@ describe("App graph canvas flows", () => {
 
     await screen.findByText("Content");
 
-    const executionButton = screen.getByText("Execution").closest("button");
+    const executionButton = (await screen.findByText("Execution")).closest('[data-sidebar="menu-sub-button"]');
     if (executionButton === null) {
       throw new Error("missing execution graph button");
     }
 
     await user.click(executionButton);
 
-    expect(await screen.findByText("Graph Canvas")).toBeInTheDocument();
     expect(await screen.findByTestId("flow-node-note-1")).toBeInTheDocument();
-    expect(screen.getByText("0 projected edges")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith("/api/graph-canvas?graph=execution", expect.anything());
   });
 
@@ -513,22 +804,23 @@ describe("App graph canvas flows", () => {
     await screen.findByText("Content");
 
     // Initial state: home surface is selected
-    expect(await screen.findByLabelText("Document title")).toBeInTheDocument();
-    expect(screen.getByLabelText("Home body editor")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Home body editor")).toBeInTheDocument();
     expect(screen.queryByTestId("react-flow-mock")).not.toBeInTheDocument();
 
     // Click a graph to switch to the canvas view
-    const graphButton = (await screen.findByText("Execution")).closest("button");
-    if (graphButton) await user.click(graphButton);
+    const graphButton = (await screen.findByText("Execution")).closest('[data-sidebar="menu-sub-button"]');
+    if (graphButton === null) {
+      throw new Error("missing execution graph button");
+    }
+    await user.click(graphButton);
 
     expect(await screen.findByTestId("react-flow-mock")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Document title")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Home body editor")).not.toBeInTheDocument();
 
     // Navigate back to Home
-    const homeBtn = screen.getByText("Home").closest("button");
-    if (homeBtn) await user.click(homeBtn);
+    await user.click(screen.getByRole("button", { name: /^Home$/i }));
 
-    expect(await screen.findByLabelText("Document title")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Home body editor")).toBeInTheDocument();
     expect(screen.queryByTestId("react-flow-mock")).not.toBeInTheDocument();
   });
 });

@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -50,6 +50,15 @@ type homeResponse struct {
 	Body        string `json:"body"`
 }
 
+type calendarDocumentResponse struct {
+	ID    string `json:"id"`
+	Type  string `json:"type"`
+	Graph string `json:"graph"`
+	Title string `json:"title"`
+	Path  string `json:"path"`
+	Body  string `json:"body"`
+}
+
 type graphTreeNodeResponse struct {
 	GraphPath   string `json:"graphPath"`
 	DisplayName string `json:"displayName"`
@@ -82,37 +91,25 @@ type graphLayoutResponse struct {
 	Positions []graphLayoutPositionRequest `json:"positions"`
 }
 
-type graphItem struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-	Path  string `json:"path"`
-}
-
-type graphListResponse struct {
-	Type            string                 `json:"type"`
-	AvailableGraphs []string               `json:"availableGraphs"`
-	GraphItems      map[string][]graphItem `json:"graphItems"`
-}
-
 type documentResponse struct {
-	ID             string            `json:"id"`
-	Type           string            `json:"type"`
-	FeatureSlug    string            `json:"featureSlug"`
-	Graph          string            `json:"graph"`
-	Title          string            `json:"title"`
-	Description    string            `json:"description"`
-	Path           string            `json:"path"`
-	Tags           []string          `json:"tags,omitempty"`
-	CreatedAt      string            `json:"createdAt,omitempty"`
-	UpdatedAt      string            `json:"updatedAt,omitempty"`
-	Body           string            `json:"body"`
-	Status         string            `json:"status,omitempty"`
-	DependsOn      []string          `json:"dependsOn,omitempty"`
-	References     []string          `json:"references,omitempty"`
-	Name           string            `json:"name,omitempty"`
-	Env            map[string]string `json:"env,omitempty"`
-	Run            string            `json:"run,omitempty"`
-	RelatedNoteIDs []string          `json:"relatedNoteIds,omitempty"`
+	ID             string                  `json:"id"`
+	Type           string                  `json:"type"`
+	FeatureSlug    string                  `json:"featureSlug"`
+	Graph          string                  `json:"graph"`
+	Title          string                  `json:"title"`
+	Description    string                  `json:"description"`
+	Path           string                  `json:"path"`
+	Tags           []string                `json:"tags,omitempty"`
+	CreatedAt      string                  `json:"createdAt,omitempty"`
+	UpdatedAt      string                  `json:"updatedAt,omitempty"`
+	Body           string                  `json:"body"`
+	Status         string                  `json:"status,omitempty"`
+	DependsOn      []string                `json:"dependsOn,omitempty"`
+	References     []nodeReferenceResponse `json:"references,omitempty"`
+	Name           string                  `json:"name,omitempty"`
+	Env            map[string]string       `json:"env,omitempty"`
+	Run            string                  `json:"run,omitempty"`
+	RelatedNoteIDs []string                `json:"relatedNoteIds,omitempty"`
 }
 
 type errorResponse struct {
@@ -120,40 +117,40 @@ type errorResponse struct {
 }
 
 type createDocumentRequest struct {
-	Type        string            `json:"type"`
-	FeatureSlug string            `json:"featureSlug"`
-	FileName    string            `json:"fileName"`
-	ID          string            `json:"id"`
-	Graph       string            `json:"graph"`
-	Title       string            `json:"title"`
-	Description string            `json:"description"`
-	Tags        []string          `json:"tags"`
-	CreatedAt   string            `json:"createdAt"`
-	UpdatedAt   string            `json:"updatedAt"`
-	Body        string            `json:"body"`
-	Status      string            `json:"status"`
-	DependsOn   []string          `json:"dependsOn"`
-	References  []string          `json:"references"`
-	Name        string            `json:"name"`
-	Env         map[string]string `json:"env"`
-	Run         string            `json:"run"`
+	Type        string                  `json:"type"`
+	FeatureSlug string                  `json:"featureSlug"`
+	FileName    string                  `json:"fileName"`
+	ID          string                  `json:"id"`
+	Graph       string                  `json:"graph"`
+	Title       string                  `json:"title"`
+	Description string                  `json:"description"`
+	Tags        []string                `json:"tags"`
+	CreatedAt   string                  `json:"createdAt"`
+	UpdatedAt   string                  `json:"updatedAt"`
+	Body        string                  `json:"body"`
+	Status      string                  `json:"status"`
+	DependsOn   []string                `json:"dependsOn"`
+	References  []nodeReferenceResponse `json:"references"`
+	Name        string                  `json:"name"`
+	Env         map[string]string       `json:"env"`
+	Run         string                  `json:"run"`
 }
 
 type updateDocumentRequest struct {
-	ID          *string            `json:"id"`
-	Graph       *string            `json:"graph"`
-	Title       *string            `json:"title"`
-	Description *string            `json:"description"`
-	Tags        *[]string          `json:"tags"`
-	CreatedAt   *string            `json:"createdAt"`
-	UpdatedAt   *string            `json:"updatedAt"`
-	Body        *string            `json:"body"`
-	Status      *string            `json:"status"`
-	DependsOn   *[]string          `json:"dependsOn"`
-	References  *[]string          `json:"references"`
-	Name        *string            `json:"name"`
-	Env         *map[string]string `json:"env"`
-	Run         *string            `json:"run"`
+	ID          *string                  `json:"id"`
+	Graph       *string                  `json:"graph"`
+	Title       *string                  `json:"title"`
+	Description *string                  `json:"description"`
+	Tags        *[]string                `json:"tags"`
+	CreatedAt   *string                  `json:"createdAt"`
+	UpdatedAt   *string                  `json:"updatedAt"`
+	Body        *string                  `json:"body"`
+	Status      *string                  `json:"status"`
+	DependsOn   *[]string                `json:"dependsOn"`
+	References  *[]nodeReferenceResponse `json:"references"`
+	Name        *string                  `json:"name"`
+	Env         *map[string]string       `json:"env"`
+	Run         *string                  `json:"run"`
 }
 
 type updateHomeRequest struct {
@@ -166,10 +163,49 @@ type updateWorkspaceRequest struct {
 	PanelWidths *panelWidths `json:"panelWidths"`
 }
 
+type createGraphRequest struct {
+	Name string `json:"name"`
+}
+
+type createGraphResponse struct {
+	Name string `json:"name"`
+}
+
 type deleteDocumentResponse struct {
 	Deleted bool   `json:"deleted"`
 	ID      string `json:"id"`
 	Path    string `json:"path"`
+}
+
+type deleteGraphResponse struct {
+	Deleted bool   `json:"deleted"`
+	Name    string `json:"name"`
+}
+
+type mergeDocumentsRequest struct {
+	DocumentIDs []string `json:"documentIds"`
+}
+
+type nodeReferenceResponse struct {
+	Node    string `json:"node"`
+	Context string `json:"context,omitempty"`
+}
+
+type addReferenceRequest struct {
+	FromID  string `json:"fromId"`
+	ToID    string `json:"toId"`
+	Context string `json:"context"`
+}
+
+type removeReferenceRequest struct {
+	FromID string `json:"fromId"`
+	ToID   string `json:"toId"`
+}
+
+type updateReferenceContextRequest struct {
+	FromID  string `json:"fromId"`
+	ToID    string `json:"toId"`
+	Context string `json:"context"`
 }
 
 // NewMux returns an HTTP handler backed by embedded frontend assets and read/query APIs.
@@ -200,32 +236,40 @@ func (handler *apiHandler) ServeHTTP(writer http.ResponseWriter, request *http.R
 	switch {
 	case request.URL.Path == "/api/documents" && request.Method == http.MethodPost:
 		handler.handleCreateDocument(writer, request)
+	case request.URL.Path == "/api/references" && request.Method == http.MethodPost:
+		handler.handleAddReference(writer, request)
+	case request.URL.Path == "/api/references" && request.Method == http.MethodPatch:
+		handler.handleUpdateReferenceContext(writer, request)
+	case request.URL.Path == "/api/references" && request.Method == http.MethodDelete:
+		handler.handleRemoveReference(writer, request)
+	case request.URL.Path == "/api/documents/merge" && request.Method == http.MethodPost:
+		handler.handleMergeDocuments(writer, request)
 	case request.URL.Path == "/api/home" && request.Method == http.MethodGet:
 		handler.handleHome(writer, request)
 	case request.URL.Path == "/api/home" && request.Method == http.MethodPut:
 		handler.handleUpdateHome(writer, request)
+	case request.URL.Path == "/api/calendar-documents" && request.Method == http.MethodGet:
+		handler.handleCalendarDocuments(writer, request)
 	case request.URL.Path == "/api/workspace" && request.Method == http.MethodPut:
 		handler.handleUpdateWorkspace(writer, request)
 	case request.URL.Path == "/api/graphs" && request.Method == http.MethodGet:
 		handler.handleGraphTree(writer, request)
+	case request.URL.Path == "/api/graphs" && request.Method == http.MethodPost:
+		handler.handleCreateGraph(writer, request)
+	case strings.HasPrefix(request.URL.Path, "/api/graphs/") && request.Method == http.MethodDelete:
+		handler.handleDeleteGraph(writer, request)
 	case request.URL.Path == "/api/graph-canvas" && request.Method == http.MethodGet:
 		handler.handleGraphCanvas(writer, request)
 	case request.URL.Path == "/api/graph-layout" && request.Method == http.MethodPut:
 		handler.handleGraphLayout(writer, request)
 	case request.URL.Path == "/api/workspace" && request.Method == http.MethodGet:
 		handler.handleWorkspace(writer, request)
-	case request.URL.Path == "/api/layers/tasks" && request.Method == http.MethodGet:
-		handler.handleTaskLayers(writer, request)
-	case request.URL.Path == "/api/layers/commands" && request.Method == http.MethodGet:
-		handler.handleCommandLayers(writer, request)
-	case request.URL.Path == "/api/notes/graph" && request.Method == http.MethodGet:
-		handler.handleNoteGraph(writer, request)
 	case request.URL.Path == "/api/search" && request.Method == http.MethodGet:
 		handler.handleSearch(writer, request)
 	case request.URL.Path == "/api/gui/stop" && request.Method == http.MethodPost:
 		handler.handleGUIStop(writer, request)
-	case strings.HasPrefix(request.URL.Path, "/api/graphs/") && request.Method == http.MethodGet:
-		handler.handleGraphs(writer, request)
+	case request.URL.Path == "/api/node-view" && request.Method == http.MethodGet:
+		handler.handleNodeView(writer, request)
 	case strings.HasPrefix(request.URL.Path, "/api/documents/") && request.Method == http.MethodPut:
 		handler.handleUpdateDocument(writer, request)
 	case strings.HasPrefix(request.URL.Path, "/api/documents/") && request.Method == http.MethodDelete:
@@ -259,7 +303,7 @@ func (handler *apiHandler) handleCreateDocument(writer http.ResponseWriter, requ
 		Body:        payload.Body,
 		Status:      payload.Status,
 		DependsOn:   payload.DependsOn,
-		References:  payload.References,
+		References:  nodeReferencesFromPayload(payload.References),
 		Name:        payload.Name,
 		Env:         payload.Env,
 		Run:         payload.Run,
@@ -359,6 +403,36 @@ func (handler *apiHandler) handleUpdateHome(writer http.ResponseWriter, request 
 	writeJSON(writer, http.StatusOK, home)
 }
 
+func (handler *apiHandler) handleCalendarDocuments(writer http.ResponseWriter, _ *http.Request) {
+	documents, err := loadCalendarDocumentResponses(handler.options.Root)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, documents)
+}
+
+func (handler *apiHandler) handleCreateGraph(writer http.ResponseWriter, request *http.Request) {
+	var payload createGraphRequest
+	if err := decodeJSONRequest(request, &payload); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := workspace.CreateGraph(handler.options.Root, workspace.CreateGraphInput{Name: payload.Name}); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := index.Rebuild(handler.options.Root.IndexPath, handler.options.Root.FlowPath); err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(writer, http.StatusCreated, createGraphResponse{Name: payload.Name})
+}
+
 func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.Request) {
 	nodes, err := index.ReadGraphNodesWorkspace(handler.options.Root.IndexPath, handler.options.Root.FlowPath)
 	if err != nil {
@@ -382,23 +456,6 @@ func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.R
 			HasChildren: node.HasChildren,
 			CountLabel:  fmt.Sprintf("%d direct / %d total", node.DirectCount, node.TotalCount),
 		})
-	}
-
-	writeJSON(writer, http.StatusOK, response)
-}
-
-func (handler *apiHandler) handleGraphs(writer http.ResponseWriter, request *http.Request) {
-	graphType := strings.TrimPrefix(request.URL.Path, "/api/graphs/")
-	documents, err := workspace.LoadDocuments(handler.options.Root.FlowPath)
-	if err != nil {
-		writeError(writer, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	response, err := buildGraphListResponse(graphType, documents)
-	if err != nil {
-		writeError(writer, http.StatusBadRequest, err.Error())
-		return
 	}
 
 	writeJSON(writer, http.StatusOK, response)
@@ -435,6 +492,22 @@ func (handler *apiHandler) handleGraphCanvas(writer http.ResponseWriter, request
 
 	view, err := graph.BuildGraphCanvasView(documents, selectedGraph, persistedPositions)
 	if err != nil {
+		// If the graph exists as an empty directory (no documents yet), return an empty canvas
+		// rather than an error so the frontend can show create actions.
+		nodes, nodeErr := index.ReadGraphNodesWorkspace(handler.options.Root.IndexPath, handler.options.Root.FlowPath)
+		if nodeErr == nil {
+			for _, node := range nodes {
+				if node.GraphPath == selectedGraph {
+					writeJSON(writer, http.StatusOK, graph.GraphCanvasView{
+						SelectedGraph:   selectedGraph,
+						AvailableGraphs: []string{selectedGraph},
+						Nodes:           []graph.GraphCanvasNode{},
+						Edges:           []graph.GraphCanvasEdge{},
+					})
+					return
+				}
+			}
+		}
 		writeError(writer, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -511,64 +584,6 @@ func (handler *apiHandler) handleGraphLayout(writer http.ResponseWriter, request
 	writeJSON(writer, http.StatusOK, graphLayoutResponse{Graph: selectedGraph, Positions: responsePositions})
 }
 
-func (handler *apiHandler) handleTaskLayers(writer http.ResponseWriter, _ *http.Request) {
-	documents, err := workspace.LoadDocuments(handler.options.Root.FlowPath)
-	if err != nil {
-		writeError(writer, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	view, err := graph.BuildTaskLayerView(documents)
-	if err != nil {
-		writeError(writer, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	writeJSON(writer, http.StatusOK, view)
-}
-
-func (handler *apiHandler) handleCommandLayers(writer http.ResponseWriter, request *http.Request) {
-	documents, err := workspace.LoadDocuments(handler.options.Root.FlowPath)
-	if err != nil {
-		writeError(writer, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	selectedGraph := strings.TrimSpace(request.URL.Query().Get("graph"))
-	if selectedGraph == "" {
-		selectedGraph = firstCommandGraph(documents)
-	}
-
-	if selectedGraph == "" {
-		writeJSON(writer, http.StatusOK, graph.CommandLayerView{})
-		return
-	}
-
-	view, err := graph.BuildCommandLayerView(documents, selectedGraph)
-	if err != nil {
-		writeError(writer, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	writeJSON(writer, http.StatusOK, view)
-}
-
-func (handler *apiHandler) handleNoteGraph(writer http.ResponseWriter, _ *http.Request) {
-	documents, err := workspace.LoadDocuments(handler.options.Root.FlowPath)
-	if err != nil {
-		writeError(writer, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	view, err := graph.BuildNoteGraphView(documents)
-	if err != nil {
-		writeError(writer, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	writeJSON(writer, http.StatusOK, view)
-}
-
 func (handler *apiHandler) handleDocument(writer http.ResponseWriter, request *http.Request) {
 	documentID := strings.TrimPrefix(request.URL.Path, "/api/documents/")
 	if strings.TrimSpace(documentID) == "" {
@@ -628,7 +643,7 @@ func (handler *apiHandler) handleUpdateDocument(writer http.ResponseWriter, requ
 		Body:        payload.Body,
 		Status:      payload.Status,
 		DependsOn:   payload.DependsOn,
-		References:  payload.References,
+		References:  nodeReferencesPatchFromPayload(payload.References),
 		Name:        payload.Name,
 		Env:         payload.Env,
 		Run:         payload.Run,
@@ -647,6 +662,21 @@ func (handler *apiHandler) handleUpdateDocument(writer http.ResponseWriter, requ
 	writeJSON(writer, http.StatusOK, response)
 }
 
+func (handler *apiHandler) handleDeleteGraph(writer http.ResponseWriter, request *http.Request) {
+	graphName := strings.TrimPrefix(request.URL.Path, "/api/graphs/")
+	if strings.TrimSpace(graphName) == "" {
+		writeError(writer, http.StatusBadRequest, "graph name must not be empty")
+		return
+	}
+
+	if err := workspace.DeleteGraph(handler.options.Root, graphName); err != nil {
+		writeMutationError(writer, err)
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, deleteGraphResponse{Deleted: true, Name: graphName})
+}
+
 func (handler *apiHandler) handleDeleteDocument(writer http.ResponseWriter, request *http.Request) {
 	documentID := strings.TrimPrefix(request.URL.Path, "/api/documents/")
 	if strings.TrimSpace(documentID) == "" {
@@ -661,6 +691,93 @@ func (handler *apiHandler) handleDeleteDocument(writer http.ResponseWriter, requ
 	}
 
 	writeJSON(writer, http.StatusOK, deleteDocumentResponse{Deleted: true, ID: strings.TrimSpace(documentID), Path: relativePath})
+}
+
+func (handler *apiHandler) handleMergeDocuments(writer http.ResponseWriter, request *http.Request) {
+	var payload mergeDocumentsRequest
+	if err := decodeJSONRequest(request, &payload); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	merged, err := workspace.MergeDocuments(handler.options.Root, workspace.MergeDocumentsInput{
+		DocumentIDs: payload.DocumentIDs,
+	})
+	if err != nil {
+		writeMutationError(writer, err)
+		return
+	}
+
+	response, err := loadDocumentResponse(handler.options.Root, documentIDForResponse(merged.Document))
+	if err != nil {
+		writeMutationError(writer, err)
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, response)
+}
+
+func (handler *apiHandler) handleAddReference(writer http.ResponseWriter, request *http.Request) {
+	var payload addReferenceRequest
+	if err := decodeJSONRequest(request, &payload); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := workspace.AddReference(handler.options.Root, payload.FromID, payload.ToID, payload.Context); err != nil {
+		writeMutationError(writer, err)
+		return
+	}
+
+	response, err := loadDocumentResponse(handler.options.Root, payload.FromID)
+	if err != nil {
+		writeMutationError(writer, err)
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, response)
+}
+
+func (handler *apiHandler) handleRemoveReference(writer http.ResponseWriter, request *http.Request) {
+	var payload removeReferenceRequest
+	if err := decodeJSONRequest(request, &payload); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := workspace.RemoveReference(handler.options.Root, payload.FromID, payload.ToID); err != nil {
+		writeMutationError(writer, err)
+		return
+	}
+
+	response, err := loadDocumentResponse(handler.options.Root, payload.FromID)
+	if err != nil {
+		writeMutationError(writer, err)
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, response)
+}
+
+func (handler *apiHandler) handleUpdateReferenceContext(writer http.ResponseWriter, request *http.Request) {
+	var payload updateReferenceContextRequest
+	if err := decodeJSONRequest(request, &payload); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := workspace.UpdateReferenceContext(handler.options.Root, payload.FromID, payload.ToID, payload.Context); err != nil {
+		writeMutationError(writer, err)
+		return
+	}
+
+	response, err := loadDocumentResponse(handler.options.Root, payload.FromID)
+	if err != nil {
+		writeMutationError(writer, err)
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, response)
 }
 
 func (handler *apiHandler) handleSearch(writer http.ResponseWriter, request *http.Request) {
@@ -694,6 +811,26 @@ func (handler *apiHandler) handleSearch(writer http.ResponseWriter, request *htt
 	writeJSON(writer, http.StatusOK, results)
 }
 
+func (handler *apiHandler) handleNodeView(writer http.ResponseWriter, request *http.Request) {
+	id := strings.TrimSpace(request.URL.Query().Get("id"))
+	graph := strings.TrimSpace(request.URL.Query().Get("graph"))
+
+	view, err := index.ReadNodeViewWorkspace(handler.options.Root.IndexPath, handler.options.Root.FlowPath, id, graph)
+	if err != nil {
+		switch {
+		case strings.Contains(err.Error(), "must not be empty"):
+			writeError(writer, http.StatusBadRequest, err.Error())
+		case strings.Contains(err.Error(), "not found"):
+			writeError(writer, http.StatusNotFound, err.Error())
+		default:
+			writeError(writer, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, view)
+}
+
 func (handler *apiHandler) handleGUIStop(writer http.ResponseWriter, _ *http.Request) {
 	if handler.options.Stop == nil {
 		writeError(writer, http.StatusNotImplemented, "gui stop is not available")
@@ -721,67 +858,6 @@ func readWorkspaceConfig(root workspace.Root) (config.Workspace, error) {
 	return config.Workspace{}, err
 }
 
-func buildGraphListResponse(graphType string, documents []markdown.WorkspaceDocument) (graphListResponse, error) {
-	response := graphListResponse{Type: graphType, GraphItems: map[string][]graphItem{}}
-
-	switch graphType {
-	case string(markdown.NoteType):
-		view, err := graph.BuildNoteGraphView(documents)
-		if err != nil {
-			return graphListResponse{}, err
-		}
-
-		response.AvailableGraphs = view.AvailableGraphs
-		for graphName, noteIDs := range view.GraphNotes {
-			items := make([]graphItem, 0, len(noteIDs))
-			for _, noteID := range noteIDs {
-				node := view.Nodes[noteID]
-				items = append(items, graphItem{ID: node.ID, Title: node.Title, Path: node.Path})
-			}
-			response.GraphItems[graphName] = items
-		}
-	case string(markdown.TaskType):
-		view, err := graph.BuildTaskLayerView(documents)
-		if err != nil {
-			return graphListResponse{}, err
-		}
-
-		response.AvailableGraphs = sortedTaskGraphs(view)
-		for _, node := range view.Tasks {
-			response.GraphItems[node.Graph] = append(response.GraphItems[node.Graph], graphItem{ID: node.ID, Title: node.Title, Path: node.Path})
-		}
-	case string(markdown.CommandType):
-		response.AvailableGraphs = sortedCommandGraphs(documents)
-		for _, item := range documents {
-			commandDocument, ok := item.Document.(markdown.CommandDocument)
-			if !ok {
-				continue
-			}
-
-			response.GraphItems[commandDocument.Metadata.Graph] = append(response.GraphItems[commandDocument.Metadata.Graph], graphItem{
-				ID:    commandDocument.Metadata.ID,
-				Title: commandDocument.Metadata.Title,
-				Path:  item.Path,
-			})
-		}
-	default:
-		return graphListResponse{}, fmt.Errorf("unsupported graph type %q", graphType)
-	}
-
-	for graphName, items := range response.GraphItems {
-		sort.Slice(items, func(left int, right int) bool {
-			if items[left].Title != items[right].Title {
-				return items[left].Title < items[right].Title
-			}
-
-			return items[left].ID < items[right].ID
-		})
-		response.GraphItems[graphName] = items
-	}
-
-	return response, nil
-}
-
 func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteGraphView) (documentResponse, bool, error) {
 	switch document := item.Document.(type) {
 	case markdown.NoteDocument:
@@ -803,7 +879,7 @@ func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteG
 			CreatedAt:      document.Metadata.CreatedAt,
 			UpdatedAt:      document.Metadata.UpdatedAt,
 			Body:           document.Body,
-			References:     cloneStrings(document.Metadata.References),
+			References:     convertReferences(document.Metadata.References),
 			RelatedNoteIDs: cloneStrings(node.RelatedNoteIDs),
 		}, true, nil
 	case markdown.TaskDocument:
@@ -826,7 +902,7 @@ func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteG
 			Body:        document.Body,
 			Status:      document.Metadata.Status,
 			DependsOn:   cloneStrings(document.Metadata.DependsOn),
-			References:  cloneStrings(document.Metadata.References),
+			References:  convertReferences(document.Metadata.References),
 		}, true, nil
 	case markdown.CommandDocument:
 		featureSlug, err := featureSlugFromPath(item.Path)
@@ -847,7 +923,7 @@ func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteG
 			UpdatedAt:   document.Metadata.UpdatedAt,
 			Body:        document.Body,
 			DependsOn:   cloneStrings(document.Metadata.DependsOn),
-			References:  cloneStrings(document.Metadata.References),
+			References:  convertReferences(document.Metadata.References),
 			Name:        document.Metadata.Name,
 			Env:         cloneMap(document.Metadata.Env),
 			Run:         document.Metadata.Run,
@@ -855,52 +931,6 @@ func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteG
 	default:
 		return documentResponse{}, false, nil
 	}
-}
-
-func firstCommandGraph(documents []markdown.WorkspaceDocument) string {
-	graphs := sortedCommandGraphs(documents)
-	if len(graphs) == 0 {
-		return ""
-	}
-
-	return graphs[0]
-}
-
-func sortedCommandGraphs(documents []markdown.WorkspaceDocument) []string {
-	seen := map[string]struct{}{}
-	graphs := []string{}
-	for _, item := range documents {
-		commandDocument, ok := item.Document.(markdown.CommandDocument)
-		if !ok {
-			continue
-		}
-
-		if _, ok := seen[commandDocument.Metadata.Graph]; ok {
-			continue
-		}
-
-		seen[commandDocument.Metadata.Graph] = struct{}{}
-		graphs = append(graphs, commandDocument.Metadata.Graph)
-	}
-
-	sort.Strings(graphs)
-	return graphs
-}
-
-func sortedTaskGraphs(view graph.TaskLayerView) []string {
-	seen := map[string]struct{}{}
-	graphs := []string{}
-	for _, task := range view.Tasks {
-		if _, ok := seen[task.Graph]; ok {
-			continue
-		}
-
-		seen[task.Graph] = struct{}{}
-		graphs = append(graphs, task.Graph)
-	}
-
-	sort.Strings(graphs)
-	return graphs
 }
 
 func featureSlugFromPath(path string) (string, error) {
@@ -918,6 +948,41 @@ func featureSlugFromPath(path string) (string, error) {
 	}
 
 	return "", fmt.Errorf("document path %q is not in canonical data/content/<graph-path>/<file>.md layout", path)
+}
+
+func convertReferences(refs []markdown.NodeReference) []nodeReferenceResponse {
+	if len(refs) == 0 {
+		return nil
+	}
+
+	result := make([]nodeReferenceResponse, len(refs))
+	for i, ref := range refs {
+		result[i] = nodeReferenceResponse{Node: ref.Node, Context: ref.Context}
+	}
+
+	return result
+}
+
+func nodeReferencesFromPayload(refs []nodeReferenceResponse) []markdown.NodeReference {
+	if len(refs) == 0 {
+		return nil
+	}
+
+	result := make([]markdown.NodeReference, len(refs))
+	for i, ref := range refs {
+		result[i] = markdown.NodeReference{Node: ref.Node, Context: ref.Context}
+	}
+
+	return result
+}
+
+func nodeReferencesPatchFromPayload(refs *[]nodeReferenceResponse) *[]markdown.NodeReference {
+	if refs == nil {
+		return nil
+	}
+
+	converted := nodeReferencesFromPayload(*refs)
+	return &converted
 }
 
 func cloneStrings(values []string) []string {
@@ -1006,6 +1071,75 @@ func loadDocumentResponse(root workspace.Root, documentID string) (documentRespo
 	}
 
 	return documentResponse{}, workspace.DocumentNotFoundError{Selector: documentID}
+}
+
+func loadCalendarDocumentResponses(root workspace.Root) ([]calendarDocumentResponse, error) {
+	documents, err := workspace.LoadDocuments(root.FlowPath)
+	if err != nil {
+		return nil, err
+	}
+
+	responses := make([]calendarDocumentResponse, 0, len(documents))
+	for _, item := range documents {
+		response, ok := buildCalendarDocumentResponse(item)
+		if ok {
+			responses = append(responses, response)
+		}
+	}
+
+	slices.SortFunc(responses, func(left, right calendarDocumentResponse) int {
+		return strings.Compare(left.Path, right.Path)
+	})
+
+	return responses, nil
+}
+
+func buildCalendarDocumentResponse(item markdown.WorkspaceDocument) (calendarDocumentResponse, bool) {
+	switch document := item.Document.(type) {
+	case markdown.HomeDocument:
+		title := strings.TrimSpace(document.Metadata.Title)
+		if title == "" {
+			title = deriveHomeTitle(document.Body)
+		}
+
+		return calendarDocumentResponse{
+			ID:    "home",
+			Type:  string(markdown.HomeType),
+			Graph: "",
+			Title: title,
+			Path:  item.Path,
+			Body:  normalizeMarkdownText(document.Body),
+		}, true
+	case markdown.NoteDocument:
+		return calendarDocumentResponse{
+			ID:    document.Metadata.ID,
+			Type:  string(document.Metadata.Type),
+			Graph: document.Metadata.Graph,
+			Title: document.Metadata.Title,
+			Path:  item.Path,
+			Body:  document.Body,
+		}, true
+	case markdown.TaskDocument:
+		return calendarDocumentResponse{
+			ID:    document.Metadata.ID,
+			Type:  string(document.Metadata.Type),
+			Graph: document.Metadata.Graph,
+			Title: document.Metadata.Title,
+			Path:  item.Path,
+			Body:  document.Body,
+		}, true
+	case markdown.CommandDocument:
+		return calendarDocumentResponse{
+			ID:    document.Metadata.ID,
+			Type:  string(document.Metadata.Type),
+			Graph: document.Metadata.Graph,
+			Title: document.Metadata.Title,
+			Path:  item.Path,
+			Body:  document.Body,
+		}, true
+	default:
+		return calendarDocumentResponse{}, false
+	}
 }
 
 func documentIDForResponse(document markdown.Document) string {

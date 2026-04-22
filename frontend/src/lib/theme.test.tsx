@@ -60,8 +60,8 @@ describe("ThemeProvider", () => {
     );
 
     const root = document.documentElement;
-    expect(root.style.getPropertyValue('--background')).toBe('#ffffff');
-    expect(root.style.getPropertyValue('--foreground')).toBe('#1f1f1f');
+    expect(root.classList.contains('dark')).toBe(false);
+    expect(root.dataset.theme).toBe('light');
     expect(root.style.getPropertyValue('color-scheme')).toBe('light');
   });
 
@@ -80,8 +80,8 @@ describe("ThemeProvider", () => {
     expect(screen.getByTestId("actual-theme")).toHaveTextContent("dark");
 
     const root = document.documentElement;
-    expect(root.style.getPropertyValue('--background')).toBe('#1e1e1e');
-    expect(root.style.getPropertyValue('--foreground')).toBe('#d4d4d4');
+    expect(root.classList.contains('dark')).toBe(true);
+    expect(root.dataset.theme).toBe('dark');
     expect(root.style.getPropertyValue('color-scheme')).toBe('dark');
   });
 

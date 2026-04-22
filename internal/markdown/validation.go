@@ -198,11 +198,11 @@ func GraphPathFromWorkspacePath(path string) (string, bool, error) {
 func linkTargets(document Document) (string, DocumentType, []string, []string) {
 	switch value := document.(type) {
 	case NoteDocument:
-		return value.Metadata.ID, value.Metadata.Type, nil, value.Metadata.References
+		return value.Metadata.ID, value.Metadata.Type, nil, NodeReferenceIDs(value.Metadata.References)
 	case TaskDocument:
-		return value.Metadata.ID, value.Metadata.Type, value.Metadata.DependsOn, value.Metadata.References
+		return value.Metadata.ID, value.Metadata.Type, value.Metadata.DependsOn, NodeReferenceIDs(value.Metadata.References)
 	case CommandDocument:
-		return value.Metadata.ID, value.Metadata.Type, value.Metadata.DependsOn, value.Metadata.References
+		return value.Metadata.ID, value.Metadata.Type, value.Metadata.DependsOn, NodeReferenceIDs(value.Metadata.References)
 	default:
 		return "", "", nil, nil
 	}

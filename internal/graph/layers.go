@@ -176,18 +176,22 @@ func BuildTaskLayerView(documents []markdown.WorkspaceDocument) (TaskLayerView, 
 			CreatedAt:   taskDocument.Metadata.CreatedAt,
 			UpdatedAt:   taskDocument.Metadata.UpdatedAt,
 			DependsOn:   cloneStrings(taskDocument.Metadata.DependsOn),
-			References:  cloneStrings(taskDocument.Metadata.References),
+			References:  markdown.NodeReferenceIDs(taskDocument.Metadata.References),
 		}
-		indegree[taskDocument.Metadata.ID] = len(taskDocument.Metadata.DependsOn)
+		indegree[taskDocument.Metadata.ID] = 0
 	}
 
-	for _, node := range taskNodes {
-		for _, dependencyID := range node.DependsOn {
-			if _, exists := taskNodes[dependencyID]; !exists {
-				return TaskLayerView{}, fmt.Errorf("task %q depends on missing task %q", node.ID, dependencyID)
+	for _, item := range documents {
+		taskDocument, ok := item.Document.(markdown.TaskDocument)
+		if !ok {
+			continue
+		}
+		for _, depID := range taskDocument.Metadata.DependsOn {
+			if _, exists := taskNodes[depID]; !exists {
+				return TaskLayerView{}, fmt.Errorf("task %q depends on missing task %q", taskDocument.Metadata.ID, depID)
 			}
-
-			adjacency[dependencyID] = append(adjacency[dependencyID], node.ID)
+			adjacency[depID] = append(adjacency[depID], taskDocument.Metadata.ID)
+			indegree[taskDocument.Metadata.ID]++
 		}
 	}
 
@@ -280,12 +284,12 @@ func BuildCommandLayerView(documents []markdown.WorkspaceDocument, selectedGraph
 			CreatedAt:   commandDocument.Metadata.CreatedAt,
 			UpdatedAt:   commandDocument.Metadata.UpdatedAt,
 			DependsOn:   cloneStrings(commandDocument.Metadata.DependsOn),
-			References:  cloneStrings(commandDocument.Metadata.References),
+			References:  markdown.NodeReferenceIDs(commandDocument.Metadata.References),
 			Name:        commandDocument.Metadata.Name,
 			Run:         commandDocument.Metadata.Run,
 			Env:         cloneStringMap(commandDocument.Metadata.Env),
 		}
-		indegree[commandDocument.Metadata.ID] = len(commandDocument.Metadata.DependsOn)
+		indegree[commandDocument.Metadata.ID] = 0
 		graphCommands[commandDocument.Metadata.Graph] = append(graphCommands[commandDocument.Metadata.Graph], commandDocument.Metadata.ID)
 	}
 
@@ -293,13 +297,17 @@ func BuildCommandLayerView(documents []markdown.WorkspaceDocument, selectedGraph
 		return CommandLayerView{}, fmt.Errorf("selected command graph %q does not exist", selectedGraph)
 	}
 
-	for _, node := range commandNodes {
-		for _, dependencyID := range node.DependsOn {
-			if _, exists := commandNodes[dependencyID]; !exists {
-				return CommandLayerView{}, fmt.Errorf("command %q depends on missing command %q", node.ID, dependencyID)
+	for _, item := range documents {
+		commandDocument, ok := item.Document.(markdown.CommandDocument)
+		if !ok {
+			continue
+		}
+		for _, depID := range commandDocument.Metadata.DependsOn {
+			if _, exists := commandNodes[depID]; !exists {
+				return CommandLayerView{}, fmt.Errorf("command %q depends on missing command %q", commandDocument.Metadata.ID, depID)
 			}
-
-			adjacency[dependencyID] = append(adjacency[dependencyID], node.ID)
+			adjacency[depID] = append(adjacency[depID], commandDocument.Metadata.ID)
+			indegree[commandDocument.Metadata.ID]++
 		}
 	}
 
@@ -407,14 +415,14 @@ func BuildTaskFocusedGraphSnapshot(documents []markdown.WorkspaceDocument, selec
 			CreatedAt:   taskDocument.Metadata.CreatedAt,
 			UpdatedAt:   taskDocument.Metadata.UpdatedAt,
 			DependsOn:   cloneStrings(taskDocument.Metadata.DependsOn),
-			References:  cloneStrings(taskDocument.Metadata.References),
+			References:  markdown.NodeReferenceIDs(taskDocument.Metadata.References),
 		}
 		nodes[node.ID] = node
 		summaries[node.ID] = dependencySnapshotNode{
 			ID:        node.ID,
 			Graph:     node.Graph,
 			Title:     node.Title,
-			DependsOn: cloneStrings(node.DependsOn),
+			DependsOn: cloneStrings(taskDocument.Metadata.DependsOn),
 		}
 	}
 
@@ -465,7 +473,7 @@ func BuildCommandFocusedGraphSnapshot(documents []markdown.WorkspaceDocument, se
 			CreatedAt:   commandDocument.Metadata.CreatedAt,
 			UpdatedAt:   commandDocument.Metadata.UpdatedAt,
 			DependsOn:   cloneStrings(commandDocument.Metadata.DependsOn),
-			References:  cloneStrings(commandDocument.Metadata.References),
+			References:  markdown.NodeReferenceIDs(commandDocument.Metadata.References),
 			Name:        commandDocument.Metadata.Name,
 			Run:         commandDocument.Metadata.Run,
 			Env:         cloneStringMap(commandDocument.Metadata.Env),
@@ -475,7 +483,7 @@ func BuildCommandFocusedGraphSnapshot(documents []markdown.WorkspaceDocument, se
 			ID:        node.ID,
 			Graph:     node.Graph,
 			Title:     node.Title,
-			DependsOn: cloneStrings(node.DependsOn),
+			DependsOn: cloneStrings(commandDocument.Metadata.DependsOn),
 		}
 	}
 
@@ -517,6 +525,7 @@ func BuildNoteGraphView(documents []markdown.WorkspaceDocument) (NoteGraphView, 
 			return NoteGraphView{}, err
 		}
 
+		refIDs := markdown.NodeReferenceIDs(noteDocument.Metadata.References)
 		noteNodes[noteDocument.Metadata.ID] = NoteNode{
 			ID:          noteDocument.Metadata.ID,
 			FeatureSlug: featureSlug,
@@ -526,9 +535,9 @@ func BuildNoteGraphView(documents []markdown.WorkspaceDocument) (NoteGraphView, 
 			Tags:        cloneStrings(noteDocument.Metadata.Tags),
 			CreatedAt:   noteDocument.Metadata.CreatedAt,
 			UpdatedAt:   noteDocument.Metadata.UpdatedAt,
-			References:  cloneStrings(noteDocument.Metadata.References),
+			References:  refIDs,
 		}
-		rawReferences[noteDocument.Metadata.ID] = cloneStrings(noteDocument.Metadata.References)
+		rawReferences[noteDocument.Metadata.ID] = refIDs
 		graphNotes[noteDocument.Metadata.Graph] = append(graphNotes[noteDocument.Metadata.Graph], noteDocument.Metadata.ID)
 	}
 
@@ -968,6 +977,16 @@ func cloneStrings(values []string) []string {
 
 	cloned := make([]string, len(values))
 	copy(cloned, values)
+	return cloned
+}
+
+func cloneNodeReferences(refs []markdown.NodeReference) []markdown.NodeReference {
+	if len(refs) == 0 {
+		return nil
+	}
+
+	cloned := make([]markdown.NodeReference, len(refs))
+	copy(cloned, refs)
 	return cloned
 }
 

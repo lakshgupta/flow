@@ -79,6 +79,18 @@ CREATE TABLE command_env (
 	PRIMARY KEY (document_id, env_key)
 );
 
+CREATE TABLE edges (
+	id TEXT PRIMARY KEY,
+	graph TEXT NOT NULL,
+	from_id TEXT NOT NULL,
+	to_id TEXT NOT NULL,
+	label TEXT NOT NULL,
+	body TEXT NOT NULL,
+	path TEXT NOT NULL UNIQUE
+);
+
+CREATE UNIQUE INDEX edges_from_to_idx ON edges(graph, from_id, to_id);
+
 CREATE TABLE graph_layout_positions (
 	graph_path TEXT NOT NULL,
 	document_id TEXT NOT NULL,
@@ -155,7 +167,7 @@ func Rebuild(indexPath string, flowPaths ...string) error {
 			}
 		}
 
-		if err := insertGraphProjection(transaction, documents); err != nil {
+		if err := insertGraphProjection(transaction, documents, flowPaths[0]); err != nil {
 			return err
 		}
 
@@ -291,16 +303,16 @@ func insertNoteDocument(transaction *sql.Tx, relativePath string, featureSlug st
 		return err
 	}
 
-	for _, referenceID := range document.Metadata.References {
-		if documentKindsByID[referenceID] == markdown.NoteType {
-			if err := insertNoteLink(transaction, document.Metadata.ID, referenceID); err != nil {
+	for _, ref := range document.Metadata.References {
+		if documentKindsByID[ref.Node] == markdown.NoteType {
+			if err := insertNoteLink(transaction, document.Metadata.ID, ref.Node); err != nil {
 				return err
 			}
 
 			continue
 		}
 
-		if err := insertReference(transaction, document.Metadata.ID, referenceID); err != nil {
+		if err := insertReference(transaction, document.Metadata.ID, ref.Node); err != nil {
 			return err
 		}
 	}
@@ -317,7 +329,7 @@ func insertTaskDocument(transaction *sql.Tx, relativePath string, featureSlug st
 		return err
 	}
 
-	return insertReferences(transaction, document.Metadata.ID, document.Metadata.References)
+	return insertReferences(transaction, document.Metadata.ID, markdown.NodeReferenceIDs(document.Metadata.References))
 }
 
 func insertCommandDocument(transaction *sql.Tx, relativePath string, featureSlug string, document markdown.CommandDocument) error {
@@ -329,7 +341,7 @@ func insertCommandDocument(transaction *sql.Tx, relativePath string, featureSlug
 		return err
 	}
 
-	if err := insertReferences(transaction, document.Metadata.ID, document.Metadata.References); err != nil {
+	if err := insertReferences(transaction, document.Metadata.ID, markdown.NodeReferenceIDs(document.Metadata.References)); err != nil {
 		return err
 	}
 
@@ -403,8 +415,70 @@ func insertDocumentRow(transaction *sql.Tx, fields markdown.CommonFields, featur
 	return nil
 }
 
-func insertGraphProjection(transaction *sql.Tx, documents []indexedDocument) error {
+// collectGraphDirPaths returns all subdirectory paths under graphsPath as
+// slash-separated paths relative to graphsPath (e.g. "arch" or "projects/backend").
+func collectGraphDirPaths(graphsPath string) []string {
+	var paths []string
+	if _, err := os.Stat(graphsPath); err != nil {
+		return paths
+	}
+	_ = filepath.WalkDir(graphsPath, func(path string, entry os.DirEntry, err error) error {
+		if err != nil || !entry.IsDir() || path == graphsPath {
+			return nil
+		}
+		rel, relErr := filepath.Rel(graphsPath, path)
+		if relErr != nil {
+			return nil
+		}
+		paths = append(paths, filepath.ToSlash(rel))
+		return nil
+	})
+	return paths
+}
+
+func insertGraphProjection(transaction *sql.Tx, documents []indexedDocument, flowPath string) error {
 	nodes := buildGraphProjection(documents)
+
+	// Include empty directories so newly created graphs appear without needing content.
+	if flowPath != "" {
+		graphsPath := filepath.Join(flowPath, "data", "content")
+		dirPaths := collectGraphDirPaths(graphsPath)
+		existing := make(map[string]bool, len(nodes))
+		for _, node := range nodes {
+			existing[node.GraphPath] = true
+		}
+		for _, dirPath := range dirPaths {
+			if existing[dirPath] {
+				continue
+			}
+			parts := strings.Split(dirPath, "/")
+			nodes = append(nodes, GraphNode{
+				GraphPath:   dirPath,
+				DisplayName: parts[len(parts)-1],
+				DirectCount: 0,
+				TotalCount:  0,
+				HasChildren: false,
+			})
+		}
+		// Recompute HasChildren now that the full set of paths is known.
+		pathSet := make(map[string]bool, len(nodes))
+		for _, node := range nodes {
+			pathSet[node.GraphPath] = true
+		}
+		for i, node := range nodes {
+			prefix := node.GraphPath + "/"
+			for p := range pathSet {
+				if strings.HasPrefix(p, prefix) {
+					nodes[i].HasChildren = true
+					break
+				}
+			}
+		}
+		slices.SortFunc(nodes, func(a, b GraphNode) int {
+			return strings.Compare(a.GraphPath, b.GraphPath)
+		})
+	}
+
 	for _, node := range nodes {
 		hasChildrenValue := 0
 		if node.HasChildren {
@@ -542,6 +616,10 @@ func appendIndexedDocument(flowPath string, path string, documents *[]indexedDoc
 
 	document, err := markdown.ParseDocument(data)
 	if err != nil {
+		// Skip files with unsupported document types (e.g., legacy edge files).
+		if strings.Contains(err.Error(), "unsupported document type") {
+			return nil
+		}
 		return fmt.Errorf("parse markdown document %s: %w", path, err)
 	}
 

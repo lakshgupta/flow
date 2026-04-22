@@ -1,446 +1,348 @@
 # Architecture
 
-This document describes the architecture of Flow, a local-first planning tool for software projects. It covers the system design, data model, components, and key architectural decisions.
+Flow is a local-first planning tool for software projects. It stores canonical workspace data as Markdown, derives searchable and queryable state into a rebuildable SQLite index, and exposes shared backend logic through a CLI, a TUI, and a browser-based GUI.
 
-## Index
-
-- [Overview](#overview)
-- [System Architecture](#system-architecture)
-- [Data Architecture](#data-architecture)
-- [Component Architecture](#component-architecture)
-- [UI Architecture](#ui-architecture)
-- [Control Flow](#control-flow)
-- [Constraints](#constraints)
-- [Testing Strategy](#testing-strategy)
-- [Risks and Tradeoffs](#risks-and-tradeoffs)
-- [Approved Feature Designs](#approved-feature-designs)
-  - [Theme Settings - Light/Dark/System Mode](#feature-theme-settings---lightdarksystem-mode)
-  - [Modern Sleek UI Redesign](#feature-modern-sleek-ui-redesign)
-  - [Modern UI Redesign: Home, Favorites, and Rich Center Pane](#feature-modern-ui-redesign-home-favorites-and-rich-center-pane)
+This document describes the current system architecture, its major components, its data model, and the operational constraints that shape implementation work.
 
 ## Overview
 
-Flow is a local-first planning tool for software projects that stores all data as canonical Markdown documents. It supports both project-local and user-global workspaces, providing a CLI, TUI, and browser-based GUI.
+Flow is built around a small set of architectural rules:
 
-Key features include:
-- **Layered Task Graph Planner**: Manages notes, tasks, and commands as dependency-driven work items stored in Markdown.
-- **Three-Panel Workspace GUI**: Desktop-first interface with hierarchical tree view, infinite canvas, and content editor.
-- **Local-first Design**: No cloud sync, Git-friendly, with rebuildable SQLite index for search and graph queries.
+- Markdown files are the source of truth.
+- The SQLite index is derived state and can always be rebuilt from disk.
+- Workspace behavior is local-first and does not depend on cloud services.
+- The CLI, TUI, and GUI share the same backend concepts and storage model.
+- UI interactions ultimately resolve to Markdown writes followed by index refreshes.
 
-The system uses Go for the backend, React for the frontend, and SQLite for indexing, shipping as a single binary.
+The primary user-facing model is a graph-oriented workspace composed of:
 
-## Cross-Cutting Constraints
-
-The following constraints apply across the system:
-
-- Markdown files are the canonical source of truth.
-- Markdown remains canonical for document content and graph semantics.
-- `.flow/config/flow.index` keeps derived search and graph-query data, and may also store workspace-scoped GUI layout state in separate tables.
-- File location is authoritative for graph membership when it disagrees with document frontmatter.
-- Graph documents are classified by frontmatter `type`, not by type-specific directories.
-- `flow init` always rebuilds the index and must not modify Markdown note, task, or command files.
-- `flow search` auto-rebuilds a missing index.
-- Local and global workspaces share the same schema and command behavior.
-- GUI server ports are configured per workspace and server startup fails instead of auto-falling back when the configured port is unavailable.
-- The first rewrite keeps note, task, and command frontmatter close to the current design.
-- Hard links represent same-type dependencies only.
-- Soft links represent references only and never affect readiness or layering.
-- Notes are relationship-oriented and not treated as dependency-layered work.
-- Tasks and commands are the only layered executable work types in v1.
-- The first browser GUI milestone is read-only and focuses on note canvas and layered views.
-- Release automation starts with `linux/amd64` binaries before broader platform coverage.
-
-## UI Design Guidelines
-
-Refer to [docs/design-language.md](design-language.md) for all UI, component, and styling rules.
-
-You are a senior product designer and front‑end architect specializing in modern, minimal, typographic interfaces similar to Noteey, Arky, Linear, Notion, affine and Superlist. You design exclusively using shadcn/ui components and Tailwind CSS tokens.
-
-Your job is to design UI for an app named Flow. Flow has a three‑panel layout:
-1. Left panel: hierarchical tree view of notes, tasks, and command graph nodes.
-2. Middle panel: infinite canvas for visual thinking.
-3. Right panel: note content editor.
-
-Designs must follow these principles:
-- Clean, modern, minimal, calm.
-- Typography-first with clear hierarchy.
-- Neutral color palette with subtle accents.
-- Soft shadows, subtle separators, generous spacing.
-- Avoid clutter, heavy borders, or dense UI.
-- Use progressive disclosure and contextual actions.
-- Use shadcn/ui components wherever possible.
-
-When responding, always provide:
-1. High-level layout description.
-2. Component-by-component breakdown.
-3. Interaction and motion notes.
-4. Suggested shadcn/ui components.
-5. Example JSX snippets when helpful.
-6. Styling guidelines (spacing, color, typography).
-
-Never introduce new layout paradigms. Always keep the three-panel structure. Prioritize clarity, simplicity, and modern aesthetics.
+- a Home document for workspace-level context,
+- graph documents for notes, tasks, and commands,
+- hard dependencies for executable work,
+- soft references for contextual relationships.
 
 ## System Architecture
 
+### Runtime Topology
+
+Flow ships as a single Go binary. That binary can:
+
+- run CLI commands,
+- render the TUI,
+- start the GUI HTTP server,
+- rebuild and query the index,
+- execute command documents.
+
+The browser GUI is served from embedded static frontend assets. The backend serves both the asset bundle and the loopback-only JSON APIs used by the React application.
+
 ### Technology Stack
 
-- **Backend**: Go runtime for CLI, TUI, server, indexing, graph computation, and execution.
-- **Frontend**: React with TypeScript, embedded as static assets in the binary.
-- **Database**: SQLite for the derived index (`modernc.org/sqlite` driver).
-- **UI Libraries**: `@xyflow/react` for canvas and graph interaction, `markdown-it` for rendering.
-- **Server**: Loopback-only HTTP server for GUI, served on configurable ports per workspace.
+- Backend: Go
+- Frontend: React with TypeScript
+- Index storage: SQLite via `modernc.org/sqlite`
+- Graph and canvas rendering: `@xyflow/react`
+- Rich document rendering and editing support: `markdown-it` and the frontend editor stack
+- Delivery model: single binary with embedded frontend assets
+
+### Workspace Modes
+
+Flow supports both project-local and user-global workspaces.
+
+- Local workspace: tied to a project directory and stored under that project's `.flow` directory.
+- Global workspace: user-scoped workspace with the same document and index model.
+
+Both modes use the same schema, document structure, and command semantics. They differ only in workspace resolution and GUI server ownership.
 
 ### Package Layout
 
-- `cmd/flow`: Main CLI entrypoint.
-- `internal/workspace`: Workspace resolution and GUI server ownership.
-- `internal/config`: Configuration parsing and validation.
-- `internal/markdown`: Markdown parsing, serialization, and frontmatter handling.
-- `internal/index`: Index rebuild, search, and graph projections.
-- `internal/graph`: Layer computation and graph snapshots.
-- `internal/execution`: Command execution and environment handling.
-- `internal/httpapi`: Embedded asset serving and APIs.
-- `internal/tui`: TUI implementation.
-
-### Core Principles
-
-- Markdown files are canonical; index is derived and rebuildable.
-- UI state is transient; save flows write Markdown first, then refresh index.
-- Local and global workspaces share schema but have separate GUI servers.
+- `cmd/flow`: CLI entrypoint and command dispatch
+- `internal/workspace`: workspace resolution, filesystem paths, mutations, GUI server ownership
+- `internal/config`: configuration parsing and validation
+- `internal/markdown`: document parsing, frontmatter decoding, serialization, validation
+- `internal/index`: index rebuild, search, graph projections, node views
+- `internal/graph`: layered graph computation and graph snapshots
+- `internal/execution`: command execution and environment overlay
+- `internal/httpapi`: static asset serving and JSON API handlers
+- `internal/tui`: terminal interface built on shared backend logic
 
 ## Data Architecture
 
-### Workspace Layout
+### Canonical Storage Layout
 
-- `.flow/config/flow.yaml`: Workspace configuration.
-- `.flow/config/flow.index`: Rebuildable SQLite index.
-- `.flow/config/gui-server.json`: GUI server state.
-- `.flow/data/home.md`: Home document.
-- `.flow/data/graphs/<graph-path>/*.md`: Graph documents.
+Workspace state lives under `.flow`.
 
-### Document Types
+- `.flow/config/flow.yaml`: workspace configuration
+- `.flow/config/flow.index`: rebuildable SQLite index
+- `.flow/config/gui-server.json`: GUI server state
+- `.flow/data/home.md`: workspace Home document
+- `.flow/data/content/<graph-path>/*.md`: graph documents
 
-- **Note**: Knowledge content with bidirectional relationships.
-- **Task**: Dependency-driven work items.
-- **Command**: Executable workflows.
+Markdown files are authoritative. The index is generated from these files and never treated as canonical state.
 
-### Frontmatter Conventions
+### Document Model
 
-Shared fields: `id`, `type`, `graph`, `title`, `description`, `tags`, `createdAt`, `updatedAt`.
+Flow supports three graph document types plus the Home document.
 
-Type-specific:
-- Task: `status`, `dependsOn`, `references`.
-- Command: `name`, `dependsOn`, `references`, `env`, `run`.
-- Note: `references`.
+- Note: contextual or knowledge-oriented content
+- Task: dependency-driven work item
+- Command: executable workflow step with environment and run metadata
+- Home: workspace-level landing and summary content
 
-### Link Semantics
+Shared frontmatter fields:
 
-- **Hard links**: Same-type dependencies (tasks/commands only).
-- **Soft links**: Cross-type references (notes to tasks/commands, etc.).
+- `id`
+- `type`
+- `graph`
+- `title`
+- `description`
+- `tags`
+- `createdAt`
+- `updatedAt`
 
-### Graph Cardinality
+Type-specific fields:
 
-- Local: 1 notes graph, 1 tasks graph, multiple command graphs.
-- Global: Multiple graphs for all types.
+- Task: `status`, `dependsOn`, `references`
+- Command: `name`, `dependsOn`, `references`, `env`, `run`
+- Note: `references`
+
+### Relationship Model
+
+Flow distinguishes between execution dependencies and contextual references.
+
+- Hard links: same-type dependencies for tasks and commands via `dependsOn`
+- Soft links: contextual references via `references`
+
+References are stored inline in source-document frontmatter as objects:
+
+```yaml
+references:
+  - node: task-1
+    context: informs implementation order
+```
+
+A plain scalar shorthand is also supported and normalized as a reference with empty context.
+
+This architecture keeps relationship data with the source document and avoids separate edge files as canonical storage.
+
+### Graph Membership
+
+Graph membership is determined by document location on disk.
+
+- File location is authoritative when it disagrees with frontmatter.
+- Graph documents are classified by frontmatter `type`, not by directory name alone.
+- Empty graph directories may exist independently of document count.
+
+### Derived Index
+
+The SQLite index supports:
+
+- full-text and structured search,
+- graph projections,
+- dependency queries,
+- reference queries,
+- node-centric read models used by the GUI and CLI.
+
+The index is safe to rebuild at any time from Markdown.
 
 ## Component Architecture
 
-### Key Responsibilities
+### Backend Responsibilities
 
-- **Workspace**: Local vs global resolution, GUI server management.
-- **Config**: YAML parsing, port configuration.
-- **Markdown**: Parsing/serialization, canonical paths.
-- **Index**: SQLite operations, search, projections.
-- **Graph**: Layer computation, relationship views.
-- **Execution**: Process spawning, environment overlay.
-- **HTTP API**: Asset serving, read/query APIs (mutation deferred).
-- **TUI**: Terminal UI built on shared backend logic.
+`internal/workspace`
 
-### API Surface
+- resolves local versus global roots,
+- computes canonical workspace paths,
+- owns document mutation flows,
+- coordinates GUI server lifecycle.
 
-Read/Query APIs:
+`internal/markdown`
+
+- parses Markdown and frontmatter into typed documents,
+- serializes documents back to canonical Markdown,
+- validates cross-document invariants.
+
+`internal/index`
+
+- rebuilds the SQLite index from Markdown,
+- provides search and graph projections,
+- exposes node-oriented read models for traversal and UI queries.
+
+`internal/graph`
+
+- computes layered views for dependency-driven work,
+- produces graph snapshots consumed by the GUI.
+
+`internal/execution`
+
+- resolves command documents,
+- validates dependency readiness,
+- overlays environment variables,
+- runs shell commands.
+
+`internal/httpapi`
+
+- serves embedded frontend assets,
+- exposes JSON APIs for workspace reads and mutations,
+- adapts backend models for the browser GUI.
+
+`internal/tui`
+
+- renders the terminal interface,
+- reuses the same workspace, indexing, and execution layers.
+
+### Frontend Responsibilities
+
+The frontend is responsible for presentation and transient interaction state only.
+
+Its primary concerns are:
+
+- loading workspace and graph state from the HTTP API,
+- rendering Home, graph canvas, search, calendar, and document views,
+- collecting user edits,
+- sending mutations back to the backend,
+- reflecting refreshed backend state after saves and graph mutations.
+
+The frontend does not own canonical persistence rules.
+
+## External Interfaces
+
+### CLI Surface
+
+The CLI is the primary operational interface for workspace setup, search, document mutation, graph traversal, and execution.
+
+Key command families include:
+
+- workspace initialization and configuration,
+- search and index rebuild,
+- document and graph mutation,
+- node-oriented read and mutation commands,
+- command execution,
+- GUI startup.
+
+### HTTP API Surface
+
+The GUI consumes a loopback-only HTTP API.
+
+Read and query endpoints include:
+
 - `GET /api/workspace`
-- `GET /api/graphs/:type`
-- `GET /api/layers/tasks`
-- `GET /api/layers/commands`
-- `GET /api/notes/graph`
+- `GET /api/graphs`
+- `GET /api/calendar-documents`
+- `GET /api/graph-canvas`
 - `GET /api/documents/:id`
+- `GET /api/home`
 - `GET /api/search`
-- `POST /api/gui/stop`
+- `GET /api/node-view`
 
-Deferred Mutation APIs:
+Mutation endpoints include:
+
 - `POST /api/documents`
 - `PUT /api/documents/:id`
 - `DELETE /api/documents/:id`
+- `POST /api/documents/merge`
+- `POST /api/references`
+- `DELETE /api/references`
+- `PUT /api/home`
+- `PUT /api/graph-layout`
+- `POST /api/graphs`
+- `DELETE /api/graphs/:path`
+- `PUT /api/workspace`
+- `POST /api/gui/stop`
+
+### Node-Oriented Read Model
+
+Flow exposes a node-centric read shape for consumers that need to traverse workspace relationships without understanding file layout.
+
+That read model includes:
+
+- identity and document type,
+- derived role information,
+- body content,
+- dependency references,
+- contextual references,
+- command execution metadata when present.
+
+This is a system-level access pattern, not a separate storage format.
 
 ## Control Flow
 
 ### Initialization
-`flow init` creates workspace files and rebuilds index from Markdown without modifying documents.
+
+`flow init` creates or validates workspace structure and rebuilds the index from Markdown. It must not rewrite existing canonical documents as part of initialization.
 
 ### Search
-Queries index; auto-rebuilds if missing.
 
-### Command Execution
-Resolves command, checks dependencies, overlays environment, executes via shell.
+Search queries the index. If the index is missing, Flow rebuilds it before serving results.
 
-### GUI Server
-Starts on configured port per workspace; fails on port conflict; opens browser.
+### Save And Mutation Flow
 
-### Save Flow
-Validates change, writes Markdown, refreshes index.
+Most mutations follow the same pattern:
 
-### Graph/Layer Views
-Derived from index; support focused views with boundary markers.
+1. load and validate workspace state,
+2. parse and update the target document or graph state,
+3. write Markdown or filesystem changes,
+4. rebuild or refresh the derived index,
+5. return updated read models to the caller.
 
-### Note Canvas
-Bidirectional relationship graph; not dependency-layered.
+This applies to document edits, Home edits, graph creation or deletion, relationship mutations, and merge operations.
 
-## Constraints
+### Graph View Flow
 
-- Markdown canonical; index derived.
-- File location authoritative for graph membership.
-- Documents classified by frontmatter `type`.
-- Hard links same-type only; soft links references only.
-- Notes relationship-oriented; tasks/commands layered.
-- GUI ports per workspace; startup fails on conflict.
-- Release starts with `linux/amd64` binaries.
+Graph and layer views are derived from indexed state rather than directly from ad hoc filesystem traversal. The GUI requests graph canvas data from the backend, which returns a projection suitable for rendering and interaction.
+
+Notes use relationship-oriented views. Tasks and commands use dependency-aware layered views.
+
+### Command Execution Flow
+
+When executing a command document, Flow:
+
+1. resolves the document,
+2. checks prerequisite dependencies,
+3. overlays configured environment variables,
+4. launches the command through the shell runtime.
+
+Execution is always grounded in workspace documents and configuration, not in separate runtime-only definitions.
+
+### GUI Server Flow
+
+The GUI server binds to a workspace-specific configured port on loopback. Startup fails on port conflict rather than silently rebinding. The browser UI is then served from embedded assets backed by the same workspace APIs.
+
+## Constraints And Invariants
+
+- Markdown files are canonical; the SQLite index is always derived.
+- The index must remain rebuildable from disk without hidden state.
+- `flow init` must not modify existing canonical document content.
+- `flow search` must rebuild a missing index automatically.
+- File location is authoritative for graph membership.
+- Hard dependencies apply only to same-type executable work documents.
+- Soft references never affect dependency readiness or graph layering.
+- Notes are contextual and relationship-oriented rather than dependency-layered work.
+- Tasks and commands are the only layered executable work types.
+- Local and global workspaces share the same schema and command behavior.
+- GUI server ports are configured per workspace and fail fast on conflict.
+- Release automation targets Linux amd64 first.
 
 ## Testing Strategy
 
-- Unit tests for parsing, validation, computation.
-- Integration tests for init, search, GUI server, APIs.
-- CI focuses on Linux binary production initially.
+The system relies on layered validation:
 
-## Risks and Tradeoffs
+- unit tests for Markdown parsing, validation, graph computation, and index logic,
+- integration tests for CLI flows, HTTP handlers, server behavior, and workspace mutations,
+- frontend tests for application-shell behavior and interaction regressions,
+- build validation for the embedded frontend bundle.
 
-- Go rewrite simplifies delivery but discards TS work.
-- SQLite derived data; acceptable for rebuildability.
-- Browser GUI reduces packaging complexity vs embedded shell.
-- Deferring rich editing reduces v1 risk.
-- Separate workspaces increase flexibility but require targeting.
+Tests should validate canonical-state behavior first and treat the index and UI as projections of that state.
 
-## Approved Feature Designs
+## Risks And Tradeoffs
 
-### Feature: Theme Settings - Light/Dark/System Mode
+- Markdown-first storage improves transparency and Git friendliness but requires careful parser and serializer discipline.
+- A rebuildable SQLite index simplifies queries and search but introduces synchronization work after mutations.
+- Serving a browser GUI from the Go binary reduces packaging complexity but splits presentation and backend implementation across different stacks.
+- Supporting local and global workspaces increases flexibility while adding workspace-resolution and server-ownership complexity.
+- Rich GUI interactions are easier to ship incrementally because backend state remains grounded in the document model.
 
-#### Status
+## Related Documents
 
-Approved
+- [docs/design-language.md](design-language.md): UI design and styling rules
+- [docs/backlog.md](backlog.md): planned and in-progress feature work
 
-#### Summary
-
-Add a settings option allowing users to select between light mode, dark mode, or system preference. Implement specific color tokens for consistent theming across the app. Theme changes apply immediately with smooth transitions.
-
-#### Problem
-
-Users need theme options for visual comfort. Current UI lacks theming, forcing a single appearance.
-
-#### Goals
-
-- Provide Light, Dark, System theme selection.
-- Implement provided color tokens.
-- Persist theme choice.
-- Detect system preference.
-- Smooth transitions.
-
-#### Non-Goals
-
-- Custom themes.
-- High contrast mode.
-
-#### User Experience
-
-Settings icon in top-right header opens dropdown for theme selection. Changes apply immediately.
-
-#### Architecture
-
-Client-side theme management with CSS variables. Store in localStorage and config.
-
-#### Data And Interfaces
-
-New `ui.theme` field in config. CSS variables for colors.
-
-#### Control Flow
-
-Load theme on init, update on change, listen for system changes.
-
-#### Edge Cases And Failure Modes
-
-Fallback to light if system detection fails.
-
-#### Testing Strategy
-
-Unit and integration tests for theme switching.
-
-#### Risks And Tradeoffs
-
-Minimal risk; improves UX.
-
-#### Open Questions
-
-None.
-
-### Feature: Modern Sleek UI Redesign
-
-#### Status
-
-Approved
-
-#### Summary
-
-Redesign Flow's UI to be more modern and sleek, inspired by Noteey, Affine, and Arky, while maintaining the three-panel layout and blending with Flow's graph-first functionality. Update component styling, spacing, typography, and visual hierarchy to create a cleaner, more breathable interface.
-
-#### Problem
-
-Flow's current UI is functional but lacks the modern, minimal aesthetic of contemporary productivity apps. The interface feels dated with heavy borders, dense layouts, and inconsistent spacing that doesn't match the design language specifications.
-
-#### Goals
-
-- Create a modern, minimal interface that feels calm and typographic-first
-- Improve visual hierarchy with better spacing and typography
-- Update component styling to be more consistent with shadcn/ui patterns
-- Maintain the three-panel layout while making it feel more integrated
-- Ensure the design works well with the planned theme system
-- Keep all existing functionality while improving the user experience
-
-#### Non-Goals
-
-- Changing the three-panel layout structure
-- Removing or significantly altering core functionality
-- Implementing new features beyond UI improvements
-- Breaking existing workflows or keyboard shortcuts
-
-#### User Experience
-
-Users will experience a cleaner, more breathable interface with:
-- Generous white space and subtle separators
-- Consistent typography hierarchy using Inter/Geist fonts
-- Soft shadows and minimal borders
-- Smooth transitions and hover states
-- Better visual distinction between panels
-- More intuitive navigation and context actions
-
-The left panel becomes a sleek navigation rail with collapsible sections. The middle canvas feels more like a modern infinite workspace. The right panel transforms into a clean document editor with minimal chrome.
-
-A settings icon appears in the top-right corner of the header, opening a dropdown menu that includes theme selection (Light, Dark, System) and other workspace actions. Theme changes apply immediately with smooth transitions.
-
-#### Architecture
-
-The redesign maintains the existing React component structure but updates:
-- Global CSS variables for consistent theming
-- Component styling to use design tokens
-- Layout improvements for better space utilization
-- Enhanced visual feedback for interactions
-- Subtle animations for state transitions (hover, focus, panel changes) implemented with CSS transitions for performance
-
-#### Data And Interfaces
-
-No data model changes. UI state remains the same. The design leverages existing shadcn/ui components with updated styling.
-
-#### Control Flow
-
-No changes to runtime flows. The redesign is purely visual and interaction improvements.
-
-#### Edge Cases And Failure Modes
-
-- Theme switching should work seamlessly with the new design
-- Responsive behavior maintained for different screen sizes
-- Accessibility considerations preserved (focus states, keyboard navigation)
-- Animation performance optimized to avoid impacting app responsiveness
-
-#### Testing Strategy
-
-- Visual regression testing for component styling
-- User interaction testing for hover states and transitions
-- Cross-browser compatibility testing
-- Theme switching validation
-- Performance testing to ensure animations don't impact frame rates
-
-#### Risks And Tradeoffs
-
-- Risk: Extensive CSS changes could introduce layout bugs
-- Tradeoff: More generous spacing reduces information density but improves readability
-- Alternative: Could implement incrementally per panel instead of all-at-once
-- Performance consideration: Subtle animations prioritized over complex effects
-
-#### Open Questions
-
-- What icon should be used for the settings button?
-- Should the settings dropdown include other options beyond theme selection?
-
-### Feature: Modern UI Redesign: Home, Favorites, and Rich Center Pane
-
-#### Status
-
-Approved
-
-#### Summary
-
-Redesign the GUI to feature a modern, sleek interface inspired by tools like Obsidian and Logseq. The left navigation pane will be restructured to contain a Home link, a Favorites section, and a Content section with a tree view of graphs supporting a favorite toggle. The center pane will display `home.md` in a clean, full-width rich text editor when the Home link is active, pulling initial content from the markdown frontmatter.
-
-#### Problem
-
-The current UI lacks quick access to important high-level views (Home, Favorites) and defaults to graph-first displays everywhere, making it hard to author or view general overview content like a homepage. The layout needs a modern, sleek polish with better spacing and organization.
-
-#### Goals
-
-- Restructure the left pane into: Home link, Favorites section, and Content section (tree view of all graphs).
-- Allow users to mark/unmark graphs as favorites from the Content tree view.
-- Render `home.md` in a single rich-text editor in the center pane when Home is selected.
-- Pre-populate and edit the `home.md` content and metadata via its frontmatter.
-- Make the overall look and feel modern, sleek, minimal, and typography-focused using shadcn/ui.
-
-#### Non-Goals
-
-- Changing the canonical markdown storage format.
-- Adding arbitrary file-system exploration (only graphs and `home.md` are exposed in this model).
-- Collaborative editing or multi-user features.
-
-#### User Experience
-
-- **Left Panel**: A clean navigation rail. The top item is a static "Home" navigation button. Below is "Favorites", listing user-starred graphs. Below that is "Content", showing a nested tree of graphs. Hovering a graph node in the Content section displays a star icon to toggle its favorite status.
-- **Center Panel**: If "Home" is selected, the infinite canvas is hidden. Instead, a centered, max-width rich-text editor takes over the middle pane. The title, description, and tags from `home.md`'s frontmatter populate the top of the editor seamlessly, feeling like a single document.
-- **Visuals**: Generous padding, no heavy borders, soft hover states, bringing the sleek aesthetic into line with the design guidelines.
-
-#### Architecture
-
-- **State Management**: A new piece of frontend workspace state will track favorite graphs. Depending on requirements, this can be stored in the frontend's `localStorage` or added to the backend configuration.
-- **UI Routing/Selection**: The top-level application state needs to distinguish between "Home selected" and "Graph selected". When Home is selected, it mounts a localized rich text editor component instead of the `GraphWorkspaceDesignSystem` or canvas.
-
-#### Data And Interfaces
-
-- A persistent list of favorite graph paths/IDs is required.
-- `home.md` needs standard document API interactions (likely reusing existing `GET /api/documents/:id` and save flows).
-- A rich text editor component (likely using `ProseKit` based on current dependencies, or similar) designed specifically for the document view mode.
-
-#### Control Flow
-
-1. User clicks the favorite star on a graph in the left pane tree.
-2. The UI pushes the graph to the favorites list and updates local persistence.
-3. The Left pane re-renders instantly, adding the graph to the Favorites section.
-4. User clicks "Home".
-5. The center pane unmounts the current graph canvas.
-6. The `home.md` document is fetched via REST API.
-7. The `HomeRichTextEditor` component mounts in the center pane, initializing with the document's frontmatter and body.
-
-#### Edge Cases And Failure Modes
-
-- `home.md` might not exist on first load. The API should return a default empty structure, or the backend should ensure `home.md` is created automatically during `flow init`.
-- Navigating to a favorited graph that was externally deleted from the file system should be handled gracefully (e.g., prompting the user to remove it from favorites).
-
-#### Testing Strategy
-
-- Unit tests for the favorite toggle logic and state management.
-- Integration tests ensuring `HomeRichTextEditor` successfully mounts and parses frontmatter when Home is selected.
-- Visual regression testing for the new modernized Left and Center pane layouts.
-
-#### Risks And Tradeoffs
-
-- **Risk**: Replacing the infinite canvas with an editor for Home introduces a dual modal state into the center pane, increasing state complexity.
-- **Tradeoff**: Managing favorites locally (`localStorage`) is faster to implement but doesn't sync across machines. Managing it in the backend config requires expanding the mutation API scope.
-
-#### Open Questions
-
-- Should favorites be persisted in the backend configuration (e.g., `.flow/config/gui-server.json`), or is frontend `localStorage` sufficient for this iteration?
-- Should the `home.md` rich text editor auto-save on every keystroke, on blur, or rely on explicit manual save behavior?

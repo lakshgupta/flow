@@ -157,7 +157,7 @@ func TestValidateWorkspaceDocumentsAllowsCrossGraphSameTypeDependencyAndCrossTyp
 				Metadata: TaskMetadata{
 					CommonFields: CommonFields{ID: "task-1", Type: TaskType, Graph: "execution"},
 					DependsOn:    []string{"task-0"},
-					References:   []string{"note-1"},
+					References:   []NodeReference{{Node: "note-1"}},
 				},
 			},
 		},

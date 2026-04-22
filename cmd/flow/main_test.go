@@ -328,7 +328,7 @@ func TestFlowUpdateCommandWritesMarkdownAndReindexes(t *testing.T) {
 			},
 			Name:       "build",
 			DependsOn:  []string{"cmd-0"},
-			References: []string{"note-1"},
+			References: []markdown.NodeReference{{Node: "note-1"}},
 			Env: map[string]string{
 				"GOOS": "linux",
 			},
@@ -431,7 +431,7 @@ func TestFlowDeleteNoteRemovesMarkdownAndReindexes(t *testing.T) {
 				Graph: "notes",
 				Title: "Architecture",
 			},
-			References: []string{"task-1"},
+			References: []markdown.NodeReference{{Node: "task-1"}},
 		},
 		Body: "Note body",
 	})
@@ -1023,6 +1023,343 @@ func TestFlowGlobalGUIStopStopsServer(t *testing.T) {
 
 	if !strings.Contains(stdout, "Stopped global GUI server") {
 		t.Fatalf("stdout = %q", stdout)
+	}
+}
+
+func TestFlowNodeReadReturnsMarkdownForNote(t *testing.T) {
+	rootDir := t.TempDir()
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "arch", "overview.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{
+				ID:    "note-1",
+				Type:  markdown.NoteType,
+				Graph: "arch",
+				Title: "Overview",
+			},
+		},
+		Body: "Overview body text.\n",
+	})
+
+	stdout, stderr := runForTest(t, []string{"node", "read", "--id", "note-1", "--graph", "arch"}, rootDir)
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+
+	if !strings.Contains(stdout, "# Overview") {
+		t.Fatalf("stdout missing title, got %q", stdout)
+	}
+	if !strings.Contains(stdout, "ID: note-1") {
+		t.Fatalf("stdout missing ID, got %q", stdout)
+	}
+	if !strings.Contains(stdout, "Type: note") {
+		t.Fatalf("stdout missing type, got %q", stdout)
+	}
+	if !strings.Contains(stdout, "Role: context") {
+		t.Fatalf("stdout missing role, got %q", stdout)
+	}
+	if !strings.Contains(stdout, "Overview body text.") {
+		t.Fatalf("stdout missing body, got %q", stdout)
+	}
+}
+
+func TestFlowNodeReadReturnsJSONFormat(t *testing.T) {
+	rootDir := t.TempDir()
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "arch", "overview.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{
+				ID:    "note-1",
+				Type:  markdown.NoteType,
+				Graph: "arch",
+				Title: "Overview",
+			},
+		},
+		Body: "Overview body.\n",
+	})
+
+	stdout, stderr := runForTest(t, []string{"node", "read", "--id", "note-1", "--format", "json"}, rootDir)
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+
+	if !strings.Contains(stdout, `"id":"note-1"`) {
+		t.Fatalf("stdout missing id field, got %q", stdout)
+	}
+	if !strings.Contains(stdout, `"type":"note"`) {
+		t.Fatalf("stdout missing type field, got %q", stdout)
+	}
+	if !strings.Contains(stdout, `"role":"context"`) {
+		t.Fatalf("stdout missing role field, got %q", stdout)
+	}
+}
+
+func TestFlowNodeReadRequiresID(t *testing.T) {
+	rootDir := t.TempDir()
+	stderr := runExpectErrorForTest(t, []string{"node", "read", "--graph", "arch"}, rootDir)
+	if !strings.Contains(stderr, "--id") {
+		t.Fatalf("stderr = %q, want --id mention", stderr)
+	}
+}
+
+func TestFlowNodeReadUnknownIDReturnsError(t *testing.T) {
+	rootDir := t.TempDir()
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "arch", "overview.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{
+				ID:    "note-1",
+				Type:  markdown.NoteType,
+				Graph: "arch",
+				Title: "Overview",
+			},
+		},
+	})
+
+	stderr := runExpectErrorForTest(t, []string{"node", "read", "--id", "does-not-exist"}, rootDir)
+	if !strings.Contains(stderr, "not found") {
+		t.Fatalf("stderr = %q, want not found message", stderr)
+	}
+}
+
+func TestFlowNodeListReturnsMarkdownForGraph(t *testing.T) {
+	rootDir := t.TempDir()
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "proj", "note.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{
+				ID:    "note-1",
+				Type:  markdown.NoteType,
+				Graph: "proj",
+				Title: "Note",
+			},
+		},
+	})
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "proj", "task.md"), markdown.TaskDocument{
+		Metadata: markdown.TaskMetadata{
+			CommonFields: markdown.CommonFields{
+				ID:    "task-1",
+				Type:  markdown.TaskType,
+				Graph: "proj",
+				Title: "Task",
+			},
+			Status: "todo",
+		},
+	})
+
+	stdout, stderr := runForTest(t, []string{"node", "list", "--graph", "proj"}, rootDir)
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+
+	if !strings.Contains(stdout, "note-1") {
+		t.Fatalf("stdout missing note-1, got %q", stdout)
+	}
+	if !strings.Contains(stdout, "task-1") {
+		t.Fatalf("stdout missing task-1, got %q", stdout)
+	}
+}
+
+func TestFlowNodeListReturnsJSONFormat(t *testing.T) {
+	rootDir := t.TempDir()
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "proj", "note.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{
+				ID:    "note-1",
+				Type:  markdown.NoteType,
+				Graph: "proj",
+				Title: "Note",
+			},
+		},
+	})
+
+	stdout, stderr := runForTest(t, []string{"node", "list", "--graph", "proj", "--format", "json"}, rootDir)
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+
+	if !strings.Contains(stdout, `"id":"note-1"`) {
+		t.Fatalf("stdout missing id field, got %q", stdout)
+	}
+	if !strings.Contains(stdout, `"graph":"proj"`) {
+		t.Fatalf("stdout missing graph field, got %q", stdout)
+	}
+}
+
+func TestFlowNodeListEmptyGraphReturnsNoNodesMessage(t *testing.T) {
+	rootDir := t.TempDir()
+
+	stdout, stderr := runForTest(t, []string{"node", "list", "--graph", "empty"}, rootDir)
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+
+	if !strings.Contains(stdout, "No nodes") {
+		t.Fatalf("stdout = %q, want no-nodes message", stdout)
+	}
+}
+
+func TestFlowNodeListRequiresGraph(t *testing.T) {
+	rootDir := t.TempDir()
+	stderr := runExpectErrorForTest(t, []string{"node", "list"}, rootDir)
+	if !strings.Contains(stderr, "--graph") {
+		t.Fatalf("stderr = %q, want --graph mention", stderr)
+	}
+}
+
+func TestFlowNodeUnknownSubcommandReturnsError(t *testing.T) {
+	rootDir := t.TempDir()
+	stderr := runExpectErrorForTest(t, []string{"node", "bogus"}, rootDir)
+	if !strings.Contains(stderr, "bogus") {
+		t.Fatalf("stderr = %q, want subcommand name in error", stderr)
+	}
+}
+
+func TestFlowNodeEdgesRequiresID(t *testing.T) {
+	rootDir := t.TempDir()
+	stderr := runExpectErrorForTest(t, []string{"node", "edges"}, rootDir)
+	if !strings.Contains(stderr, "--id") {
+		t.Fatalf("stderr = %q, want --id mention", stderr)
+	}
+}
+
+func TestFlowNodeNeighborsReturnsNeighborSummaries(t *testing.T) {
+	rootDir := t.TempDir()
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "proj", "source.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-src", Type: markdown.NoteType, Graph: "proj", Title: "Source"},
+			References:   []markdown.NodeReference{{Node: "note-ref"}},
+		},
+	})
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "proj", "ref.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-ref", Type: markdown.NoteType, Graph: "proj", Title: "Ref"},
+		},
+	})
+
+	stdout, stderr := runForTest(t, []string{"node", "neighbors", "--id", "note-src", "--graph", "proj"}, rootDir)
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+
+	if !strings.Contains(stdout, "note-ref") {
+		t.Fatalf("stdout missing note-ref neighbor, got %q", stdout)
+	}
+}
+
+func TestFlowNodeNeighborsRequiresID(t *testing.T) {
+	rootDir := t.TempDir()
+	stderr := runExpectErrorForTest(t, []string{"node", "neighbors"}, rootDir)
+	if !strings.Contains(stderr, "--id") {
+		t.Fatalf("stderr = %q, want --id mention", stderr)
+	}
+}
+
+func TestFlowNodeUpdateChangesTitle(t *testing.T) {
+	rootDir := t.TempDir()
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "proj", "note.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{
+				ID:    "note-1",
+				Type:  markdown.NoteType,
+				Graph: "proj",
+				Title: "Original Title",
+			},
+		},
+		Body: "Original body.\n",
+	})
+
+	stdout, stderr := runForTest(t, []string{"node", "update", "--id", "note-1", "--title", "Updated Title"}, rootDir)
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+	if !strings.Contains(stdout, "Updated node note-1") {
+		t.Fatalf("stdout = %q, want updated message", stdout)
+	}
+
+	// Verify the file on disk was updated.
+	documentPath := filepath.Join(rootDir, ".flow", "data", "content", "proj", "note.md")
+	data, err := os.ReadFile(documentPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if !strings.Contains(string(data), "Updated Title") {
+		t.Fatalf("file content = %q, want Updated Title", string(data))
+	}
+}
+
+func TestFlowNodeUpdateRequiresID(t *testing.T) {
+	rootDir := t.TempDir()
+	stderr := runExpectErrorForTest(t, []string{"node", "update", "--title", "New"}, rootDir)
+	if !strings.Contains(stderr, "--id") {
+		t.Fatalf("stderr = %q, want --id mention", stderr)
+	}
+}
+
+func TestFlowNodeUpdateRequiresAtLeastOneField(t *testing.T) {
+	rootDir := t.TempDir()
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "proj", "note.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "proj", Title: "Note"},
+		},
+	})
+
+	stderr := runExpectErrorForTest(t, []string{"node", "update", "--id", "note-1"}, rootDir)
+	if !strings.Contains(stderr, "at least one field") {
+		t.Fatalf("stderr = %q, want at-least-one-field message", stderr)
+	}
+}
+
+func TestFlowNodeConnectCreatesEdge(t *testing.T) {
+	rootDir := t.TempDir()
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "proj", "a.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-a", Type: markdown.NoteType, Graph: "proj", Title: "A"},
+		},
+	})
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "proj", "b.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-b", Type: markdown.NoteType, Graph: "proj", Title: "B"},
+		},
+	})
+
+	stdout, stderr := runForTest(t, []string{"node", "connect", "--from", "note-a", "--to", "note-b", "--graph", "proj"}, rootDir)
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+	if !strings.Contains(stdout, "Connected note-a") {
+		t.Fatalf("stdout = %q, want Connected message", stdout)
+	}
+	if !strings.Contains(stdout, "note-b") {
+		t.Fatalf("stdout = %q, want note-b in message", stdout)
+	}
+}
+
+func TestFlowNodeConnectRequiresFrom(t *testing.T) {
+	rootDir := t.TempDir()
+	stderr := runExpectErrorForTest(t, []string{"node", "connect", "--to", "note-b", "--graph", "proj"}, rootDir)
+	if !strings.Contains(stderr, "--from") {
+		t.Fatalf("stderr = %q, want --from mention", stderr)
+	}
+}
+
+func TestFlowNodeConnectRequiresTo(t *testing.T) {
+	rootDir := t.TempDir()
+	stderr := runExpectErrorForTest(t, []string{"node", "connect", "--from", "note-a", "--graph", "proj"}, rootDir)
+	if !strings.Contains(stderr, "--to") {
+		t.Fatalf("stderr = %q, want --to mention", stderr)
+	}
+}
+
+func TestFlowNodeConnectRequiresGraph(t *testing.T) {
+	rootDir := t.TempDir()
+	stderr := runExpectErrorForTest(t, []string{"node", "connect", "--from", "note-a", "--to", "note-b"}, rootDir)
+	if !strings.Contains(stderr, "--graph") {
+		t.Fatalf("stderr = %q, want --graph mention", stderr)
+	}
+}
+
+func TestFlowNodeDisconnectRequiresFrom(t *testing.T) {
+	rootDir := t.TempDir()
+	stderr := runExpectErrorForTest(t, []string{"node", "disconnect", "--to", "note-b", "--graph", "proj"}, rootDir)
+	if !strings.Contains(stderr, "--from") {
+		t.Fatalf("stderr = %q, want --from mention", stderr)
 	}
 }
 

@@ -31,13 +31,17 @@ export function formatDocumentType(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+function pathSegments(path: string): string[] {
+  return path.split("/").filter((segment) => segment !== "");
+}
+
 export function fileNameFromPath(path: string): string {
-  const parts = path.split("/");
+  const parts = pathSegments(path);
   return parts[parts.length - 1] ?? path;
 }
 
 function featureSlugFromGraphPath(graphPath: string): string {
-  return graphPath.split("/")[0] ?? graphPath;
+  return pathSegments(graphPath)[0] ?? graphPath;
 }
 
 export function slugifyValue(value: string): string {
@@ -50,16 +54,21 @@ export function slugifyValue(value: string): string {
   return normalized === "" ? "item" : normalized;
 }
 
-export function createGraphDocumentPayload(type: GraphCreateType, graphPath: string): CreateDocumentPayload {
-  const suffix = Date.now().toString(36);
-  const title = type === "note" ? "New Note" : type === "task" ? "New Task" : "New Command";
-  const titleSlug = slugifyValue(title);
+export function headingIdFromText(text: string): string {
+  return slugifyValue(text);
+}
+
+export function createGraphDocumentPayload(type: GraphCreateType, graphPath: string, userFileName: string): CreateDocumentPayload {
+  const baseName = fileNameFromPath(userFileName);
+  const title = baseName
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
   const isoTimestamp = new Date().toISOString();
   const basePayload: CreateDocumentPayload = {
     type,
     featureSlug: featureSlugFromGraphPath(graphPath),
-    fileName: `${titleSlug}-${suffix}`,
-    id: `${type}-${suffix}`,
+    fileName: userFileName,
+    id: `${graphPath}/${userFileName}`,
     graph: graphPath,
     title,
     description: "",
@@ -77,7 +86,7 @@ export function createGraphDocumentPayload(type: GraphCreateType, graphPath: str
   if (type === "command") {
     return {
       ...basePayload,
-      name: `command-${suffix}`,
+      name: userFileName,
       dependsOn: [],
       env: {},
       run: `echo "Describe ${title.toLowerCase()}"`,
@@ -143,7 +152,7 @@ export function createDocumentFormState(document: DocumentResponse | null): Docu
     body: document.body,
     status: document.status ?? "",
     dependsOn: joinList(document.dependsOn),
-    references: joinList(document.references),
+    references: joinList((document.references ?? []).map((ref) => ref.node)),
     name: document.name ?? "",
     env: serializeEnv(document.env),
     run: document.run ?? "",
@@ -170,10 +179,7 @@ export function generateTOC(markdownText: string): Array<{ level: number; text: 
     if (match) {
       const level = match[1].length;
       const text = match[2].trim();
-      const id = text
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "");
+      const id = headingIdFromText(text);
       toc.push({ level, text, id });
     }
   }

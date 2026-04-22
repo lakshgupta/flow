@@ -12,6 +12,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { editorHTMLToMarkdown, markdownToHTML } from '../../richText'
+import { headingIdFromText } from '../../lib/docUtils'
+import { toISODateString } from '../../lib/dateEntries'
 import { BlockHandle } from './ui/block-handle'
 import { defineEditorExtension } from './define-editor-extension'
 import { DropIndicator } from './ui/drop-indicator'
@@ -67,11 +69,9 @@ export function RichTextEditor({ value, onChange, placeholder, ariaLabel, classN
     if (!dom) return
     const headings = dom.querySelectorAll('h1, h2, h3, h4, h5, h6')
     for (const heading of headings) {
-      const slug = (heading.textContent ?? '')
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
+      const slug = headingIdFromText(heading.textContent ?? '')
       if (slug === scrollToHeadingSlug) {
+        editor.view?.focus()
         heading.scrollIntoView({ behavior: 'smooth', block: 'start' })
         onScrollCompleted?.()
         break
@@ -100,12 +100,8 @@ export function RichTextEditor({ value, onChange, placeholder, ariaLabel, classN
       editor.view?.focus()
       return
     }
-    const y = date.getFullYear()
-    const m = String(date.getMonth() + 1).padStart(2, '0')
-    const d = String(date.getDate()).padStart(2, '0')
-    const dateStr = `${y}-${m}-${d}`
     editor.view?.focus()
-    editor.commands.insertText({ text: dateStr })
+    editor.commands.insertText({ text: toISODateString(date) })
   }
 
   return (

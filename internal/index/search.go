@@ -173,6 +173,11 @@ func ensureIndexExists(indexPath string, flowPath string) error {
 	return nil
 }
 
+// EnsureIndexExists rebuilds the index when it is missing.
+func EnsureIndexExists(indexPath string, flowPath string) error {
+	return ensureIndexExists(indexPath, flowPath)
+}
+
 func searchSnippet(bodyText string, query string) string {
 	normalizedBody := strings.Join(strings.Fields(bodyText), " ")
 	if normalizedBody == "" {
@@ -209,4 +214,116 @@ func searchSnippet(bodyText string, query string) string {
 	}
 
 	return snippet
+}
+
+// EdgeRow holds one edge record from the index.
+type EdgeRow struct {
+	ID     string
+	Graph  string
+	FromID string
+	ToID   string
+	Label  string
+	Body   string
+	Path   string
+}
+
+// ReadEdgesByGraph returns all edge rows for a given graph.
+func ReadEdgesByGraph(indexPath string, graph string) ([]EdgeRow, error) {
+	database, err := sql.Open("sqlite", indexPath)
+	if err != nil {
+		return nil, fmt.Errorf("open index database: %w", err)
+	}
+	defer database.Close()
+
+	rows, err := database.Query(
+		`SELECT id, graph, from_id, to_id, label, body, path FROM edges WHERE graph = ? ORDER BY id`,
+		graph,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query edges: %w", err)
+	}
+	defer rows.Close()
+
+	return scanEdgeRows(rows)
+}
+
+// ReadEdgesByEndpoint returns all edge rows where from_id or to_id equals the given document ID.
+func ReadEdgesByEndpoint(indexPath string, documentID string) ([]EdgeRow, error) {
+	database, err := sql.Open("sqlite", indexPath)
+	if err != nil {
+		return nil, fmt.Errorf("open index database: %w", err)
+	}
+	defer database.Close()
+
+	rows, err := database.Query(
+		`SELECT id, graph, from_id, to_id, label, body, path FROM edges WHERE from_id = ? OR to_id = ? ORDER BY id`,
+		documentID,
+		documentID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query edges by endpoint: %w", err)
+	}
+	defer rows.Close()
+
+	return scanEdgeRows(rows)
+}
+
+// ReadEdgeByID returns a single edge row by ID.
+func ReadEdgeByID(indexPath string, edgeID string) (EdgeRow, bool, error) {
+	database, err := sql.Open("sqlite", indexPath)
+	if err != nil {
+		return EdgeRow{}, false, fmt.Errorf("open index database: %w", err)
+	}
+	defer database.Close()
+
+	var row EdgeRow
+	err = database.QueryRow(
+		`SELECT id, graph, from_id, to_id, label, body, path FROM edges WHERE id = ?`,
+		edgeID,
+	).Scan(&row.ID, &row.Graph, &row.FromID, &row.ToID, &row.Label, &row.Body, &row.Path)
+	if err == sql.ErrNoRows {
+		return EdgeRow{}, false, nil
+	}
+	if err != nil {
+		return EdgeRow{}, false, fmt.Errorf("query edge by id: %w", err)
+	}
+
+	return row, true, nil
+}
+
+// EdgeExistsByEndpoints returns true when an edge with the given (graph, from, to) already exists.
+func EdgeExistsByEndpoints(indexPath string, graph string, fromID string, toID string) (bool, error) {
+	database, err := sql.Open("sqlite", indexPath)
+	if err != nil {
+		return false, fmt.Errorf("open index database: %w", err)
+	}
+	defer database.Close()
+
+	var count int
+	err = database.QueryRow(
+		`SELECT COUNT(*) FROM edges WHERE graph = ? AND from_id = ? AND to_id = ?`,
+		graph,
+		fromID,
+		toID,
+	).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("check edge existence: %w", err)
+	}
+
+	return count > 0, nil
+}
+
+func scanEdgeRows(rows *sql.Rows) ([]EdgeRow, error) {
+	var results []EdgeRow
+	for rows.Next() {
+		var row EdgeRow
+		if err := rows.Scan(&row.ID, &row.Graph, &row.FromID, &row.ToID, &row.Label, &row.Body, &row.Path); err != nil {
+			return nil, fmt.Errorf("scan edge row: %w", err)
+		}
+		results = append(results, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate edge rows: %w", err)
+	}
+	return results, nil
 }

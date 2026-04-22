@@ -23,7 +23,7 @@ func TestBuildGraphCanvasViewProjectsScopedNodesEdgesAndPositions(t *testing.T) 
 			Document: markdown.NoteDocument{
 				Metadata: markdown.NoteMetadata{
 					CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "execution", Title: "Overview", Description: "Execution overview"},
-					References:   []string{"cmd-1"},
+					References:   []markdown.NodeReference{{Node: "cmd-1"}},
 				},
 			},
 		},
@@ -33,7 +33,7 @@ func TestBuildGraphCanvasViewProjectsScopedNodesEdgesAndPositions(t *testing.T) 
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Build"},
 					DependsOn:    []string{"task-0"},
-					References:   []string{"note-1"},
+					References:   []markdown.NodeReference{{Node: "note-1"}},
 				},
 			},
 		},
@@ -100,7 +100,7 @@ func TestBuildGraphCanvasViewUsesStablePseudoTopologicalOrderingForCycles(t *tes
 			Document: markdown.NoteDocument{
 				Metadata: markdown.NoteMetadata{
 					CommonFields: markdown.CommonFields{ID: "note-a", Type: markdown.NoteType, Graph: "execution", Title: "Alpha", CreatedAt: "2026-03-17T08:00:00Z"},
-					References:   []string{"note-b"},
+					References:   []markdown.NodeReference{{Node: "note-b"}},
 				},
 			},
 		},
@@ -109,7 +109,7 @@ func TestBuildGraphCanvasViewUsesStablePseudoTopologicalOrderingForCycles(t *tes
 			Document: markdown.NoteDocument{
 				Metadata: markdown.NoteMetadata{
 					CommonFields: markdown.CommonFields{ID: "note-b", Type: markdown.NoteType, Graph: "execution", Title: "Beta", CreatedAt: "2026-03-17T09:00:00Z"},
-					References:   []string{"note-a"},
+					References:   []markdown.NodeReference{{Node: "note-a"}},
 				},
 			},
 		},

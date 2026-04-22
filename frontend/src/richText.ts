@@ -3,13 +3,15 @@ import markdownItAnchor from "markdown-it-anchor";
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
 
+import { slugifyValue } from "./lib/docUtils";
+
 const markdown = new MarkdownIt({
   breaks: true,
   html: true,
   linkify: true,
 }).use(markdownItAnchor, {
   permalink: false, // don't add permalink symbols
-  slugify: (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
+  slugify: slugifyValue,
 });
 
 const turndown = new TurndownService({

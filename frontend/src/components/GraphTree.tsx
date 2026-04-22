@@ -1,6 +1,13 @@
-import { ChevronDown, ChevronRight, Home, Layers, Minus, Plus, Star } from "lucide-react";
-import { useState } from "react";
+import { CheckSquare, ChevronDown, ChevronRight, FileText, FolderPlus, Home, Layers, Minus, MoreHorizontal, Plus, Star, Terminal, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import {
   SidebarGroup,
   SidebarMenu,
@@ -46,6 +53,9 @@ type FileTreeRowProps = {
   depth: number;
   activeSurface: SurfaceState;
   onSelectGraph: (graphName: string) => void;
+  onCreateGraph: (name: string) => void;
+  onCreateNode: (graphPath: string, type: "note" | "task" | "command") => void;
+  onDeleteGraph: (graphPath: string) => void;
   collapsed: Set<string>;
   onToggleCollapse: (path: string) => void;
   isFavorite: (path: string) => boolean;
@@ -57,6 +67,9 @@ function FileTreeRow({
   depth,
   activeSurface,
   onSelectGraph,
+  onCreateGraph,
+  onCreateNode,
+  onDeleteGraph,
   collapsed,
   onToggleCollapse,
   isFavorite,
@@ -66,6 +79,15 @@ function FileTreeRow({
   const isFav = isFavorite(node.data.graphPath);
   const hasChildren = node.children.length > 0;
   const isCollapsed = collapsed.has(node.data.graphPath);
+  const [addingSubdir, setAddingSubdir] = useState(false);
+  const [subdirName, setSubdirName] = useState("");
+  const subdirInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (addingSubdir) {
+      subdirInputRef.current?.focus();
+    }
+  }, [addingSubdir]);
 
   return (
     <>
@@ -105,7 +127,88 @@ function FileTreeRow({
         >
           <Star size={14} className={isFav ? "fill-amber-500 text-amber-500" : ""} />
         </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="graph-row-menu-btn"
+              aria-label={`More actions for ${node.data.displayName}`}
+            >
+              <MoreHorizontal size={14} />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" side="right">
+            <DropdownMenuItem onClick={() => { setAddingSubdir(true); }}>
+              <FolderPlus size={12} />
+              Add subdirectory
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => { onCreateNode(node.data.graphPath, "note"); }}>
+              <FileText size={12} />
+              Add note
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => { onCreateNode(node.data.graphPath, "task"); }}>
+              <CheckSquare size={12} />
+              Add task
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => { onCreateNode(node.data.graphPath, "command"); }}>
+              <Terminal size={12} />
+              Add command
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => { onDeleteGraph(node.data.graphPath); }}
+            >
+              <Trash2 size={12} />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </SidebarMenuSubItem>
+      {addingSubdir && (
+        <li className="graph-add-form" style={{ paddingLeft: `${depth * 0.75 + 0.5}rem` }}>
+          <input
+            ref={subdirInputRef}
+            className="graph-add-input"
+            placeholder={`under ${node.data.displayName}/...`}
+            value={subdirName}
+            onChange={(e) => setSubdirName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && subdirName.trim() !== "") {
+                onCreateGraph(`${node.data.graphPath}/${subdirName.trim()}`);
+                setSubdirName("");
+                setAddingSubdir(false);
+              } else if (e.key === "Escape") {
+                setSubdirName("");
+                setAddingSubdir(false);
+              }
+            }}
+            aria-label="New subdirectory name"
+          />
+          <button
+            type="button"
+            className="graph-add-confirm-btn"
+            disabled={subdirName.trim() === ""}
+            onClick={() => {
+              if (subdirName.trim() !== "") {
+                onCreateGraph(`${node.data.graphPath}/${subdirName.trim()}`);
+                setSubdirName("");
+                setAddingSubdir(false);
+              }
+            }}
+            aria-label="Confirm"
+          >
+            <Plus size={12} />
+          </button>
+          <button
+            type="button"
+            className="graph-add-cancel-btn"
+            onClick={() => { setSubdirName(""); setAddingSubdir(false); }}
+            aria-label="Cancel"
+          >✕</button>
+        </li>
+      )}
       {hasChildren &&
         !isCollapsed &&
         node.children.map((child) => (
@@ -115,6 +218,9 @@ function FileTreeRow({
             depth={depth + 1}
             activeSurface={activeSurface}
             onSelectGraph={onSelectGraph}
+            onCreateGraph={onCreateGraph}
+            onCreateNode={onCreateNode}
+            onDeleteGraph={onDeleteGraph}
             collapsed={collapsed}
             onToggleCollapse={onToggleCollapse}
             isFavorite={isFavorite}
@@ -130,13 +236,25 @@ type GraphTreeProps = {
   activeSurface: SurfaceState;
   onSelectHome: () => void;
   onSelectGraph: (graphName: string) => void;
+  onCreateGraph: (name: string) => void;
+  onCreateNode: (graphPath: string, type: "note" | "task" | "command") => void;
+  onDeleteGraph: (graphPath: string) => void;
 };
 
-export function GraphTree({ graphTree, activeSurface, onSelectHome, onSelectGraph }: GraphTreeProps) {
+export function GraphTree({ graphTree, activeSurface, onSelectHome, onSelectGraph, onCreateGraph, onCreateNode, onDeleteGraph }: GraphTreeProps) {
   const { toggleFavorite, isFavorite } = useFavorites();
   const [contentExpanded, setContentExpanded] = useState(true);
   const [favoritesExpanded, setFavoritesExpanded] = useState(true);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [newGraphName, setNewGraphName] = useState("");
+  const [addingGraph, setAddingGraph] = useState(false);
+  const newGraphInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (addingGraph) {
+      newGraphInputRef.current?.focus();
+    }
+  }, [addingGraph]);
 
   const allGraphs = graphTree?.graphs ?? [];
   const favoriteGraphs = allGraphs.filter((g) => isFavorite(g.graphPath));
@@ -228,20 +346,31 @@ export function GraphTree({ graphTree, activeSurface, onSelectHome, onSelectGrap
         </SidebarMenuItem>
 
         <SidebarMenuItem className="graph-section graph-section-mt">
-          <SidebarMenuButton
-            className="graph-section-header"
-            onClick={() => setContentExpanded((e) => !e)}
-            type="button"
-          >
-            <Layers size={16} />
-            <span className="graph-section-title">Content</span>
-            {allGraphs.length > 0 && <span className="graph-section-count">{allGraphs.length}</span>}
-            {contentExpanded ? (
-              <Minus className="graph-section-toggle-icon" size={14} />
-            ) : (
-              <Plus className="graph-section-toggle-icon" size={14} />
-            )}
-          </SidebarMenuButton>
+          <div className="graph-section-header-row">
+            <SidebarMenuButton
+              className="graph-section-header"
+              onClick={() => setContentExpanded((e) => !e)}
+              type="button"
+            >
+              <Layers size={16} />
+              <span className="graph-section-title">Content</span>
+              {allGraphs.length > 0 && <span className="graph-section-count">{allGraphs.length}</span>}
+              {contentExpanded ? (
+                <Minus className="graph-section-toggle-icon" size={14} />
+              ) : (
+                <Plus className="graph-section-toggle-icon" size={14} />
+              )}
+            </SidebarMenuButton>
+            <button
+              type="button"
+              className="graph-add-content-btn"
+              onClick={() => { setAddingGraph(true); setContentExpanded(true); }}
+              aria-label="Add graph or directory"
+              title="Add graph or directory"
+            >
+              <FolderPlus size={14} />
+            </button>
+          </div>
           {contentExpanded && (
             <SidebarMenuSub className="graph-section-content">
               {fileTree.length > 0 ? (
@@ -252,6 +381,9 @@ export function GraphTree({ graphTree, activeSurface, onSelectHome, onSelectGrap
                     depth={0}
                     activeSurface={activeSurface}
                     onSelectGraph={onSelectGraph}
+                    onCreateGraph={onCreateGraph}
+                    onCreateNode={onCreateNode}
+                    onDeleteGraph={onDeleteGraph}
                     collapsed={collapsed}
                     onToggleCollapse={handleToggleCollapse}
                     isFavorite={isFavorite}
@@ -260,6 +392,49 @@ export function GraphTree({ graphTree, activeSurface, onSelectHome, onSelectGrap
                 ))
               ) : (
                 <p className="empty-state-inline graph-section-empty">No graphs yet.</p>
+              )}
+              {addingGraph && (
+                <li className="graph-add-form">
+                  <input
+                    ref={newGraphInputRef}
+                    className="graph-add-input"
+                    placeholder="e.g. arch or projects/backend"
+                    value={newGraphName}
+                    onChange={(e) => setNewGraphName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newGraphName.trim() !== "") {
+                        onCreateGraph(newGraphName.trim());
+                        setNewGraphName("");
+                        setAddingGraph(false);
+                      } else if (e.key === "Escape") {
+                        setNewGraphName("");
+                        setAddingGraph(false);
+                      }
+                    }}
+                    aria-label="New graph name"
+                  />
+                  <button
+                    type="button"
+                    className="graph-add-confirm-btn"
+                    disabled={newGraphName.trim() === ""}
+                    onClick={() => {
+                      if (newGraphName.trim() !== "") {
+                        onCreateGraph(newGraphName.trim());
+                        setNewGraphName("");
+                        setAddingGraph(false);
+                      }
+                    }}
+                    aria-label="Confirm"
+                  >
+                    <Plus size={12} />
+                  </button>
+                  <button
+                    type="button"
+                    className="graph-add-cancel-btn"
+                    onClick={() => { setNewGraphName(""); setAddingGraph(false); }}
+                    aria-label="Cancel"
+                  >✕</button>
+                </li>
               )}
             </SidebarMenuSub>
           )}

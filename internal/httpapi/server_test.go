@@ -47,35 +47,6 @@ func TestNewMuxServesWorkspaceAndReadQueryAPIs(t *testing.T) {
 		t.Fatalf("workspaceResponse.HomePath = %q, want data/home.md", workspaceResponse.HomePath)
 	}
 
-	noteGraphs := performJSONRequest[graphListResponse](t, handler, http.MethodGet, "/api/graphs/note")
-	if len(noteGraphs.AvailableGraphs) != 1 || noteGraphs.AvailableGraphs[0] != "notes" {
-		t.Fatalf("noteGraphs.AvailableGraphs = %#v, want [notes]", noteGraphs.AvailableGraphs)
-	}
-	if len(noteGraphs.GraphItems["notes"]) != 2 {
-		t.Fatalf("len(noteGraphs.GraphItems[notes]) = %d, want 2", len(noteGraphs.GraphItems["notes"]))
-	}
-
-	taskLayers := performJSONRequest[graph.TaskLayerView](t, handler, http.MethodGet, "/api/layers/tasks")
-	if len(taskLayers.Layers) != 2 {
-		t.Fatalf("len(taskLayers.Layers) = %d, want 2", len(taskLayers.Layers))
-	}
-	if taskLayers.Layers[1].Tasks[0].ID != "task-1" {
-		t.Fatalf("taskLayers.Layers[1].Tasks[0].ID = %q, want task-1", taskLayers.Layers[1].Tasks[0].ID)
-	}
-
-	commandLayers := performJSONRequest[graph.CommandLayerView](t, handler, http.MethodGet, "/api/layers/commands?graph=release")
-	if commandLayers.SelectedGraph != "release" {
-		t.Fatalf("commandLayers.SelectedGraph = %q, want release", commandLayers.SelectedGraph)
-	}
-	if len(commandLayers.Layers) != 1 {
-		t.Fatalf("len(commandLayers.Layers) = %d, want 1", len(commandLayers.Layers))
-	}
-
-	noteGraph := performJSONRequest[graph.NoteGraphView](t, handler, http.MethodGet, "/api/notes/graph")
-	if len(noteGraph.Edges) != 1 {
-		t.Fatalf("len(noteGraph.Edges) = %d, want 1", len(noteGraph.Edges))
-	}
-
 	graphCanvas := performJSONRequest[graph.GraphCanvasView](t, handler, http.MethodGet, "/api/graph-canvas?graph=release")
 	if graphCanvas.SelectedGraph != "release" {
 		t.Fatalf("graphCanvas.SelectedGraph = %q, want release", graphCanvas.SelectedGraph)
@@ -224,6 +195,39 @@ func TestNewMuxUpdatesHomeAndReindexes(t *testing.T) {
 	}
 }
 
+func TestNewMuxServesCalendarDocumentsAcrossWorkspace(t *testing.T) {
+	t.Parallel()
+
+	root := createCalendarHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	documents := performJSONRequest[[]calendarDocumentResponse](t, handler, http.MethodGet, "/api/calendar-documents")
+	if len(documents) != 3 {
+		t.Fatalf("len(documents) = %d, want 3", len(documents))
+	}
+
+	byID := map[string]calendarDocumentResponse{}
+	for _, document := range documents {
+		byID[document.ID] = document
+	}
+
+	if byID["home"].Body != "## 2026-04-19\nHome planning\n" {
+		t.Fatalf("home body = %q, want dated home content", byID["home"].Body)
+	}
+	if byID["home"].Graph != "" {
+		t.Fatalf("home graph = %q, want empty graph", byID["home"].Graph)
+	}
+	if byID["note-1"].Graph != "execution" || byID["note-1"].Body != "## 2026-04-19\nExecution note\n" {
+		t.Fatalf("note-1 = %#v, want execution dated note", byID["note-1"])
+	}
+	if byID["task-1"].Graph != "planning" || byID["task-1"].Body != "## 2026-04-20\nPlanning task\n" {
+		t.Fatalf("task-1 = %#v, want planning dated task", byID["task-1"])
+	}
+}
+
 func TestNewMuxUpdatesWorkspacePanelWidths(t *testing.T) {
 	t.Parallel()
 
@@ -283,7 +287,6 @@ func TestNewMuxRejectsUnknownOrInvalidAPIRequests(t *testing.T) {
 		t.Fatalf("NewMux() error = %v", err)
 	}
 
-	assertStatus(t, handler, http.MethodGet, "/api/graphs/unknown", http.StatusBadRequest)
 	assertStatus(t, handler, http.MethodGet, "/api/graph-canvas", http.StatusBadRequest)
 	assertStatus(t, handler, http.MethodGet, "/api/graph-canvas?graph=missing", http.StatusBadRequest)
 	assertStatusWithBody(t, handler, http.MethodPut, "/api/graph-layout", map[string]any{"graph": "", "positions": []map[string]any{{"documentId": "cmd-1", "x": 1, "y": 2}}}, http.StatusBadRequest)
@@ -336,7 +339,7 @@ func TestNewMuxMutatesDocumentsAndReindexes(t *testing.T) {
 		"title":       "Publish release",
 		"status":      "todo",
 		"dependsOn":   []string{"task-1"},
-		"references":  []string{"note-1"},
+		"references":  []map[string]any{{"node": "note-1"}},
 		"body":        "Publish task body\n",
 	})
 	if created.ID != "task-2" || created.Path != "data/content/release/publish.md" {
@@ -443,21 +446,6 @@ func TestNewMuxUsesFrontendJSONFieldNamesForGraphViews(t *testing.T) {
 		t.Fatalf("NewMux() error = %v", err)
 	}
 
-	noteGraphPayload := performRawRequest(t, handler, http.MethodGet, "/api/notes/graph")
-	assertJSONHasPath(t, noteGraphPayload, "availableGraphs")
-	assertJSONHasPath(t, noteGraphPayload, "graphNotes")
-	assertJSONHasPath(t, noteGraphPayload, "nodes.note-1.path")
-	assertJSONHasPath(t, noteGraphPayload, "edges.0.leftNoteID")
-
-	taskLayerPayload := performRawRequest(t, handler, http.MethodGet, "/api/layers/tasks")
-	assertJSONHasPath(t, taskLayerPayload, "layers.0.tasks.0.path")
-	assertJSONHasPath(t, taskLayerPayload, "tasks.task-1.featureSlug")
-
-	commandLayerPayload := performRawRequest(t, handler, http.MethodGet, "/api/layers/commands?graph=release")
-	assertJSONHasPath(t, commandLayerPayload, "selectedGraph")
-	assertJSONHasPath(t, commandLayerPayload, "layers.0.commands.0.path")
-	assertJSONHasPath(t, commandLayerPayload, "commands.cmd-1.run")
-
 	graphCanvasPayload := performRawRequest(t, handler, http.MethodGet, "/api/graph-canvas?graph=release")
 	assertJSONHasPath(t, graphCanvasPayload, "selectedGraph")
 	assertJSONHasPath(t, graphCanvasPayload, "layerGuidance.magneticThresholdPx")
@@ -489,11 +477,8 @@ func TestNewMuxUsesFrontendJSONFieldNamesForGraphViews(t *testing.T) {
 	assertJSONArrayHasPath(t, searchPayload, 0, "featureSlug")
 	assertJSONArrayHasPath(t, searchPayload, 0, "snippet")
 
-	assertJSONMissingPath(t, noteGraphPayload, "Nodes")
 	assertJSONMissingPath(t, graphCanvasPayload, "SelectedGraph")
 	assertJSONMissingPath(t, workspacePayload, "PanelWidths")
-	assertJSONMissingPath(t, taskLayerPayload, "Layers")
-	assertJSONMissingPath(t, commandLayerPayload, "SelectedGraph")
 	assertJSONArrayMissingPath(t, searchPayload, 0, "Type")
 	assertJSONArrayMissingPath(t, searchPayload, 0, "FeatureSlug")
 }
@@ -676,14 +661,14 @@ func createHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "notes", "architecture.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "notes", Title: "Architecture"},
-			References:   []string{"note-2", "task-1"},
+			References:   []markdown.NodeReference{{Node: "note-2"}, {Node: "task-1"}},
 		},
 		Body: "Architecture body\n",
 	})
 	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "notes", "follow-up.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "note-2", Type: markdown.NoteType, Graph: "notes", Title: "Follow Up"},
-			References:   []string{"note-1"},
+			References:   []markdown.NodeReference{{Node: "note-1"}},
 		},
 		Body: "Follow up body\n",
 	})
@@ -699,7 +684,7 @@ func createHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Parser"},
 			Status:       "doing",
 			DependsOn:    []string{"task-0"},
-			References:   []string{"note-1"},
+			References:   []markdown.NodeReference{{Node: "note-1"}},
 		},
 		Body: "Parser body\n",
 	})
@@ -707,7 +692,7 @@ func createHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "release", Title: "Build"},
 			Name:         "build",
-			References:   []string{"note-1"},
+			References:   []markdown.NodeReference{{Node: "note-1"}},
 			Run:          "go build ./cmd/flow",
 		},
 		Body: "Build release binary\n",
@@ -773,6 +758,46 @@ func createHTTPAPITestWorkspaceWithoutIndex(t *testing.T) workspace.Root {
 	return root
 }
 
+func createCalendarHTTPAPITestWorkspace(t *testing.T) workspace.Root {
+	t.Helper()
+
+	rootDir := t.TempDir()
+	root, err := workspace.ResolveLocal(rootDir)
+	if err != nil {
+		t.Fatalf("ResolveLocal() error = %v", err)
+	}
+
+	if err := config.Write(root.ConfigPath, config.Workspace{GUI: config.GUI{Port: 4812, PanelWidths: config.PanelWidths{LeftRatio: 0.31, RightRatio: 0.22}}}); err != nil {
+		t.Fatalf("config.Write() error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(root.HomePath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(home) error = %v", err)
+	}
+	if err := os.WriteFile(root.HomePath, []byte("---\ntype: home\ntitle: Home\n---\n\n## 2026-04-19\nHome planning\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(home) error = %v", err)
+	}
+
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "execution", "overview.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "execution", Title: "Overview"},
+		},
+		Body: "## 2026-04-19\nExecution note\n",
+	})
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "planning", "task.md"), markdown.TaskDocument{
+		Metadata: markdown.TaskMetadata{
+			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "planning", Title: "Task"},
+			Status:       "todo",
+		},
+		Body: "## 2026-04-20\nPlanning task\n",
+	})
+
+	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {
+		t.Fatalf("index.Rebuild() error = %v", err)
+	}
+
+	return root
+}
+
 func createGraphCanvasHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 	t.Helper()
 
@@ -795,7 +820,7 @@ func createGraphCanvasHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "execution", "overview.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "execution", Title: "Overview", Description: "Execution overview"},
-			References:   []string{"cmd-1"},
+			References:   []markdown.NodeReference{{Node: "cmd-1"}},
 		},
 		Body: "Overview body\n",
 	})
@@ -803,14 +828,14 @@ func createGraphCanvasHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Build"},
 			DependsOn:    []string{"task-0"},
-			References:   []string{"note-1"},
+			References:   []markdown.NodeReference{{Node: "note-1"}},
 		},
 		Body: "Build body\n",
 	})
 	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "execution", "parser", "details.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "note-2", Type: markdown.NoteType, Graph: "execution/parser", Title: "Parser Details"},
-			References:   []string{"note-1"},
+			References:   []markdown.NodeReference{{Node: "note-1"}},
 		},
 		Body: "Parser details\n",
 	})
@@ -1118,4 +1143,167 @@ func ioContains(body string, needle string) bool {
 	}
 
 	return false
+}
+
+// TestNewMuxReferencesAPIAddsAndRemovesInlineReference tests POST /api/references and DELETE /api/references
+func TestNewMuxReferencesAPIAddsAndRemovesInlineReference(t *testing.T) {
+	t.Parallel()
+
+	root := createReferencesAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	// Add a reference from note-1 to note-2 with context "informs"
+	resp := performJSONRequestWithBody[documentResponse](t, handler, http.MethodPost, "/api/references", map[string]any{
+		"fromId":  "note-1",
+		"toId":    "note-2",
+		"context": "informs",
+	})
+	found := false
+	for _, ref := range resp.References {
+		if ref.Node == "note-2" && ref.Context == "informs" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("reference to note-2 with context 'informs' not found in note-1: %#v", resp.References)
+	}
+
+	// Remove the reference
+	resp2 := performJSONRequestWithBody[documentResponse](t, handler, http.MethodDelete, "/api/references", map[string]any{
+		"fromId": "note-1",
+		"toId":   "note-2",
+	})
+	for _, ref := range resp2.References {
+		if ref.Node == "note-2" {
+			t.Fatalf("reference to note-2 still present after removal: %#v", resp2.References)
+		}
+	}
+
+	// Add a reference with empty context
+	resp3 := performJSONRequestWithBody[documentResponse](t, handler, http.MethodPost, "/api/references", map[string]any{
+		"fromId": "note-1",
+		"toId":   "note-2",
+	})
+	found = false
+	for _, ref := range resp3.References {
+		if ref.Node == "note-2" && ref.Context == "" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("reference to note-2 with empty context not found in note-1: %#v", resp3.References)
+	}
+}
+
+// TestNewMuxReferencesAPIValidation tests validation for /api/references
+func TestNewMuxReferencesAPIValidation(t *testing.T) {
+	t.Parallel()
+
+	root := createReferencesAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	// Missing fromId
+	assertStatusWithBody(t, handler, http.MethodPost, "/api/references", map[string]any{"toId": "note-2"}, http.StatusBadRequest)
+	// Missing toId
+	assertStatusWithBody(t, handler, http.MethodPost, "/api/references", map[string]any{"fromId": "note-1"}, http.StatusBadRequest)
+	// Remove with missing fromId
+	assertStatusWithBody(t, handler, http.MethodDelete, "/api/references", map[string]any{"toId": "note-2"}, http.StatusBadRequest)
+	// Remove with missing toId
+	assertStatusWithBody(t, handler, http.MethodDelete, "/api/references", map[string]any{"fromId": "note-1"}, http.StatusBadRequest)
+}
+
+// createReferencesAPITestWorkspace creates a workspace with two notes for references API tests
+func createReferencesAPITestWorkspace(t *testing.T) workspace.Root {
+	t.Helper()
+
+	rootDir := t.TempDir()
+	root, err := workspace.ResolveLocal(rootDir)
+	if err != nil {
+		t.Fatalf("ResolveLocal() error = %v", err)
+	}
+
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "execution", "overview.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "execution", Title: "Overview"},
+		},
+		Body: "Overview body\n",
+	})
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "execution", "details.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-2", Type: markdown.NoteType, Graph: "execution", Title: "Details"},
+		},
+		Body: "Details body\n",
+	})
+
+	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {
+		t.Fatalf("index.Rebuild() error = %v", err)
+	}
+
+	return root
+}
+
+func TestNewMuxNodeViewReturnsNodeForID(t *testing.T) {
+	t.Parallel()
+
+	root := createHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	view := performJSONRequest[index.NodeView](t, handler, http.MethodGet, "/api/node-view?id=note-1")
+	if view.ID != "note-1" {
+		t.Fatalf("view.ID = %q, want note-1", view.ID)
+	}
+	if view.Title != "Architecture" {
+		t.Fatalf("view.Title = %q, want Architecture", view.Title)
+	}
+	if view.Role != "context" {
+		t.Fatalf("view.Role = %q, want context", view.Role)
+	}
+}
+
+func TestNewMuxNodeViewFiltersbyGraph(t *testing.T) {
+	t.Parallel()
+
+	root := createHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	view := performJSONRequest[index.NodeView](t, handler, http.MethodGet, "/api/node-view?id=note-1&graph=notes")
+	if view.Graph != "notes" {
+		t.Fatalf("view.Graph = %q, want notes", view.Graph)
+	}
+}
+
+func TestNewMuxNodeViewMissingIDReturns400(t *testing.T) {
+	t.Parallel()
+
+	root := createHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	assertStatus(t, handler, http.MethodGet, "/api/node-view", http.StatusBadRequest)
+}
+
+func TestNewMuxNodeViewUnknownIDReturns404(t *testing.T) {
+	t.Parallel()
+
+	root := createHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	assertStatus(t, handler, http.MethodGet, "/api/node-view?id=does-not-exist", http.StatusNotFound)
 }

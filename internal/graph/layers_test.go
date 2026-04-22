@@ -26,7 +26,7 @@ func TestBuildTaskLayerViewComputesCrossGraphLayers(t *testing.T) {
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Parser"},
 					DependsOn:    []string{"task-0"},
-					References:   []string{"note-1"},
+					References:   []markdown.NodeReference{{Node: "note-1"}},
 				},
 			},
 		},
@@ -266,7 +266,7 @@ func TestBuildNoteGraphViewComputesBidirectionalRelationships(t *testing.T) {
 			Document: markdown.NoteDocument{
 				Metadata: markdown.NoteMetadata{
 					CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "notes", Title: "Alpha"},
-					References:   []string{"note-2", "task-1"},
+					References:   []markdown.NodeReference{{Node: "note-2"}, {Node: "task-1"}},
 				},
 			},
 		},
@@ -275,7 +275,7 @@ func TestBuildNoteGraphViewComputesBidirectionalRelationships(t *testing.T) {
 			Document: markdown.NoteDocument{
 				Metadata: markdown.NoteMetadata{
 					CommonFields: markdown.CommonFields{ID: "note-2", Type: markdown.NoteType, Graph: "notes", Title: "Beta"},
-					References:   []string{"note-1", "note-3"},
+					References:   []markdown.NodeReference{{Node: "note-1"}, {Node: "note-3"}},
 				},
 			},
 		},

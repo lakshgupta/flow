@@ -1,2 +1,5 @@
 config/flow.index
 config/gui-server.json
+
+# temporarily ignore .flow files until we have a better solution for sharing them across machines
+.flow/*

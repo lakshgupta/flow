@@ -2,14 +2,16 @@ import {
   applyNodeChanges,
   Background,
   Controls,
+  getSmoothStepPath,
   ReactFlow,
   ReactFlowProvider,
   useViewport,
+  type Edge,
   type Node,
   type NodeChange,
 } from "@xyflow/react";
-import { CalendarDays, FileText, Info, List, PaintbrushVertical, PanelRight, Search, Settings, Trash2, TriangleAlert, X } from "lucide-react";
-import { startTransition, useDeferredValue, useEffect, useRef, useState } from "react";
+import { CalendarDays, CheckSquare, FileText, Info, List, Maximize2, Minimize2, PaintbrushVertical, Search, Settings, Terminal, Trash2, TriangleAlert, X } from "lucide-react";
+import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppSidebar } from "./components/AppSidebar";
 import { GraphTree } from "./components/GraphTree";
@@ -38,34 +40,43 @@ import { Separator } from "./components/ui/separator";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger } from "./components/ui/sidebar";
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./components/ui/tooltip";
-import { requestJSON, loadWorkspaceSnapshot } from "./lib/api";
+import { requestJSON, loadCalendarDocuments, loadWorkspaceSnapshot } from "./lib/api";
 import {
   createDocumentFormState,
   createGraphDocumentPayload,
   createHomeFormState,
   emptyDocumentFormState,
   emptyHomeFormState,
+  fileNameFromPath,
   formatDocumentType,
   generateTOC,
   parseEnv,
   splitList,
 } from "./lib/docUtils";
 import {
+  applyForceLayout,
   applyGraphCanvasLayerGuidance,
   buildGraphCanvasFlowEdges,
   buildGraphCanvasFlowNodes,
+  ContextEdge,
+  EdgeEditContext,
   countConnectedGraphCanvasEdges,
   graphCanvasOverlayPosition,
-  graphCanvasPositionMap,
   graphCanvasTypeLabel,
   normalizeGraphCanvasResponse,
   selectedGraphCanvasNode,
+  pickBestEdgePorts,
 } from "./lib/graphCanvasUtils";
 import { useTheme } from "./lib/theme";
 import { todayString } from "./lib/dateEntries";
+import { toErrorMessage } from "./lib/utils";
+import type { EdgeTypes } from "@xyflow/react";
+
+const EDGE_TYPES: EdgeTypes = { contextEdge: ContextEdge };
 
 import { RichTextEditor } from "./components/editor/RichTextEditor";
 import type {
+  CalendarDocumentResponse,
   DeleteDocumentResponse,
   DocumentFormState,
   DocumentResponse,
@@ -78,12 +89,15 @@ import type {
   GraphTreeResponse,
   HomeFormState,
   HomeResponse,
+  NodeReference,
   SearchResult,
   SurfaceState,
   WorkspaceResponse,
 } from "./types";
 import "./styles.css";
 
+type RightPanelTab = "calendar" | "toc" | "document" | "search";
+type RestorableRightPanelTab = "document" | "toc";
 
 
 function FlowApp() {
@@ -114,23 +128,40 @@ function FlowApp() {
   const [settingsTab, setSettingsTab] = useState<"general" | "theme" | "stop">("general");
   const [formState, setFormState] = useState<DocumentFormState>(emptyDocumentFormState);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false);
+  const [createNodeDialog, setCreateNodeDialog] = useState<{ type: GraphCreateType; graphPath: string; origin: "canvas" | "sidebar" } | null>(null);
+  const [createNodeFileName, setCreateNodeFileName] = useState<string>("");
+  const [createNodeFileNameError, setCreateNodeFileNameError] = useState<string>("");
+  const [editingEdge, setEditingEdge] = useState<{ sourceId: string; targetId: string; context: string } | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string>("");
+  const [hoveredEdgeTooltip, setHoveredEdgeTooltip] = useState<{ edgeId: string; context: string; x: number; y: number } | null>(null);
   const [homeFormState, setHomeFormState] = useState<HomeFormState>(emptyHomeFormState);
+  const [calendarDocuments, setCalendarDocuments] = useState<CalendarDocumentResponse[]>([]);
+  const [calendarError, setCalendarError] = useState<string>("");
   const [mutationError, setMutationError] = useState<string>("");
   const [mutationSuccess, setMutationSuccess] = useState<string>("");
   const [homeMutationError, setHomeMutationError] = useState<string>("");
   const [savingDocument, setSavingDocument] = useState<boolean>(false);
   const [deletingDocument, setDeletingDocument] = useState<boolean>(false);
+  const [rightSidebarFocused, setRightSidebarFocused] = useState<boolean>(false);
   const [savingHome, setSavingHome] = useState<boolean>(false);
   const [calendarFocusDate, setCalendarFocusDate] = useState<string>(() => todayString());
   const [leftSidebarWidth, setLeftSidebarWidth] = useState<number>(256);
   const [rightSidebarWidth, setRightSidebarWidth] = useState<number>(320);
   const [isResizingLeft, setIsResizingLeft] = useState<boolean>(false);
   const [isResizingRight, setIsResizingRight] = useState<boolean>(false);
+  const [canvasContextMenu, setCanvasContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [shiftSelectedNodes, setShiftSelectedNodes] = useState<string[]>([]);
+  const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
+  const [connectingStartPos, setConnectingStartPos] = useState<{ x: number; y: number } | null>(null);
+  const [connectingPointerPos, setConnectingPointerPos] = useState<{ x: number; y: number } | null>(null);
+  const [connectingTarget, setConnectingTarget] = useState<string | null>(null);
 
   const graphCanvasShellRef = useRef<HTMLDivElement | null>(null);
+  const connectingTargetRef = useRef<string | null>(null);
   const homeFormStateRef = useRef<HomeFormState>(emptyHomeFormState);
   const homeAutoSaveTimerRef = useRef<number | null>(null);
   const documentAutoSaveTimerRef = useRef<number | null>(null);
+  const edgeClickTimerRef = useRef<number | null>(null);
   const formStateRef = useRef<DocumentFormState>(emptyDocumentFormState);
   const selectedDocumentRef = useRef<DocumentResponse | null>(null);
   const graphCanvasDragRef = useRef<{
@@ -144,23 +175,179 @@ function FlowApp() {
   const selectedGraphPath = activeSurface.kind === "graph" ? activeSurface.graphPath : "";
   const [rightRailCollapsed, setRightRailCollapsed] = useState<boolean>(true);
 
-  const [rightPanelTab, setRightPanelTab] = useState<"calendar" | "toc" | "document" | "search">("document");
+  const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>("document");
+  const [rightPanelReturnTab, setRightPanelReturnTab] = useState<RestorableRightPanelTab | null>(null);
   const [scrollTargetId, setScrollTargetId] = useState<string | null>(null);
   const [editorScrollTarget, setEditorScrollTarget] = useState<string | null>(null);
 
   const graphCanvasNodes = buildGraphCanvasFlowNodes(graphCanvasData, graphCanvasPositions, selectedCanvasNodeId, selectedDocumentId);
-  const graphCanvasEdges = buildGraphCanvasFlowEdges(graphCanvasData, selectedCanvasNodeId);
+  const graphCanvasEdgesRaw = buildGraphCanvasFlowEdges(graphCanvasData, selectedCanvasNodeId);
+  const graphCanvasEdges = selectedEdgeId === ""
+    ? graphCanvasEdgesRaw
+    : graphCanvasEdgesRaw.map((e) => e.id === selectedEdgeId ? { ...e, selected: true } : e);
   const selectedGraphNode = graphTree?.graphs.find((graphNode) => graphNode.graphPath === selectedGraphPath) ?? null;
   const selectedCanvasNode = selectedGraphCanvasNode(graphCanvasData, selectedCanvasNodeId);
   const selectedCanvasNodeEdgeCount = countConnectedGraphCanvasEdges(graphCanvasData, selectedCanvasNodeId);
   const workspaceSurfaceSection = activeSurface.kind === "graph" ? "Content" : "Home";
   const workspaceSurfaceTitle = activeSurface.kind === "graph" ? selectedGraphNode?.displayName ?? selectedGraphPath : null;
+  const tocItems = useMemo(() => {
+    if (activeSurface.kind === "home") {
+      return generateTOC(homeFormState.body);
+    }
+
+    if (selectedDocument === null) {
+      return [];
+    }
+
+    return generateTOC(formState.body);
+  }, [activeSurface.kind, formState.body, homeFormState.body, selectedDocument]);
+
+  const syncSelectedDocumentState = useCallback((document: DocumentResponse | null): void => {
+    selectedDocumentRef.current = document;
+    setSelectedDocument(document);
+    const nextFormState = createDocumentFormState(document);
+    formStateRef.current = nextFormState;
+    setFormState(nextFormState);
+  }, []);
+
+  function clearMutationFeedback(): void {
+    setMutationError("");
+    setMutationSuccess("");
+  }
+
+  function clearSurfaceFeedback(): void {
+    clearMutationFeedback();
+    setPanelError("");
+  }
+
+  const refreshCalendarDocumentList = useCallback(async (): Promise<void> => {
+    try {
+      const response = await loadCalendarDocuments();
+      setCalendarDocuments(response);
+      setCalendarError("");
+    } catch (loadError) {
+      setCalendarDocuments([]);
+      setCalendarError(toErrorMessage(loadError));
+    }
+  }, []);
+
+  function collapseRightRail(): void {
+    setRightRailCollapsed(true);
+    setRightSidebarFocused(false);
+  }
+
+  function openPrimaryRightPanel(tab: RestorableRightPanelTab): void {
+    setRightPanelReturnTab(tab);
+    setRightPanelTab(tab);
+    setRightRailCollapsed(false);
+  }
+
+  function toggleRightPanel(tab: RightPanelTab): void {
+    if (rightPanelTab === tab && !rightRailCollapsed) {
+      if (tab !== "document" && rightPanelReturnTab !== null && rightPanelReturnTab !== tab) {
+        openPrimaryRightPanel(rightPanelReturnTab);
+        return;
+      }
+
+      if (tab === "document") {
+        setRightPanelReturnTab(null);
+      }
+      collapseRightRail();
+      return;
+    }
+
+    if (tab === "document" || tab === "toc") {
+      openPrimaryRightPanel(tab);
+      return;
+    }
+
+    if (!rightRailCollapsed && (rightPanelTab === "document" || rightPanelTab === "toc")) {
+      setRightPanelReturnTab(rightPanelTab);
+    }
+
+    setRightPanelTab(tab);
+    setRightRailCollapsed(false);
+  }
+
+  function isPrimaryMouseButton(button: number): boolean {
+    return button === 0;
+  }
+
+  function isAdditiveNodeSelection(event: Pick<React.MouseEvent, "shiftKey" | "ctrlKey" | "metaKey">): boolean {
+    return event.shiftKey || event.ctrlKey || event.metaKey;
+  }
+
+  function startSidebarResize(
+    event: React.MouseEvent<HTMLDivElement>,
+    options: {
+      startWidth: number;
+      minWidth: number;
+      maxWidth: number;
+      direction: "left" | "right";
+      setWidth: React.Dispatch<React.SetStateAction<number>>;
+      setIsResizing: React.Dispatch<React.SetStateAction<boolean>>;
+    },
+  ): void {
+    if (!isPrimaryMouseButton(event.button)) {
+      return;
+    }
+
+    const startX = event.clientX;
+    const { direction, maxWidth, minWidth, setIsResizing, setWidth, startWidth } = options;
+    setIsResizing(true);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const nextWidth = direction === "left" ? startWidth + deltaX : startWidth - deltaX;
+      setWidth(Math.min(Math.max(nextWidth, minWidth), maxWidth));
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    event.preventDefault();
+  }
+
+  async function mutateEdge(
+    method: "POST" | "DELETE" | "PATCH",
+    payload: { fromId: string; toId: string; context?: string },
+  ): Promise<void> {
+    try {
+      setMutationError("");
+      await requestJSON<DocumentResponse>("/api/references", {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      setGraphCanvasReloadToken((current) => current + 1);
+    } catch (err) {
+      setMutationError(toErrorMessage(err));
+    }
+  }
+
+  function openEdgeEditor(sourceId: string, targetId: string, context: string, edgeId?: string): void {
+    clearEdgeClickTimer();
+    if (edgeId !== undefined) {
+      setSelectedEdgeId(edgeId);
+    }
+    setEditingEdge({ sourceId, targetId, context });
+  }
 
   useEffect(() => {
     if (activeSurface.kind === "home") {
+      setRightPanelReturnTab("toc");
       setRightPanelTab("toc");
     } else if (selectedDocumentId !== "") {
-      setRightPanelTab("document");
+      openPrimaryRightPanel("document");
     }
   }, [selectedDocumentId, activeSurface.kind]);
 
@@ -196,9 +383,10 @@ function FlowApp() {
         setWorkspace(snapshot.workspaceData);
         setGraphTree(snapshot.graphTreeData);
         setActiveSurface({ kind: "home" });
+        void refreshCalendarDocumentList();
       } catch (loadError) {
         if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : String(loadError));
+          setError(toErrorMessage(loadError));
         }
       } finally {
         if (!cancelled) {
@@ -212,7 +400,7 @@ function FlowApp() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshCalendarDocumentList]);
 
   useEffect(() => {
     if (documentAutoSaveTimerRef.current !== null) {
@@ -221,10 +409,7 @@ function FlowApp() {
     }
 
     if (selectedDocumentId === "") {
-      setSelectedDocument(null);
-      selectedDocumentRef.current = null;
-      setFormState(emptyDocumentFormState);
-      formStateRef.current = emptyDocumentFormState;
+      syncSelectedDocumentState(null);
       setPanelError("");
       return;
     }
@@ -236,19 +421,12 @@ function FlowApp() {
         setPanelError("");
         const response = await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(selectedDocumentId)}`);
         if (!cancelled) {
-          setSelectedDocument(response);
-          selectedDocumentRef.current = response;
-          const nextFormState = createDocumentFormState(response);
-          setFormState(nextFormState);
-          formStateRef.current = nextFormState;
+          syncSelectedDocumentState(response);
         }
       } catch (loadError) {
         if (!cancelled) {
-          setSelectedDocument(null);
-          selectedDocumentRef.current = null;
-          setFormState(emptyDocumentFormState);
-          formStateRef.current = emptyDocumentFormState;
-          setPanelError(loadError instanceof Error ? loadError.message : String(loadError));
+          syncSelectedDocumentState(null);
+          setPanelError(toErrorMessage(loadError));
         }
       }
     }
@@ -258,7 +436,7 @@ function FlowApp() {
     return () => {
       cancelled = true;
     };
-  }, [selectedDocumentId]);
+  }, [selectedDocumentId, syncSelectedDocumentState]);
 
   useEffect(() => {
     let cancelled = false;
@@ -279,7 +457,7 @@ function FlowApp() {
       } catch (loadError) {
         if (!cancelled) {
           setSearchResults([]);
-          setSearchError(loadError instanceof Error ? loadError.message : String(loadError));
+          setSearchError(toErrorMessage(loadError));
         }
       }
     }
@@ -292,7 +470,11 @@ function FlowApp() {
   }, [deferredSearchQuery]);
 
   useEffect(() => {
-    setGraphCanvasPositions(graphCanvasPositionMap(graphCanvasData));
+    if (graphCanvasData === null) {
+      setGraphCanvasPositions({});
+      return;
+    }
+    setGraphCanvasPositions(applyForceLayout(graphCanvasData.nodes, graphCanvasData.edges));
   }, [graphCanvasData]);
 
   useEffect(() => {
@@ -314,19 +496,18 @@ function FlowApp() {
         setGraphCanvasLoading(true);
         setGraphCanvasError("");
 
-        const response = normalizeGraphCanvasResponse(
-          await requestJSON<GraphCanvasResponseWire>(`/api/graph-canvas?graph=${encodeURIComponent(selectedGraphPath)}`),
-        );
+        const response = await requestJSON<GraphCanvasResponseWire>(`/api/graph-canvas?graph=${encodeURIComponent(selectedGraphPath)}`);
         if (cancelled) {
           return;
         }
 
-        setGraphCanvasData(response);
-        setSelectedCanvasNodeId((current) => (response.nodes.some((node) => node.id === current) ? current : ""));
+        const normalized = normalizeGraphCanvasResponse(response);
+        setGraphCanvasData(normalized);
+        setSelectedCanvasNodeId((current) => (normalized.nodes.some((node) => node.id === current) ? current : ""));
       } catch (loadError) {
         if (!cancelled) {
           setGraphCanvasData(null);
-          setGraphCanvasError(loadError instanceof Error ? loadError.message : String(loadError));
+          setGraphCanvasError(toErrorMessage(loadError));
           setSelectedCanvasNodeId("");
         }
       } finally {
@@ -347,10 +528,10 @@ function FlowApp() {
     const snapshot = await loadWorkspaceSnapshot();
     setWorkspace(snapshot.workspaceData);
     setGraphTree(snapshot.graphTreeData);
+    void refreshCalendarDocumentList();
 
     if (options && "nextDocument" in options) {
-      setSelectedDocument(options.nextDocument ?? null);
-      setFormState(createDocumentFormState(options.nextDocument ?? null));
+      syncSelectedDocumentState(options.nextDocument ?? null);
       setSelectedDocumentId(options.nextDocumentId ?? "");
     }
 
@@ -382,6 +563,33 @@ function FlowApp() {
       setSearchError("");
     }
   }
+
+  const calendarDocumentsForDisplay = useMemo((): CalendarDocumentResponse[] => {
+    const documentsByID = new Map(calendarDocuments.map((document) => [document.id, document]));
+
+    documentsByID.set("home", {
+      id: "home",
+      type: "home",
+      graph: "",
+      title: homeFormState.title,
+      path: graphTree?.home.path ?? "data/home.md",
+      body: homeFormState.body,
+    });
+
+    if (selectedDocumentId !== "") {
+      const current = documentsByID.get(selectedDocumentId);
+      documentsByID.set(selectedDocumentId, {
+        id: selectedDocumentId,
+        type: selectedDocument?.type ?? current?.type ?? "note",
+        graph: selectedDocument?.graph ?? current?.graph ?? "",
+        title: formState.title,
+        path: selectedDocument?.path ?? current?.path ?? "",
+        body: formState.body,
+      });
+    }
+
+    return Array.from(documentsByID.values()).sort((left, right) => left.path.localeCompare(right.path));
+  }, [calendarDocuments, formState.body, formState.title, graphTree?.home.path, homeFormState.body, homeFormState.title, selectedDocument, selectedDocumentId]);
 
   function updateFormField(field: keyof DocumentFormState, value: string): void {
     setFormState((current) => {
@@ -421,12 +629,9 @@ function FlowApp() {
       documentAutoSaveTimerRef.current = null;
     }
     setSelectedDocumentId("");
-    setSelectedDocument(null);
-    setFormState(emptyDocumentFormState);
+    syncSelectedDocumentState(null);
     setDeleteDialogOpen(false);
-    setPanelError("");
-    setMutationError("");
-    setMutationSuccess("");
+    clearSurfaceFeedback();
   }
 
   function handleSelectHome(): void {
@@ -450,13 +655,10 @@ function FlowApp() {
   }
 
   function handleOpenCanvasDocument(documentId: string): void {
-    setMutationError("");
-    setMutationSuccess("");
-    setPanelError("");
+    clearSurfaceFeedback();
     setSelectedCanvasNodeId(documentId);
     setSelectedDocumentId(documentId);
-    setRightPanelTab("document");
-    setRightRailCollapsed(false);
+    openPrimaryRightPanel("document");
   }
 
   function updateGraphCanvasNodePosition(documentId: string, position: GraphCanvasPosition): void {
@@ -501,7 +703,7 @@ function FlowApp() {
         };
       });
     } catch (saveError) {
-      setGraphCanvasError(saveError instanceof Error ? saveError.message : String(saveError));
+      setGraphCanvasError(toErrorMessage(saveError));
     }
   }
 
@@ -514,9 +716,7 @@ function FlowApp() {
   }
 
   function handleSelectDocument(documentId: string, graphPath: string): void {
-    setMutationError("");
-    setMutationSuccess("");
-    setPanelError("");
+    clearSurfaceFeedback();
     startTransition(() => {
       setActiveSurface({ kind: "graph", graphPath });
     });
@@ -524,56 +724,120 @@ function FlowApp() {
     setSelectedDocumentId(documentId);
   }
 
-  function handleSearchSelection(result: SearchResult): void {
-    if (result.type === "home") {
-      handleSelectHome();
-      return;
-    }
-
-    handleSelectDocument(result.id, result.graph);
-  }
-
   function handleSearchResultNavigate(result: SearchResult): void {
     if (result.type === "home") {
       startTransition(() => setActiveSurface({ kind: "home" }));
       return;
     }
-    setMutationError("");
-    setMutationSuccess("");
-    setPanelError("");
+    clearSurfaceFeedback();
     startTransition(() => setActiveSurface({ kind: "graph", graphPath: result.graph }));
     setSelectedCanvasNodeId(result.id);
     // Intentionally do NOT set selectedDocumentId — keeps right panel on search view
   }
 
-  async function handleCreateGraphDocument(type: GraphCreateType): Promise<void> {
-    if (selectedGraphPath === "") {
+  function handleTOCNavigate(itemId: string): void {
+    if (activeSurface.kind === "home" || selectedDocument !== null) {
+      setEditorScrollTarget(itemId);
       return;
     }
 
+    const element = document.getElementById(itemId);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth" });
+    }
+  }
+
+  function handleCreateGraphDocument(type: GraphCreateType): void {
+    if (selectedGraphPath === "") {
+      return;
+    }
+    setCreateNodeDialog({ type, graphPath: selectedGraphPath, origin: "canvas" });
+    setCreateNodeFileName("");
+    setCreateNodeFileNameError("");
+  }
+
+  async function handleSidebarCreateGraph(name: string): Promise<void> {
+    try {
+      await requestJSON<{ name: string }>("/api/graphs", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      });
+      const snapshot = await loadWorkspaceSnapshot();
+      setGraphTree(snapshot.graphTreeData);
+    } catch (err) {
+      setMutationError(toErrorMessage(err));
+    }
+  }
+
+  function handleSidebarCreateNode(graphPath: string, type: "note" | "task" | "command" = "note"): void {
+    setCreateNodeDialog({ type, graphPath, origin: "sidebar" });
+    setCreateNodeFileName("");
+    setCreateNodeFileNameError("");
+  }
+
+  async function handleConfirmCreateNode(): Promise<void> {
+    if (createNodeDialog === null) {
+      return;
+    }
+    const trimmed = createNodeFileName.trim();
+    if (trimmed === "") {
+      setCreateNodeFileNameError("File name is required.");
+      return;
+    }
+    if (!/^[a-z0-9][a-z0-9._/-]*$/.test(trimmed)) {
+      setCreateNodeFileNameError("Use only lowercase letters, numbers, hyphens, underscores, dots, and slashes.");
+      return;
+    }
+    const { type, graphPath, origin } = createNodeDialog;
+    setCreateNodeDialog(null);
     try {
       setGraphCreatePendingType(type);
       setGraphCreateError("");
       const createdDocument = await requestJSON<DocumentResponse>("/api/documents", {
         method: "POST",
-        body: JSON.stringify(createGraphDocumentPayload(type, selectedGraphPath)),
+        body: JSON.stringify(createGraphDocumentPayload(type, graphPath, trimmed)),
       });
-
-      await refreshShellViews({ nextDocument: createdDocument, nextDocumentId: createdDocument.id });
-      setSelectedDocument(createdDocument);
-      setFormState(createDocumentFormState(createdDocument));
-      setSelectedCanvasNodeId(createdDocument.id);
-      setMutationError("");
-      setMutationSuccess(`${formatDocumentType(createdDocument.type)} created.`);
+      if (origin === "canvas") {
+        await refreshShellViews({ nextDocument: createdDocument, nextDocumentId: createdDocument.id });
+        setSelectedCanvasNodeId(createdDocument.id);
+        setMutationError("");
+        setMutationSuccess(`${formatDocumentType(createdDocument.type)} created.`);
+      } else {
+        const snapshot = await loadWorkspaceSnapshot();
+        setGraphTree(snapshot.graphTreeData);
+        startTransition(() => setActiveSurface({ kind: "graph", graphPath }));
+        setSelectedCanvasNodeId(createdDocument.id);
+        setSelectedDocumentId(createdDocument.id);
+        openPrimaryRightPanel("document");
+      }
     } catch (createError) {
-      setGraphCreateError(createError instanceof Error ? createError.message : String(createError));
+      setGraphCreateError(toErrorMessage(createError));
     } finally {
       setGraphCreatePendingType("");
     }
   }
 
+  async function handleSidebarDeleteGraph(graphPath: string): Promise<void> {
+    try {
+      await requestJSON<{ deleted: boolean }>(`/api/graphs/${encodeURIComponent(graphPath)}`, {
+        method: "DELETE",
+      });
+      const snapshot = await loadWorkspaceSnapshot();
+      setGraphTree(snapshot.graphTreeData);
+      if (activeSurface.kind === "graph" && (activeSurface.graphPath === graphPath || activeSurface.graphPath.startsWith(graphPath + "/"))) {
+        startTransition(() => setActiveSurface({ kind: "home" }));
+        setGraphCanvasData(null);
+        setSelectedCanvasNodeId("");
+        setSelectedDocumentId("");
+        syncSelectedDocumentState(null);
+      }
+    } catch (err) {
+      setMutationError(toErrorMessage(err));
+    }
+  }
+
   function handleGraphCanvasOverlayPointerDown(event: React.PointerEvent<HTMLDivElement>, documentId: string): void {
-    if (event.button !== 0) {
+    if (!isPrimaryMouseButton(event.button)) {
       return;
     }
 
@@ -654,47 +918,25 @@ function FlowApp() {
   }
 
   function handleLeftSidebarMouseDown(event: React.MouseEvent<HTMLDivElement>): void {
-    if (event.button !== 0) return;
-    const startX = event.clientX;
-    const startWidth = leftSidebarWidth;
-    setIsResizingLeft(true);
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-    const handleMouseMove = (e: MouseEvent) => {
-      setLeftSidebarWidth(Math.min(Math.max(startWidth + e.clientX - startX, 160), 520));
-    };
-    const handleMouseUp = () => {
-      setIsResizingLeft(false);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-    event.preventDefault();
+    startSidebarResize(event, {
+      startWidth: leftSidebarWidth,
+      minWidth: 160,
+      maxWidth: 520,
+      direction: "left",
+      setWidth: setLeftSidebarWidth,
+      setIsResizing: setIsResizingLeft,
+    });
   }
 
   function handleRightSidebarMouseDown(event: React.MouseEvent<HTMLDivElement>): void {
-    if (event.button !== 0) return;
-    const startX = event.clientX;
-    const startWidth = rightSidebarWidth;
-    setIsResizingRight(true);
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-    const handleMouseMove = (e: MouseEvent) => {
-      setRightSidebarWidth(Math.min(Math.max(startWidth + startX - e.clientX, 224), 640));
-    };
-    const handleMouseUp = () => {
-      setIsResizingRight(false);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-    event.preventDefault();
+    startSidebarResize(event, {
+      startWidth: rightSidebarWidth,
+      minWidth: 224,
+      maxWidth: 640,
+      direction: "right",
+      setWidth: setRightSidebarWidth,
+      setIsResizing: setIsResizingRight,
+    });
   }
 
   async function handleStopGUI(): Promise<void> {
@@ -702,7 +944,7 @@ function FlowApp() {
       setStoppingGUI(true);
       await requestJSON<{ stopping: boolean }>("/api/gui/stop", { method: "POST" });
     } catch (stopError) {
-      setError(stopError instanceof Error ? stopError.message : String(stopError));
+      setError(toErrorMessage(stopError));
     } finally {
       setStoppingGUI(false);
     }
@@ -715,10 +957,11 @@ function FlowApp() {
 
       const payload: Record<string, unknown> = {
         title: state.title,
+        description: state.description,
         graph: state.graph,
         tags: splitList(state.tags),
         body: state.body,
-        references: splitList(state.references),
+        references: splitList(state.references).map((id): NodeReference => ({ node: id })),
       };
 
       if (doc.type === "task") {
@@ -739,13 +982,8 @@ function FlowApp() {
       });
 
       await refreshShellViews({ nextDocument: updatedDocument, nextDocumentId: updatedDocument.id });
-      setSelectedDocument(updatedDocument);
-      selectedDocumentRef.current = updatedDocument;
-      const nextFormState = createDocumentFormState(updatedDocument);
-      setFormState(nextFormState);
-      formStateRef.current = nextFormState;
     } catch (mutationFailure) {
-      setMutationError(mutationFailure instanceof Error ? mutationFailure.message : String(mutationFailure));
+      setMutationError(toErrorMessage(mutationFailure));
     } finally {
       setSavingDocument(false);
     }
@@ -767,9 +1005,122 @@ function FlowApp() {
 
       await refreshShellViews();
     } catch (mutationFailure) {
-      setHomeMutationError(mutationFailure instanceof Error ? mutationFailure.message : String(mutationFailure));
+      setHomeMutationError(toErrorMessage(mutationFailure));
     } finally {
       setSavingHome(false);
+    }
+  }
+
+  function handleConnectionHandlePointerDown(event: React.PointerEvent<HTMLDivElement>, sourceId: string): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const shell = graphCanvasShellRef.current;
+    if (!shell) return;
+    const rect = shell.getBoundingClientRect();
+    const startX = event.clientX - rect.left;
+    const startY = event.clientY - rect.top;
+    setConnectingFrom(sourceId);
+    setConnectingStartPos({ x: startX, y: startY });
+    setConnectingPointerPos({ x: startX, y: startY });
+    setConnectingTarget(null);
+    connectingTargetRef.current = null;
+
+    function onPointerMove(e: PointerEvent): void {
+      const s = graphCanvasShellRef.current;
+      if (!s) return;
+      const r = s.getBoundingClientRect();
+      setConnectingPointerPos({ x: e.clientX - r.left, y: e.clientY - r.top });
+      const elements = document.elementsFromPoint(e.clientX, e.clientY);
+      let hit: string | null = null;
+      for (const el of elements) {
+        if (el instanceof HTMLElement) {
+          const nodeId = el.getAttribute("data-nodeid");
+          if (nodeId && nodeId !== sourceId) { hit = nodeId; break; }
+        }
+      }
+      setConnectingTarget(hit);
+      connectingTargetRef.current = hit;
+    }
+
+    function onPointerUp(): void {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      const target = connectingTargetRef.current;
+      connectingTargetRef.current = null;
+      setConnectingFrom(null);
+      setConnectingStartPos(null);
+      setConnectingPointerPos(null);
+      setConnectingTarget(null);
+      if (target !== null) void handleCreateEdge(sourceId, target);
+    }
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  }
+
+  async function handleCreateEdge(sourceId: string, targetId: string): Promise<void> {
+    await mutateEdge("POST", { fromId: sourceId, toId: targetId, context: "" });
+  }
+
+  async function handleDeleteEdge(sourceId: string, targetId: string): Promise<void> {
+    await mutateEdge("DELETE", { fromId: sourceId, toId: targetId });
+  }
+
+  async function handleUpdateEdgeContext(sourceId: string, targetId: string, context: string): Promise<void> {
+    await mutateEdge("PATCH", { fromId: sourceId, toId: targetId, context });
+  }
+
+  function clearEdgeClickTimer(): void {
+    if (edgeClickTimerRef.current !== null) {
+      window.clearTimeout(edgeClickTimerRef.current);
+      edgeClickTimerRef.current = null;
+    }
+  }
+
+  function handleGraphCanvasEdgeClick(edgeId: string, sourceId: string): void {
+    clearEdgeClickTimer();
+    setSelectedEdgeId(edgeId);
+    edgeClickTimerRef.current = window.setTimeout(() => {
+      edgeClickTimerRef.current = null;
+      handleOpenCanvasDocument(sourceId);
+    }, 220);
+  }
+
+  function handleGraphCanvasEdgeDoubleClick(sourceId: string, targetId: string, context: string, edgeId: string): void {
+    openEdgeEditor(sourceId, targetId, context, edgeId);
+  }
+
+  function handleGraphCanvasEdgeHover(edgeId: string, context: string, x: number, y: number): void {
+    if (context.trim() === "") {
+      setHoveredEdgeTooltip(null);
+      return;
+    }
+    setHoveredEdgeTooltip({ edgeId, context, x, y });
+  }
+
+  // Stable callback passed via context into ContextEdge for the "edit context" button.
+  const handleEdgeDoubleClickAction = useCallback((sourceId: string, targetId: string, context: string) => {
+    openEdgeEditor(sourceId, targetId, context);
+  }, []);
+
+  async function handleMergeDocuments(): Promise<void> {
+    if (shiftSelectedNodes.length < 2) return;
+    try {
+      clearMutationFeedback();
+      const mergedDocument = await requestJSON<DocumentResponse>("/api/documents/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentIds: shiftSelectedNodes }),
+      });
+      const snapshot = await loadWorkspaceSnapshot();
+      setGraphTree(snapshot.graphTreeData);
+      setShiftSelectedNodes([]);
+      await refreshShellViews({ nextDocument: mergedDocument, nextDocumentId: mergedDocument.id });
+      setSelectedCanvasNodeId(mergedDocument.id);
+      openPrimaryRightPanel("document");
+      setMutationSuccess("Documents merged.");
+    } catch (mergeFailure) {
+      setMutationError(toErrorMessage(mergeFailure));
     }
   }
 
@@ -780,8 +1131,7 @@ function FlowApp() {
 
     try {
       setDeletingDocument(true);
-      setMutationError("");
-      setMutationSuccess("");
+      clearMutationFeedback();
 
       const response = await requestJSON<DeleteDocumentResponse>(`/api/documents/${encodeURIComponent(selectedDocument.id)}`, {
         method: "DELETE",
@@ -790,7 +1140,7 @@ function FlowApp() {
       await refreshShellViews({ nextDocument: null, nextDocumentId: "" });
       setMutationSuccess(`${formatDocumentType(selectedDocument.type)} deleted from ${response.path}.`);
     } catch (mutationFailure) {
-      setMutationError(mutationFailure instanceof Error ? mutationFailure.message : String(mutationFailure));
+      setMutationError(toErrorMessage(mutationFailure));
     } finally {
       setDeletingDocument(false);
     }
@@ -842,6 +1192,9 @@ function FlowApp() {
             activeSurface={activeSurface}
             onSelectHome={handleSelectHome}
             onSelectGraph={handleSelectGraph}
+            onCreateGraph={(name) => void handleSidebarCreateGraph(name)}
+            onCreateNode={(graphPath, type) => void handleSidebarCreateNode(graphPath, type)}
+            onDeleteGraph={(graphPath) => void handleSidebarDeleteGraph(graphPath)}
           />
         )}
       />
@@ -951,6 +1304,7 @@ function FlowApp() {
                       </div>
                     ) : (
                       <div ref={graphCanvasShellRef} className="graph-canvas-shell">
+                        <EdgeEditContext.Provider value={handleEdgeDoubleClickAction}>
                         <ReactFlow
                           key={selectedGraphPath}
                           defaultViewport={{ x: 0, y: 0, zoom: 1 }}
@@ -960,7 +1314,9 @@ function FlowApp() {
                           edges={graphCanvasEdges}
                           onNodesChange={handleGraphCanvasNodesChange}
                           onNodeClick={(_, node) => {
+                            clearEdgeClickTimer();
                             setSelectedCanvasNodeId(node.id);
+                            setSelectedEdgeId("");
                           }}
                           onNodeDoubleClick={(_, node) => {
                             handleOpenCanvasDocument(node.id);
@@ -973,7 +1329,14 @@ function FlowApp() {
                             updateGraphCanvasNodePosition(node.id, nextPosition);
                             void persistGraphCanvasPosition(node.id, nextPosition);
                           }}
-                          onPaneClick={() => setSelectedCanvasNodeId("")}
+                          onPaneContextMenu={(event) => {
+                            event.preventDefault();
+                            const shell = graphCanvasShellRef.current;
+                            if (!shell) return;
+                            const rect = shell.getBoundingClientRect();
+                            setCanvasContextMenu({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+                          }}
+                          onPaneClick={() => { clearEdgeClickTimer(); setHoveredEdgeTooltip(null); setSelectedCanvasNodeId(""); setSelectedEdgeId(""); setCanvasContextMenu(null); setShiftSelectedNodes([]); }}
                           nodesDraggable={false}
                           panOnDrag
                           zoomOnScroll
@@ -982,11 +1345,164 @@ function FlowApp() {
                           nodesConnectable={false}
                           elementsSelectable
                           proOptions={{ hideAttribution: true }}
+                          edgeTypes={EDGE_TYPES}
+                          onEdgeClick={(_, edge) => {
+                            const parts = edge.id.split(":");
+                            if (parts.length >= 3 && parts[0] === "reference") {
+                              setSelectedEdgeId(edge.id);
+                              handleOpenCanvasDocument(parts[1]);
+                            }
+                          }}
+                          onEdgeContextMenu={(event, edge: Edge) => {
+                            event.preventDefault();
+                            const parts = edge.id.split(":");
+                            if (parts.length >= 3 && parts[0] === "reference") {
+                              void handleDeleteEdge(parts[1], parts[2]);
+                            }
+                          }}
                         >
                           <Controls showInteractive={false} />
                           <Background gap={32} color="var(--muted-foreground)" />
                         </ReactFlow>
+                        </EdgeEditContext.Provider>
+                        {canvasContextMenu && (
+                          <div
+                            className="canvas-context-menu"
+                            style={{ left: canvasContextMenu.x, top: canvasContextMenu.y }}
+                            onContextMenu={(e) => e.preventDefault()}
+                          >
+                            <button type="button" className="flow-dropdown-item" onClick={() => { setCanvasContextMenu(null); void handleCreateGraphDocument("note"); }}>
+                              <FileText size={13} /> Add note
+                            </button>
+                            <button type="button" className="flow-dropdown-item" onClick={() => { setCanvasContextMenu(null); void handleCreateGraphDocument("task"); }}>
+                              <CheckSquare size={13} /> Add task
+                            </button>
+                            <button type="button" className="flow-dropdown-item" onClick={() => { setCanvasContextMenu(null); void handleCreateGraphDocument("command"); }}>
+                              <Terminal size={13} /> Add command
+                            </button>
+                          </div>
+                        )}
+                        {connectingFrom !== null && connectingPointerPos !== null && connectingStartPos !== null && (
+                          <svg
+                            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 9998 }}
+                          >
+                            <line
+                              x1={connectingStartPos.x}
+                              y1={connectingStartPos.y}
+                              x2={connectingPointerPos.x}
+                              y2={connectingPointerPos.y}
+                              stroke="var(--graph-edge)"
+                              strokeWidth={2.5}
+                              strokeDasharray="6 4"
+                            />
+                            <circle
+                              cx={connectingPointerPos.x}
+                              cy={connectingPointerPos.y}
+                              r={5}
+                              fill={connectingTarget !== null ? "var(--graph-edge)" : "var(--graph-edge-hover)"}
+                            />
+                          </svg>
+                        )}
                         <div className="graph-canvas-overlay">
+                          {graphCanvasData.edges.length > 0 && (
+                            <svg
+                              style={{
+                                position: "absolute",
+                                inset: 0,
+                                width: "100%",
+                                height: "100%",
+                                overflow: "visible",
+                                pointerEvents: "none",
+                              }}
+                            >
+                              <defs>
+                                <marker id="graph-canvas-arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
+                                  <path d="M 0 0 L 10 3.5 L 0 7 Z" fill="var(--graph-edge)" />
+                                </marker>
+                                <marker id="graph-canvas-arrow-dim" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
+                                  <path d="M 0 0 L 10 3.5 L 0 7 Z" fill="var(--graph-edge-dim)" />
+                                </marker>
+                              </defs>
+                              <g transform={`translate(${rfViewport.x} ${rfViewport.y}) scale(${rfViewport.zoom})`}>
+                                {graphCanvasData.edges.map((edge) => {
+                                  const sourceNode = graphCanvasNodes.find((node) => node.id === edge.source);
+                                  const targetNode = graphCanvasNodes.find((node) => node.id === edge.target);
+                                  if (!sourceNode || !targetNode) return null;
+                                  const sourcePos = graphCanvasOverlayPosition(sourceNode);
+                                  const targetPos = graphCanvasOverlayPosition(targetNode);
+                                  const isConnected = selectedCanvasNodeId !== "" &&
+                                    (edge.source === selectedCanvasNodeId || edge.target === selectedCanvasNodeId);
+                                  const hasSelection = selectedCanvasNodeId !== "";
+                                  const isSelectedEdge = edge.id === selectedEdgeId;
+                                  const stroke = hasSelection ? (isConnected ? "var(--graph-edge)" : "var(--graph-edge-dim)") : "var(--graph-edge)";
+                                  const strokeWidth = isSelectedEdge ? 3.4 : hasSelection ? (isConnected ? 2.6 : 1.25) : 2;
+                                  const opacity = hasSelection ? (isConnected ? 1 : 0.25) : 0.85;
+                                  const ports = pickBestEdgePorts(sourcePos, targetPos);
+                                  const [edgePath, labelX, labelY] = getSmoothStepPath({ ...ports, borderRadius: 8 });
+                                  const markerId = (isConnected || !hasSelection) ? "graph-canvas-arrow" : "graph-canvas-arrow-dim";
+                                  return (
+                                    <g key={edge.id}>
+                                      <path
+                                        d={edgePath}
+                                        stroke="transparent"
+                                        strokeWidth={20}
+                                        strokeOpacity={0}
+                                        fill="none"
+                                        pointerEvents="stroke"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          handleGraphCanvasEdgeClick(edge.id, edge.source);
+                                        }}
+                                        onMouseEnter={() => {
+                                          handleGraphCanvasEdgeHover(
+                                            edge.id,
+                                            edge.context ?? "",
+                                            labelX * rfViewport.zoom + rfViewport.x,
+                                            labelY * rfViewport.zoom + rfViewport.y,
+                                          );
+                                        }}
+                                        onMouseLeave={() => {
+                                          setHoveredEdgeTooltip((current) => current?.edgeId === edge.id ? null : current);
+                                        }}
+                                        onDoubleClick={(event) => {
+                                          event.stopPropagation();
+                                          handleGraphCanvasEdgeDoubleClick(edge.source, edge.target, edge.context ?? "", edge.id);
+                                        }}
+                                        onContextMenu={(event) => {
+                                          event.preventDefault();
+                                          event.stopPropagation();
+                                          void handleDeleteEdge(edge.source, edge.target);
+                                        }}
+                                      />
+                                      <path
+                                        d={edgePath}
+                                        stroke={stroke}
+                                        strokeWidth={strokeWidth}
+                                        fill="none"
+                                        opacity={opacity}
+                                        markerEnd={`url(#${markerId})`}
+                                        pointerEvents="none"
+                                      >
+                                        {edge.context ? <title>{edge.context}</title> : null}
+                                      </path>
+                                    </g>
+                                  );
+                                })}
+                              </g>
+                            </svg>
+                          )}
+                          {hoveredEdgeTooltip !== null && (
+                            <div
+                              className="graph-edge-hover-tooltip"
+                              style={{
+                                left: hoveredEdgeTooltip.x,
+                                top: hoveredEdgeTooltip.y,
+                                transform: "translate(-50%, calc(-100% - 10px))",
+                              }}
+                            >
+                              {hoveredEdgeTooltip.context}
+                            </div>
+                          )}
                           {graphCanvasNodes.map((node) => {
                             const position = graphCanvasOverlayPosition(node);
                             const screenX = position.x * rfViewport.zoom + rfViewport.x;
@@ -994,10 +1510,30 @@ function FlowApp() {
                             return (
                               <div
                                 key={node.id}
-                                className="graph-canvas-overlay-node"
+                                data-nodeid={node.id}
+                                className={[
+                                  "graph-canvas-overlay-node",
+                                  shiftSelectedNodes.includes(node.id) ? "canvas-node-shift-selected" : "",
+                                  connectingTarget === node.id ? "canvas-node-connecting-target" : "",
+                                ].filter(Boolean).join(" ")}
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  setSelectedCanvasNodeId(node.id);
+                                  setHoveredEdgeTooltip(null);
+                                  if (isAdditiveNodeSelection(event)) {
+                                    setShiftSelectedNodes((prev) => {
+                                      if (prev.includes(node.id)) {
+                                        return prev.filter((id) => id !== node.id);
+                                      }
+                                      if (prev.length > 0) {
+                                        const firstType = graphCanvasNodes.find((n) => n.id === prev[0])?.data.type;
+                                        if (firstType !== node.data.type) return prev;
+                                      }
+                                      return [...prev, node.id];
+                                    });
+                                  } else {
+                                    setSelectedCanvasNodeId(node.id);
+                                    setShiftSelectedNodes([]);
+                                  }
                                 }}
                                 onDoubleClick={(event) => {
                                   event.stopPropagation();
@@ -1007,10 +1543,33 @@ function FlowApp() {
                                 style={{ transform: `translate(${screenX}px, ${screenY}px) scale(${rfViewport.zoom})`, transformOrigin: 'top left' }}
                               >
                                 {node.data.label}
+                                {shiftSelectedNodes.includes(node.id) && (
+                                  <div className="canvas-selection-badge">{shiftSelectedNodes.indexOf(node.id) + 1}</div>
+                                )}
+                                {(["top", "right", "bottom", "left"] as const).map((pos) => (
+                                  <div
+                                    key={pos}
+                                    className={`canvas-connect-handle canvas-connect-handle-${pos}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onPointerDown={(e) => handleConnectionHandlePointerDown(e, node.id)}
+                                  />
+                                ))}
                               </div>
                             );
                           })}
                         </div>
+                        {shiftSelectedNodes.length >= 2 && (
+                          <div className="canvas-action-bar">
+                            <span className="canvas-action-bar-count">{shiftSelectedNodes.length} selected</span>
+                            <button
+                              type="button"
+                              className="canvas-action-bar-btn"
+                              onClick={() => { void handleMergeDocuments(); }}
+                            >
+                              Merge
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
             </div>
@@ -1019,7 +1578,8 @@ function FlowApp() {
         <aside
           className="app-right-sidebar"
           data-open={rightRailCollapsed ? "false" : "true"}
-          style={!rightRailCollapsed ? { width: `${rightSidebarWidth}px`, ...(isResizingRight ? { transition: "none" } : {}) } : undefined}
+          data-focus={rightSidebarFocused ? "true" : "false"}
+          style={!rightRailCollapsed && !rightSidebarFocused ? { width: `${rightSidebarWidth}px`, ...(isResizingRight ? { transition: "none" } : {}) } : undefined}
         >
           {!rightRailCollapsed && (
             <div className="right-sidebar-resize-handle" onMouseDown={handleRightSidebarMouseDown} />
@@ -1059,7 +1619,7 @@ function FlowApp() {
                           >
                             <span className="search-result-type">{formatDocumentType(result.type)}</span>
                             <strong>{result.title}</strong>
-                            <span className="item-file-name">{result.type === "home" ? "Workspace Home" : result.path.split("/").pop()}</span>
+                              <span className="item-file-name">{result.type === "home" ? "Workspace Home" : fileNameFromPath(result.path)}</span>
                             <span className="item-path">{result.path}</span>
                             {result.type !== "home" && <span>{result.graph}</span>}
                             {result.description !== "" && <p className="search-result-description">{result.description}</p>}
@@ -1075,9 +1635,10 @@ function FlowApp() {
                 <Card className="detail-card-context shell-context-card home-cal-card">
                   <CardContent className="shell-context-content p-0">
                     <HomeCalendarPanel
-                      body={homeFormState.body}
+                      documents={calendarDocumentsForDisplay}
                       selectedDate={calendarFocusDate}
                       onDateChange={setCalendarFocusDate}
+                      error={calendarError}
                     />
                   </CardContent>
                 </Card>
@@ -1092,21 +1653,12 @@ function FlowApp() {
                     {activeSurface.kind === "home" || selectedDocument !== null ? (
                       <nav className="toc-nav">
                         <ul className="toc-list">
-                          {generateTOC(activeSurface.kind === "home" ? homeFormState.body : selectedDocument!.body).map((item, index) => (
+                          {tocItems.map((item, index) => (
                             <li key={index} className={`toc-item toc-level-${item.level}`} style={{ marginLeft: `${(item.level - 1) * 1}rem` }}>
                               <button
                                 type="button"
                                 className="toc-link"
-                                onClick={() => {
-                                  if (activeSurface.kind === "home" || selectedDocument !== null) {
-                                    setEditorScrollTarget(item.id);
-                                  } else {
-                                    const element = document.getElementById(item.id);
-                                    if (element) {
-                                      element.scrollIntoView({ behavior: 'smooth' });
-                                    }
-                                  }
-                                }}
+                                onClick={() => handleTOCNavigate(item.id)}
                               >
                                 {item.text}
                               </button>
@@ -1134,7 +1686,27 @@ function FlowApp() {
                         <Trash2 size={16} />
                       </Button>
                     )}
-                    <Button onClick={() => { clearContextPanel(); setRightRailCollapsed(true); }} type="button" variant="ghost" size="sm">
+                    <Button
+                      onClick={() => setRightSidebarFocused(f => !f)}
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label={rightSidebarFocused ? "Exit focus mode" : "Focus mode"}
+                      title={rightSidebarFocused ? "Exit focus mode" : "Focus mode"}
+                    >
+                      {rightSidebarFocused ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        clearContextPanel();
+                        setRightPanelReturnTab(null);
+                        collapseRightRail();
+                      }}
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label="Close document panel"
+                    >
                       <X size={16} />
                     </Button>
                   </div>
@@ -1176,77 +1748,105 @@ function FlowApp() {
                     <p>Select a graph node or search result to view document content here.</p>
                   </div>
                 ) : (
-                  <div className="home-document">
-                    <div className="home-document-header">
-                      <input
-                        className="home-document-title"
-                        placeholder="Document title"
-                        value={formState.title}
-                        onChange={(event) => updateFormField("title", event.target.value)}
-                        aria-label="Document title"
-                      />
-                      <input
-                        className="home-document-description"
-                        placeholder="Add a brief description…"
-                        value={formState.description}
-                        onChange={(event) => updateFormField("description", event.target.value)}
-                        aria-label="Document description"
-                      />
-                    </div>
-                    <div className="home-document-body sidebar-document-body">
-                      <RichTextEditor
-                        ariaLabel="Document body editor"
-                        onChange={(value) => updateFormField("body", value)}
-                        onScrollCompleted={() => setEditorScrollTarget(null)}
-                        placeholder="Type / for headings, lists, quotes, links, and highlights"
-                        scrollToHeadingSlug={editorScrollTarget}
-                        value={formState.body}
-                      />
-                    </div>
-
-                    {(selectedDocument.tags ?? []).length > 0 && (
-                      <div className="chip-list">
-                        {(selectedDocument.tags ?? []).map((tag) => (
-                          <Badge key={tag} variant="secondary">
-                            {tag}
-                          </Badge>
-                        ))}
+                  <div className="sidebar-document-layout">
+                    <div className="home-document">
+                      <div className="home-document-header">
+                        <input
+                          className="home-document-title"
+                          placeholder="Document title"
+                          value={formState.title}
+                          onChange={(event) => updateFormField("title", event.target.value)}
+                          aria-label="Document title"
+                        />
+                        <input
+                          className="home-document-description"
+                          placeholder="Add a brief description…"
+                          value={formState.description}
+                          onChange={(event) => updateFormField("description", event.target.value)}
+                          aria-label="Document description"
+                        />
                       </div>
-                    )}
+                      <div className="home-document-body sidebar-document-body">
+                        <RichTextEditor
+                          ariaLabel="Document body editor"
+                          onChange={(value) => updateFormField("body", value)}
+                          onScrollCompleted={() => setEditorScrollTarget(null)}
+                          placeholder="Type / for headings, lists, quotes, links, and highlights"
+                          scrollToHeadingSlug={editorScrollTarget}
+                          value={formState.body}
+                        />
+                      </div>
 
-                    {(selectedDocument.dependsOn ?? []).length > 0 && (
-                      <section className="detail-section">
-                        <h4>Dependencies</h4>
-                        <div className="link-list">
-                          {(selectedDocument.dependsOn ?? []).map((dependencyId) => (
-                            <Button key={dependencyId} variant="outline" size="sm" onClick={() => setSelectedDocumentId(dependencyId)} className="rounded-full h-7 px-3 text-xs" type="button">
-                              {dependencyId}
-                            </Button>
+                      {(selectedDocument.tags ?? []).length > 0 && (
+                        <div className="chip-list">
+                          {(selectedDocument.tags ?? []).map((tag) => (
+                            <Badge key={tag} variant="secondary">
+                              {tag}
+                            </Badge>
                           ))}
                         </div>
-                      </section>
-                    )}
+                      )}
 
-                    {(selectedDocument.references ?? []).length > 0 && (
-                      <section className="detail-section">
-                        <h4>References</h4>
-                        <div className="link-list">
-                          {(selectedDocument.references ?? []).map((referenceId) => (
-                            <Button key={referenceId} variant="outline" size="sm" onClick={() => setSelectedDocumentId(referenceId)} className="rounded-full h-7 px-3 text-xs" type="button">
-                              {referenceId}
-                            </Button>
-                          ))}
+                      {(selectedDocument.dependsOn ?? []).length > 0 && (
+                        <section className="detail-section">
+                          <h4>Dependencies</h4>
+                          <div className="link-list">
+                            {(selectedDocument.dependsOn ?? []).map((dependencyId) => (
+                              <Button key={dependencyId} variant="outline" size="sm" onClick={() => setSelectedDocumentId(dependencyId)} className="rounded-full h-7 px-3 text-xs" type="button">
+                                {dependencyId}
+                              </Button>
+                            ))}
+                          </div>
+                        </section>
+                      )}
+
+                      {(selectedDocument.references ?? []).length > 0 && (
+                        <section className="detail-section">
+                          <h4>References</h4>
+                          <div className="link-list">
+                            {(selectedDocument.references ?? []).map((ref) => (
+                              <Button key={ref.node} variant="outline" size="sm" onClick={() => setSelectedDocumentId(ref.node)} className="rounded-full h-7 px-3 text-xs" type="button">
+                                {ref.node}{ref.context ? ` — ${ref.context}` : ""}
+                              </Button>
+                            ))}
+                          </div>
+                        </section>
+                      )}
+
+                      {selectedDocument.run && (
+                        <section className="detail-section">
+                          <h4>Run Command</h4>
+                          <pre className="run-block">{selectedDocument.run}</pre>
+                        </section>
+                      )}
+                    </div>
+
+                    {rightSidebarFocused && (
+                      <aside className="sidebar-document-toc" aria-label="Document table of contents">
+                        <div className="sidebar-document-toc-header">
+                          <h4>Table of Contents</h4>
                         </div>
-                      </section>
+                        {tocItems.length > 0 ? (
+                          <nav className="toc-nav">
+                            <ul className="toc-list">
+                              {tocItems.map((item, index) => (
+                                <li key={index} className={`toc-item toc-level-${item.level}`} style={{ marginLeft: `${(item.level - 1) * 1}rem` }}>
+                                  <button
+                                    type="button"
+                                    className="toc-link"
+                                    onClick={() => handleTOCNavigate(item.id)}
+                                  >
+                                    {item.text}
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </nav>
+                        ) : (
+                          <p className="empty-state-inline">No headings yet.</p>
+                        )}
+                      </aside>
                     )}
-
-                    {selectedDocument.run && (
-                      <section className="detail-section">
-                        <h4>Run Command</h4>
-                        <pre className="run-block">{selectedDocument.run}</pre>
-                      </section>
-                    )}
-
                   </div>
                 )}
               </div>
@@ -1260,6 +1860,7 @@ function FlowApp() {
                   <button
                     type="button"
                     className="right-rail-icon-btn"
+                    aria-label="Settings"
                     onClick={() => setSettingsDialogOpen(true)}
                   >
                     <Settings size={18} />
@@ -1373,31 +1974,9 @@ function FlowApp() {
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    className="right-rail-icon-btn"
-                    onClick={() => setRightRailCollapsed(c => !c)}
-                    style={activeSurface.kind === "graph" ? { display: "none" } : undefined}
-                  >
-                    <PanelRight size={18} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="left">
-                  {rightRailCollapsed ? "Expand panel" : "Collapse panel"}
-                </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
                     className={`right-rail-icon-btn${rightPanelTab === "search" && !rightRailCollapsed ? " right-rail-icon-btn-active" : ""}`}
-                    onClick={() => {
-                      if (rightPanelTab === "search" && !rightRailCollapsed) {
-                        setRightRailCollapsed(true);
-                      } else {
-                        setRightPanelTab("search");
-                        setRightRailCollapsed(false);
-                        setSelectedDocumentId("");
-                      }
-                    }}
+                    aria-label="Search"
+                    onClick={() => toggleRightPanel("search")}
                   >
                     <Search size={18} />
                   </button>
@@ -1409,53 +1988,37 @@ function FlowApp() {
                   <button
                     type="button"
                     className={`right-rail-icon-btn${rightPanelTab === "calendar" && !rightRailCollapsed ? " right-rail-icon-btn-active" : ""}`}
-                    onClick={() => {
-                      if (rightPanelTab === "calendar" && !rightRailCollapsed) {
-                        setRightRailCollapsed(true);
-                      } else {
-                        setRightPanelTab("calendar");
-                        setRightRailCollapsed(false);
-                      }
-                    }}
+                    aria-label="Calendar"
+                    onClick={() => toggleRightPanel("calendar")}
                   >
                     <CalendarDays size={18} />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="left">Calendar</TooltipContent>
             </Tooltip>
+            {activeSurface.kind !== "graph" && (
             <Tooltip>
                 <TooltipTrigger asChild>
                   <button
                     type="button"
                     className={`right-rail-icon-btn${rightPanelTab === "toc" && !rightRailCollapsed ? " right-rail-icon-btn-active" : ""}`}
-                    onClick={() => {
-                      if (rightPanelTab === "toc" && !rightRailCollapsed) {
-                        setRightRailCollapsed(true);
-                      } else {
-                        setRightPanelTab("toc");
-                        setRightRailCollapsed(false);
-                      }
-                    }}
+                    aria-label="Table of Contents"
+                    onClick={() => toggleRightPanel("toc")}
                   >
                     <List size={18} />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="left">Table of Contents</TooltipContent>
             </Tooltip>
+            )}
             {activeSurface.kind === "graph" && (
             <Tooltip>
                 <TooltipTrigger asChild>
                   <button
                     type="button"
                     className={`right-rail-icon-btn${rightPanelTab === "document" && !rightRailCollapsed ? " right-rail-icon-btn-active" : ""}`}
-                    onClick={() => {
-                      if (rightPanelTab === "document" && !rightRailCollapsed) {
-                        setRightRailCollapsed(true);
-                      } else {
-                        setRightPanelTab("document");
-                        setRightRailCollapsed(false);
-                      }
-                    }}
+                    aria-label="Document"
+                    onClick={() => toggleRightPanel("document")}
                   >
                     <FileText size={18} />
                   </button>
@@ -1465,6 +2028,74 @@ function FlowApp() {
             )}
           </div>
       </SidebarInset>
+      <Dialog open={createNodeDialog !== null} onOpenChange={(open) => { if (!open) setCreateNodeDialog(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New {createNodeDialog ? formatDocumentType(createNodeDialog.type) : ""}</DialogTitle>
+            <DialogDescription>
+              Choose a file name for the new document. Use lowercase letters, numbers, and hyphens.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="shell-dialog-actions" style={{ flexDirection: "column", alignItems: "stretch", gap: "0.5rem" }}>
+            <Label htmlFor="create-node-filename">File name</Label>
+            <Input
+              id="create-node-filename"
+              value={createNodeFileName}
+              onChange={(e) => { setCreateNodeFileName(e.target.value); setCreateNodeFileNameError(""); }}
+              onKeyDown={(e) => { if (e.key === "Enter") void handleConfirmCreateNode(); }}
+              placeholder="my-task"
+              autoFocus
+            />
+            {createNodeFileNameError !== "" && <p className="status-line status-line-error">{createNodeFileNameError}</p>}
+            <div className="shell-dialog-actions">
+              <Button onClick={() => setCreateNodeDialog(null)} type="button" variant="secondary">Cancel</Button>
+              <Button onClick={() => void handleConfirmCreateNode()} type="button" disabled={graphCreatePendingType !== ""}>
+                {graphCreatePendingType !== "" ? "Creating..." : "Create"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={editingEdge !== null} onOpenChange={(open) => { if (!open) setEditingEdge(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit reference context</DialogTitle>
+            <DialogDescription>
+              Add a short annotation describing why this reference exists.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="shell-dialog-actions" style={{ flexDirection: "column", alignItems: "stretch", gap: "0.5rem" }}>
+            <Label htmlFor="edge-context-input">Context</Label>
+            <Input
+              id="edge-context-input"
+              value={editingEdge?.context ?? ""}
+              onChange={(e) => setEditingEdge((prev) => prev ? { ...prev, context: e.target.value } : prev)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && editingEdge !== null) {
+                  void handleUpdateEdgeContext(editingEdge.sourceId, editingEdge.targetId, editingEdge.context);
+                  setEditingEdge(null);
+                }
+              }}
+              placeholder="e.g. depends on, relates to…"
+              autoFocus
+            />
+            <div className="shell-dialog-actions">
+              <Button onClick={() => setEditingEdge(null)} type="button" variant="secondary">Cancel</Button>
+              <Button
+                onClick={() => {
+                  if (editingEdge !== null) {
+                    void handleUpdateEdgeContext(editingEdge.sourceId, editingEdge.targetId, editingEdge.context);
+                    setEditingEdge(null);
+                  }
+                }}
+                type="button"
+              >
+                Save
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </SidebarProvider>
   );
 }
