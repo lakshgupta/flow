@@ -16,6 +16,8 @@ import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, use
 import { AppSidebar } from "./components/AppSidebar";
 import { GraphTree } from "./components/GraphTree";
 import { HomeCalendarPanel } from "./components/HomeCalendarPanel";
+import { TableOfContents } from "./components/TableOfContents";
+import { DocumentPropertiesPanel } from "./components/DocumentPropertiesPanel";
 import { Badge } from "./components/ui/badge";
 import { Input } from "./components/ui/input";
 import {
@@ -1522,6 +1524,131 @@ function FlowApp() {
     );
   }
 
+  const renderCenterDocumentShell = (isMaximizedRightRail: boolean) => (
+    <div className="center-document-shell">
+      <div className="center-document-toolbar">
+        <div className="center-document-toolbar-leading">
+          {selectedDocument !== null && (
+            <Badge variant="outline" className="center-document-type-badge">{formatDocumentType(selectedDocument.type)}</Badge>
+          )}
+          {selectedDocument !== null && (
+            <>
+              <Separator className="center-document-toolbar-separator" orientation="vertical" />
+              <input
+                className="center-document-toolbar-title"
+                placeholder="Document title"
+                value={formState.title}
+                onChange={(event) => updateFormField("title", event.target.value)}
+                aria-label="Document title"
+              />
+            </>
+          )}
+          {savingDocument && <span className="home-save-success">Saving…</span>}
+        </div>
+        <div className="center-document-toolbar-actions">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="center-document-toolbar-toggle"
+            data-active={centerDocumentSidePanelMode === "toc" ? "true" : "false"}
+            aria-label="Toggle table of contents"
+            aria-pressed={centerDocumentSidePanelMode === "toc"}
+            title="Toggle table of contents"
+            onClick={() => toggleCenterDocumentSidePanel("toc")}
+          >
+            <FileText size={16} />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="center-document-toolbar-toggle"
+            data-active={centerDocumentSidePanelMode === "properties" ? "true" : "false"}
+            aria-label="Toggle document properties"
+            aria-pressed={centerDocumentSidePanelMode === "properties"}
+            title="Toggle document properties"
+            onClick={() => toggleCenterDocumentSidePanel("properties")}
+          >
+            <Info size={16} />
+          </Button>
+          {isMaximizedRightRail && (
+            <Button
+              onClick={() => toggleRightRailMaximized()}
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Minimize right pane"
+              title="Minimize right pane"
+            >
+              <Minimize2 size={16} />
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {panelError !== "" ? <p className="status-line status-line-error">{panelError}</p> : null}
+      {mutationError !== "" ? <p className="status-line status-line-error">{mutationError}</p> : null}
+      {mutationSuccess !== "" ? <p className="status-line status-line-success">{mutationSuccess}</p> : null}
+
+      {selectedDocument === null ? (
+        <div className="detail-empty">
+          <p>Loading document content.</p>
+        </div>
+      ) : (
+        <div
+          ref={centerDocumentLayoutRef}
+          className="center-document-layout"
+          aria-label="Document content layout"
+          data-side-panel={centerDocumentSidePanelMode}
+          style={{ "--document-toc-ratio": documentTOCRatio.toString() } as React.CSSProperties}
+        >
+          <div className="center-document-main home-document">
+            <div className="home-document-body center-document-body">
+              <RichTextEditor
+                ariaLabel="Document body editor"
+                onChange={(value) => updateFormField("body", value)}
+                onScrollCompleted={() => setEditorScrollTarget(null)}
+                placeholder="Type / for headings, lists, quotes, links, and highlights"
+                scrollToHeadingSlug={editorScrollTarget}
+                value={formState.body}
+              />
+            </div>
+          </div>
+
+          {showCenterDocumentSidePanel ? (
+            <>
+              <div
+                className="center-document-toc-resizer"
+                onMouseDown={handleDocumentTOCResizeMouseDown}
+                role="separator"
+                aria-label={centerDocumentSidePanelResizerLabel}
+                aria-orientation="vertical"
+              />
+
+              <aside className="center-document-side-panel" aria-label={centerDocumentSidePanelLabel}>
+                <div className="center-document-toc-header center-document-side-panel-header">
+                  <h4>{centerDocumentSidePanelTitle}</h4>
+                  <p>{centerDocumentSidePanelDescription}</p>
+                </div>
+
+                {centerDocumentSidePanelMode === "toc" ? (
+                  <TableOfContents items={tocItems} onNavigate={handleTOCNavigate} />
+                ) : (
+                  <DocumentPropertiesPanel
+                    selectedDocument={selectedDocument}
+                    formState={formState}
+                    updateFormField={updateFormField}
+                  />
+                )}
+              </aside>
+            </>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <SidebarProvider
       className={isResizingLeft ? "is-resizing-sidebar" : undefined}
@@ -1682,234 +1809,7 @@ function FlowApp() {
               </div>
             </div>
           ) : isCenterDocumentOpen ? (
-            <div className="center-document-shell">
-              <div className="center-document-toolbar">
-                <div className="center-document-toolbar-leading">
-                  {selectedDocument !== null && (
-                    <Badge variant="outline" className="center-document-type-badge">{formatDocumentType(selectedDocument.type)}</Badge>
-                  )}
-                  {selectedDocument !== null && (
-                    <>
-                      <Separator className="center-document-toolbar-separator" orientation="vertical" />
-                      <input
-                        className="center-document-toolbar-title"
-                        placeholder="Document title"
-                        value={formState.title}
-                        onChange={(event) => updateFormField("title", event.target.value)}
-                        aria-label="Document title"
-                      />
-                    </>
-                  )}
-                  {savingDocument && <span className="home-save-success">Saving…</span>}
-                </div>
-                <div className="center-document-toolbar-actions">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className="center-document-toolbar-toggle"
-                    data-active={centerDocumentSidePanelMode === "toc" ? "true" : "false"}
-                    aria-label="Toggle table of contents"
-                    aria-pressed={centerDocumentSidePanelMode === "toc"}
-                    title="Toggle table of contents"
-                    onClick={() => toggleCenterDocumentSidePanel("toc")}
-                  >
-                    <FileText size={16} />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className="center-document-toolbar-toggle"
-                    data-active={centerDocumentSidePanelMode === "properties" ? "true" : "false"}
-                    aria-label="Toggle document properties"
-                    aria-pressed={centerDocumentSidePanelMode === "properties"}
-                    title="Toggle document properties"
-                    onClick={() => toggleCenterDocumentSidePanel("properties")}
-                  >
-                    <Info size={16} />
-                  </Button>
-                </div>
-              </div>
-
-              {panelError !== "" ? <p className="status-line status-line-error">{panelError}</p> : null}
-              {mutationError !== "" ? <p className="status-line status-line-error">{mutationError}</p> : null}
-              {mutationSuccess !== "" ? <p className="status-line status-line-success">{mutationSuccess}</p> : null}
-
-              {selectedDocument === null ? (
-                <div className="detail-empty">
-                  <p>Loading document content.</p>
-                </div>
-              ) : (
-                <div
-                  ref={centerDocumentLayoutRef}
-                  className="center-document-layout"
-                  aria-label="Document content layout"
-                  data-side-panel={centerDocumentSidePanelMode}
-                  style={{ "--document-toc-ratio": documentTOCRatio.toString() } as React.CSSProperties}
-                >
-                  <div className="center-document-main home-document">
-                    <div className="home-document-body center-document-body">
-                      <RichTextEditor
-                        ariaLabel="Document body editor"
-                        onChange={(value) => updateFormField("body", value)}
-                        onScrollCompleted={() => setEditorScrollTarget(null)}
-                        placeholder="Type / for headings, lists, quotes, links, and highlights"
-                        scrollToHeadingSlug={editorScrollTarget}
-                        value={formState.body}
-                      />
-                    </div>
-                  </div>
-
-                  {showCenterDocumentSidePanel ? (
-                    <>
-                      <div
-                        className="center-document-toc-resizer"
-                        onMouseDown={handleDocumentTOCResizeMouseDown}
-                        role="separator"
-                        aria-label={centerDocumentSidePanelResizerLabel}
-                        aria-orientation="vertical"
-                      />
-
-                      <aside className="center-document-side-panel" aria-label={centerDocumentSidePanelLabel}>
-                        <div className="center-document-toc-header center-document-side-panel-header">
-                          <h4>{centerDocumentSidePanelTitle}</h4>
-                          <p>{centerDocumentSidePanelDescription}</p>
-                        </div>
-
-                        {centerDocumentSidePanelMode === "toc" ? (
-                          tocItems.length > 0 ? (
-                            <nav className="toc-nav">
-                              <ul className="toc-list">
-                                {tocItems.map((item, index) => (
-                                  <li key={index} className={`toc-item toc-level-${item.level}`} style={{ marginLeft: `${(item.level - 1) * 1}rem` }}>
-                                    <button
-                                      type="button"
-                                      className="toc-link"
-                                      onClick={() => handleTOCNavigate(item.id)}
-                                    >
-                                      {item.text}
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
-                            </nav>
-                          ) : (
-                            <p className="empty-state-inline">No headings yet.</p>
-                          )
-                        ) : (
-                          <div className="center-document-properties">
-                            <section className="center-document-properties-section">
-                              <h5>Core</h5>
-                              <label className="center-document-properties-field editor-field">
-                                <span>Description</span>
-                                <textarea
-                                  aria-label="Document description"
-                                  placeholder="Add a brief description…"
-                                  rows={3}
-                                  value={formState.description}
-                                  onChange={(event) => updateFormField("description", event.target.value)}
-                                />
-                              </label>
-                              <label className="center-document-properties-field editor-field">
-                                <span>Tags</span>
-                                <textarea
-                                  aria-label="Document tags"
-                                  placeholder="Add tags, one per line or comma separated"
-                                  rows={4}
-                                  value={formState.tags}
-                                  onChange={(event) => updateFormField("tags", event.target.value)}
-                                />
-                              </label>
-                              <label className="center-document-properties-field editor-field">
-                                <span>References</span>
-                                <textarea
-                                  aria-label="Document references"
-                                  placeholder="Reference document IDs, one per line or comma separated"
-                                  rows={4}
-                                  value={formState.references}
-                                  onChange={(event) => updateFormField("references", event.target.value)}
-                                />
-                              </label>
-                            </section>
-
-                            {(selectedDocument.type === "task" || selectedDocument.type === "command") && (
-                              <section className="center-document-properties-section">
-                                <h5>{selectedDocument.type === "task" ? "Task" : "Command"}</h5>
-
-                                {selectedDocument.type === "task" ? (
-                                  <label className="center-document-properties-field editor-field">
-                                    <span>Status</span>
-                                    <select
-                                      aria-label="Task status"
-                                      value={formState.status}
-                                      onChange={(event) => updateFormField("status", event.target.value)}
-                                    >
-                                      <option value="">No status</option>
-                                      <option value="todo">todo</option>
-                                      <option value="doing">doing</option>
-                                      <option value="done">done</option>
-                                    </select>
-                                  </label>
-                                ) : null}
-
-                                {selectedDocument.type === "command" ? (
-                                  <label className="center-document-properties-field editor-field">
-                                    <span>Name</span>
-                                    <Input
-                                      aria-label="Command name"
-                                      placeholder="Command name"
-                                      value={formState.name}
-                                      onChange={(event) => updateFormField("name", event.target.value)}
-                                    />
-                                  </label>
-                                ) : null}
-
-                                <label className="center-document-properties-field editor-field">
-                                  <span>Dependencies</span>
-                                  <textarea
-                                    aria-label="Document dependencies"
-                                    placeholder="Document IDs, one per line or comma separated"
-                                    rows={4}
-                                    value={formState.dependsOn}
-                                    onChange={(event) => updateFormField("dependsOn", event.target.value)}
-                                  />
-                                </label>
-
-                                {selectedDocument.type === "command" ? (
-                                  <>
-                                    <label className="center-document-properties-field editor-field">
-                                      <span>Environment</span>
-                                      <textarea
-                                        aria-label="Command environment"
-                                        placeholder="KEY=VALUE"
-                                        rows={5}
-                                        value={formState.env}
-                                        onChange={(event) => updateFormField("env", event.target.value)}
-                                      />
-                                    </label>
-                                    <label className="center-document-properties-field editor-field">
-                                      <span>Run Command</span>
-                                      <textarea
-                                        aria-label="Command run command"
-                                        placeholder="Describe how to run this command"
-                                        rows={5}
-                                        value={formState.run}
-                                        onChange={(event) => updateFormField("run", event.target.value)}
-                                      />
-                                    </label>
-                                  </>
-                                ) : null}
-                              </section>
-                            )}
-                          </div>
-                        )}
-                      </aside>
-                    </>
-                  ) : null}
-                </div>
-              )}
-            </div>
+            renderCenterDocumentShell(false)
           ) : (
             <div className="graph-canvas-outer">
                     {graphCanvasError !== "" ? (
@@ -2257,7 +2157,10 @@ function FlowApp() {
           )}
           <div className="right-sidebar-panel">
             {!rightRailCollapsed && (rightPanelTab === "document" && hasRightRailDocument ? (
-              <div className="sidebar-document-panel" aria-label="Graph node document panel">
+              rightRailMaximized ? (
+                renderCenterDocumentShell(true)
+              ) : (
+                <div className="sidebar-document-panel" aria-label="Graph node document panel">
                 <div className="sidebar-document-toolbar">
                   <div className="center-document-toolbar-leading">
                     {selectedDocument !== null && (
@@ -2428,6 +2331,7 @@ function FlowApp() {
                   </div>
                 )}
               </div>
+              )
             ) : rightPanelTab === "search" ? (
               <Card className="detail-card-context shell-context-card">
                 <CardHeader className="panel-header shell-context-header">

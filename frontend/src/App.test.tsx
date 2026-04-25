@@ -432,10 +432,13 @@ describe("App graph canvas flows", () => {
 
     await user.click(within(documentPanel).getByRole("button", { name: "Maximize right pane" }));
     expect(screen.getByLabelText("Right pane")).toHaveAttribute("data-focus", "true");
-    expect(within(documentPanel).getByLabelText("Document table of contents")).toBeInTheDocument();
-    expect(within(documentPanel).getByRole("button", { name: "Overview body" })).toBeInTheDocument();
+    
+    // The maximized panel now renders the full center document shell
+    const maximizedPanel = await screen.findByLabelText("Document content layout");
+    expect(within(maximizedPanel).getByLabelText("Document table of contents")).toBeInTheDocument();
+    expect(within(maximizedPanel).getByRole("button", { name: "Overview body" })).toBeInTheDocument();
 
-    const rightRailLayout = within(documentPanel).getByLabelText("Graph node document");
+    const rightRailLayout = maximizedPanel;
     Object.defineProperty(rightRailLayout, "getBoundingClientRect", {
       configurable: true,
       value: () => ({
