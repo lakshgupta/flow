@@ -1667,22 +1667,6 @@ function FlowApp() {
                   )}
                   {savingDocument && <span className="home-save-success">Saving…</span>}
                 </div>
-                <div className="center-document-toolbar-actions">
-                  {selectedDocument !== null && (
-                    <Button onClick={openDeleteDialogForSelectedDocument} disabled={deletingDocument} type="button" variant="ghost" size="sm">
-                      <Trash2 size={16} />
-                    </Button>
-                  )}
-                  <Button
-                    onClick={() => clearContextPanel()}
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    aria-label="Close document"
-                  >
-                    <X size={16} />
-                  </Button>
-                </div>
               </div>
 
               {panelError !== "" ? <p className="status-line status-line-error">{panelError}</p> : null}

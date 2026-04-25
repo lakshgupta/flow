@@ -655,6 +655,8 @@ describe("App graph canvas flows", () => {
     expect(screen.getByLabelText("Document content layout")).toBeInTheDocument();
     expect(screen.queryByLabelText("Graph node document")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Document" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Close document" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete document" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Calendar" }));
     expect(await screen.findByText("No entries for this day.")).toBeInTheDocument();
