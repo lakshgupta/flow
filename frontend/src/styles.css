@@ -3029,14 +3029,12 @@ pre {
   min-height: 28rem;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: calc(var(--radius) * 1.1);
-  overflow: hidden;
-  background: color-mix(in srgb, var(--card) 94%, white 6%);
+  background: transparent;
 }
 
 .center-document-body .ProseMirror {
   min-height: 100%;
+  padding: 1.5rem clamp(1rem, 2.8vw, 2.5rem) 2rem;
 }
 
 .home-editor {
