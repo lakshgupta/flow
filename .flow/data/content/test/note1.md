@@ -3,6 +3,7 @@ id: test/note1
 type: note
 graph: test
 title: Note1
+description: Note 1 description
 createdAt: "2026-04-20T00:17:18.545Z"
 updatedAt: "2026-04-20T00:17:18.545Z"
 references:

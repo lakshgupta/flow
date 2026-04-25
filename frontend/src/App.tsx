@@ -99,6 +99,7 @@ import "./styles.css";
 
 type RightPanelTab = "calendar" | "search";
 type DocumentOpenMode = "center" | "right-rail";
+type CenterDocumentSidePanelMode = "hidden" | "toc" | "properties";
 type RenameDialogState =
   | { kind: "graph"; graphPath: string }
   | { kind: "node"; documentId: string; fileName: string };
@@ -191,6 +192,7 @@ function FlowApp() {
   const [leftSidebarWidth, setLeftSidebarWidth] = useState<number>(256);
   const [rightSidebarWidth, setRightSidebarWidth] = useState<number>(320);
   const [documentTOCRatio, setDocumentTOCRatio] = useState<number>(DEFAULT_DOCUMENT_TOC_RATIO);
+  const [centerDocumentSidePanelMode, setCenterDocumentSidePanelMode] = useState<CenterDocumentSidePanelMode>("toc");
   const [isResizingLeft, setIsResizingLeft] = useState<boolean>(false);
   const [isResizingRight, setIsResizingRight] = useState<boolean>(false);
   const [canvasContextMenu, setCanvasContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -237,6 +239,15 @@ function FlowApp() {
   const workspaceSurfaceSection = activeSurface.kind === "graph" ? "Content" : "Home";
   const workspaceSurfaceTitle = activeSurface.kind === "graph" ? selectedGraphNode?.displayName ?? selectedGraphPath : null;
   const isCenterDocumentOpen = selectedDocumentId !== "" && selectedDocumentOpenMode === "center";
+  const showCenterDocumentSidePanel = centerDocumentSidePanelMode !== "hidden";
+  const centerDocumentSidePanelLabel = centerDocumentSidePanelMode === "properties" ? "Document properties" : "Document table of contents";
+  const centerDocumentSidePanelTitle = centerDocumentSidePanelMode === "properties" ? "Properties" : "Table of Contents";
+  const centerDocumentSidePanelDescription = centerDocumentSidePanelMode === "properties"
+    ? "Edit the markdown frontmatter fields for this document."
+    : "Jump to headings in the current document.";
+  const centerDocumentSidePanelResizerLabel = centerDocumentSidePanelMode === "properties"
+    ? "Resize document properties"
+    : "Resize table of contents";
   const hasRightRailDocument = selectedDocumentId !== "" && selectedDocumentOpenMode === "right-rail";
   const showRightRailDocumentButton = activeSurface.kind === "graph" && !isCenterDocumentOpen && (selectedCanvasNode !== null || hasRightRailDocument);
   const selectedNodeMatchesRightRailDocument = selectedCanvasNode !== null && hasRightRailDocument && selectedDocumentId === selectedCanvasNode.id;
@@ -259,6 +270,14 @@ function FlowApp() {
 
     setDocumentTOCRatio(clampDocumentTOCRatio(workspace.panelWidths.documentTOCRatio));
   }, [workspace]);
+
+  useEffect(() => {
+    if (!isCenterDocumentOpen || selectedDocumentId === "") {
+      return;
+    }
+
+    setCenterDocumentSidePanelMode("toc");
+  }, [isCenterDocumentOpen, selectedDocumentId]);
 
   useEffect(() => {
     if (selectedDocumentId !== "" || rightPanelTab !== "document") {
@@ -339,6 +358,10 @@ function FlowApp() {
 
     setRightPanelTab(tab);
     setRightRailCollapsed(false);
+  }
+
+  function toggleCenterDocumentSidePanel(panel: Exclude<CenterDocumentSidePanelMode, "hidden">): void {
+    setCenterDocumentSidePanelMode((current) => (current === panel ? "hidden" : panel));
   }
 
   function openDocumentInCenter(documentId: string, graphPath: string): void {
@@ -1679,6 +1702,34 @@ function FlowApp() {
                   )}
                   {savingDocument && <span className="home-save-success">Saving…</span>}
                 </div>
+                <div className="center-document-toolbar-actions">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="center-document-toolbar-toggle"
+                    data-active={centerDocumentSidePanelMode === "toc" ? "true" : "false"}
+                    aria-label="Toggle table of contents"
+                    aria-pressed={centerDocumentSidePanelMode === "toc"}
+                    title="Toggle table of contents"
+                    onClick={() => toggleCenterDocumentSidePanel("toc")}
+                  >
+                    <FileText size={16} />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="center-document-toolbar-toggle"
+                    data-active={centerDocumentSidePanelMode === "properties" ? "true" : "false"}
+                    aria-label="Toggle document properties"
+                    aria-pressed={centerDocumentSidePanelMode === "properties"}
+                    title="Toggle document properties"
+                    onClick={() => toggleCenterDocumentSidePanel("properties")}
+                  >
+                    <Info size={16} />
+                  </Button>
+                </div>
               </div>
 
               {panelError !== "" ? <p className="status-line status-line-error">{panelError}</p> : null}
@@ -1694,18 +1745,10 @@ function FlowApp() {
                   ref={centerDocumentLayoutRef}
                   className="center-document-layout"
                   aria-label="Document content layout"
+                  data-side-panel={centerDocumentSidePanelMode}
                   style={{ "--document-toc-ratio": documentTOCRatio.toString() } as React.CSSProperties}
                 >
                   <div className="center-document-main home-document">
-                    <div className="home-document-header">
-                      <input
-                        className="home-document-description"
-                        placeholder="Add a brief description…"
-                        value={formState.description}
-                        onChange={(event) => updateFormField("description", event.target.value)}
-                        aria-label="Document description"
-                      />
-                    </div>
                     <div className="home-document-body center-document-body">
                       <RichTextEditor
                         ariaLabel="Document body editor"
@@ -1716,97 +1759,154 @@ function FlowApp() {
                         value={formState.body}
                       />
                     </div>
-
-                    {(selectedDocument.tags ?? []).length > 0 && (
-                      <div className="chip-list">
-                        {(selectedDocument.tags ?? []).map((tag) => (
-                          <Badge key={tag} variant="secondary">
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-
-                    {(selectedDocument.dependsOn ?? []).length > 0 && (
-                      <section className="detail-section">
-                        <h4>Dependencies</h4>
-                        <div className="link-list">
-                          {(selectedDocument.dependsOn ?? []).map((dependencyId) => (
-                            <Button
-                              key={dependencyId}
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleInspectDocument(dependencyId, documentGraphById.get(dependencyId) ?? selectedDocument.graph)}
-                              className="rounded-full h-7 px-3 text-xs"
-                              type="button"
-                            >
-                              {dependencyId}
-                            </Button>
-                          ))}
-                        </div>
-                      </section>
-                    )}
-
-                    {(selectedDocument.references ?? []).length > 0 && (
-                      <section className="detail-section">
-                        <h4>References</h4>
-                        <div className="link-list">
-                          {(selectedDocument.references ?? []).map((ref) => (
-                            <Button
-                              key={ref.node}
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleInspectDocument(ref.node, documentGraphById.get(ref.node) ?? selectedDocument.graph)}
-                              className="rounded-full h-7 px-3 text-xs"
-                              type="button"
-                            >
-                              {ref.node}{ref.context ? ` — ${ref.context}` : ""}
-                            </Button>
-                          ))}
-                        </div>
-                      </section>
-                    )}
-
-                    {selectedDocument.run && (
-                      <section className="detail-section">
-                        <h4>Run Command</h4>
-                        <pre className="run-block">{selectedDocument.run}</pre>
-                      </section>
-                    )}
                   </div>
 
-                  <div
-                    className="center-document-toc-resizer"
-                    onMouseDown={handleDocumentTOCResizeMouseDown}
-                    role="separator"
-                    aria-label="Resize table of contents"
-                    aria-orientation="vertical"
-                  />
+                  {showCenterDocumentSidePanel ? (
+                    <>
+                      <div
+                        className="center-document-toc-resizer"
+                        onMouseDown={handleDocumentTOCResizeMouseDown}
+                        role="separator"
+                        aria-label={centerDocumentSidePanelResizerLabel}
+                        aria-orientation="vertical"
+                      />
 
-                  <aside className="center-document-toc" aria-label="Document table of contents">
-                    <div className="center-document-toc-header">
-                      <h4>Table of Contents</h4>
-                    </div>
-                    {tocItems.length > 0 ? (
-                      <nav className="toc-nav">
-                        <ul className="toc-list">
-                          {tocItems.map((item, index) => (
-                            <li key={index} className={`toc-item toc-level-${item.level}`} style={{ marginLeft: `${(item.level - 1) * 1}rem` }}>
-                              <button
-                                type="button"
-                                className="toc-link"
-                                onClick={() => handleTOCNavigate(item.id)}
-                              >
-                                {item.text}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </nav>
-                    ) : (
-                      <p className="empty-state-inline">No headings yet.</p>
-                    )}
-                  </aside>
+                      <aside className="center-document-side-panel" aria-label={centerDocumentSidePanelLabel}>
+                        <div className="center-document-toc-header center-document-side-panel-header">
+                          <h4>{centerDocumentSidePanelTitle}</h4>
+                          <p>{centerDocumentSidePanelDescription}</p>
+                        </div>
+
+                        {centerDocumentSidePanelMode === "toc" ? (
+                          tocItems.length > 0 ? (
+                            <nav className="toc-nav">
+                              <ul className="toc-list">
+                                {tocItems.map((item, index) => (
+                                  <li key={index} className={`toc-item toc-level-${item.level}`} style={{ marginLeft: `${(item.level - 1) * 1}rem` }}>
+                                    <button
+                                      type="button"
+                                      className="toc-link"
+                                      onClick={() => handleTOCNavigate(item.id)}
+                                    >
+                                      {item.text}
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            </nav>
+                          ) : (
+                            <p className="empty-state-inline">No headings yet.</p>
+                          )
+                        ) : (
+                          <div className="center-document-properties">
+                            <section className="center-document-properties-section">
+                              <h5>Core</h5>
+                              <label className="center-document-properties-field editor-field">
+                                <span>Description</span>
+                                <textarea
+                                  aria-label="Document description"
+                                  placeholder="Add a brief description…"
+                                  rows={3}
+                                  value={formState.description}
+                                  onChange={(event) => updateFormField("description", event.target.value)}
+                                />
+                              </label>
+                              <label className="center-document-properties-field editor-field">
+                                <span>Tags</span>
+                                <textarea
+                                  aria-label="Document tags"
+                                  placeholder="Add tags, one per line or comma separated"
+                                  rows={4}
+                                  value={formState.tags}
+                                  onChange={(event) => updateFormField("tags", event.target.value)}
+                                />
+                              </label>
+                              <label className="center-document-properties-field editor-field">
+                                <span>References</span>
+                                <textarea
+                                  aria-label="Document references"
+                                  placeholder="Reference document IDs, one per line or comma separated"
+                                  rows={4}
+                                  value={formState.references}
+                                  onChange={(event) => updateFormField("references", event.target.value)}
+                                />
+                              </label>
+                            </section>
+
+                            {(selectedDocument.type === "task" || selectedDocument.type === "command") && (
+                              <section className="center-document-properties-section">
+                                <h5>{selectedDocument.type === "task" ? "Task" : "Command"}</h5>
+
+                                {selectedDocument.type === "task" ? (
+                                  <label className="center-document-properties-field editor-field">
+                                    <span>Status</span>
+                                    <select
+                                      aria-label="Task status"
+                                      value={formState.status}
+                                      onChange={(event) => updateFormField("status", event.target.value)}
+                                    >
+                                      <option value="">No status</option>
+                                      <option value="todo">todo</option>
+                                      <option value="doing">doing</option>
+                                      <option value="done">done</option>
+                                    </select>
+                                  </label>
+                                ) : null}
+
+                                {selectedDocument.type === "command" ? (
+                                  <label className="center-document-properties-field editor-field">
+                                    <span>Name</span>
+                                    <Input
+                                      aria-label="Command name"
+                                      placeholder="Command name"
+                                      value={formState.name}
+                                      onChange={(event) => updateFormField("name", event.target.value)}
+                                    />
+                                  </label>
+                                ) : null}
+
+                                <label className="center-document-properties-field editor-field">
+                                  <span>Dependencies</span>
+                                  <textarea
+                                    aria-label="Document dependencies"
+                                    placeholder="Document IDs, one per line or comma separated"
+                                    rows={4}
+                                    value={formState.dependsOn}
+                                    onChange={(event) => updateFormField("dependsOn", event.target.value)}
+                                  />
+                                </label>
+
+                                {selectedDocument.type === "command" ? (
+                                  <>
+                                    <label className="center-document-properties-field editor-field">
+                                      <span>Environment</span>
+                                      <textarea
+                                        aria-label="Command environment"
+                                        placeholder="KEY=VALUE"
+                                        rows={5}
+                                        value={formState.env}
+                                        onChange={(event) => updateFormField("env", event.target.value)}
+                                      />
+                                    </label>
+                                    <label className="center-document-properties-field editor-field">
+                                      <span>Run Command</span>
+                                      <textarea
+                                        aria-label="Command run command"
+                                        placeholder="Describe how to run this command"
+                                        rows={5}
+                                        value={formState.run}
+                                        onChange={(event) => updateFormField("run", event.target.value)}
+                                      />
+                                    </label>
+                                  </>
+                                ) : null}
+                              </section>
+                            )}
+                          </div>
+                        )}
+                      </aside>
+                    </>
+                  ) : null}
                 </div>
               )}
             </div>

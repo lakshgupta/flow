@@ -2815,6 +2815,19 @@ pre {
   min-width: 0;
 }
 
+.center-document-toolbar-actions {
+  justify-content: flex-end;
+}
+
+.center-document-toolbar-toggle {
+  color: var(--muted-foreground);
+}
+
+.center-document-toolbar-toggle[data-active="true"] {
+  background: color-mix(in srgb, var(--accent) 52%, transparent);
+  color: var(--foreground);
+}
+
 .center-document-type-badge {
   background: color-mix(in srgb, #9fd6ff 52%, white 48%);
   border-color: color-mix(in srgb, #63b9f7 45%, white 55%);
@@ -2851,9 +2864,17 @@ pre {
   align-items: start;
 }
 
+.center-document-layout[data-side-panel="hidden"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .center-document-main {
   min-width: 0;
   padding-right: 1.5rem;
+}
+
+.center-document-layout[data-side-panel="hidden"] .center-document-main {
+  padding-right: 0;
 }
 
 .center-document-toc-resizer {
@@ -2890,7 +2911,8 @@ pre {
   background: color-mix(in srgb, var(--foreground) 30%, transparent);
 }
 
-.center-document-toc {
+.center-document-toc,
+.center-document-side-panel {
   position: sticky;
   top: 0;
   align-self: start;
@@ -2898,8 +2920,28 @@ pre {
   padding-left: 1rem;
 }
 
+.center-document-side-panel {
+  display: grid;
+  gap: 1rem;
+  max-height: calc(100vh - 10rem);
+  overflow: auto;
+}
+
 .center-document-toc-header {
   margin-bottom: 0.75rem;
+}
+
+.center-document-side-panel-header {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 0;
+}
+
+.center-document-side-panel-header p {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--muted-foreground);
 }
 
 .center-document-toc-header h4 {
@@ -2909,6 +2951,37 @@ pre {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted-foreground);
+}
+
+.center-document-properties {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.center-document-properties-section {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--card) 86%, var(--muted) 14%);
+}
+
+.center-document-properties-section h5 {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.center-document-properties-field {
+  gap: 0.45rem;
+}
+
+.center-document-properties-field textarea {
+  min-height: 4.75rem;
 }
 
 .home-document {
@@ -3949,6 +4022,19 @@ pre {
   }
 
   .center-document-toc {
+    display: none;
+  }
+
+  .center-document-side-panel {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    padding-left: 0;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .center-document-layout[data-side-panel="hidden"] .center-document-side-panel {
     display: none;
   }
 }

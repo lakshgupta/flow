@@ -1090,6 +1090,146 @@ describe("App graph canvas flows", () => {
     });
   });
 
+  it("toggles the center side panel between TOC and editable properties", async () => {
+    const graphCanvasResponse = {
+      selectedGraph: "execution",
+      availableGraphs: ["execution"],
+      layerGuidance: {
+        magneticThresholdPx: 18,
+        guides: [
+          { layer: 0, x: 140 },
+          { layer: 1, x: 460 },
+        ],
+      },
+      nodes: [
+        {
+          id: "note-1",
+          type: "note",
+          graph: "execution",
+          title: "Overview",
+          description: "Execution overview",
+          path: "data/graphs/execution/overview.md",
+          featureSlug: "execution",
+          position: { x: 140, y: 120 },
+          positionPersisted: false,
+        },
+      ],
+      edges: [],
+    };
+    let persistedDocument = {
+      id: "note-1",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Overview",
+      description: "Execution overview",
+      path: "data/graphs/execution/overview.md",
+      tags: [],
+      body: "# Intro Heading\n\nBody text\n\n## Deep Section\n\nMore detail\n",
+      references: [],
+      relatedNoteIds: [],
+    };
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/graphs/note") {
+        return noteGraphs("execution");
+      }
+
+      if (url === "/api/graphs/task") {
+        return emptyGraphLists.tasks;
+      }
+
+      if (url === "/api/graphs/command") {
+        return emptyGraphLists.commands;
+      }
+
+      if (url === "/api/graph-canvas?graph=execution") {
+        return graphCanvasResponse;
+      }
+
+      if (url === "/api/documents/note-1" && (init?.method ?? "GET") === "PUT") {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          title: string;
+          description: string;
+          graph: string;
+          tags: string[];
+          body: string;
+          references: Array<{ node: string }>;
+        };
+        persistedDocument = {
+          ...persistedDocument,
+          title: body.title,
+          description: body.description,
+          graph: body.graph,
+          tags: body.tags,
+          body: body.body,
+          references: body.references,
+        };
+        return persistedDocument;
+      }
+
+      if (url === "/api/documents/note-1") {
+        return persistedDocument;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Content");
+
+    const fileButton = (await screen.findByText("overview.md")).closest('[data-sidebar="menu-sub-button"]');
+    if (fileButton === null) {
+      throw new Error("missing overview file button");
+    }
+
+    await user.click(fileButton);
+
+    const tocToggle = await screen.findByRole("button", { name: "Toggle table of contents" });
+    const propertiesToggle = screen.getByRole("button", { name: "Toggle document properties" });
+
+    expect(await screen.findByLabelText("Document table of contents")).toBeInTheDocument();
+    expect(tocToggle).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(tocToggle);
+    expect(screen.queryByLabelText("Document table of contents")).not.toBeInTheDocument();
+    expect(tocToggle).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(tocToggle);
+    expect(await screen.findByLabelText("Document table of contents")).toBeInTheDocument();
+
+    await user.click(propertiesToggle);
+
+    const propertiesPanel = await screen.findByLabelText("Document properties");
+    expect(screen.queryByLabelText("Document table of contents")).not.toBeInTheDocument();
+    expect(propertiesToggle).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.change(within(propertiesPanel).getByLabelText("Document description"), {
+      target: { value: "Updated overview" },
+    });
+
+    await waitFor(() => {
+      expect(getRequestBody(fetchMock, "/api/documents/note-1", "PUT")).toEqual({
+        title: "Overview",
+        description: "Updated overview",
+        graph: "execution",
+        tags: [],
+        body: "# Intro Heading\n\nBody text\n\n## Deep Section\n\nMore detail\n",
+        references: [],
+      });
+    }, { timeout: 2000 });
+  });
+
   it("resizes the document table of contents and persists its ratio", async () => {
     const graphCanvasResponse = {
       selectedGraph: "execution",
