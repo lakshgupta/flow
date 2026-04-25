@@ -1,5 +1,15 @@
 import type { CalendarDocumentResponse, GraphTreeResponse, WorkspaceResponse, WorkspaceSnapshot } from "../types";
 
+function normalizeGraphTreeResponse(response: GraphTreeResponse): GraphTreeResponse {
+  return {
+    ...response,
+    graphs: response.graphs.map((graphNode) => ({
+      ...graphNode,
+      files: graphNode.files ?? [],
+    })),
+  };
+}
+
 export async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
@@ -32,7 +42,7 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
     requestJSON<GraphTreeResponse>("/api/graphs"),
   ]);
 
-  return { workspaceData, graphTreeData };
+  return { workspaceData, graphTreeData: normalizeGraphTreeResponse(graphTreeData) };
 }
 
 export async function loadCalendarDocuments(): Promise<CalendarDocumentResponse[]> {

@@ -19,9 +19,6 @@ function TestComponent() {
 
 describe("ThemeProvider", () => {
   beforeEach(() => {
-    // Clear localStorage before each test
-    localStorage.clear();
-
     // Mock matchMedia
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
@@ -85,31 +82,14 @@ describe("ThemeProvider", () => {
     expect(root.style.getPropertyValue('color-scheme')).toBe('dark');
   });
 
-  it("persists theme preference in localStorage", async () => {
-    const user = userEvent.setup();
-
+  it("starts with system theme by default", () => {
     render(
       <ThemeProvider>
         <TestComponent />
       </ThemeProvider>
     );
 
-    await user.click(screen.getByRole('button', { name: 'Set Dark' }));
-
-    expect(localStorage.getItem('flow-theme')).toBe('dark');
-  });
-
-  it("loads theme from localStorage on initialization", () => {
-    localStorage.setItem('flow-theme', 'dark');
-
-    render(
-      <ThemeProvider>
-        <TestComponent />
-      </ThemeProvider>
-    );
-
-    expect(screen.getByTestId("current-theme")).toHaveTextContent("dark");
-    expect(screen.getByTestId("actual-theme")).toHaveTextContent("dark");
+    expect(screen.getByTestId("current-theme")).toHaveTextContent("system");
   });
 
   it("responds to system theme changes when theme is system", () => {

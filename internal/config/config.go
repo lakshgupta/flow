@@ -17,8 +17,16 @@ const DefaultGUIPort = 4317
 
 // Default panel width ratios for the desktop GUI shell.
 const (
-	DefaultLeftPanelRatio  = 0.25
-	DefaultRightPanelRatio = 0.24
+	DefaultLeftPanelRatio   = 0.25
+	DefaultRightPanelRatio  = 0.24
+	DefaultDocumentTOCRatio = 0.18
+)
+
+// Supported persisted GUI appearance selections.
+const (
+	AppearanceSystem = "system"
+	AppearanceLight  = "light"
+	AppearanceDark   = "dark"
 )
 
 // Workspace holds persisted workspace settings.
@@ -29,22 +37,26 @@ type Workspace struct {
 // GUI holds loopback server settings for a workspace.
 type GUI struct {
 	Port        int         `yaml:"port"`
+	Appearance  string      `yaml:"appearance,omitempty"`
 	PanelWidths PanelWidths `yaml:"panelWidths"`
 }
 
 // PanelWidths stores persisted panel width ratios for the desktop GUI shell.
 type PanelWidths struct {
-	LeftRatio  float64 `yaml:"leftRatio"`
-	RightRatio float64 `yaml:"rightRatio"`
+	LeftRatio        float64 `yaml:"leftRatio"`
+	RightRatio       float64 `yaml:"rightRatio"`
+	DocumentTOCRatio float64 `yaml:"documentTOCRatio"`
 }
 
 // DefaultWorkspace returns the default workspace configuration for new workspaces.
 func DefaultWorkspace() Workspace {
 	return Workspace{GUI: GUI{
-		Port: DefaultGUIPort,
+		Port:       DefaultGUIPort,
+		Appearance: AppearanceSystem,
 		PanelWidths: PanelWidths{
-			LeftRatio:  DefaultLeftPanelRatio,
-			RightRatio: DefaultRightPanelRatio,
+			LeftRatio:        DefaultLeftPanelRatio,
+			RightRatio:       DefaultRightPanelRatio,
+			DocumentTOCRatio: DefaultDocumentTOCRatio,
 		},
 	}}
 }
@@ -55,12 +67,20 @@ func (workspace Workspace) Validate() error {
 		return fmt.Errorf("gui.port must be between 1 and 65535")
 	}
 
+	if workspace.GUI.Appearance != AppearanceSystem && workspace.GUI.Appearance != AppearanceLight && workspace.GUI.Appearance != AppearanceDark {
+		return fmt.Errorf("gui.appearance must be one of %q, %q, or %q", AppearanceSystem, AppearanceLight, AppearanceDark)
+	}
+
 	if workspace.GUI.PanelWidths.LeftRatio <= 0 || workspace.GUI.PanelWidths.LeftRatio >= 1 {
 		return fmt.Errorf("gui.panelWidths.leftRatio must be between 0 and 1")
 	}
 
 	if workspace.GUI.PanelWidths.RightRatio <= 0 || workspace.GUI.PanelWidths.RightRatio >= 1 {
 		return fmt.Errorf("gui.panelWidths.rightRatio must be between 0 and 1")
+	}
+
+	if workspace.GUI.PanelWidths.DocumentTOCRatio <= 0 || workspace.GUI.PanelWidths.DocumentTOCRatio >= 1 {
+		return fmt.Errorf("gui.panelWidths.documentTOCRatio must be between 0 and 1")
 	}
 
 	if workspace.GUI.PanelWidths.LeftRatio+workspace.GUI.PanelWidths.RightRatio >= 0.9 {
@@ -143,12 +163,20 @@ func normalizeWorkspace(workspace Workspace) Workspace {
 		workspace.GUI.Port = defaultWorkspace.GUI.Port
 	}
 
+	if workspace.GUI.Appearance == "" {
+		workspace.GUI.Appearance = defaultWorkspace.GUI.Appearance
+	}
+
 	if workspace.GUI.PanelWidths.LeftRatio <= 0 || workspace.GUI.PanelWidths.LeftRatio >= 1 {
 		workspace.GUI.PanelWidths.LeftRatio = defaultWorkspace.GUI.PanelWidths.LeftRatio
 	}
 
 	if workspace.GUI.PanelWidths.RightRatio <= 0 || workspace.GUI.PanelWidths.RightRatio >= 1 {
 		workspace.GUI.PanelWidths.RightRatio = defaultWorkspace.GUI.PanelWidths.RightRatio
+	}
+
+	if workspace.GUI.PanelWidths.DocumentTOCRatio <= 0 || workspace.GUI.PanelWidths.DocumentTOCRatio >= 1 {
+		workspace.GUI.PanelWidths.DocumentTOCRatio = defaultWorkspace.GUI.PanelWidths.DocumentTOCRatio
 	}
 
 	if workspace.GUI.PanelWidths.LeftRatio+workspace.GUI.PanelWidths.RightRatio >= 0.9 {

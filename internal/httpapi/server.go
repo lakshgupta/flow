@@ -33,12 +33,20 @@ type workspaceResponse struct {
 	IndexPath     string          `json:"indexPath"`
 	HomePath      string          `json:"homePath"`
 	GUIPort       int             `json:"guiPort"`
+	Appearance    string          `json:"appearance"`
 	PanelWidths   panelWidths     `json:"panelWidths"`
 }
 
 type panelWidths struct {
-	LeftRatio  float64 `json:"leftRatio"`
-	RightRatio float64 `json:"rightRatio"`
+	LeftRatio        float64 `json:"leftRatio"`
+	RightRatio       float64 `json:"rightRatio"`
+	DocumentTOCRatio float64 `json:"documentTOCRatio"`
+}
+
+type updatePanelWidthsRequest struct {
+	LeftRatio        *float64 `json:"leftRatio"`
+	RightRatio       *float64 `json:"rightRatio"`
+	DocumentTOCRatio *float64 `json:"documentTOCRatio"`
 }
 
 type homeResponse struct {
@@ -60,12 +68,21 @@ type calendarDocumentResponse struct {
 }
 
 type graphTreeNodeResponse struct {
-	GraphPath   string `json:"graphPath"`
-	DisplayName string `json:"displayName"`
-	DirectCount int    `json:"directCount"`
-	TotalCount  int    `json:"totalCount"`
-	HasChildren bool   `json:"hasChildren"`
-	CountLabel  string `json:"countLabel"`
+	GraphPath   string                  `json:"graphPath"`
+	DisplayName string                  `json:"displayName"`
+	DirectCount int                     `json:"directCount"`
+	TotalCount  int                     `json:"totalCount"`
+	HasChildren bool                    `json:"hasChildren"`
+	CountLabel  string                  `json:"countLabel"`
+	Files       []graphTreeFileResponse `json:"files"`
+}
+
+type graphTreeFileResponse struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Title    string `json:"title"`
+	Path     string `json:"path"`
+	FileName string `json:"fileName"`
 }
 
 type graphTreeResponse struct {
@@ -139,6 +156,7 @@ type createDocumentRequest struct {
 type updateDocumentRequest struct {
 	ID          *string                  `json:"id"`
 	Graph       *string                  `json:"graph"`
+	FileName    *string                  `json:"fileName"`
 	Title       *string                  `json:"title"`
 	Description *string                  `json:"description"`
 	Tags        *[]string                `json:"tags"`
@@ -160,10 +178,15 @@ type updateHomeRequest struct {
 }
 
 type updateWorkspaceRequest struct {
-	PanelWidths *panelWidths `json:"panelWidths"`
+	Appearance  *string                   `json:"appearance"`
+	PanelWidths *updatePanelWidthsRequest `json:"panelWidths"`
 }
 
 type createGraphRequest struct {
+	Name string `json:"name"`
+}
+
+type renameGraphRequest struct {
 	Name string `json:"name"`
 }
 
@@ -256,6 +279,8 @@ func (handler *apiHandler) ServeHTTP(writer http.ResponseWriter, request *http.R
 		handler.handleGraphTree(writer, request)
 	case request.URL.Path == "/api/graphs" && request.Method == http.MethodPost:
 		handler.handleCreateGraph(writer, request)
+	case strings.HasPrefix(request.URL.Path, "/api/graphs/") && request.Method == http.MethodPatch:
+		handler.handleRenameGraph(writer, request)
 	case strings.HasPrefix(request.URL.Path, "/api/graphs/") && request.Method == http.MethodDelete:
 		handler.handleDeleteGraph(writer, request)
 	case request.URL.Path == "/api/graph-canvas" && request.Method == http.MethodGet:
@@ -337,9 +362,11 @@ func (handler *apiHandler) handleWorkspace(writer http.ResponseWriter, _ *http.R
 		IndexPath:     handler.options.Root.IndexPath,
 		HomePath:      filepath.ToSlash(filepath.Join(workspace.DataDirName, workspace.HomeFileName)),
 		GUIPort:       workspaceConfig.GUI.Port,
+		Appearance:    workspaceConfig.GUI.Appearance,
 		PanelWidths: panelWidths{
-			LeftRatio:  workspaceConfig.GUI.PanelWidths.LeftRatio,
-			RightRatio: workspaceConfig.GUI.PanelWidths.RightRatio,
+			LeftRatio:        workspaceConfig.GUI.PanelWidths.LeftRatio,
+			RightRatio:       workspaceConfig.GUI.PanelWidths.RightRatio,
+			DocumentTOCRatio: workspaceConfig.GUI.PanelWidths.DocumentTOCRatio,
 		},
 	})
 }
@@ -358,10 +385,18 @@ func (handler *apiHandler) handleUpdateWorkspace(writer http.ResponseWriter, req
 	}
 
 	if payload.PanelWidths != nil {
-		workspaceConfig.GUI.PanelWidths = config.PanelWidths{
-			LeftRatio:  payload.PanelWidths.LeftRatio,
-			RightRatio: payload.PanelWidths.RightRatio,
+		if payload.PanelWidths.LeftRatio != nil {
+			workspaceConfig.GUI.PanelWidths.LeftRatio = *payload.PanelWidths.LeftRatio
 		}
+		if payload.PanelWidths.RightRatio != nil {
+			workspaceConfig.GUI.PanelWidths.RightRatio = *payload.PanelWidths.RightRatio
+		}
+		if payload.PanelWidths.DocumentTOCRatio != nil {
+			workspaceConfig.GUI.PanelWidths.DocumentTOCRatio = *payload.PanelWidths.DocumentTOCRatio
+		}
+	}
+	if payload.Appearance != nil {
+		workspaceConfig.GUI.Appearance = strings.TrimSpace(*payload.Appearance)
 	}
 
 	if err := config.Write(handler.options.Root.ConfigPath, workspaceConfig); err != nil {
@@ -440,10 +475,41 @@ func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.R
 		return
 	}
 
+	documents, err := workspace.LoadDocuments(handler.options.Root.FlowPath)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
 	home, err := loadHomeResponse(handler.options.Root)
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
+	}
+
+	filesByGraph := make(map[string][]graphTreeFileResponse)
+	for _, item := range documents {
+		graphPath, ok, err := markdown.GraphPathFromWorkspacePath(item.Path)
+		if err != nil {
+			writeError(writer, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !ok {
+			continue
+		}
+
+		file, ok := graphTreeFileFromWorkspaceDocument(item)
+		if !ok {
+			continue
+		}
+
+		filesByGraph[graphPath] = append(filesByGraph[graphPath], file)
+	}
+
+	for graphPath := range filesByGraph {
+		slices.SortFunc(filesByGraph[graphPath], func(left graphTreeFileResponse, right graphTreeFileResponse) int {
+			return strings.Compare(left.FileName, right.FileName)
+		})
 	}
 
 	response := graphTreeResponse{Home: home, Graphs: make([]graphTreeNodeResponse, 0, len(nodes))}
@@ -455,10 +521,42 @@ func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.R
 			TotalCount:  node.TotalCount,
 			HasChildren: node.HasChildren,
 			CountLabel:  fmt.Sprintf("%d direct / %d total", node.DirectCount, node.TotalCount),
+			Files:       filesByGraph[node.GraphPath],
 		})
 	}
 
 	writeJSON(writer, http.StatusOK, response)
+}
+
+func graphTreeFileFromWorkspaceDocument(item markdown.WorkspaceDocument) (graphTreeFileResponse, bool) {
+	switch document := item.Document.(type) {
+	case markdown.NoteDocument:
+		return graphTreeFileResponse{
+			ID:       document.Metadata.ID,
+			Type:     string(document.Metadata.Type),
+			Title:    document.Metadata.Title,
+			Path:     item.Path,
+			FileName: filepath.Base(item.Path),
+		}, true
+	case markdown.TaskDocument:
+		return graphTreeFileResponse{
+			ID:       document.Metadata.ID,
+			Type:     string(document.Metadata.Type),
+			Title:    document.Metadata.Title,
+			Path:     item.Path,
+			FileName: filepath.Base(item.Path),
+		}, true
+	case markdown.CommandDocument:
+		return graphTreeFileResponse{
+			ID:       document.Metadata.ID,
+			Type:     string(document.Metadata.Type),
+			Title:    document.Metadata.Title,
+			Path:     item.Path,
+			FileName: filepath.Base(item.Path),
+		}, true
+	default:
+		return graphTreeFileResponse{}, false
+	}
 }
 
 func (handler *apiHandler) handleGraphCanvas(writer http.ResponseWriter, request *http.Request) {
@@ -635,6 +733,7 @@ func (handler *apiHandler) handleUpdateDocument(writer http.ResponseWriter, requ
 	workspaceDocument, err := workspace.UpdateDocumentByID(handler.options.Root, documentID, workspace.DocumentPatch{
 		ID:          payload.ID,
 		Graph:       payload.Graph,
+		FileName:    payload.FileName,
 		Title:       payload.Title,
 		Description: payload.Description,
 		Tags:        payload.Tags,
@@ -660,6 +759,27 @@ func (handler *apiHandler) handleUpdateDocument(writer http.ResponseWriter, requ
 	}
 
 	writeJSON(writer, http.StatusOK, response)
+}
+
+func (handler *apiHandler) handleRenameGraph(writer http.ResponseWriter, request *http.Request) {
+	graphName := strings.TrimPrefix(request.URL.Path, "/api/graphs/")
+	if strings.TrimSpace(graphName) == "" {
+		writeError(writer, http.StatusBadRequest, "graph name must not be empty")
+		return
+	}
+
+	var payload renameGraphRequest
+	if err := decodeJSONRequest(request, &payload); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := workspace.RenameGraph(handler.options.Root, graphName, payload.Name); err != nil {
+		writeMutationError(writer, err)
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, createGraphResponse{Name: payload.Name})
 }
 
 func (handler *apiHandler) handleDeleteGraph(writer http.ResponseWriter, request *http.Request) {

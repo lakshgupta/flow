@@ -103,8 +103,8 @@ func TestNewMuxServesHomeAndGraphTreeAPIs(t *testing.T) {
 	}
 
 	workspaceResponse := performJSONRequest[workspaceResponse](t, handler, http.MethodGet, "/api/workspace")
-	if workspaceResponse.PanelWidths.LeftRatio != 0.31 || workspaceResponse.PanelWidths.RightRatio != 0.22 {
-		t.Fatalf("workspaceResponse.PanelWidths = %#v, want 0.31/0.22", workspaceResponse.PanelWidths)
+	if workspaceResponse.PanelWidths.LeftRatio != 0.31 || workspaceResponse.PanelWidths.RightRatio != 0.22 || workspaceResponse.PanelWidths.DocumentTOCRatio != config.DefaultDocumentTOCRatio {
+		t.Fatalf("workspaceResponse.PanelWidths = %#v, want 0.31/0.22/default toc", workspaceResponse.PanelWidths)
 	}
 
 	home := performJSONRequest[homeResponse](t, handler, http.MethodGet, "/api/home")
@@ -132,9 +132,15 @@ func TestNewMuxServesHomeAndGraphTreeAPIs(t *testing.T) {
 	if graphTree.Graphs[0].CountLabel != "1 direct / 2 total" {
 		t.Fatalf("graphTree.Graphs[0].CountLabel = %q", graphTree.Graphs[0].CountLabel)
 	}
+	if len(graphTree.Graphs[0].Files) != 1 || graphTree.Graphs[0].Files[0].ID != "task-1" || graphTree.Graphs[0].Files[0].FileName != "build.md" {
+		t.Fatalf("graphTree.Graphs[0].Files = %#v, want execution/build.md task", graphTree.Graphs[0].Files)
+	}
 
 	if graphTree.Graphs[1].GraphPath != "execution/parser" || graphTree.Graphs[1].DirectCount != 1 || graphTree.Graphs[1].TotalCount != 1 || graphTree.Graphs[1].HasChildren {
 		t.Fatalf("graphTree.Graphs[1] = %#v", graphTree.Graphs[1])
+	}
+	if len(graphTree.Graphs[1].Files) != 1 || graphTree.Graphs[1].Files[0].ID != "cmd-1" || graphTree.Graphs[1].Files[0].FileName != "parse.md" {
+		t.Fatalf("graphTree.Graphs[1].Files = %#v, want execution/parser/parse.md command", graphTree.Graphs[1].Files)
 	}
 
 	results := performJSONRequest[[]index.SearchResult](t, handler, http.MethodGet, "/api/search?q=home")
@@ -238,21 +244,29 @@ func TestNewMuxUpdatesWorkspacePanelWidths(t *testing.T) {
 	}
 
 	updated := performJSONRequestWithBody[workspaceResponse](t, handler, http.MethodPut, "/api/workspace", map[string]any{
+		"appearance": "dark",
 		"panelWidths": map[string]any{
-			"leftRatio":  0.27,
-			"rightRatio": 0.21,
+			"leftRatio":        0.27,
+			"rightRatio":       0.21,
+			"documentTOCRatio": 0.24,
 		},
 	})
-	if updated.PanelWidths.LeftRatio != 0.27 || updated.PanelWidths.RightRatio != 0.21 {
-		t.Fatalf("updated.PanelWidths = %#v, want 0.27/0.21", updated.PanelWidths)
+	if updated.PanelWidths.LeftRatio != 0.27 || updated.PanelWidths.RightRatio != 0.21 || updated.PanelWidths.DocumentTOCRatio != 0.24 {
+		t.Fatalf("updated.PanelWidths = %#v, want 0.27/0.21/0.24", updated.PanelWidths)
+	}
+	if updated.Appearance != "dark" {
+		t.Fatalf("updated.Appearance = %q, want dark", updated.Appearance)
 	}
 
 	storedConfig, err := config.Read(root.ConfigPath)
 	if err != nil {
 		t.Fatalf("config.Read() error = %v", err)
 	}
-	if storedConfig.GUI.PanelWidths.LeftRatio != 0.27 || storedConfig.GUI.PanelWidths.RightRatio != 0.21 {
-		t.Fatalf("storedConfig.GUI.PanelWidths = %#v, want 0.27/0.21", storedConfig.GUI.PanelWidths)
+	if storedConfig.GUI.PanelWidths.LeftRatio != 0.27 || storedConfig.GUI.PanelWidths.RightRatio != 0.21 || storedConfig.GUI.PanelWidths.DocumentTOCRatio != 0.24 {
+		t.Fatalf("storedConfig.GUI.PanelWidths = %#v, want 0.27/0.21/0.24", storedConfig.GUI.PanelWidths)
+	}
+	if storedConfig.GUI.Appearance != "dark" {
+		t.Fatalf("storedConfig.GUI.Appearance = %q, want dark", storedConfig.GUI.Appearance)
 	}
 }
 
@@ -359,6 +373,13 @@ func TestNewMuxMutatesDocumentsAndReindexes(t *testing.T) {
 		t.Fatalf("updated = %#v", updated)
 	}
 
+	renamed := performJSONRequestWithBody[documentResponse](t, handler, http.MethodPut, "/api/documents/task-2", map[string]any{
+		"fileName": "publish-release",
+	})
+	if renamed.Path != "data/content/release/publish-release.md" {
+		t.Fatalf("renamed = %#v", renamed)
+	}
+
 	results := performJSONRequest[[]index.SearchResult](t, handler, http.MethodGet, "/api/search?q=publish")
 	if len(results) != 1 || results[0].ID != "task-2" {
 		t.Fatalf("search results = %#v, want task-2 match", results)
@@ -369,7 +390,7 @@ func TestNewMuxMutatesDocumentsAndReindexes(t *testing.T) {
 		t.Fatalf("deleted = %#v", deleted)
 	}
 
-	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "content", "release", "publish.md")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "content", "release", "publish-release.md")); !os.IsNotExist(err) {
 		t.Fatalf("Stat(deleted file) error = %v, want not exist", err)
 	}
 
@@ -377,6 +398,39 @@ func TestNewMuxMutatesDocumentsAndReindexes(t *testing.T) {
 	results = performJSONRequest[[]index.SearchResult](t, handler, http.MethodGet, "/api/search?q=publish")
 	if len(results) != 0 {
 		t.Fatalf("search results = %#v, want empty after delete", results)
+	}
+}
+
+func TestNewMuxRenamesGraphsAndReindexes(t *testing.T) {
+	t.Parallel()
+
+	root := createHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	renamed := performJSONRequestWithBody[createGraphResponse](t, handler, http.MethodPatch, "/api/graphs/execution", map[string]any{
+		"name": "delivery/execution",
+	})
+	if renamed.Name != "delivery/execution" {
+		t.Fatalf("renamed = %#v", renamed)
+	}
+
+	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "content", "delivery", "execution", "parser.md")); err != nil {
+		t.Fatalf("Stat(renamed graph file) error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "content", "execution")); !os.IsNotExist(err) {
+		t.Fatalf("Stat(old graph directory) error = %v, want not exist", err)
+	}
+
+	tree := performJSONRequest[graphTreeResponse](t, handler, http.MethodGet, "/api/graphs")
+	paths := make([]string, 0, len(tree.Graphs))
+	for _, node := range tree.Graphs {
+		paths = append(paths, node.GraphPath)
+	}
+	if !slices.Contains(paths, "delivery/execution") {
+		t.Fatalf("graph paths = %#v, want delivery/execution", paths)
 	}
 }
 
@@ -469,6 +523,7 @@ func TestNewMuxUsesFrontendJSONFieldNamesForGraphViews(t *testing.T) {
 	workspacePayload := performRawRequest(t, handler, http.MethodGet, "/api/workspace")
 	assertJSONHasPath(t, workspacePayload, "panelWidths.leftRatio")
 	assertJSONHasPath(t, workspacePayload, "panelWidths.rightRatio")
+	assertJSONHasPath(t, workspacePayload, "panelWidths.documentTOCRatio")
 
 	searchPayload := performRawRequestArray(t, handler, http.MethodGet, "/api/search?q=parser")
 	assertJSONArrayHasPath(t, searchPayload, 0, "id")

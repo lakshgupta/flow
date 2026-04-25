@@ -40,3 +40,6 @@ dist/
 # Editor/IDE
 # .idea/
 # .vscode/
+
+
+.flow/

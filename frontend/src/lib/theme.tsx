@@ -22,23 +22,12 @@ function getSystemTheme(): 'light' | 'dark' {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    // Load theme from localStorage or default to system
-    const stored = localStorage.getItem('flow-theme') as Theme;
-    return stored || 'system';
-  });
+  const [theme, setThemeState] = useState<Theme>('system');
 
-  const [actualTheme, setActualTheme] = useState<'light' | 'dark'>(() => {
-    const stored = localStorage.getItem('flow-theme') as Theme;
-    if (stored === 'system') {
-      return getSystemTheme();
-    }
-    return stored === 'dark' ? 'dark' : 'light';
-  });
+  const [actualTheme, setActualTheme] = useState<'light' | 'dark'>(() => getSystemTheme());
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);
-    localStorage.setItem('flow-theme', newTheme);
 
     const resolvedTheme = newTheme === 'system' ? getSystemTheme() : newTheme;
     setActualTheme(resolvedTheme);

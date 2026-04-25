@@ -58,6 +58,7 @@ type CreateDocumentInput struct {
 type DocumentPatch struct {
 	ID          *string
 	Graph       *string
+	FileName    *string
 	Title       *string
 	Description *string
 	Tags        *[]string
@@ -93,6 +94,50 @@ func CreateGraph(root Root, input CreateGraphInput) error {
 	if err := os.MkdirAll(graphDir, 0o755); err != nil {
 		return fmt.Errorf("create graph directory: %w", err)
 	}
+	return nil
+}
+
+// RenameGraph renames one graph directory and all nested content paths, then rebuilds the index.
+func RenameGraph(root Root, currentName string, nextName string) error {
+	currentName = strings.TrimSpace(currentName)
+	nextName = strings.TrimSpace(nextName)
+	if currentName == "" || nextName == "" {
+		return InvalidMutationError{Err: errors.New("current and next graph names are required")}
+	}
+
+	currentClean := filepath.Clean(currentName)
+	nextClean := filepath.Clean(nextName)
+	if strings.HasPrefix(currentClean, "..") || strings.HasPrefix(nextClean, "..") {
+		return InvalidMutationError{Err: errors.New("graph name is invalid")}
+	}
+	if currentClean == nextClean {
+		return InvalidMutationError{Err: errors.New("graph name must change")}
+	}
+
+	currentDir := filepath.Join(root.GraphsPath, filepath.FromSlash(currentClean))
+	nextDir := filepath.Join(root.GraphsPath, filepath.FromSlash(nextClean))
+
+	if _, err := os.Stat(currentDir); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return DocumentNotFoundError{Selector: currentName}
+		}
+		return fmt.Errorf("stat graph directory: %w", err)
+	}
+	if _, err := os.Stat(nextDir); err == nil {
+		return InvalidMutationError{Err: fmt.Errorf("graph %q already exists", nextName)}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("stat renamed graph directory: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(nextDir), 0o755); err != nil {
+		return fmt.Errorf("create renamed graph parent directory: %w", err)
+	}
+	if err := os.Rename(currentDir, nextDir); err != nil {
+		return fmt.Errorf("rename graph directory: %w", err)
+	}
+	if err := rebuildIndex(root); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -166,7 +211,7 @@ func UpdateDocumentByPath(root Root, pathValue string, patch DocumentPatch) (mar
 		return markdown.WorkspaceDocument{}, err
 	}
 
-	targetRelativePath, err := targetDocumentPath(relativePath, updatedDocument)
+	targetRelativePath, err := targetDocumentPathWithPatch(relativePath, updatedDocument, patch)
 	if err != nil {
 		return markdown.WorkspaceDocument{}, err
 	}
@@ -571,7 +616,7 @@ func applyDocumentPatch(document markdown.Document, patch DocumentPatch) (markdo
 }
 
 func (patch DocumentPatch) isEmpty() bool {
-	return patch.ID == nil && patch.Graph == nil && patch.Title == nil && patch.Description == nil && patch.Tags == nil && patch.CreatedAt == nil && patch.UpdatedAt == nil && patch.Body == nil && patch.Status == nil && patch.DependsOn == nil && patch.References == nil && patch.Name == nil && patch.Env == nil && patch.Run == nil
+	return patch.ID == nil && patch.Graph == nil && patch.FileName == nil && patch.Title == nil && patch.Description == nil && patch.Tags == nil && patch.CreatedAt == nil && patch.UpdatedAt == nil && patch.Body == nil && patch.Status == nil && patch.DependsOn == nil && patch.References == nil && patch.Name == nil && patch.Env == nil && patch.Run == nil
 }
 
 func patchCommonFields(fields *markdown.CommonFields, patch DocumentPatch) {
@@ -860,6 +905,37 @@ func rebuildIndex(root Root) error {
 func targetDocumentPath(currentRelativePath string, document markdown.Document) (string, error) {
 	graphPath := documentGraph(document)
 	fileName := filepath.Base(filepath.FromSlash(currentRelativePath))
+	if fileName == "." || fileName == string(filepath.Separator) || fileName == "" {
+		return "", InvalidMutationError{Err: fmt.Errorf("document path must point to a Markdown file inside %s", DirName)}
+	}
+
+	relativePath, err := markdown.RelativeGraphDocumentPath(graphPath, fileName)
+	if err != nil {
+		return "", InvalidMutationError{Err: err}
+	}
+
+	return filepath.ToSlash(relativePath), nil
+}
+
+func targetDocumentPathWithPatch(currentRelativePath string, document markdown.Document, patch DocumentPatch) (string, error) {
+	graphPath, ok, err := markdown.GraphPathFromWorkspacePath(currentRelativePath)
+	if err != nil {
+		return "", InvalidMutationError{Err: err}
+	}
+	if !ok {
+		return "", InvalidMutationError{Err: fmt.Errorf("document path must point to a graph-backed Markdown file")}
+	}
+	if patch.Graph != nil {
+		graphPath = strings.TrimSpace(*patch.Graph)
+	}
+	fileName := filepath.Base(filepath.FromSlash(currentRelativePath))
+	if patch.FileName != nil {
+		trimmed := strings.TrimSpace(*patch.FileName)
+		if trimmed == "" {
+			return "", InvalidMutationError{Err: fmt.Errorf("file name must not be empty")}
+		}
+		fileName = ensureMarkdownFileName(trimmed)
+	}
 	if fileName == "." || fileName == string(filepath.Separator) || fileName == "" {
 		return "", InvalidMutationError{Err: fmt.Errorf("document path must point to a Markdown file inside %s", DirName)}
 	}

@@ -1,5 +1,7 @@
 gui:
     port: 4317
+    appearance: light
     panelWidths:
         leftRatio: 0.206690126523986
         rightRatio: 0.2723916236390459
+        documentTOCRatio: 0.15296052631578946

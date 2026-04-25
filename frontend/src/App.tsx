@@ -10,7 +10,7 @@ import {
   type Node,
   type NodeChange,
 } from "@xyflow/react";
-import { CalendarDays, CheckSquare, FileText, Info, List, Maximize2, Minimize2, PaintbrushVertical, Search, Settings, Terminal, Trash2, TriangleAlert, X } from "lucide-react";
+import { CalendarDays, CheckSquare, FileText, Info, Maximize2, Minimize2, PaintbrushVertical, Search, Settings, Terminal, Trash2, TriangleAlert, X } from "lucide-react";
 import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppSidebar } from "./components/AppSidebar";
@@ -86,6 +86,7 @@ import type {
   GraphCanvasResponseWire,
   GraphCreateType,
   GraphLayoutResponse,
+  GraphTreeFileData,
   GraphTreeResponse,
   HomeFormState,
   HomeResponse,
@@ -96,8 +97,45 @@ import type {
 } from "./types";
 import "./styles.css";
 
-type RightPanelTab = "calendar" | "toc" | "document" | "search";
-type RestorableRightPanelTab = "document" | "toc";
+type RightPanelTab = "calendar" | "search";
+type DocumentOpenMode = "center" | "right-rail";
+type RenameDialogState =
+  | { kind: "graph"; graphPath: string }
+  | { kind: "node"; documentId: string; fileName: string };
+type DeleteDialogState = {
+  id: string;
+  type: string;
+  title: string;
+  path: string;
+  graphPath: string;
+};
+
+const DEFAULT_DOCUMENT_TOC_RATIO = 0.18;
+const MIN_DOCUMENT_TOC_RATIO = 0.14;
+const MAX_DOCUMENT_TOC_RATIO = 0.32;
+const DOCUMENT_FILE_NAME_PATTERN = /^[a-z0-9][a-z0-9._/-]*$/;
+
+function clampDocumentTOCRatio(value: number): number {
+  return Math.min(Math.max(value, MIN_DOCUMENT_TOC_RATIO), MAX_DOCUMENT_TOC_RATIO);
+}
+
+function isValidDocumentFileName(value: string): boolean {
+  return DOCUMENT_FILE_NAME_PATTERN.test(value);
+}
+
+function stripMarkdownExtension(value: string): string {
+  return value.endsWith(".md") ? value.slice(0, -3) : value;
+}
+
+function remapGraphPath(path: string, currentPath: string, nextPath: string): string {
+  if (path === currentPath) {
+    return nextPath;
+  }
+  if (path.startsWith(currentPath + "/")) {
+    return `${nextPath}${path.slice(currentPath.length)}`;
+  }
+  return path;
+}
 
 
 function FlowApp() {
@@ -115,6 +153,7 @@ function FlowApp() {
   const [graphCreateError, setGraphCreateError] = useState<string>("");
   const [activeSurface, setActiveSurface] = useState<SurfaceState>({ kind: "home" });
   const [selectedDocumentId, setSelectedDocumentId] = useState<string>("");
+  const [selectedDocumentOpenMode, setSelectedDocumentOpenMode] = useState<DocumentOpenMode>("right-rail");
   const [selectedDocument, setSelectedDocument] = useState<DocumentResponse | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const deferredSearchQuery = useDeferredValue(searchQuery.trim());
@@ -128,9 +167,14 @@ function FlowApp() {
   const [settingsTab, setSettingsTab] = useState<"general" | "theme" | "stop">("general");
   const [formState, setFormState] = useState<DocumentFormState>(emptyDocumentFormState);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false);
+  const [deleteDialogTarget, setDeleteDialogTarget] = useState<DeleteDialogState | null>(null);
   const [createNodeDialog, setCreateNodeDialog] = useState<{ type: GraphCreateType; graphPath: string; origin: "canvas" | "sidebar" } | null>(null);
   const [createNodeFileName, setCreateNodeFileName] = useState<string>("");
   const [createNodeFileNameError, setCreateNodeFileNameError] = useState<string>("");
+  const [renameDialog, setRenameDialog] = useState<RenameDialogState | null>(null);
+  const [renameValue, setRenameValue] = useState<string>("");
+  const [renameError, setRenameError] = useState<string>("");
+  const [renamePending, setRenamePending] = useState<boolean>(false);
   const [editingEdge, setEditingEdge] = useState<{ sourceId: string; targetId: string; context: string } | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string>("");
   const [hoveredEdgeTooltip, setHoveredEdgeTooltip] = useState<{ edgeId: string; context: string; x: number; y: number } | null>(null);
@@ -142,11 +186,11 @@ function FlowApp() {
   const [homeMutationError, setHomeMutationError] = useState<string>("");
   const [savingDocument, setSavingDocument] = useState<boolean>(false);
   const [deletingDocument, setDeletingDocument] = useState<boolean>(false);
-  const [rightSidebarFocused, setRightSidebarFocused] = useState<boolean>(false);
   const [savingHome, setSavingHome] = useState<boolean>(false);
   const [calendarFocusDate, setCalendarFocusDate] = useState<string>(() => todayString());
   const [leftSidebarWidth, setLeftSidebarWidth] = useState<number>(256);
   const [rightSidebarWidth, setRightSidebarWidth] = useState<number>(320);
+  const [documentTOCRatio, setDocumentTOCRatio] = useState<number>(DEFAULT_DOCUMENT_TOC_RATIO);
   const [isResizingLeft, setIsResizingLeft] = useState<boolean>(false);
   const [isResizingRight, setIsResizingRight] = useState<boolean>(false);
   const [canvasContextMenu, setCanvasContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -157,6 +201,9 @@ function FlowApp() {
   const [connectingTarget, setConnectingTarget] = useState<string | null>(null);
 
   const graphCanvasShellRef = useRef<HTMLDivElement | null>(null);
+  const centerDocumentLayoutRef = useRef<HTMLDivElement | null>(null);
+  const homeDocumentLayoutRef = useRef<HTMLDivElement | null>(null);
+  const rightRailDocumentLayoutRef = useRef<HTMLDivElement | null>(null);
   const connectingTargetRef = useRef<string | null>(null);
   const homeFormStateRef = useRef<HomeFormState>(emptyHomeFormState);
   const homeAutoSaveTimerRef = useRef<number | null>(null);
@@ -174,10 +221,9 @@ function FlowApp() {
   } | null>(null);
   const selectedGraphPath = activeSurface.kind === "graph" ? activeSurface.graphPath : "";
   const [rightRailCollapsed, setRightRailCollapsed] = useState<boolean>(true);
+  const [rightRailMaximized, setRightRailMaximized] = useState<boolean>(false);
 
-  const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>("document");
-  const [rightPanelReturnTab, setRightPanelReturnTab] = useState<RestorableRightPanelTab | null>(null);
-  const [scrollTargetId, setScrollTargetId] = useState<string | null>(null);
+  const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab | "document">("search");
   const [editorScrollTarget, setEditorScrollTarget] = useState<string | null>(null);
 
   const graphCanvasNodes = buildGraphCanvasFlowNodes(graphCanvasData, graphCanvasPositions, selectedCanvasNodeId, selectedDocumentId);
@@ -190,6 +236,51 @@ function FlowApp() {
   const selectedCanvasNodeEdgeCount = countConnectedGraphCanvasEdges(graphCanvasData, selectedCanvasNodeId);
   const workspaceSurfaceSection = activeSurface.kind === "graph" ? "Content" : "Home";
   const workspaceSurfaceTitle = activeSurface.kind === "graph" ? selectedGraphNode?.displayName ?? selectedGraphPath : null;
+  const isCenterDocumentOpen = selectedDocumentId !== "" && selectedDocumentOpenMode === "center";
+  const hasRightRailDocument = selectedDocumentId !== "" && selectedDocumentOpenMode === "right-rail";
+  const showRightRailDocumentButton = activeSurface.kind === "graph" && !isCenterDocumentOpen && (selectedCanvasNode !== null || hasRightRailDocument);
+  const selectedNodeMatchesRightRailDocument = selectedCanvasNode !== null && hasRightRailDocument && selectedDocumentId === selectedCanvasNode.id;
+  const documentGraphById = useMemo(() => {
+    const graphByID = new Map<string, string>();
+
+    for (const graphNode of graphTree?.graphs ?? []) {
+      for (const file of graphNode.files) {
+        graphByID.set(file.id, graphNode.graphPath);
+      }
+    }
+
+    return graphByID;
+  }, [graphTree]);
+
+  useEffect(() => {
+    if (workspace === null) {
+      return;
+    }
+
+    setDocumentTOCRatio(clampDocumentTOCRatio(workspace.panelWidths.documentTOCRatio));
+  }, [workspace]);
+
+  useEffect(() => {
+    if (selectedDocumentId !== "" || rightPanelTab !== "document") {
+      return;
+    }
+
+    setRightPanelTab("search");
+    setRightRailCollapsed(true);
+  }, [rightPanelTab, selectedDocumentId]);
+
+  const showFreshStartGuide = useMemo(() => {
+    if (activeSurface.kind !== "home") {
+      return false;
+    }
+
+    if ((graphTree?.graphs.length ?? 0) > 0) {
+      return false;
+    }
+
+    const normalizedHomeBody = homeFormState.body.trim();
+    return normalizedHomeBody === "" || normalizedHomeBody === "# Home";
+  }, [activeSurface.kind, graphTree?.graphs.length, homeFormState.body]);
   const tocItems = useMemo(() => {
     if (activeSurface.kind === "home") {
       return generateTOC(homeFormState.body);
@@ -232,41 +323,57 @@ function FlowApp() {
   }, []);
 
   function collapseRightRail(): void {
+    setRightRailMaximized(false);
     setRightRailCollapsed(true);
-    setRightSidebarFocused(false);
   }
 
-  function openPrimaryRightPanel(tab: RestorableRightPanelTab): void {
-    setRightPanelReturnTab(tab);
-    setRightPanelTab(tab);
-    setRightRailCollapsed(false);
-  }
-
-  function toggleRightPanel(tab: RightPanelTab): void {
+  function toggleRightPanel(tab: RightPanelTab | "document"): void {
     if (rightPanelTab === tab && !rightRailCollapsed) {
-      if (tab !== "document" && rightPanelReturnTab !== null && rightPanelReturnTab !== tab) {
-        openPrimaryRightPanel(rightPanelReturnTab);
-        return;
-      }
-
-      if (tab === "document") {
-        setRightPanelReturnTab(null);
-      }
       collapseRightRail();
       return;
     }
 
-    if (tab === "document" || tab === "toc") {
-      openPrimaryRightPanel(tab);
-      return;
-    }
-
-    if (!rightRailCollapsed && (rightPanelTab === "document" || rightPanelTab === "toc")) {
-      setRightPanelReturnTab(rightPanelTab);
+    if (tab !== "document") {
+      setRightRailMaximized(false);
     }
 
     setRightPanelTab(tab);
     setRightRailCollapsed(false);
+  }
+
+  function openDocumentInCenter(documentId: string, graphPath: string): void {
+    clearSurfaceFeedback();
+    startTransition(() => {
+      setActiveSurface({ kind: "graph", graphPath });
+    });
+    setSelectedCanvasNodeId(documentId);
+    setSelectedDocumentOpenMode("center");
+    setSelectedDocumentId(documentId);
+    if (rightPanelTab === "document") {
+      setRightPanelTab("search");
+      setRightRailCollapsed(true);
+    }
+  }
+
+  function openDocumentInRightRail(documentId: string, graphPath: string): void {
+    clearSurfaceFeedback();
+    startTransition(() => {
+      setActiveSurface({ kind: "graph", graphPath });
+    });
+    setSelectedCanvasNodeId(documentId);
+    setSelectedDocumentOpenMode("right-rail");
+    setSelectedDocumentId(documentId);
+    setRightPanelTab("document");
+    setRightRailMaximized(false);
+    setRightRailCollapsed(false);
+  }
+
+  function toggleRightRailMaximized(): void {
+    if (rightRailCollapsed) {
+      return;
+    }
+
+    setRightRailMaximized((current) => !current);
   }
 
   function isPrimaryMouseButton(button: number): boolean {
@@ -343,29 +450,16 @@ function FlowApp() {
   }
 
   useEffect(() => {
-    if (activeSurface.kind === "home") {
-      setRightPanelReturnTab("toc");
-      setRightPanelTab("toc");
-    } else if (selectedDocumentId !== "") {
-      openPrimaryRightPanel("document");
-    }
-  }, [selectedDocumentId, activeSurface.kind]);
-
-  useEffect(() => {
-    if (rightPanelTab === "document" && scrollTargetId) {
-      const element = document.getElementById(scrollTargetId);
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth' });
-      }
-      setScrollTargetId(null);
-    }
-  }, [rightPanelTab, scrollTargetId]);
-
-  useEffect(() => {
     const next = createHomeFormState(graphTree?.home ?? null);
     homeFormStateRef.current = next;
     setHomeFormState(next);
   }, [graphTree]);
+
+  useEffect(() => {
+    if (workspace !== null) {
+      setTheme(workspace.appearance);
+    }
+  }, [setTheme, workspace]);
 
   useEffect(() => {
     let cancelled = false;
@@ -629,9 +723,31 @@ function FlowApp() {
       documentAutoSaveTimerRef.current = null;
     }
     setSelectedDocumentId("");
+    setSelectedDocumentOpenMode("right-rail");
     syncSelectedDocumentState(null);
+    setDeleteDialogTarget(null);
     setDeleteDialogOpen(false);
     clearSurfaceFeedback();
+  }
+
+  function openDeleteDialog(target: DeleteDialogState): void {
+    clearMutationFeedback();
+    setDeleteDialogTarget(target);
+    setDeleteDialogOpen(true);
+  }
+
+  function openDeleteDialogForSelectedDocument(): void {
+    if (selectedDocument === null) {
+      return;
+    }
+
+    openDeleteDialog({
+      id: selectedDocument.id,
+      type: selectedDocument.type,
+      title: selectedDocument.title,
+      path: selectedDocument.path,
+      graphPath: selectedDocument.graph,
+    });
   }
 
   function handleSelectHome(): void {
@@ -655,10 +771,16 @@ function FlowApp() {
   }
 
   function handleOpenCanvasDocument(documentId: string): void {
-    clearSurfaceFeedback();
-    setSelectedCanvasNodeId(documentId);
-    setSelectedDocumentId(documentId);
-    openPrimaryRightPanel("document");
+    openDocumentInRightRail(documentId, selectedGraphPath);
+  }
+
+  function handleSelectedNodeDocumentButtonClick(): void {
+    if (selectedCanvasNode !== null && !selectedNodeMatchesRightRailDocument) {
+      openDocumentInRightRail(selectedCanvasNode.id, selectedGraphPath);
+      return;
+    }
+
+    toggleRightPanel("document");
   }
 
   function updateGraphCanvasNodePosition(documentId: string, position: GraphCanvasPosition): void {
@@ -716,23 +838,19 @@ function FlowApp() {
   }
 
   function handleSelectDocument(documentId: string, graphPath: string): void {
-    clearSurfaceFeedback();
-    startTransition(() => {
-      setActiveSurface({ kind: "graph", graphPath });
-    });
-    setSelectedCanvasNodeId(documentId);
-    setSelectedDocumentId(documentId);
+    openDocumentInCenter(documentId, graphPath);
+  }
+
+  function handleInspectDocument(documentId: string, graphPath: string): void {
+    openDocumentInRightRail(documentId, graphPath);
   }
 
   function handleSearchResultNavigate(result: SearchResult): void {
     if (result.type === "home") {
-      startTransition(() => setActiveSurface({ kind: "home" }));
+      handleSelectHome();
       return;
     }
-    clearSurfaceFeedback();
-    startTransition(() => setActiveSurface({ kind: "graph", graphPath: result.graph }));
-    setSelectedCanvasNodeId(result.id);
-    // Intentionally do NOT set selectedDocumentId — keeps right panel on search view
+    openDocumentInRightRail(result.id, result.graph);
   }
 
   function handleTOCNavigate(itemId: string): void {
@@ -745,6 +863,92 @@ function FlowApp() {
     if (element) {
       element.scrollIntoView({ behavior: "smooth" });
     }
+  }
+
+  async function persistDocumentTOCRatio(nextRatio: number): Promise<void> {
+    if (workspace === null) {
+      return;
+    }
+
+    try {
+      const updatedWorkspace = await requestJSON<WorkspaceResponse>("/api/workspace", {
+        method: "PUT",
+        body: JSON.stringify({
+          panelWidths: {
+            leftRatio: workspace.panelWidths.leftRatio,
+            rightRatio: workspace.panelWidths.rightRatio,
+            documentTOCRatio: nextRatio,
+          },
+        }),
+      });
+      setWorkspace(updatedWorkspace);
+    } catch (saveError) {
+      setError(toErrorMessage(saveError));
+    }
+  }
+
+  async function handleAppearanceChange(nextAppearance: "light" | "dark" | "system"): Promise<void> {
+    const previousAppearance = theme;
+    setTheme(nextAppearance);
+
+    try {
+      const updatedWorkspace = await requestJSON<WorkspaceResponse>("/api/workspace", {
+        method: "PUT",
+        body: JSON.stringify({
+          appearance: nextAppearance,
+        }),
+      });
+      setWorkspace(updatedWorkspace);
+      setError("");
+    } catch (saveError) {
+      setTheme(previousAppearance);
+      setError(toErrorMessage(saveError));
+    }
+  }
+
+  function beginDocumentTOCResize(event: React.MouseEvent<HTMLDivElement>, layout: HTMLDivElement | null): void {
+    if (!isPrimaryMouseButton(event.button) || layout === null) {
+      return;
+    }
+
+    const layoutBounds = layout.getBoundingClientRect();
+    if (layoutBounds.width <= 0) {
+      return;
+    }
+
+    let nextRatio = documentTOCRatio;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const tocWidth = layoutBounds.right - moveEvent.clientX;
+      nextRatio = clampDocumentTOCRatio(tocWidth / layoutBounds.width);
+      setDocumentTOCRatio(nextRatio);
+    };
+
+    const handleMouseUp = () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+      void persistDocumentTOCRatio(nextRatio);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    event.preventDefault();
+  }
+
+  function handleDocumentTOCResizeMouseDown(event: React.MouseEvent<HTMLDivElement>): void {
+    beginDocumentTOCResize(event, centerDocumentLayoutRef.current);
+  }
+
+  function handleHomeDocumentTOCResizeMouseDown(event: React.MouseEvent<HTMLDivElement>): void {
+    beginDocumentTOCResize(event, homeDocumentLayoutRef.current);
+  }
+
+  function handleRightRailDocumentTOCResizeMouseDown(event: React.MouseEvent<HTMLDivElement>): void {
+    beginDocumentTOCResize(event, rightRailDocumentLayoutRef.current);
   }
 
   function handleCreateGraphDocument(type: GraphCreateType): void {
@@ -775,6 +979,30 @@ function FlowApp() {
     setCreateNodeFileNameError("");
   }
 
+  function handleSidebarRenameGraph(graphPath: string): void {
+    clearMutationFeedback();
+    setRenameDialog({ kind: "graph", graphPath });
+    setRenameValue(graphPath);
+    setRenameError("");
+  }
+
+  function handleSidebarRenameNode(documentId: string, fileName: string): void {
+    clearMutationFeedback();
+    setRenameDialog({ kind: "node", documentId, fileName });
+    setRenameValue(stripMarkdownExtension(fileName));
+    setRenameError("");
+  }
+
+  function handleSidebarDeleteNode(file: GraphTreeFileData, graphPath: string): void {
+    openDeleteDialog({
+      id: file.id,
+      type: file.type,
+      title: file.title,
+      path: file.path,
+      graphPath,
+    });
+  }
+
   async function handleConfirmCreateNode(): Promise<void> {
     if (createNodeDialog === null) {
       return;
@@ -784,7 +1012,7 @@ function FlowApp() {
       setCreateNodeFileNameError("File name is required.");
       return;
     }
-    if (!/^[a-z0-9][a-z0-9._/-]*$/.test(trimmed)) {
+    if (!isValidDocumentFileName(trimmed)) {
       setCreateNodeFileNameError("Use only lowercase letters, numbers, hyphens, underscores, dots, and slashes.");
       return;
     }
@@ -798,6 +1026,9 @@ function FlowApp() {
         body: JSON.stringify(createGraphDocumentPayload(type, graphPath, trimmed)),
       });
       if (origin === "canvas") {
+        setSelectedDocumentOpenMode("right-rail");
+        setRightPanelTab("document");
+        setRightRailCollapsed(false);
         await refreshShellViews({ nextDocument: createdDocument, nextDocumentId: createdDocument.id });
         setSelectedCanvasNodeId(createdDocument.id);
         setMutationError("");
@@ -807,13 +1038,95 @@ function FlowApp() {
         setGraphTree(snapshot.graphTreeData);
         startTransition(() => setActiveSurface({ kind: "graph", graphPath }));
         setSelectedCanvasNodeId(createdDocument.id);
+        setSelectedDocumentOpenMode("right-rail");
         setSelectedDocumentId(createdDocument.id);
-        openPrimaryRightPanel("document");
+        setRightPanelTab("document");
+        setRightRailCollapsed(false);
       }
     } catch (createError) {
       setGraphCreateError(toErrorMessage(createError));
     } finally {
       setGraphCreatePendingType("");
+    }
+  }
+
+  async function handleConfirmRename(): Promise<void> {
+    if (renameDialog === null || renamePending) {
+      return;
+    }
+
+    const trimmed = renameValue.trim();
+    if (trimmed === "") {
+      setRenameError(renameDialog.kind === "graph" ? "Graph name is required." : "File name is required.");
+      return;
+    }
+
+    if (renameDialog.kind === "graph") {
+      if (trimmed === renameDialog.graphPath) {
+        setRenameError("Graph name must change.");
+        return;
+      }
+    } else {
+      if (!isValidDocumentFileName(trimmed)) {
+        setRenameError("Use only lowercase letters, numbers, hyphens, underscores, dots, and slashes.");
+        return;
+      }
+      if (stripMarkdownExtension(renameDialog.fileName) === trimmed) {
+        setRenameError("File name must change.");
+        return;
+      }
+    }
+
+    setRenamePending(true);
+    try {
+      if (renameDialog.kind === "graph") {
+        await requestJSON<{ name: string }>(`/api/graphs/${encodeURIComponent(renameDialog.graphPath)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ name: trimmed }),
+        });
+
+        const selectedDocumentGraphPath = selectedDocument?.graph ?? documentGraphById.get(selectedDocumentId) ?? "";
+        const selectedDocumentAffected =
+          selectedDocumentId !== "" &&
+          (selectedDocumentGraphPath === renameDialog.graphPath || selectedDocumentGraphPath.startsWith(renameDialog.graphPath + "/"));
+        const refreshedSelectedDocument = selectedDocumentAffected
+          ? await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(selectedDocumentId)}`)
+          : undefined;
+
+        setRenameDialog(null);
+        await refreshShellViews(refreshedSelectedDocument !== undefined
+          ? { nextDocument: refreshedSelectedDocument, nextDocumentId: refreshedSelectedDocument.id }
+          : undefined);
+
+        if (activeSurface.kind === "graph") {
+          const nextGraphPath = remapGraphPath(activeSurface.graphPath, renameDialog.graphPath, trimmed);
+          if (nextGraphPath !== activeSurface.graphPath) {
+            startTransition(() => setActiveSurface({ kind: "graph", graphPath: nextGraphPath }));
+          }
+        }
+
+        setMutationError("");
+        setMutationSuccess(`Graph renamed to ${trimmed}.`);
+      } else {
+        const updatedDocument = await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(renameDialog.documentId)}`, {
+          method: "PUT",
+          body: JSON.stringify({ fileName: trimmed }),
+        });
+
+        setRenameDialog(null);
+        if (selectedDocumentId === updatedDocument.id) {
+          await refreshShellViews({ nextDocument: updatedDocument, nextDocumentId: updatedDocument.id });
+        } else {
+          await refreshShellViews();
+        }
+
+        setMutationError("");
+        setMutationSuccess(`${formatDocumentType(updatedDocument.type)} renamed to ${fileNameFromPath(updatedDocument.path)}.`);
+      }
+    } catch (renameFailure) {
+      setRenameError(toErrorMessage(renameFailure));
+    } finally {
+      setRenamePending(false);
     }
   }
 
@@ -1115,9 +1428,11 @@ function FlowApp() {
       const snapshot = await loadWorkspaceSnapshot();
       setGraphTree(snapshot.graphTreeData);
       setShiftSelectedNodes([]);
+      setSelectedDocumentOpenMode("right-rail");
+      setRightPanelTab("document");
+      setRightRailCollapsed(false);
       await refreshShellViews({ nextDocument: mergedDocument, nextDocumentId: mergedDocument.id });
       setSelectedCanvasNodeId(mergedDocument.id);
-      openPrimaryRightPanel("document");
       setMutationSuccess("Documents merged.");
     } catch (mergeFailure) {
       setMutationError(toErrorMessage(mergeFailure));
@@ -1125,7 +1440,7 @@ function FlowApp() {
   }
 
   async function handleDeleteDocument(): Promise<void> {
-    if (selectedDocument === null) {
+    if (deleteDialogTarget === null) {
       return;
     }
 
@@ -1133,12 +1448,18 @@ function FlowApp() {
       setDeletingDocument(true);
       clearMutationFeedback();
 
-      const response = await requestJSON<DeleteDocumentResponse>(`/api/documents/${encodeURIComponent(selectedDocument.id)}`, {
+      const response = await requestJSON<DeleteDocumentResponse>(`/api/documents/${encodeURIComponent(deleteDialogTarget.id)}`, {
         method: "DELETE",
       });
 
-      await refreshShellViews({ nextDocument: null, nextDocumentId: "" });
-      setMutationSuccess(`${formatDocumentType(selectedDocument.type)} deleted from ${response.path}.`);
+      const deletedSelectedDocument = selectedDocumentId === deleteDialogTarget.id;
+      setDeleteDialogTarget(null);
+      if (deletedSelectedDocument) {
+        await refreshShellViews({ nextDocument: null, nextDocumentId: "" });
+      } else {
+        await refreshShellViews();
+      }
+      setMutationSuccess(`${formatDocumentType(deleteDialogTarget.type)} deleted from ${response.path}.`);
     } catch (mutationFailure) {
       setMutationError(toErrorMessage(mutationFailure));
     } finally {
@@ -1190,10 +1511,15 @@ function FlowApp() {
           <GraphTree
             graphTree={graphTree}
             activeSurface={activeSurface}
+            selectedDocumentId={selectedDocumentId}
             onSelectHome={handleSelectHome}
             onSelectGraph={handleSelectGraph}
+            onOpenDocument={(documentId, graphPath) => handleSelectDocument(documentId, graphPath)}
             onCreateGraph={(name) => void handleSidebarCreateGraph(name)}
             onCreateNode={(graphPath, type) => void handleSidebarCreateNode(graphPath, type)}
+            onRenameGraph={handleSidebarRenameGraph}
+            onRenameNode={handleSidebarRenameNode}
+            onDeleteNode={handleSidebarDeleteNode}
             onDeleteGraph={(graphPath) => void handleSidebarDeleteGraph(graphPath)}
           />
         )}
@@ -1225,20 +1551,275 @@ function FlowApp() {
             </div>
           </header>
 
+          <Dialog open={deleteDialogOpen} onOpenChange={(open) => {
+            setDeleteDialogOpen(open);
+            if (!open) {
+              setDeleteDialogTarget(null);
+            }
+          }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete document?</DialogTitle>
+                <DialogDescription>
+                  {deleteDialogTarget === null
+                    ? "This removes the selected document from the workspace."
+                    : `This removes ${deleteDialogTarget.title} from the workspace.`}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="shell-dialog-actions">
+                <Button onClick={() => { setDeleteDialogTarget(null); setDeleteDialogOpen(false); }} type="button" variant="secondary">
+                  Cancel
+                </Button>
+                <Button
+                  disabled={savingDocument || deletingDocument || deleteDialogTarget === null}
+                  onClick={() => {
+                    setDeleteDialogOpen(false);
+                    void handleDeleteDocument();
+                  }}
+                  type="button"
+                  variant="destructive"
+                >
+                  {deletingDocument ? "Deleting..." : "Delete document"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
           <div className="workspace-shell-body">
         <section className="middle-shell">
           {activeSurface.kind === "home" ? (
             <div className="home-surface">
               {homeMutationError !== "" && <p className="status-line status-line-error home-status-message">{homeMutationError}</p>}
-              <RichTextEditor
-                ariaLabel="Home body editor"
-                className="home-editor"
-                onChange={(value) => updateHomeFormField("body", value)}
-                onScrollCompleted={() => setEditorScrollTarget(null)}
-                placeholder="Start writing…"
-                scrollToHeadingSlug={editorScrollTarget}
-                value={homeFormState.body}
-              />
+              {showFreshStartGuide && (
+                <section className="fresh-start-panel shell-inner-card" aria-label="Fresh workspace guide">
+                  <div className="fresh-start-copy">
+                    <p className="section-kicker">Fresh Workspace</p>
+                    <h3>Start with Home or create your first graph.</h3>
+                    <p>
+                      The app is loaded. This workspace is just pristine: Home only contains its default heading, and there are no graph documents yet.
+                    </p>
+                    <ul className="fresh-start-list">
+                      <li>Use the add button in the Content section to create your first graph or directory.</li>
+                      <li>Write project context directly in Home below.</li>
+                      <li>Once a graph has files, it will appear in the left tree with its documents underneath.</li>
+                    </ul>
+                  </div>
+                </section>
+              )}
+              <div
+                ref={homeDocumentLayoutRef}
+                className="home-document-layout center-document-layout"
+                aria-label="Home content layout"
+                style={{ "--document-toc-ratio": documentTOCRatio.toString() } as React.CSSProperties}
+              >
+                <div className="center-document-main">
+                  <RichTextEditor
+                    ariaLabel="Home body editor"
+                    className="home-editor"
+                    onChange={(value) => updateHomeFormField("body", value)}
+                    onScrollCompleted={() => setEditorScrollTarget(null)}
+                    placeholder="Start writing…"
+                    scrollToHeadingSlug={editorScrollTarget}
+                    value={homeFormState.body}
+                  />
+                </div>
+
+                <div
+                  className="center-document-toc-resizer"
+                  onMouseDown={handleHomeDocumentTOCResizeMouseDown}
+                  role="separator"
+                  aria-label="Resize table of contents"
+                  aria-orientation="vertical"
+                />
+
+                <aside className="center-document-toc" aria-label="Document table of contents">
+                  <div className="center-document-toc-header">
+                    <h4>Table of Contents</h4>
+                  </div>
+                  {tocItems.length > 0 ? (
+                    <nav className="toc-nav">
+                      <ul className="toc-list">
+                        {tocItems.map((item, index) => (
+                          <li key={index} className={`toc-item toc-level-${item.level}`} style={{ marginLeft: `${(item.level - 1) * 1}rem` }}>
+                            <button
+                              type="button"
+                              className="toc-link"
+                              onClick={() => handleTOCNavigate(item.id)}
+                            >
+                              {item.text}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </nav>
+                  ) : (
+                    <p className="empty-state-inline">No headings yet.</p>
+                  )}
+                </aside>
+              </div>
+            </div>
+          ) : isCenterDocumentOpen ? (
+            <div className="center-document-shell">
+              <div className="center-document-toolbar">
+                <div className="center-document-toolbar-leading">
+                  {selectedDocument !== null && (
+                    <Badge variant="outline">{formatDocumentType(selectedDocument.type)}</Badge>
+                  )}
+                  {savingDocument && <span className="home-save-success">Saving…</span>}
+                </div>
+                <div className="center-document-toolbar-actions">
+                  {selectedDocument !== null && (
+                    <Button onClick={openDeleteDialogForSelectedDocument} disabled={deletingDocument} type="button" variant="ghost" size="sm">
+                      <Trash2 size={16} />
+                    </Button>
+                  )}
+                  <Button
+                    onClick={() => clearContextPanel()}
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Close document"
+                  >
+                    <X size={16} />
+                  </Button>
+                </div>
+              </div>
+
+              {panelError !== "" ? <p className="status-line status-line-error">{panelError}</p> : null}
+              {mutationError !== "" ? <p className="status-line status-line-error">{mutationError}</p> : null}
+              {mutationSuccess !== "" ? <p className="status-line status-line-success">{mutationSuccess}</p> : null}
+
+              {selectedDocument === null ? (
+                <div className="detail-empty">
+                  <p>Loading document content.</p>
+                </div>
+              ) : (
+                <div
+                  ref={centerDocumentLayoutRef}
+                  className="center-document-layout"
+                  aria-label="Document content layout"
+                  style={{ "--document-toc-ratio": documentTOCRatio.toString() } as React.CSSProperties}
+                >
+                  <div className="center-document-main home-document">
+                    <div className="home-document-header">
+                      <input
+                        className="home-document-title"
+                        placeholder="Document title"
+                        value={formState.title}
+                        onChange={(event) => updateFormField("title", event.target.value)}
+                        aria-label="Document title"
+                      />
+                      <input
+                        className="home-document-description"
+                        placeholder="Add a brief description…"
+                        value={formState.description}
+                        onChange={(event) => updateFormField("description", event.target.value)}
+                        aria-label="Document description"
+                      />
+                    </div>
+                    <div className="home-document-body center-document-body">
+                      <RichTextEditor
+                        ariaLabel="Document body editor"
+                        onChange={(value) => updateFormField("body", value)}
+                        onScrollCompleted={() => setEditorScrollTarget(null)}
+                        placeholder="Type / for headings, lists, quotes, links, and highlights"
+                        scrollToHeadingSlug={editorScrollTarget}
+                        value={formState.body}
+                      />
+                    </div>
+
+                    {(selectedDocument.tags ?? []).length > 0 && (
+                      <div className="chip-list">
+                        {(selectedDocument.tags ?? []).map((tag) => (
+                          <Badge key={tag} variant="secondary">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+
+                    {(selectedDocument.dependsOn ?? []).length > 0 && (
+                      <section className="detail-section">
+                        <h4>Dependencies</h4>
+                        <div className="link-list">
+                          {(selectedDocument.dependsOn ?? []).map((dependencyId) => (
+                            <Button
+                              key={dependencyId}
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleInspectDocument(dependencyId, documentGraphById.get(dependencyId) ?? selectedDocument.graph)}
+                              className="rounded-full h-7 px-3 text-xs"
+                              type="button"
+                            >
+                              {dependencyId}
+                            </Button>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+
+                    {(selectedDocument.references ?? []).length > 0 && (
+                      <section className="detail-section">
+                        <h4>References</h4>
+                        <div className="link-list">
+                          {(selectedDocument.references ?? []).map((ref) => (
+                            <Button
+                              key={ref.node}
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleInspectDocument(ref.node, documentGraphById.get(ref.node) ?? selectedDocument.graph)}
+                              className="rounded-full h-7 px-3 text-xs"
+                              type="button"
+                            >
+                              {ref.node}{ref.context ? ` — ${ref.context}` : ""}
+                            </Button>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+
+                    {selectedDocument.run && (
+                      <section className="detail-section">
+                        <h4>Run Command</h4>
+                        <pre className="run-block">{selectedDocument.run}</pre>
+                      </section>
+                    )}
+                  </div>
+
+                  <div
+                    className="center-document-toc-resizer"
+                    onMouseDown={handleDocumentTOCResizeMouseDown}
+                    role="separator"
+                    aria-label="Resize table of contents"
+                    aria-orientation="vertical"
+                  />
+
+                  <aside className="center-document-toc" aria-label="Document table of contents">
+                    <div className="center-document-toc-header">
+                      <h4>Table of Contents</h4>
+                    </div>
+                    {tocItems.length > 0 ? (
+                      <nav className="toc-nav">
+                        <ul className="toc-list">
+                          {tocItems.map((item, index) => (
+                            <li key={index} className={`toc-item toc-level-${item.level}`} style={{ marginLeft: `${(item.level - 1) * 1}rem` }}>
+                              <button
+                                type="button"
+                                className="toc-link"
+                                onClick={() => handleTOCNavigate(item.id)}
+                              >
+                                {item.text}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </nav>
+                    ) : (
+                      <p className="empty-state-inline">No headings yet.</p>
+                    )}
+                  </aside>
+                </div>
+              )}
             </div>
           ) : (
             <div className="graph-canvas-outer">
@@ -1257,7 +1838,7 @@ function FlowApp() {
                           <h3>Start this canvas with the first document.</h3>
                           <p>
                             Create a note, task, or command directly in <strong>{selectedGraphPath}</strong>. The new document will open in the
-                            right-side editor immediately.
+                            right pane immediately.
                           </p>
                         </div>
 
@@ -1577,15 +2158,188 @@ function FlowApp() {
         </section>
         <aside
           className="app-right-sidebar"
+          aria-label="Right pane"
           data-open={rightRailCollapsed ? "false" : "true"}
-          data-focus={rightSidebarFocused ? "true" : "false"}
-          style={!rightRailCollapsed && !rightSidebarFocused ? { width: `${rightSidebarWidth}px`, ...(isResizingRight ? { transition: "none" } : {}) } : undefined}
+          data-focus={!rightRailCollapsed && rightRailMaximized ? "true" : "false"}
+          style={!rightRailCollapsed && !rightRailMaximized ? { width: `${rightSidebarWidth}px`, ...(isResizingRight ? { transition: "none" } : {}) } : undefined}
         >
-          {!rightRailCollapsed && (
+          {!rightRailCollapsed && !rightRailMaximized && (
             <div className="right-sidebar-resize-handle" onMouseDown={handleRightSidebarMouseDown} />
           )}
           <div className="right-sidebar-panel">
-            {!rightRailCollapsed && (rightPanelTab === "search" ? (
+            {!rightRailCollapsed && (rightPanelTab === "document" && hasRightRailDocument ? (
+              <div className="sidebar-document-panel" aria-label="Graph node document panel">
+                <div className="sidebar-document-toolbar">
+                  <div className="center-document-toolbar-leading">
+                    {selectedDocument !== null && (
+                      <Badge variant="outline">{formatDocumentType(selectedDocument.type)}</Badge>
+                    )}
+                    {savingDocument && <span className="home-save-success">Saving…</span>}
+                  </div>
+                  <div className="sidebar-document-toolbar-actions">
+                    <Button
+                      onClick={() => toggleRightRailMaximized()}
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label={rightRailMaximized ? "Minimize right pane" : "Maximize right pane"}
+                    >
+                      {rightRailMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                    </Button>
+                    {selectedDocument !== null && (
+                      <Button onClick={openDeleteDialogForSelectedDocument} disabled={deletingDocument} type="button" variant="ghost" size="sm">
+                        <Trash2 size={16} />
+                      </Button>
+                    )}
+                    <Button
+                      onClick={() => clearContextPanel()}
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label="Close document"
+                    >
+                      <X size={16} />
+                    </Button>
+                  </div>
+                </div>
+
+                {panelError !== "" ? <p className="status-line status-line-error">{panelError}</p> : null}
+                {mutationError !== "" ? <p className="status-line status-line-error">{mutationError}</p> : null}
+                {mutationSuccess !== "" ? <p className="status-line status-line-success">{mutationSuccess}</p> : null}
+
+                {selectedDocument === null ? (
+                  <div className="detail-empty">
+                    <p>Loading document content.</p>
+                  </div>
+                ) : (
+                  <div
+                    ref={rightRailDocumentLayoutRef}
+                    className="sidebar-document-layout"
+                    aria-label="Graph node document"
+                    style={{ "--document-toc-ratio": documentTOCRatio.toString() } as React.CSSProperties}
+                  >
+                    <div className="home-document">
+                      <div className="home-document-header">
+                        <input
+                          className="home-document-title"
+                          placeholder="Document title"
+                          value={formState.title}
+                          onChange={(event) => updateFormField("title", event.target.value)}
+                          aria-label="Document title"
+                        />
+                        <input
+                          className="home-document-description"
+                          placeholder="Add a brief description…"
+                          value={formState.description}
+                          onChange={(event) => updateFormField("description", event.target.value)}
+                          aria-label="Document description"
+                        />
+                      </div>
+                      <div className="home-document-body sidebar-document-body">
+                        <RichTextEditor
+                          ariaLabel="Context document editor"
+                          onChange={(value) => updateFormField("body", value)}
+                          onScrollCompleted={() => setEditorScrollTarget(null)}
+                          placeholder="Type / for headings, lists, quotes, links, and highlights"
+                          scrollToHeadingSlug={editorScrollTarget}
+                          value={formState.body}
+                        />
+                      </div>
+
+                      {(selectedDocument.tags ?? []).length > 0 && (
+                        <div className="chip-list">
+                          {(selectedDocument.tags ?? []).map((tag) => (
+                            <Badge key={tag} variant="secondary">
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+
+                      {(selectedDocument.dependsOn ?? []).length > 0 && (
+                        <section className="detail-section">
+                          <h4>Dependencies</h4>
+                          <div className="link-list">
+                            {(selectedDocument.dependsOn ?? []).map((dependencyId) => (
+                              <Button
+                                key={dependencyId}
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleInspectDocument(dependencyId, documentGraphById.get(dependencyId) ?? selectedDocument.graph)}
+                                className="rounded-full h-7 px-3 text-xs"
+                                type="button"
+                              >
+                                {dependencyId}
+                              </Button>
+                            ))}
+                          </div>
+                        </section>
+                      )}
+
+                      {(selectedDocument.references ?? []).length > 0 && (
+                        <section className="detail-section">
+                          <h4>References</h4>
+                          <div className="link-list">
+                            {(selectedDocument.references ?? []).map((ref) => (
+                              <Button
+                                key={ref.node}
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleInspectDocument(ref.node, documentGraphById.get(ref.node) ?? selectedDocument.graph)}
+                                className="rounded-full h-7 px-3 text-xs"
+                                type="button"
+                              >
+                                {ref.node}{ref.context ? ` — ${ref.context}` : ""}
+                              </Button>
+                            ))}
+                          </div>
+                        </section>
+                      )}
+
+                      {selectedDocument.run && (
+                        <section className="detail-section">
+                          <h4>Run Command</h4>
+                          <pre className="run-block">{selectedDocument.run}</pre>
+                        </section>
+                      )}
+                    </div>
+
+                    <div
+                      className="sidebar-document-toc-resizer"
+                      onMouseDown={handleRightRailDocumentTOCResizeMouseDown}
+                      role="separator"
+                      aria-label="Resize table of contents"
+                      aria-orientation="vertical"
+                    />
+
+                    <aside className="sidebar-document-toc" aria-label="Document table of contents">
+                      <div className="sidebar-document-toc-header">
+                        <h4>Table of Contents</h4>
+                      </div>
+                      {tocItems.length > 0 ? (
+                        <nav className="toc-nav">
+                          <ul className="toc-list">
+                            {tocItems.map((item, index) => (
+                              <li key={index} className={`toc-item toc-level-${item.level}`} style={{ marginLeft: `${(item.level - 1) * 1}rem` }}>
+                                <button
+                                  type="button"
+                                  className="toc-link"
+                                  onClick={() => handleTOCNavigate(item.id)}
+                                >
+                                  {item.text}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </nav>
+                      ) : (
+                        <p className="empty-state-inline">No headings yet.</p>
+                      )}
+                    </aside>
+                  </div>
+                )}
+              </div>
+            ) : rightPanelTab === "search" ? (
               <Card className="detail-card-context shell-context-card">
                 <CardHeader className="panel-header shell-context-header">
                   <div>
@@ -1642,214 +2396,6 @@ function FlowApp() {
                     />
                   </CardContent>
                 </Card>
-              ) : rightPanelTab === "toc" ? (
-                <Card className="detail-card-context shell-context-card">
-                  <CardHeader className="panel-header shell-context-header">
-                    <div>
-                      <h3>Table of Contents</h3>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="shell-context-content">
-                    {activeSurface.kind === "home" || selectedDocument !== null ? (
-                      <nav className="toc-nav">
-                        <ul className="toc-list">
-                          {tocItems.map((item, index) => (
-                            <li key={index} className={`toc-item toc-level-${item.level}`} style={{ marginLeft: `${(item.level - 1) * 1}rem` }}>
-                              <button
-                                type="button"
-                                className="toc-link"
-                                onClick={() => handleTOCNavigate(item.id)}
-                              >
-                                {item.text}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </nav>
-                    ) : (
-                      <div className="detail-empty">
-                        <p>Select a document or view Home to see the table of contents.</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ) : rightPanelTab === "document" ? (
-              <div className="sidebar-document-panel">
-                <div className="sidebar-document-toolbar">
-                  {selectedDocument !== null && (
-                    <Badge variant="outline">{formatDocumentType(selectedDocument.type)}</Badge>
-                  )}
-                  {savingDocument && <span className="home-save-success">Saving…</span>}
-                  <div className="sidebar-document-toolbar-actions">
-                    {selectedDocument !== null && (
-                      <Button onClick={() => setDeleteDialogOpen(true)} disabled={deletingDocument} type="button" variant="ghost" size="sm">
-                        <Trash2 size={16} />
-                      </Button>
-                    )}
-                    <Button
-                      onClick={() => setRightSidebarFocused(f => !f)}
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      aria-label={rightSidebarFocused ? "Exit focus mode" : "Focus mode"}
-                      title={rightSidebarFocused ? "Exit focus mode" : "Focus mode"}
-                    >
-                      {rightSidebarFocused ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        clearContextPanel();
-                        setRightPanelReturnTab(null);
-                        collapseRightRail();
-                      }}
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      aria-label="Close document panel"
-                    >
-                      <X size={16} />
-                    </Button>
-                  </div>
-                </div>
-
-                {panelError !== "" ? <p className="status-line status-line-error">{panelError}</p> : null}
-                {mutationError !== "" ? <p className="status-line status-line-error">{mutationError}</p> : null}
-                {mutationSuccess !== "" ? <p className="status-line status-line-success">{mutationSuccess}</p> : null}
-
-                <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Delete document?</DialogTitle>
-                      <DialogDescription>
-                        This removes the current document from the workspace and clears it from the context panel.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="shell-dialog-actions">
-                      <Button onClick={() => setDeleteDialogOpen(false)} type="button" variant="secondary">
-                        Cancel
-                      </Button>
-                      <Button
-                        disabled={savingDocument || deletingDocument || selectedDocument === null}
-                        onClick={() => {
-                          setDeleteDialogOpen(false);
-                          void handleDeleteDocument();
-                        }}
-                        type="button"
-                        variant="destructive"
-                      >
-                        {deletingDocument ? "Deleting..." : "Delete document"}
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-
-                {selectedDocument === null ? (
-                  <div className="detail-empty">
-                    <p>Select a graph node or search result to view document content here.</p>
-                  </div>
-                ) : (
-                  <div className="sidebar-document-layout">
-                    <div className="home-document">
-                      <div className="home-document-header">
-                        <input
-                          className="home-document-title"
-                          placeholder="Document title"
-                          value={formState.title}
-                          onChange={(event) => updateFormField("title", event.target.value)}
-                          aria-label="Document title"
-                        />
-                        <input
-                          className="home-document-description"
-                          placeholder="Add a brief description…"
-                          value={formState.description}
-                          onChange={(event) => updateFormField("description", event.target.value)}
-                          aria-label="Document description"
-                        />
-                      </div>
-                      <div className="home-document-body sidebar-document-body">
-                        <RichTextEditor
-                          ariaLabel="Document body editor"
-                          onChange={(value) => updateFormField("body", value)}
-                          onScrollCompleted={() => setEditorScrollTarget(null)}
-                          placeholder="Type / for headings, lists, quotes, links, and highlights"
-                          scrollToHeadingSlug={editorScrollTarget}
-                          value={formState.body}
-                        />
-                      </div>
-
-                      {(selectedDocument.tags ?? []).length > 0 && (
-                        <div className="chip-list">
-                          {(selectedDocument.tags ?? []).map((tag) => (
-                            <Badge key={tag} variant="secondary">
-                              {tag}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-
-                      {(selectedDocument.dependsOn ?? []).length > 0 && (
-                        <section className="detail-section">
-                          <h4>Dependencies</h4>
-                          <div className="link-list">
-                            {(selectedDocument.dependsOn ?? []).map((dependencyId) => (
-                              <Button key={dependencyId} variant="outline" size="sm" onClick={() => setSelectedDocumentId(dependencyId)} className="rounded-full h-7 px-3 text-xs" type="button">
-                                {dependencyId}
-                              </Button>
-                            ))}
-                          </div>
-                        </section>
-                      )}
-
-                      {(selectedDocument.references ?? []).length > 0 && (
-                        <section className="detail-section">
-                          <h4>References</h4>
-                          <div className="link-list">
-                            {(selectedDocument.references ?? []).map((ref) => (
-                              <Button key={ref.node} variant="outline" size="sm" onClick={() => setSelectedDocumentId(ref.node)} className="rounded-full h-7 px-3 text-xs" type="button">
-                                {ref.node}{ref.context ? ` — ${ref.context}` : ""}
-                              </Button>
-                            ))}
-                          </div>
-                        </section>
-                      )}
-
-                      {selectedDocument.run && (
-                        <section className="detail-section">
-                          <h4>Run Command</h4>
-                          <pre className="run-block">{selectedDocument.run}</pre>
-                        </section>
-                      )}
-                    </div>
-
-                    {rightSidebarFocused && (
-                      <aside className="sidebar-document-toc" aria-label="Document table of contents">
-                        <div className="sidebar-document-toc-header">
-                          <h4>Table of Contents</h4>
-                        </div>
-                        {tocItems.length > 0 ? (
-                          <nav className="toc-nav">
-                            <ul className="toc-list">
-                              {tocItems.map((item, index) => (
-                                <li key={index} className={`toc-item toc-level-${item.level}`} style={{ marginLeft: `${(item.level - 1) * 1}rem` }}>
-                                  <button
-                                    type="button"
-                                    className="toc-link"
-                                    onClick={() => handleTOCNavigate(item.id)}
-                                  >
-                                    {item.text}
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
-                          </nav>
-                        ) : (
-                          <p className="empty-state-inline">No headings yet.</p>
-                        )}
-                      </aside>
-                    )}
-                  </div>
-                )}
-              </div>
               ) : null)}
           </div>
         </aside>
@@ -1940,7 +2486,7 @@ function FlowApp() {
                         )
                       )}
                       {settingsTab === "theme" && (
-                        <RadioGroup value={theme} onValueChange={(v) => setTheme(v as "light" | "dark" | "system")}>
+                        <RadioGroup value={theme} onValueChange={(v) => { void handleAppearanceChange(v as "light" | "dark" | "system"); }}>
                           <div className="flex items-center gap-2">
                             <RadioGroupItem value="light" id="r1" />
                             <Label htmlFor="r1">Light</Label>
@@ -1996,36 +2542,21 @@ function FlowApp() {
                 </TooltipTrigger>
                 <TooltipContent side="left">Calendar</TooltipContent>
             </Tooltip>
-            {activeSurface.kind !== "graph" && (
             <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    className={`right-rail-icon-btn${rightPanelTab === "toc" && !rightRailCollapsed ? " right-rail-icon-btn-active" : ""}`}
-                    aria-label="Table of Contents"
-                    onClick={() => toggleRightPanel("toc")}
-                  >
-                    <List size={18} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="left">Table of Contents</TooltipContent>
+                {showRightRailDocumentButton ? (
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className={`right-rail-icon-btn${rightPanelTab === "document" && !rightRailCollapsed && selectedNodeMatchesRightRailDocument ? " right-rail-icon-btn-active" : ""}`}
+                      aria-label="Document"
+                      onClick={() => handleSelectedNodeDocumentButtonClick()}
+                    >
+                      <FileText size={18} />
+                    </button>
+                  </TooltipTrigger>
+                ) : null}
+                {showRightRailDocumentButton ? <TooltipContent side="left">Document</TooltipContent> : null}
             </Tooltip>
-            )}
-            {activeSurface.kind === "graph" && (
-            <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    className={`right-rail-icon-btn${rightPanelTab === "document" && !rightRailCollapsed ? " right-rail-icon-btn-active" : ""}`}
-                    aria-label="Document"
-                    onClick={() => toggleRightPanel("document")}
-                  >
-                    <FileText size={18} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="left">Document</TooltipContent>
-            </Tooltip>
-            )}
           </div>
       </SidebarInset>
       <Dialog open={createNodeDialog !== null} onOpenChange={(open) => { if (!open) setCreateNodeDialog(null); }}>
@@ -2051,6 +2582,36 @@ function FlowApp() {
               <Button onClick={() => setCreateNodeDialog(null)} type="button" variant="secondary">Cancel</Button>
               <Button onClick={() => void handleConfirmCreateNode()} type="button" disabled={graphCreatePendingType !== ""}>
                 {graphCreatePendingType !== "" ? "Creating..." : "Create"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={renameDialog !== null} onOpenChange={(open) => { if (!open) setRenameDialog(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{renameDialog?.kind === "graph" ? "Rename graph" : "Rename node"}</DialogTitle>
+            <DialogDescription>
+              {renameDialog?.kind === "graph"
+                ? "Choose the new graph path for this content tree entry."
+                : "Choose the new file name for this node. The .md extension is optional."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="shell-dialog-actions" style={{ flexDirection: "column", alignItems: "stretch", gap: "0.5rem" }}>
+            <Label htmlFor="rename-input">{renameDialog?.kind === "graph" ? "Graph path" : "File name"}</Label>
+            <Input
+              id="rename-input"
+              value={renameValue}
+              onChange={(e) => { setRenameValue(e.target.value); setRenameError(""); }}
+              onKeyDown={(e) => { if (e.key === "Enter") void handleConfirmRename(); }}
+              placeholder={renameDialog?.kind === "graph" ? "projects/backend" : "my-task"}
+              autoFocus
+            />
+            {renameError !== "" && <p className="status-line status-line-error">{renameError}</p>}
+            <div className="shell-dialog-actions">
+              <Button onClick={() => setRenameDialog(null)} type="button" variant="secondary">Cancel</Button>
+              <Button onClick={() => void handleConfirmRename()} type="button" disabled={renamePending}>
+                {renamePending ? "Renaming..." : "Rename"}
               </Button>
             </div>
           </div>

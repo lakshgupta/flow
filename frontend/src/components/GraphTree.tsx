@@ -1,4 +1,4 @@
-import { CheckSquare, ChevronDown, ChevronRight, FileText, FolderPlus, Home, Layers, Minus, MoreHorizontal, Plus, Star, Terminal, Trash2 } from "lucide-react";
+import { CheckSquare, ChevronDown, ChevronRight, FileText, FolderPlus, Home, Layers, Minus, MoreHorizontal, Pencil, Plus, Star, Terminal, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -18,7 +18,7 @@ import {
   SidebarMenuSubItem,
 } from "./ui/sidebar";
 import { useFavorites } from "../lib/useFavorites";
-import type { GraphTreeNodeData, GraphTreeResponse, SurfaceState } from "../types";
+import type { GraphTreeFileData, GraphTreeNodeData, GraphTreeResponse, SurfaceState } from "../types";
 
 type FileTreeNode = {
   data: GraphTreeNodeData;
@@ -52,9 +52,14 @@ type FileTreeRowProps = {
   node: FileTreeNode;
   depth: number;
   activeSurface: SurfaceState;
+  selectedDocumentId: string;
   onSelectGraph: (graphName: string) => void;
+  onOpenDocument: (documentId: string, graphPath: string) => void;
   onCreateGraph: (name: string) => void;
   onCreateNode: (graphPath: string, type: "note" | "task" | "command") => void;
+  onRenameGraph: (graphPath: string) => void;
+  onRenameNode: (documentId: string, fileName: string) => void;
+  onDeleteNode: (file: GraphTreeFileData, graphPath: string) => void;
   onDeleteGraph: (graphPath: string) => void;
   collapsed: Set<string>;
   onToggleCollapse: (path: string) => void;
@@ -66,9 +71,14 @@ function FileTreeRow({
   node,
   depth,
   activeSurface,
+  selectedDocumentId,
   onSelectGraph,
+  onOpenDocument,
   onCreateGraph,
   onCreateNode,
+  onRenameGraph,
+  onRenameNode,
+  onDeleteNode,
   onDeleteGraph,
   collapsed,
   onToggleCollapse,
@@ -77,7 +87,9 @@ function FileTreeRow({
 }: FileTreeRowProps) {
   const isActive = activeSurface.kind === "graph" && activeSurface.graphPath === node.data.graphPath;
   const isFav = isFavorite(node.data.graphPath);
+  const files = node.data.files ?? [];
   const hasChildren = node.children.length > 0;
+  const hasExpandableContent = hasChildren || files.length > 0;
   const isCollapsed = collapsed.has(node.data.graphPath);
   const [addingSubdir, setAddingSubdir] = useState(false);
   const [subdirName, setSubdirName] = useState("");
@@ -92,7 +104,7 @@ function FileTreeRow({
   return (
     <>
       <SidebarMenuSubItem className="graph-tree-row group" style={{ paddingLeft: `${depth * 0.75}rem` }}>
-        {hasChildren ? (
+        {hasExpandableContent ? (
           <button
             type="button"
             className="graph-tree-chevron"
@@ -138,6 +150,11 @@ function FileTreeRow({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" side="right">
+            <DropdownMenuItem onClick={() => { onRenameGraph(node.data.graphPath); }}>
+              <Pencil size={12} />
+              Rename
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => { setAddingSubdir(true); }}>
               <FolderPlus size={12} />
               Add subdirectory
@@ -209,6 +226,46 @@ function FileTreeRow({
           >✕</button>
         </li>
       )}
+      {!isCollapsed &&
+        files.map((file) => (
+          <SidebarMenuSubItem key={file.id} className="graph-file-row group" style={{ paddingLeft: `${depth * 0.75 + 1.85}rem` }}>
+            <SidebarMenuSubButton
+              className="graph-file-button"
+              isActive={selectedDocumentId === file.id}
+              onClick={() => onOpenDocument(file.id, node.data.graphPath)}
+              type="button"
+            >
+              <span className="graph-button-labels">
+                <strong>{file.fileName}</strong>
+              </span>
+            </SidebarMenuSubButton>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="graph-row-menu-btn"
+                  aria-label={`More actions for ${file.fileName}`}
+                >
+                  <MoreHorizontal size={14} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" side="right">
+                <DropdownMenuItem onClick={() => { onRenameNode(file.id, file.fileName); }}>
+                  <Pencil size={12} />
+                  Rename
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => { onDeleteNode(file, node.data.graphPath); }}
+                >
+                  <Trash2 size={12} />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SidebarMenuSubItem>
+        ))}
       {hasChildren &&
         !isCollapsed &&
         node.children.map((child) => (
@@ -217,9 +274,14 @@ function FileTreeRow({
             node={child}
             depth={depth + 1}
             activeSurface={activeSurface}
+            selectedDocumentId={selectedDocumentId}
             onSelectGraph={onSelectGraph}
+            onOpenDocument={onOpenDocument}
             onCreateGraph={onCreateGraph}
             onCreateNode={onCreateNode}
+            onRenameGraph={onRenameGraph}
+            onRenameNode={onRenameNode}
+            onDeleteNode={onDeleteNode}
             onDeleteGraph={onDeleteGraph}
             collapsed={collapsed}
             onToggleCollapse={onToggleCollapse}
@@ -234,14 +296,19 @@ function FileTreeRow({
 type GraphTreeProps = {
   graphTree: GraphTreeResponse | null;
   activeSurface: SurfaceState;
+  selectedDocumentId: string;
   onSelectHome: () => void;
   onSelectGraph: (graphName: string) => void;
+  onOpenDocument: (documentId: string, graphPath: string) => void;
   onCreateGraph: (name: string) => void;
   onCreateNode: (graphPath: string, type: "note" | "task" | "command") => void;
+  onRenameGraph: (graphPath: string) => void;
+  onRenameNode: (documentId: string, fileName: string) => void;
+  onDeleteNode: (file: GraphTreeFileData, graphPath: string) => void;
   onDeleteGraph: (graphPath: string) => void;
 };
 
-export function GraphTree({ graphTree, activeSurface, onSelectHome, onSelectGraph, onCreateGraph, onCreateNode, onDeleteGraph }: GraphTreeProps) {
+export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSelectHome, onSelectGraph, onOpenDocument, onCreateGraph, onCreateNode, onRenameGraph, onRenameNode, onDeleteNode, onDeleteGraph }: GraphTreeProps) {
   const { toggleFavorite, isFavorite } = useFavorites();
   const [contentExpanded, setContentExpanded] = useState(true);
   const [favoritesExpanded, setFavoritesExpanded] = useState(true);
@@ -380,9 +447,14 @@ export function GraphTree({ graphTree, activeSurface, onSelectHome, onSelectGrap
                     node={node}
                     depth={0}
                     activeSurface={activeSurface}
+                    selectedDocumentId={selectedDocumentId}
                     onSelectGraph={onSelectGraph}
+                    onOpenDocument={onOpenDocument}
                     onCreateGraph={onCreateGraph}
                     onCreateNode={onCreateNode}
+                    onRenameGraph={onRenameGraph}
+                    onRenameNode={onRenameNode}
+                    onDeleteNode={onDeleteNode}
                     onDeleteGraph={onDeleteGraph}
                     collapsed={collapsed}
                     onToggleCollapse={handleToggleCollapse}

@@ -8,6 +8,12 @@ export type WorkspaceResponse = {
   indexPath: string;
   homePath: string;
   guiPort: number;
+  appearance: "light" | "dark" | "system";
+  panelWidths: {
+    leftRatio: number;
+    rightRatio: number;
+    documentTOCRatio: number;
+  };
 };
 
 export type HomeResponse = {
@@ -35,6 +41,15 @@ export type GraphTreeNodeData = {
   totalCount: number;
   hasChildren: boolean;
   countLabel: string;
+  files: GraphTreeFileData[];
+};
+
+export type GraphTreeFileData = {
+  id: string;
+  type: string;
+  title: string;
+  path: string;
+  fileName: string;
 };
 
 export type GraphTreeResponse = {

@@ -96,6 +96,61 @@ func TestUpdateDocumentByIDAppliesPatchAndRebuildsIndex(t *testing.T) {
 	}
 }
 
+func TestUpdateDocumentByIDRenamesFileAndRebuildsIndex(t *testing.T) {
+	t.Parallel()
+
+	root := createMutationWorkspace(t)
+	workspaceDocument, err := UpdateDocumentByID(root, "task-1", DocumentPatch{
+		FileName: stringPointer("parser-renamed"),
+	})
+	if err != nil {
+		t.Fatalf("UpdateDocumentByID() error = %v", err)
+	}
+
+	if workspaceDocument.Path != "data/content/demo/execution/parser-renamed.md" {
+		t.Fatalf("workspaceDocument.Path = %q, want data/content/demo/execution/parser-renamed.md", workspaceDocument.Path)
+	}
+
+	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "content", "demo", "execution", "parser-renamed.md")); err != nil {
+		t.Fatalf("Stat(renamed file) error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "content", "demo", "execution", "parser.md")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Stat(old file) error = %v, want not exist", err)
+	}
+
+	results, err := index.Search(root.IndexPath, "parser", 10)
+	if err != nil {
+		t.Fatalf("index.Search() error = %v", err)
+	}
+	if len(results) == 0 || results[0].Path != "data/content/demo/execution/parser-renamed.md" {
+		t.Fatalf("search results = %#v, want renamed path", results)
+	}
+}
+
+func TestRenameGraphMovesDirectoryAndRebuildsIndex(t *testing.T) {
+	t.Parallel()
+
+	root := createMutationWorkspace(t)
+	if err := RenameGraph(root, "demo", "renamed/demo"); err != nil {
+		t.Fatalf("RenameGraph() error = %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "content", "renamed", "demo", "execution", "parser.md")); err != nil {
+		t.Fatalf("Stat(renamed graph file) error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "content", "demo")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Stat(old graph directory) error = %v, want not exist", err)
+	}
+
+	results, err := index.Search(root.IndexPath, "parser", 10)
+	if err != nil {
+		t.Fatalf("index.Search() error = %v", err)
+	}
+	if len(results) == 0 || results[0].Path != "data/content/renamed/demo/execution/parser.md" {
+		t.Fatalf("search results = %#v, want renamed graph path", results)
+	}
+}
+
 func TestDeleteDocumentByIDRemovesMarkdownAndReportsMissingDocument(t *testing.T) {
 	t.Parallel()
 
