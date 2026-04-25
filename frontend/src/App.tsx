@@ -1663,7 +1663,19 @@ function FlowApp() {
               <div className="center-document-toolbar">
                 <div className="center-document-toolbar-leading">
                   {selectedDocument !== null && (
-                    <Badge variant="outline">{formatDocumentType(selectedDocument.type)}</Badge>
+                    <Badge variant="outline" className="center-document-type-badge">{formatDocumentType(selectedDocument.type)}</Badge>
+                  )}
+                  {selectedDocument !== null && (
+                    <>
+                      <Separator className="center-document-toolbar-separator" orientation="vertical" />
+                      <input
+                        className="center-document-toolbar-title"
+                        placeholder="Document title"
+                        value={formState.title}
+                        onChange={(event) => updateFormField("title", event.target.value)}
+                        aria-label="Document title"
+                      />
+                    </>
                   )}
                   {savingDocument && <span className="home-save-success">Saving…</span>}
                 </div>
@@ -1686,13 +1698,6 @@ function FlowApp() {
                 >
                   <div className="center-document-main home-document">
                     <div className="home-document-header">
-                      <input
-                        className="home-document-title"
-                        placeholder="Document title"
-                        value={formState.title}
-                        onChange={(event) => updateFormField("title", event.target.value)}
-                        aria-label="Document title"
-                      />
                       <input
                         className="home-document-description"
                         placeholder="Add a brief description…"
