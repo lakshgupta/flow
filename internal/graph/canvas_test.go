@@ -86,8 +86,8 @@ func TestBuildGraphCanvasViewProjectsScopedNodesEdgesAndPositions(t *testing.T) 
 	}
 
 	assertGraphCanvasEdges(t, view.Edges, []GraphCanvasEdge{
-		{ID: "reference:note-1:cmd-1", Source: "note-1", Target: "cmd-1", Kind: "reference"},
-		{ID: "reference:task-1:note-1", Source: "task-1", Target: "note-1", Kind: "reference"},
+		{ID: "link:note-1:cmd-1", Source: "note-1", Target: "cmd-1", Kind: "link"},
+		{ID: "link:task-1:note-1", Source: "task-1", Target: "note-1", Kind: "link"},
 	})
 }
 

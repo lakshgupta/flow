@@ -92,7 +92,7 @@ import type {
   GraphTreeResponse,
   HomeFormState,
   HomeResponse,
-  NodeReference,
+  NodeLink,
   SearchResult,
   SurfaceState,
   WorkspaceResponse,
@@ -110,6 +110,12 @@ type DeleteDialogState = {
   type: string;
   title: string;
   path: string;
+  graphPath: string;
+};
+
+type DocumentLinkDetail = {
+  nodeId: string;
+  context: string;
   graphPath: string;
 };
 
@@ -264,6 +270,47 @@ function FlowApp() {
 
     return graphByID;
   }, [graphTree]);
+  const selectedDocumentLinks = useMemo(() => {
+    if (selectedDocument === null) {
+      return {
+        outgoing: [] as DocumentLinkDetail[],
+        incoming: [] as DocumentLinkDetail[],
+      };
+    }
+
+    const outgoing = (selectedDocument.links ?? []).map((link) => ({
+      nodeId: link.node,
+      context: link.context ?? "",
+      graphPath: documentGraphById.get(link.node) ?? selectedDocument.graph,
+    }));
+
+    const incomingByNodeId = new Map<string, DocumentLinkDetail>();
+
+    for (const nodeId of selectedDocument.relatedNoteIds ?? []) {
+      incomingByNodeId.set(nodeId, {
+        nodeId,
+        context: "",
+        graphPath: documentGraphById.get(nodeId) ?? selectedDocument.graph,
+      });
+    }
+
+    for (const edge of graphCanvasData?.edges ?? []) {
+      if (edge.kind !== "link" || edge.target !== selectedDocument.id) {
+        continue;
+      }
+
+      const existing = incomingByNodeId.get(edge.source);
+      incomingByNodeId.set(edge.source, {
+        nodeId: edge.source,
+        context: edge.context ?? existing?.context ?? "",
+        graphPath: documentGraphById.get(edge.source) ?? selectedDocument.graph,
+      });
+    }
+
+    const incoming = Array.from(incomingByNodeId.values());
+
+    return { outgoing, incoming };
+  }, [documentGraphById, graphCanvasData?.edges, selectedDocument]);
 
   useEffect(() => {
     if (workspace === null) {
@@ -455,7 +502,7 @@ function FlowApp() {
   ): Promise<void> {
     try {
       setMutationError("");
-      await requestJSON<DocumentResponse>("/api/references", {
+      await requestJSON<DocumentResponse>("/api/links", {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -1299,7 +1346,7 @@ function FlowApp() {
         graph: state.graph,
         tags: splitList(state.tags),
         body: state.body,
-        references: splitList(state.references).map((id): NodeReference => ({ node: id })),
+        links: splitList(state.links).map((id): NodeLink => ({ node: id })),
       };
 
       if (doc.type === "task") {
@@ -1638,6 +1685,7 @@ function FlowApp() {
                   <DocumentPropertiesPanel
                     selectedDocument={selectedDocument}
                     formState={formState}
+                    linkStats={selectedDocumentLinks}
                     updateFormField={updateFormField}
                   />
                 )}
@@ -1842,7 +1890,7 @@ function FlowApp() {
                           >
                             <span className="graph-create-action-type">Note</span>
                             <strong>Capture context</strong>
-                            <span>Start a knowledge card for design details, references, or working notes.</span>
+                            <span>Start a knowledge card for design details, links, or working notes.</span>
                           </button>
                           <button
                             className="graph-create-action graph-create-action-task"
@@ -1852,7 +1900,7 @@ function FlowApp() {
                           >
                             <span className="graph-create-action-type">Task</span>
                             <strong>Define work</strong>
-                            <span>Drop in a dependency-ready task and refine status, references, and body in the editor.</span>
+                            <span>Drop in a dependency-ready task and refine status, links, and body in the editor.</span>
                           </button>
                           <button
                             className="graph-create-action graph-create-action-command"
@@ -1918,7 +1966,7 @@ function FlowApp() {
                           edgeTypes={EDGE_TYPES}
                           onEdgeClick={(_, edge) => {
                             const parts = edge.id.split(":");
-                            if (parts.length >= 3 && parts[0] === "reference") {
+                            if (parts.length >= 3 && parts[0] === "link") {
                               setSelectedEdgeId(edge.id);
                               handleOpenCanvasDocument(parts[1]);
                             }
@@ -1926,7 +1974,7 @@ function FlowApp() {
                           onEdgeContextMenu={(event, edge: Edge) => {
                             event.preventDefault();
                             const parts = edge.id.split(":");
-                            if (parts.length >= 3 && parts[0] === "reference") {
+                            if (parts.length >= 3 && parts[0] === "link") {
                               void handleDeleteEdge(parts[1], parts[2]);
                             }
                           }}
@@ -2268,20 +2316,40 @@ function FlowApp() {
                         </section>
                       )}
 
-                      {(selectedDocument.references ?? []).length > 0 && (
+                      {selectedDocumentLinks.outgoing.length > 0 && (
                         <section className="detail-section">
-                          <h4>References</h4>
+                          <h4>Outgoing Links</h4>
                           <div className="link-list">
-                            {(selectedDocument.references ?? []).map((ref) => (
+                            {selectedDocumentLinks.outgoing.map((link) => (
                               <Button
-                                key={ref.node}
+                                key={`${link.nodeId}:${link.context}`}
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleInspectDocument(ref.node, documentGraphById.get(ref.node) ?? selectedDocument.graph)}
+                                onClick={() => handleInspectDocument(link.nodeId, link.graphPath)}
                                 className="rounded-full h-7 px-3 text-xs"
                                 type="button"
                               >
-                                {ref.node}{ref.context ? ` — ${ref.context}` : ""}
+                                {link.nodeId}{link.context ? ` — ${link.context}` : ""}
+                              </Button>
+                            ))}
+                          </div>
+                        </section>
+                      )}
+
+                      {selectedDocumentLinks.incoming.length > 0 && (
+                        <section className="detail-section">
+                          <h4>Incoming Links</h4>
+                          <div className="link-list">
+                            {selectedDocumentLinks.incoming.map((link) => (
+                              <Button
+                                key={`${link.nodeId}:${link.context}`}
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleInspectDocument(link.nodeId, link.graphPath)}
+                                className="rounded-full h-7 px-3 text-xs"
+                                type="button"
+                              >
+                                {link.nodeId}{link.context ? ` — ${link.context}` : ""}
                               </Button>
                             ))}
                           </div>
@@ -2613,9 +2681,9 @@ function FlowApp() {
       <Dialog open={editingEdge !== null} onOpenChange={(open) => { if (!open) setEditingEdge(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit reference context</DialogTitle>
+            <DialogTitle>Edit link context</DialogTitle>
             <DialogDescription>
-              Add a short annotation describing why this reference exists.
+              Add a short annotation describing why this link exists.
             </DialogDescription>
           </DialogHeader>
           <div className="shell-dialog-actions" style={{ flexDirection: "column", alignItems: "stretch", gap: "0.5rem" }}>

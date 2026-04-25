@@ -353,7 +353,7 @@ func TestNewMuxMutatesDocumentsAndReindexes(t *testing.T) {
 		"title":       "Publish release",
 		"status":      "todo",
 		"dependsOn":   []string{"task-1"},
-		"references":  []map[string]any{{"node": "note-1"}},
+		"links":       []map[string]any{{"node": "note-1"}},
 		"body":        "Publish task body\n",
 	})
 	if created.ID != "task-2" || created.Path != "data/content/release/publish.md" {
@@ -449,16 +449,16 @@ func TestNewMuxDeleteNoteCleansUpReferences(t *testing.T) {
 	}
 
 	followUp := performJSONRequest[documentResponse](t, handler, http.MethodGet, "/api/documents/note-2")
-	if len(followUp.References) != 0 {
-		t.Fatalf("followUp.References = %#v, want empty", followUp.References)
+	if len(followUp.Links) != 0 {
+		t.Fatalf("followUp.Links = %#v, want empty", followUp.Links)
 	}
 	if len(followUp.RelatedNoteIDs) != 0 {
 		t.Fatalf("followUp.RelatedNoteIDs = %#v, want empty", followUp.RelatedNoteIDs)
 	}
 
 	task := performJSONRequest[documentResponse](t, handler, http.MethodGet, "/api/documents/task-1")
-	if len(task.References) != 0 {
-		t.Fatalf("task.References = %#v, want empty", task.References)
+	if len(task.Links) != 0 {
+		t.Fatalf("task.Links = %#v, want empty", task.Links)
 	}
 
 	assertStatus(t, handler, http.MethodGet, "/api/documents/note-1", http.StatusNotFound)
@@ -584,9 +584,9 @@ func TestNewMuxServesGraphCanvasScopeWithPersistedAndSeededPositions(t *testing.
 		t.Fatalf("len(view.Edges) = %d, want 3", len(view.Edges))
 	}
 	assertGraphCanvasEdgeIDs(t, view.Edges, []string{
-		"reference:note-1:cmd-1",
-		"reference:task-1:note-1",
-		"reference:note-2:note-1",
+		"link:note-1:cmd-1",
+		"link:task-1:note-1",
+		"link:note-2:note-1",
 	})
 }
 
@@ -666,7 +666,7 @@ func TestNewMuxCreateDocumentAddsCanvasNodeForNewGraph(t *testing.T) {
 		"id":          "note-new",
 		"graph":       "execution/empty",
 		"title":       "First Note",
-		"references":  []string{},
+		"links":       []string{},
 		"body":        "First note body\n",
 	})
 	if created.ID != "note-new" || created.Graph != "execution/empty" {
@@ -1200,7 +1200,7 @@ func ioContains(body string, needle string) bool {
 	return false
 }
 
-// TestNewMuxReferencesAPIAddsAndRemovesInlineReference tests POST /api/references and DELETE /api/references
+// TestNewMuxLinksAPIAddsAndRemovesInlineReference tests POST /api/links and DELETE /api/links
 func TestNewMuxReferencesAPIAddsAndRemovesInlineReference(t *testing.T) {
 	t.Parallel()
 
@@ -1211,49 +1211,49 @@ func TestNewMuxReferencesAPIAddsAndRemovesInlineReference(t *testing.T) {
 	}
 
 	// Add a reference from note-1 to note-2 with context "informs"
-	resp := performJSONRequestWithBody[documentResponse](t, handler, http.MethodPost, "/api/references", map[string]any{
+	resp := performJSONRequestWithBody[documentResponse](t, handler, http.MethodPost, "/api/links", map[string]any{
 		"fromId":  "note-1",
 		"toId":    "note-2",
 		"context": "informs",
 	})
 	found := false
-	for _, ref := range resp.References {
+	for _, ref := range resp.Links {
 		if ref.Node == "note-2" && ref.Context == "informs" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("reference to note-2 with context 'informs' not found in note-1: %#v", resp.References)
+		t.Fatalf("link to note-2 with context 'informs' not found in note-1: %#v", resp.Links)
 	}
 
-	// Remove the reference
-	resp2 := performJSONRequestWithBody[documentResponse](t, handler, http.MethodDelete, "/api/references", map[string]any{
+	// Remove the link
+	resp2 := performJSONRequestWithBody[documentResponse](t, handler, http.MethodDelete, "/api/links", map[string]any{
 		"fromId": "note-1",
 		"toId":   "note-2",
 	})
-	for _, ref := range resp2.References {
+	for _, ref := range resp2.Links {
 		if ref.Node == "note-2" {
-			t.Fatalf("reference to note-2 still present after removal: %#v", resp2.References)
+			t.Fatalf("link to note-2 still present after removal: %#v", resp2.Links)
 		}
 	}
 
-	// Add a reference with empty context
-	resp3 := performJSONRequestWithBody[documentResponse](t, handler, http.MethodPost, "/api/references", map[string]any{
+	// Add a link with empty context
+	resp3 := performJSONRequestWithBody[documentResponse](t, handler, http.MethodPost, "/api/links", map[string]any{
 		"fromId": "note-1",
 		"toId":   "note-2",
 	})
 	found = false
-	for _, ref := range resp3.References {
+	for _, ref := range resp3.Links {
 		if ref.Node == "note-2" && ref.Context == "" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("reference to note-2 with empty context not found in note-1: %#v", resp3.References)
+		t.Fatalf("link to note-2 with empty context not found in note-1: %#v", resp3.Links)
 	}
 }
 
-// TestNewMuxReferencesAPIValidation tests validation for /api/references
+// TestNewMuxReferencesAPIValidation tests validation for /api/links
 func TestNewMuxReferencesAPIValidation(t *testing.T) {
 	t.Parallel()
 
@@ -1264,13 +1264,13 @@ func TestNewMuxReferencesAPIValidation(t *testing.T) {
 	}
 
 	// Missing fromId
-	assertStatusWithBody(t, handler, http.MethodPost, "/api/references", map[string]any{"toId": "note-2"}, http.StatusBadRequest)
+	assertStatusWithBody(t, handler, http.MethodPost, "/api/links", map[string]any{"toId": "note-2"}, http.StatusBadRequest)
 	// Missing toId
-	assertStatusWithBody(t, handler, http.MethodPost, "/api/references", map[string]any{"fromId": "note-1"}, http.StatusBadRequest)
+	assertStatusWithBody(t, handler, http.MethodPost, "/api/links", map[string]any{"fromId": "note-1"}, http.StatusBadRequest)
 	// Remove with missing fromId
-	assertStatusWithBody(t, handler, http.MethodDelete, "/api/references", map[string]any{"toId": "note-2"}, http.StatusBadRequest)
+	assertStatusWithBody(t, handler, http.MethodDelete, "/api/links", map[string]any{"toId": "note-2"}, http.StatusBadRequest)
 	// Remove with missing toId
-	assertStatusWithBody(t, handler, http.MethodDelete, "/api/references", map[string]any{"fromId": "note-1"}, http.StatusBadRequest)
+	assertStatusWithBody(t, handler, http.MethodDelete, "/api/links", map[string]any{"fromId": "note-1"}, http.StatusBadRequest)
 }
 
 // createReferencesAPITestWorkspace creates a workspace with two notes for references API tests

@@ -57,7 +57,7 @@ export type GraphTreeResponse = {
   graphs: GraphTreeNodeData[];
 };
 
-export type NodeReference = {
+export type NodeLink = {
   node: string;
   context?: string;
 };
@@ -76,7 +76,7 @@ export type DocumentResponse = {
   body: string;
   status?: string;
   dependsOn?: string[];
-  references?: NodeReference[];
+  links?: NodeLink[];
   name?: string;
   env?: Record<string, string>;
   run?: string;
@@ -102,7 +102,7 @@ export type DocumentFormState = {
   body: string;
   status: string;
   dependsOn: string;
-  references: string;
+  links: string;
   name: string;
   env: string;
   run: string;
@@ -211,7 +211,7 @@ export type CreateDocumentPayload = {
   body: string;
   status?: string;
   dependsOn?: string[];
-  references?: NodeReference[];
+  links?: NodeLink[];
   name?: string;
   env?: Record<string, string>;
   run?: string;

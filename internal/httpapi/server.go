@@ -122,7 +122,7 @@ type documentResponse struct {
 	Body           string                  `json:"body"`
 	Status         string                  `json:"status,omitempty"`
 	DependsOn      []string                `json:"dependsOn,omitempty"`
-	References     []nodeReferenceResponse `json:"references,omitempty"`
+	Links          []nodeReferenceResponse `json:"links,omitempty"`
 	Name           string                  `json:"name,omitempty"`
 	Env            map[string]string       `json:"env,omitempty"`
 	Run            string                  `json:"run,omitempty"`
@@ -147,7 +147,7 @@ type createDocumentRequest struct {
 	Body        string                  `json:"body"`
 	Status      string                  `json:"status"`
 	DependsOn   []string                `json:"dependsOn"`
-	References  []nodeReferenceResponse `json:"references"`
+	Links       []nodeReferenceResponse `json:"links"`
 	Name        string                  `json:"name"`
 	Env         map[string]string       `json:"env"`
 	Run         string                  `json:"run"`
@@ -165,7 +165,7 @@ type updateDocumentRequest struct {
 	Body        *string                  `json:"body"`
 	Status      *string                  `json:"status"`
 	DependsOn   *[]string                `json:"dependsOn"`
-	References  *[]nodeReferenceResponse `json:"references"`
+	Links       *[]nodeReferenceResponse `json:"links"`
 	Name        *string                  `json:"name"`
 	Env         *map[string]string       `json:"env"`
 	Run         *string                  `json:"run"`
@@ -259,11 +259,11 @@ func (handler *apiHandler) ServeHTTP(writer http.ResponseWriter, request *http.R
 	switch {
 	case request.URL.Path == "/api/documents" && request.Method == http.MethodPost:
 		handler.handleCreateDocument(writer, request)
-	case request.URL.Path == "/api/references" && request.Method == http.MethodPost:
+	case request.URL.Path == "/api/links" && request.Method == http.MethodPost:
 		handler.handleAddReference(writer, request)
-	case request.URL.Path == "/api/references" && request.Method == http.MethodPatch:
+	case request.URL.Path == "/api/links" && request.Method == http.MethodPatch:
 		handler.handleUpdateReferenceContext(writer, request)
-	case request.URL.Path == "/api/references" && request.Method == http.MethodDelete:
+	case request.URL.Path == "/api/links" && request.Method == http.MethodDelete:
 		handler.handleRemoveReference(writer, request)
 	case request.URL.Path == "/api/documents/merge" && request.Method == http.MethodPost:
 		handler.handleMergeDocuments(writer, request)
@@ -328,7 +328,7 @@ func (handler *apiHandler) handleCreateDocument(writer http.ResponseWriter, requ
 		Body:        payload.Body,
 		Status:      payload.Status,
 		DependsOn:   payload.DependsOn,
-		References:  nodeReferencesFromPayload(payload.References),
+		References:  nodeReferencesFromPayload(payload.Links),
 		Name:        payload.Name,
 		Env:         payload.Env,
 		Run:         payload.Run,
@@ -742,7 +742,7 @@ func (handler *apiHandler) handleUpdateDocument(writer http.ResponseWriter, requ
 		Body:        payload.Body,
 		Status:      payload.Status,
 		DependsOn:   payload.DependsOn,
-		References:  nodeReferencesPatchFromPayload(payload.References),
+		References:  nodeReferencesPatchFromPayload(payload.Links),
 		Name:        payload.Name,
 		Env:         payload.Env,
 		Run:         payload.Run,
@@ -999,7 +999,7 @@ func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteG
 			CreatedAt:      document.Metadata.CreatedAt,
 			UpdatedAt:      document.Metadata.UpdatedAt,
 			Body:           document.Body,
-			References:     convertReferences(document.Metadata.References),
+			Links:          convertReferences(document.Metadata.References),
 			RelatedNoteIDs: cloneStrings(node.RelatedNoteIDs),
 		}, true, nil
 	case markdown.TaskDocument:
@@ -1022,7 +1022,7 @@ func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteG
 			Body:        document.Body,
 			Status:      document.Metadata.Status,
 			DependsOn:   cloneStrings(document.Metadata.DependsOn),
-			References:  convertReferences(document.Metadata.References),
+			Links:       convertReferences(document.Metadata.References),
 		}, true, nil
 	case markdown.CommandDocument:
 		featureSlug, err := featureSlugFromPath(item.Path)
@@ -1043,7 +1043,7 @@ func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteG
 			UpdatedAt:   document.Metadata.UpdatedAt,
 			Body:        document.Body,
 			DependsOn:   cloneStrings(document.Metadata.DependsOn),
-			References:  convertReferences(document.Metadata.References),
+			Links:       convertReferences(document.Metadata.References),
 			Name:        document.Metadata.Name,
 			Env:         cloneMap(document.Metadata.Env),
 			Run:         document.Metadata.Run,

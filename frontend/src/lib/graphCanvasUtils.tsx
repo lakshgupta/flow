@@ -186,6 +186,7 @@ export function buildGraphCanvasFlowEdges(
 
   const hasSelection = selectedCanvasNodeId !== "";
   return graphCanvasData.edges.map((edge: GraphCanvasEdgePayload) => {
+    const isLinkEdge = edge.kind === "link";
     const isConnected =
       selectedCanvasNodeId !== "" &&
       (edge.source === selectedCanvasNodeId || edge.target === selectedCanvasNodeId);
@@ -199,10 +200,10 @@ export function buildGraphCanvasFlowEdges(
       id: edge.id,
       source: edge.source,
       target: edge.target,
-      type: edge.kind === "reference" ? "contextEdge" : "smoothstep",
-      selectable: edge.kind === "reference",
+      type: isLinkEdge ? "contextEdge" : "smoothstep",
+      selectable: isLinkEdge,
       animated: false,
-      data: edge.kind === "reference"
+      data: isLinkEdge
         ? { context: edge.context ?? "", sourceId: edge.source, targetId: edge.target, kind: edge.kind }
         : undefined,
       markerEnd: {

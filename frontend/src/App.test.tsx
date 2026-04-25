@@ -47,7 +47,9 @@ vi.mock("@xyflow/react", async () => {
     Controls: () => <div data-testid="flow-controls" />,
     useViewport: () => ({ x: 0, y: 0, zoom: 1 }),
     applyNodeChanges: (_changes: unknown, nodes: unknown) => nodes,
+    getSmoothStepPath: () => ["M0 0", 0, 0],
     MarkerType: { ArrowClosed: "arrowclosed" },
+    Position: { Top: "top", Right: "right", Bottom: "bottom", Left: "left" },
   };
 });
 
@@ -196,8 +198,27 @@ describe("App graph canvas flows", () => {
           position: { x: 140, y: 120 },
           positionPersisted: false,
         },
+        {
+          id: "note-2",
+          type: "note",
+          graph: "execution",
+          title: "Follow-up",
+          description: "Follow-up notes",
+          path: "data/graphs/execution/follow-up.md",
+          featureSlug: "execution",
+          position: { x: 480, y: 220 },
+          positionPersisted: false,
+        },
       ],
-      edges: [],
+      edges: [
+        {
+          id: "link:note-2:note-1",
+          source: "note-2",
+          target: "note-1",
+          kind: "link",
+          context: "captures follow-up work",
+        },
+      ],
     };
     const documentResponse = {
       id: "note-1",
@@ -209,7 +230,7 @@ describe("App graph canvas flows", () => {
       path: "data/graphs/execution/overview.md",
       tags: [],
       body: "Overview body\n",
-      references: [],
+      links: [],
       relatedNoteIds: [],
     };
 
@@ -338,7 +359,7 @@ describe("App graph canvas flows", () => {
       path: "data/graphs/execution/overview.md",
       tags: [],
       body: "## Overview body\n\n### Details\n",
-      references: [],
+      links: [],
       relatedNoteIds: [],
     };
     const note2DocumentResponse = {
@@ -351,7 +372,7 @@ describe("App graph canvas flows", () => {
       path: "data/graphs/execution/details.md",
       tags: [],
       body: "Details body\n",
-      references: [],
+      links: [],
       relatedNoteIds: [],
     };
 
@@ -605,7 +626,7 @@ describe("App graph canvas flows", () => {
       path: "data/graphs/execution/overview.md",
       tags: [],
       body: "Overview body\n",
-      references: [],
+      links: [],
       relatedNoteIds: [],
     };
 
@@ -645,6 +666,14 @@ describe("App graph canvas flows", () => {
     render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByText("Content");
+
+    const executionButton = (await screen.findByText("Execution")).closest('[data-sidebar="menu-sub-button"]');
+    if (executionButton === null) {
+      throw new Error("missing execution graph button");
+    }
+
+    await user.click(executionButton);
+    await screen.findByTestId("flow-node-note-1");
 
     const fileButton = (await screen.findByText("overview.md")).closest('[data-sidebar="menu-sub-button"]');
     if (fileButton === null) {
@@ -762,7 +791,7 @@ describe("App graph canvas flows", () => {
       description: "",
       path: "data/content/execution/summary.md",
       body: "Overview body",
-      references: [],
+      links: [],
       relatedNoteIds: [],
     };
 
@@ -1034,8 +1063,8 @@ describe("App graph canvas flows", () => {
       path: "data/graphs/execution/overview.md",
       tags: [],
       body: "# Intro Heading\n\nBody text\n\n## Deep Section\n\nMore detail\n",
-      references: [],
-      relatedNoteIds: [],
+      links: [{ node: "note-2", context: "related work" }],
+      relatedNoteIds: ["note-2"],
     };
 
     installFetchMock((url) => {
@@ -1081,6 +1110,17 @@ describe("App graph canvas flows", () => {
     }
 
     await user.click(fileButton);
+
+    await user.click(screen.getByRole("button", { name: "Toggle document properties" }));
+
+    await waitFor(() => {
+      const propertiesPanel = screen.getByLabelText("Document properties");
+      const linkStats = within(propertiesPanel).getByLabelText("Document link stats");
+      expect(within(linkStats).getByText("1 outgoing link")).toBeInTheDocument();
+      expect(within(linkStats).getByText("1 incoming link")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Toggle table of contents" }));
 
     const toc = await screen.findByLabelText("Document table of contents");
     const deepSectionLink = within(toc).getByRole("button", { name: "Deep Section" });
@@ -1129,7 +1169,7 @@ describe("App graph canvas flows", () => {
       path: "data/graphs/execution/overview.md",
       tags: [],
       body: "# Intro Heading\n\nBody text\n\n## Deep Section\n\nMore detail\n",
-      references: [],
+      links: [],
       relatedNoteIds: [],
     };
 
@@ -1165,7 +1205,7 @@ describe("App graph canvas flows", () => {
           graph: string;
           tags: string[];
           body: string;
-          references: Array<{ node: string }>;
+          links: Array<{ node: string }>;
         };
         persistedDocument = {
           ...persistedDocument,
@@ -1174,7 +1214,7 @@ describe("App graph canvas flows", () => {
           graph: body.graph,
           tags: body.tags,
           body: body.body,
-          references: body.references,
+          links: body.links,
         };
         return persistedDocument;
       }
@@ -1228,7 +1268,7 @@ describe("App graph canvas flows", () => {
         graph: "execution",
         tags: [],
         body: "# Intro Heading\n\nBody text\n\n## Deep Section\n\nMore detail\n",
-        references: [],
+        links: [],
       });
     }, { timeout: 2000 });
   });
@@ -1269,7 +1309,7 @@ describe("App graph canvas flows", () => {
       path: "data/graphs/execution/overview.md",
       tags: [],
       body: "# Intro\n## Deep Section\n",
-      references: [],
+      links: [],
       relatedNoteIds: [],
     };
     let persistedWorkspace = workspaceResponse;
@@ -1349,7 +1389,7 @@ describe("App graph canvas flows", () => {
       path: "data/graphs/execution/empty/new-note-kf12oi.md",
       tags: [],
       body: "",
-      references: [],
+      links: [],
       relatedNoteIds: [],
     };
 

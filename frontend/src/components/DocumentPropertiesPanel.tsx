@@ -1,18 +1,40 @@
-import React from "react";
-import { DocumentResponse } from "../lib/api";
+import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
+
 import { Input } from "./ui/input";
 
-import { DocumentFormState } from "../types";
+import type { DocumentFormState, DocumentResponse } from "../types";
+
+type DocumentLinkStat = {
+  nodeId: string;
+  context: string;
+};
+
+function formatLinkCount(count: number, direction: "incoming" | "outgoing"): string {
+  return `${count} ${direction} ${count === 1 ? "link" : "links"}`;
+}
+
+function summarizeLinks(links: DocumentLinkStat[]): string {
+  if (links.length === 0) {
+    return "None";
+  }
+
+  return links.map((link) => (link.context === "" ? link.nodeId : `${link.nodeId} (${link.context})`)).join(", ");
+}
 
 export interface DocumentPropertiesPanelProps {
   selectedDocument: DocumentResponse;
   formState: DocumentFormState;
+  linkStats: {
+    outgoing: DocumentLinkStat[];
+    incoming: DocumentLinkStat[];
+  };
   updateFormField: (field: keyof DocumentFormState, value: string) => void;
 }
 
 export function DocumentPropertiesPanel({
   selectedDocument,
   formState,
+  linkStats,
   updateFormField,
 }: DocumentPropertiesPanelProps) {
   return (
@@ -40,15 +62,31 @@ export function DocumentPropertiesPanel({
           />
         </label>
         <label className="center-document-properties-field editor-field">
-          <span>References</span>
+          <span>Links</span>
           <textarea
-            aria-label="Document references"
-            placeholder="Reference document IDs, one per line or comma separated"
+            aria-label="Document links"
+            placeholder="Linked document IDs, one per line or comma separated"
             rows={4}
-            value={formState.references}
-            onChange={(event) => updateFormField("references", event.target.value)}
+            value={formState.links}
+            onChange={(event) => updateFormField("links", event.target.value)}
           />
         </label>
+        <section className="center-document-properties-link-stats" aria-label="Document link stats">
+          <div
+            className="center-document-link-stat"
+            title={`Outgoing links: ${summarizeLinks(linkStats.outgoing)}`}
+          >
+            <ArrowUpRight size={14} aria-hidden="true" />
+            <span>{formatLinkCount(linkStats.outgoing.length, "outgoing")}</span>
+          </div>
+          <div
+            className="center-document-link-stat"
+            title={`Incoming links: ${summarizeLinks(linkStats.incoming)}`}
+          >
+            <ArrowDownLeft size={14} aria-hidden="true" />
+            <span>{formatLinkCount(linkStats.incoming.length, "incoming")}</span>
+          </div>
+        </section>
       </section>
 
       {(selectedDocument.type === "task" || selectedDocument.type === "command") && (
@@ -89,8 +127,8 @@ export function DocumentPropertiesPanel({
               aria-label={`${selectedDocument.type === "task" ? "Task" : "Command"} dependencies`}
               placeholder="Dependency document IDs, one per line or comma separated"
               rows={4}
-              value={formState.dependencies}
-              onChange={(event) => updateFormField("dependencies", event.target.value)}
+              value={formState.dependsOn}
+              onChange={(event) => updateFormField("dependsOn", event.target.value)}
             />
           </label>
 

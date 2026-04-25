@@ -2984,6 +2984,12 @@ pre {
   min-height: 4.75rem;
 }
 
+.center-document-properties-link-stats {
+  display: grid;
+  gap: 0.55rem;
+  padding-top: 0.15rem;
+}
+
 .home-document {
   display: flex;
   flex-direction: column;
@@ -3059,16 +3065,13 @@ pre {
   min-height: calc(0.75rem * 2 + 1.25rem); /* match home-document-footer height */
 }
 
-.home-document-footer {
-  display: flex;
+.center-document-link-stat {
+  display: inline-flex;
   align-items: center;
-  gap: 0.6rem;
-  justify-content: flex-end;
-  padding: 0.75rem 2rem;
-  max-width: 52rem;
-  width: 100%;
-  margin: 0 auto;
-  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent 40%);
+  gap: 0.45rem;
+  font-size: 0.83rem;
+  color: var(--muted-foreground);
+  min-width: 0;
 }
 
 .home-save-success {

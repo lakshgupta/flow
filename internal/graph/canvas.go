@@ -308,7 +308,7 @@ func buildGraphCanvasAdjacency(nodesByID map[string]GraphCanvasNode) (map[string
 				continue
 			}
 
-			edgeID := graphCanvasEdgeID("reference", node.ID, ref.Node)
+			edgeID := graphCanvasEdgeID("link", node.ID, ref.Node)
 			if _, ok := edgeSeen[edgeID]; ok {
 				continue
 			}
@@ -431,10 +431,10 @@ func buildGraphCanvasEdges(nodesByID map[string]GraphCanvasNode) []GraphCanvasEd
 			}
 
 			edge := GraphCanvasEdge{
-				ID:      graphCanvasEdgeID("reference", node.ID, ref.Node),
+				ID:      graphCanvasEdgeID("link", node.ID, ref.Node),
 				Source:  node.ID,
 				Target:  ref.Node,
-				Kind:    "reference",
+				Kind:    "link",
 				Context: ref.Context,
 			}
 			edgeByID[edge.ID] = edge

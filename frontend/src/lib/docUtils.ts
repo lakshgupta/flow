@@ -15,7 +15,7 @@ export const emptyDocumentFormState: DocumentFormState = {
   body: "",
   status: "",
   dependsOn: "",
-  references: "",
+  links: "",
   name: "",
   env: "",
   run: "",
@@ -76,7 +76,7 @@ export function createGraphDocumentPayload(type: GraphCreateType, graphPath: str
     createdAt: isoTimestamp,
     updatedAt: isoTimestamp,
     body: "",
-    references: [],
+    links: [],
   };
 
   if (type === "task") {
@@ -152,7 +152,7 @@ export function createDocumentFormState(document: DocumentResponse | null): Docu
     body: document.body,
     status: document.status ?? "",
     dependsOn: joinList(document.dependsOn),
-    references: joinList((document.references ?? []).map((ref) => ref.node)),
+    links: joinList((document.links ?? []).map((link) => link.node)),
     name: document.name ?? "",
     env: serializeEnv(document.env),
     run: document.run ?? "",
