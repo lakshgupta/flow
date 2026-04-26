@@ -69,6 +69,7 @@ import {
   selectedGraphCanvasNode,
   pickBestEdgePorts,
 } from "./lib/graphCanvasUtils";
+import { markdownToHTML, parseFlowReferenceHref } from "./richText";
 import { useTheme } from "./lib/theme";
 import { todayString } from "./lib/dateEntries";
 import { toErrorMessage } from "./lib/utils";
@@ -116,6 +117,11 @@ type DeleteDialogState = {
 type DocumentLinkDetail = {
   nodeId: string;
   context: string;
+  graphPath: string;
+};
+
+type ThreadDocumentEntry = {
+  documentId: string;
   graphPath: string;
 };
 
@@ -237,6 +243,8 @@ function FlowApp() {
   const [selectedDocumentId, setSelectedDocumentId] = useState<string>("");
   const [selectedDocumentOpenMode, setSelectedDocumentOpenMode] = useState<DocumentOpenMode>("right-rail");
   const [selectedDocument, setSelectedDocument] = useState<DocumentResponse | null>(null);
+  const [documentThread, setDocumentThread] = useState<ThreadDocumentEntry[]>([]);
+  const [threadDocumentsById, setThreadDocumentsById] = useState<Record<string, DocumentResponse>>({});
   const [searchQuery, setSearchQuery] = useState<string>("");
   const deferredSearchQuery = useDeferredValue(searchQuery.trim());
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -298,6 +306,8 @@ function FlowApp() {
   const homeSavePromiseRef = useRef<Promise<void> | null>(null);
   const documentSavePromiseRef = useRef<Promise<void> | null>(null);
   const edgeClickTimerRef = useRef<number | null>(null);
+  const documentThreadRef = useRef<ThreadDocumentEntry[]>([]);
+  const selectedDocumentOpenModeRef = useRef<DocumentOpenMode>("right-rail");
   const formStateRef = useRef<DocumentFormState>(emptyDocumentFormState);
   const selectedDocumentRef = useRef<DocumentResponse | null>(null);
   const graphCanvasDragRef = useRef<{
@@ -326,6 +336,9 @@ function FlowApp() {
   const workspaceSurfaceSection = activeSurface.kind === "graph" ? "Content" : "Home";
   const workspaceSurfaceTitle = activeSurface.kind === "graph" ? selectedGraphNode?.displayName ?? selectedGraphPath : null;
   const isCenterDocumentOpen = selectedDocumentId !== "" && selectedDocumentOpenMode === "center";
+  const isSelectedDocumentLoading = selectedDocumentId !== "" && (selectedDocument === null || selectedDocument.id !== selectedDocumentId);
+  const activeThreadTailId = documentThread.length > 0 ? documentThread[documentThread.length - 1]?.documentId ?? "" : "";
+  const activeThreadDocumentId = selectedDocumentOpenMode === "center" && selectedDocumentId !== "" ? selectedDocumentId : activeThreadTailId;
   const showCenterDocumentSidePanel = centerDocumentSidePanelMode !== "hidden";
   const centerDocumentSidePanelLabel = centerDocumentSidePanelMode === "properties" ? "Document properties" : "Document table of contents";
   const centerDocumentSidePanelTitle = centerDocumentSidePanelMode === "properties" ? "Properties" : "Table of Contents";
@@ -349,6 +362,22 @@ function FlowApp() {
 
     return graphByID;
   }, [graphTree]);
+  const threadPanels = useMemo(() => {
+    return documentThread.map((entry, index) => {
+      const isTail = index === documentThread.length - 1;
+      const isActive = selectedDocumentOpenMode === "center" && selectedDocumentId === entry.documentId;
+      const document = isActive && selectedDocument?.id === entry.documentId
+        ? selectedDocument
+        : threadDocumentsById[entry.documentId] ?? null;
+
+      return {
+        ...entry,
+        document,
+        isActive,
+        isTail,
+      };
+    });
+  }, [documentThread, selectedDocument, selectedDocumentId, selectedDocumentOpenMode, threadDocumentsById]);
   const selectedDocumentLinks = useMemo(() => {
     if (selectedDocument === null) {
       return {
@@ -440,9 +469,21 @@ function FlowApp() {
     return generateTOC(formState.body);
   }, [activeSurface.kind, formState.body, homeFormState.body, selectedDocument]);
 
+  useEffect(() => {
+    documentThreadRef.current = documentThread;
+  }, [documentThread]);
+
+  useEffect(() => {
+    selectedDocumentOpenModeRef.current = selectedDocumentOpenMode;
+  }, [selectedDocumentOpenMode]);
+
   const syncSelectedDocumentState = useCallback((document: DocumentResponse | null, options?: { preserveFormState?: boolean }): void => {
     selectedDocumentRef.current = document;
     setSelectedDocument(document);
+
+    if (document !== null && (selectedDocumentOpenModeRef.current === "center" || documentThreadRef.current.some((entry) => entry.documentId === document.id))) {
+      setThreadDocumentsById((current) => ({ ...current, [document.id]: document }));
+    }
 
     if (!options?.preserveFormState) {
       const nextFormState = createDocumentFormState(document);
@@ -508,6 +549,20 @@ function FlowApp() {
   function collapseRightRail(): void {
     setRightRailMaximized(false);
     setRightRailCollapsed(true);
+  }
+
+  function applyDocumentThread(nextThread: ThreadDocumentEntry[]): void {
+    documentThreadRef.current = nextThread;
+    setDocumentThread(nextThread);
+    setThreadDocumentsById((current) => {
+      const allowedIds = new Set(nextThread.map((entry) => entry.documentId));
+      return Object.fromEntries(Object.entries(current).filter(([documentId]) => allowedIds.has(documentId)));
+    });
+  }
+
+  function clearDocumentThread(): void {
+    setCenterDocumentSidePanelMode("hidden");
+    applyDocumentThread([]);
   }
 
   function toggleRightPanel(tab: RightPanelTab | "document"): void {
@@ -595,6 +650,8 @@ function FlowApp() {
     });
     setSelectedCanvasNodeId(documentId);
     setSelectedDocumentOpenMode("center");
+    setCenterDocumentSidePanelMode("hidden");
+    applyDocumentThread([{ documentId, graphPath }]);
     setSelectedDocumentId(documentId);
     if (rightPanelTab === "document") {
       setRightPanelTab("search");
@@ -614,6 +671,83 @@ function FlowApp() {
     setRightPanelTab("document");
     setRightRailMaximized(false);
     setRightRailCollapsed(false);
+  }
+
+  async function openDocumentInThreadFromSource(sourceDocumentId: string, targetDocumentId: string, graphPath: string): Promise<void> {
+    await flushPendingDocumentSave();
+    clearSurfaceFeedback();
+
+    const currentThread = documentThreadRef.current;
+    const sourceIndex = currentThread.findIndex((entry) => entry.documentId === sourceDocumentId);
+    const sourceGraphPath = currentThread[sourceIndex]?.graphPath
+      ?? selectedDocumentRef.current?.graph
+      ?? documentGraphById.get(sourceDocumentId)
+      ?? selectedGraphPath;
+
+    const baseThread = sourceIndex >= 0
+      ? currentThread.slice(0, sourceIndex + 1)
+      : sourceDocumentId !== "" && sourceGraphPath !== ""
+        ? [{ documentId: sourceDocumentId, graphPath: sourceGraphPath }]
+        : [];
+
+    const nextThread = [...baseThread, { documentId: targetDocumentId, graphPath }];
+    applyDocumentThread(nextThread);
+    setSelectedDocumentOpenMode("center");
+    setSelectedDocumentId(targetDocumentId);
+    setSelectedCanvasNodeId(targetDocumentId);
+    startTransition(() => {
+      setActiveSurface({ kind: "graph", graphPath });
+    });
+
+    if (rightPanelTab === "document") {
+      setRightPanelTab("search");
+      setRightRailCollapsed(true);
+    }
+  }
+
+  async function activateThreadDocument(documentId: string, graphPath: string): Promise<void> {
+    if (selectedDocumentOpenMode === "center" && selectedDocumentId === documentId) {
+      return;
+    }
+
+    await flushPendingDocumentSave();
+    clearSurfaceFeedback();
+    setSelectedDocumentOpenMode("center");
+    setSelectedDocumentId(documentId);
+    setSelectedCanvasNodeId(documentId);
+    syncSelectedDocumentState(threadDocumentsById[documentId] ?? null);
+    startTransition(() => {
+      setActiveSurface({ kind: "graph", graphPath });
+    });
+
+    if (rightPanelTab === "document") {
+      setRightPanelTab("search");
+      setRightRailCollapsed(true);
+    }
+  }
+
+  async function closeDocumentThreadFrom(index: number): Promise<void> {
+    await flushPendingDocumentSave();
+
+    const nextThread = documentThreadRef.current.slice(0, index);
+    clearSurfaceFeedback();
+    applyDocumentThread(nextThread);
+
+    if (nextThread.length === 0) {
+      setSelectedDocumentId("");
+      setSelectedDocumentOpenMode("right-rail");
+      syncSelectedDocumentState(null);
+      return;
+    }
+
+    const nextActive = nextThread[nextThread.length - 1];
+    setSelectedDocumentOpenMode("center");
+    setSelectedDocumentId(nextActive.documentId);
+    setSelectedCanvasNodeId(nextActive.documentId);
+    syncSelectedDocumentState(threadDocumentsById[nextActive.documentId] ?? null);
+    startTransition(() => {
+      setActiveSurface({ kind: "graph", graphPath: nextActive.graphPath });
+    });
   }
 
   function toggleRightRailMaximized(): void {
@@ -981,6 +1115,7 @@ function FlowApp() {
     }
     setSelectedDocumentId("");
     setSelectedDocumentOpenMode("right-rail");
+    clearDocumentThread();
     syncSelectedDocumentState(null);
     setDeleteDialogTarget(null);
     setDeleteDialogOpen(false);
@@ -1035,12 +1170,17 @@ function FlowApp() {
   }
 
   function handleOpenCanvasDocument(documentId: string): void {
-    void openDocumentInRightRail(documentId, selectedGraphPath);
+    void openDocumentInCenter(documentId, selectedGraphPath);
   }
 
   function handleSelectedNodeDocumentButtonClick(): void {
-    if (selectedCanvasNode !== null && !selectedNodeMatchesRightRailDocument) {
-      void openDocumentInRightRail(selectedCanvasNode.id, selectedGraphPath);
+    if (selectedCanvasNode !== null && activeThreadDocumentId !== selectedCanvasNode.id) {
+      void openDocumentInCenter(selectedCanvasNode.id, selectedGraphPath);
+      return;
+    }
+
+    if (documentThreadRef.current.length > 0) {
+      void closeDocumentThreadFrom(documentThreadRef.current.length);
       return;
     }
 
@@ -1109,14 +1249,14 @@ function FlowApp() {
     void openDocumentInRightRail(documentId, graphPath);
   }
 
-  function handleInlineReferenceOpen(documentId: string, graphPath: string, openMode: DocumentOpenMode): void {
+  function handleInlineReferenceOpen(sourceDocumentId: string, documentId: string, graphPath: string, openMode: DocumentOpenMode): void {
     const nextGraphPath = graphPath || documentGraphById.get(documentId) || selectedGraphPath;
     if (nextGraphPath === "") {
       return;
     }
 
-    if (openMode === "center") {
-      void openDocumentInCenter(documentId, nextGraphPath);
+    if (openMode === "center" || sourceDocumentId !== "") {
+      void openDocumentInThreadFromSource(sourceDocumentId, documentId, nextGraphPath);
       return;
     }
 
@@ -1582,6 +1722,9 @@ function FlowApp() {
         if (selectedDocumentRef.current?.id === updatedDocument.id) {
           syncSelectedDocumentState(updatedDocument, { preserveFormState: true });
         }
+        if (documentThreadRef.current.some((entry) => entry.documentId === updatedDocument.id)) {
+          setThreadDocumentsById((current) => ({ ...current, [updatedDocument.id]: updatedDocument }));
+        }
         setGraphTree((current) => updateGraphTreeDocumentEntry(current, doc, updatedDocument));
         setGraphCanvasData((current) => updateGraphCanvasDocumentEntry(current, doc, updatedDocument));
       } catch (mutationFailure) {
@@ -1765,6 +1908,10 @@ function FlowApp() {
       });
 
       const deletedSelectedDocument = selectedDocumentId === deleteDialogTarget.id;
+      if (documentThreadRef.current.some((entry) => entry.documentId === deleteDialogTarget.id)) {
+        const deleteIndex = documentThreadRef.current.findIndex((entry) => entry.documentId === deleteDialogTarget.id);
+        applyDocumentThread(deleteIndex > 0 ? documentThreadRef.current.slice(0, deleteIndex) : []);
+      }
       setDeleteDialogTarget(null);
       if (deletedSelectedDocument) {
         await refreshShellViews({ nextDocument: null, nextDocumentId: "" });
@@ -1813,129 +1960,220 @@ function FlowApp() {
 
   const renderCenterDocumentShell = (isMaximizedRightRail: boolean) => (
     <div className="center-document-shell">
-      <div className="center-document-toolbar">
-        <div className="center-document-toolbar-leading">
-          {selectedDocument !== null && (
-            <Badge variant="outline" className="center-document-type-badge">{formatDocumentType(selectedDocument.type)}</Badge>
-          )}
-          {selectedDocument !== null && (
-            <>
-              <Separator className="center-document-toolbar-separator" orientation="vertical" />
-              <input
-                className="center-document-toolbar-title"
-                placeholder="Document title"
-                value={formState.title}
-                onChange={(event) => updateFormField("title", event.target.value)}
-                aria-label="Document title"
-              />
-            </>
-          )}
-          {savingDocument && <span className="home-save-success">Saving…</span>}
-        </div>
-        <div className="center-document-toolbar-actions">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="center-document-toolbar-toggle"
-            data-active={centerDocumentSidePanelMode === "toc" ? "true" : "false"}
-            aria-label="Toggle table of contents"
-            aria-pressed={centerDocumentSidePanelMode === "toc"}
-            title="Toggle table of contents"
-            onClick={() => toggleCenterDocumentSidePanel("toc")}
-          >
-            <FileText size={16} />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="center-document-toolbar-toggle"
-            data-active={centerDocumentSidePanelMode === "properties" ? "true" : "false"}
-            aria-label="Toggle document properties"
-            aria-pressed={centerDocumentSidePanelMode === "properties"}
-            title="Toggle document properties"
-            onClick={() => toggleCenterDocumentSidePanel("properties")}
-          >
-            <Info size={16} />
-          </Button>
-          {isMaximizedRightRail && (
-            <Button
-              onClick={() => toggleRightRailMaximized()}
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Minimize right pane"
-              title="Minimize right pane"
-            >
-              <Minimize2 size={16} />
-            </Button>
-          )}
-        </div>
-      </div>
-
       {panelError !== "" ? <p className="status-line status-line-error">{panelError}</p> : null}
       {mutationError !== "" ? <p className="status-line status-line-error">{mutationError}</p> : null}
       {mutationSuccess !== "" ? <p className="status-line status-line-success">{mutationSuccess}</p> : null}
 
-      {selectedDocument === null ? (
+      {threadPanels.length === 0 ? (
         <div className="detail-empty">
           <p>Loading document content.</p>
         </div>
       ) : (
-        <div
-          ref={centerDocumentLayoutRef}
-          className="center-document-layout"
-          aria-label="Document content layout"
-          data-side-panel={centerDocumentSidePanelMode}
-          style={{ "--document-toc-ratio": documentTOCRatio.toString() } as React.CSSProperties}
-        >
-          <div className="center-document-main home-document">
-            <div className="home-document-body center-document-body">
-              <RichTextEditor
-                ariaLabel="Document body editor"
-                inlineReferences={selectedDocument.inlineReferences}
-                onChange={(value) => updateFormField("body", value)}
-                onReferenceOpen={(documentId, graphPath) => handleInlineReferenceOpen(documentId, graphPath, "center")}
-                referenceLookupGraph={selectedDocument.graph}
-                ref={centerDocumentEditorRef}
-                onScrollCompleted={() => setEditorScrollTarget(null)}
-                placeholder="Type / for headings, lists, quotes, links, and highlights"
-                scrollToHeadingSlug={editorScrollTarget}
-                value={formState.body}
-              />
-            </div>
-          </div>
+        <div className="thread-stack" aria-label="Document thread">
+          {threadPanels.map((panel, index) => {
+            const panelDocument = panel.document;
+            const panelTitle = panel.isActive ? formState.title : panelDocument?.title ?? panel.documentId;
+            const panelDescription = panel.isActive ? formState.description : panelDocument?.description ?? "";
+            const panelDocumentIsLoading = panel.isActive && isSelectedDocumentLoading && selectedDocumentId === panel.documentId;
 
-          {showCenterDocumentSidePanel ? (
-            <>
-              <div
-                className="center-document-toc-resizer"
-                onMouseDown={handleDocumentTOCResizeMouseDown}
-                role="separator"
-                aria-label={centerDocumentSidePanelResizerLabel}
-                aria-orientation="vertical"
-              />
-
-              <aside className="center-document-side-panel" aria-label={centerDocumentSidePanelLabel}>
-                <div className="center-document-toc-header center-document-side-panel-header">
-                  <h4>{centerDocumentSidePanelTitle}</h4>
-                  <p>{centerDocumentSidePanelDescription}</p>
+            return (
+              <section
+                key={`${panel.documentId}:${index}`}
+                className={`thread-panel ${panel.isActive ? "thread-panel-active" : "thread-panel-readonly"}`}
+                aria-label={panel.isActive ? `Active thread document ${panelTitle}` : `Thread document ${panelTitle}`}
+                data-active={panel.isActive ? "true" : "false"}
+              >
+                <div className="thread-panel-header">
+                  <div className="thread-panel-header-leading">
+                    {panelDocument !== null ? (
+                      <Badge variant="outline" className="center-document-type-badge">{formatDocumentType(panelDocument.type)}</Badge>
+                    ) : null}
+                    <span className="thread-panel-step">Thread {index + 1}</span>
+                  </div>
+                  <div className="thread-panel-header-actions">
+                    {panel.isActive ? (
+                      <>
+                        {savingDocument && <span className="home-save-success">Saving…</span>}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="center-document-toolbar-toggle"
+                          data-active={centerDocumentSidePanelMode === "toc" ? "true" : "false"}
+                          aria-label="Toggle table of contents"
+                          aria-pressed={centerDocumentSidePanelMode === "toc"}
+                          title="Toggle table of contents"
+                          onClick={() => toggleCenterDocumentSidePanel("toc")}
+                        >
+                          <FileText size={16} />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="center-document-toolbar-toggle"
+                          data-active={centerDocumentSidePanelMode === "properties" ? "true" : "false"}
+                          aria-label="Toggle document properties"
+                          aria-pressed={centerDocumentSidePanelMode === "properties"}
+                          title="Toggle document properties"
+                          onClick={() => toggleCenterDocumentSidePanel("properties")}
+                        >
+                          <Info size={16} />
+                        </Button>
+                        {isMaximizedRightRail && (
+                          <Button
+                            onClick={() => toggleRightRailMaximized()}
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label="Minimize right pane"
+                            title="Minimize right pane"
+                          >
+                            <Minimize2 size={16} />
+                          </Button>
+                        )}
+                      </>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        aria-label={`Edit thread ${panelTitle || panel.documentId}`}
+                        title={`Edit ${panelTitle || panel.documentId}`}
+                        onClick={() => void activateThreadDocument(panel.documentId, panel.graphPath)}
+                      >
+                        Edit
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Close thread from ${panelTitle || panel.documentId}`}
+                      title="Close thread"
+                      onClick={() => void closeDocumentThreadFrom(index)}
+                    >
+                      <X size={16} />
+                    </Button>
+                  </div>
                 </div>
 
-                {centerDocumentSidePanelMode === "toc" ? (
-                  <TableOfContents items={tocItems} onNavigate={handleTOCNavigate} />
+                {panel.isActive && panelDocumentIsLoading ? (
+                  <div className="detail-empty thread-panel-loading">
+                    <p>Loading document content.</p>
+                  </div>
+                ) : panel.isActive ? (
+                  <div className="thread-panel-shell">
+                    <div className="thread-panel-title-block">
+                      <input
+                        className="center-document-toolbar-title"
+                        placeholder="Document title"
+                        value={formState.title}
+                        onChange={(event) => updateFormField("title", event.target.value)}
+                        aria-label="Document title"
+                      />
+                    </div>
+
+                    <div
+                      ref={centerDocumentLayoutRef}
+                      className="center-document-layout"
+                      aria-label="Document content layout"
+                      data-side-panel={centerDocumentSidePanelMode}
+                      style={{ "--document-toc-ratio": documentTOCRatio.toString() } as React.CSSProperties}
+                    >
+                      <div className="center-document-main home-document">
+                        <div className="home-document-body center-document-body">
+                          <RichTextEditor
+                            ariaLabel="Document body editor"
+                            inlineReferences={selectedDocument?.inlineReferences}
+                            onChange={(value) => updateFormField("body", value)}
+                            onReferenceOpen={(documentId, graphPath) => handleInlineReferenceOpen(panel.documentId, documentId, graphPath, "center")}
+                            referenceLookupGraph={selectedDocument?.graph}
+                            ref={centerDocumentEditorRef}
+                            onScrollCompleted={() => setEditorScrollTarget(null)}
+                            placeholder="Type / for headings, lists, quotes, links, and highlights"
+                            scrollToHeadingSlug={editorScrollTarget}
+                            value={formState.body}
+                          />
+                        </div>
+                      </div>
+
+                      {showCenterDocumentSidePanel && selectedDocument !== null ? (
+                        <>
+                          <div
+                            className="center-document-toc-resizer"
+                            onMouseDown={handleDocumentTOCResizeMouseDown}
+                            role="separator"
+                            aria-label={centerDocumentSidePanelResizerLabel}
+                            aria-orientation="vertical"
+                          />
+
+                          <aside className="center-document-side-panel" aria-label={centerDocumentSidePanelLabel}>
+                            <div className="center-document-toc-header center-document-side-panel-header">
+                              <h4>{centerDocumentSidePanelTitle}</h4>
+                              <p>{centerDocumentSidePanelDescription}</p>
+                            </div>
+
+                            {centerDocumentSidePanelMode === "toc" ? (
+                              <TableOfContents items={tocItems} onNavigate={handleTOCNavigate} />
+                            ) : (
+                              <DocumentPropertiesPanel
+                                selectedDocument={selectedDocument}
+                                formState={formState}
+                                linkStats={selectedDocumentLinks}
+                                updateFormField={updateFormField}
+                              />
+                            )}
+                          </aside>
+                        </>
+                      ) : null}
+                    </div>
+                    {panel.graphPath.trim() !== "" ? <p className="thread-panel-breadcrumb">{panel.graphPath}</p> : null}
+                  </div>
+                ) : panelDocument === null ? (
+                  <div className="detail-empty thread-panel-loading">
+                    <p>Loading document content.</p>
+                  </div>
                 ) : (
-                  <DocumentPropertiesPanel
-                    selectedDocument={selectedDocument}
-                    formState={formState}
-                    linkStats={selectedDocumentLinks}
-                    updateFormField={updateFormField}
-                  />
+                  <div className="thread-panel-shell thread-panel-shell-readonly">
+                    <div className="thread-panel-title-block">
+                      <h2 className="thread-panel-title">{panelTitle}</h2>
+                      {panelDescription.trim() !== "" ? <p className="thread-panel-description">{panelDescription}</p> : null}
+                    </div>
+                    <div
+                      className="thread-panel-readonly-body"
+                      onClickCapture={(event) => {
+                        const target = event.target;
+                        if (!(target instanceof HTMLElement)) {
+                          return;
+                        }
+
+                        const anchor = target.closest("a");
+                        if (!(anchor instanceof HTMLAnchorElement)) {
+                          return;
+                        }
+
+                        const reference = parseFlowReferenceHref(anchor.getAttribute("href") ?? anchor.href);
+                        if (reference === null) {
+                          return;
+                        }
+
+                        event.preventDefault();
+                        void handleInlineReferenceOpen(panel.documentId, reference.documentId, reference.graphPath, "center");
+                      }}
+                    >
+                      <div
+                        className="ProseMirror thread-panel-rendered-markdown"
+                        aria-label={`Thread panel content for ${panelTitle}`}
+                        dangerouslySetInnerHTML={{ __html: markdownToHTML(panelDocument.body, panelDocument.inlineReferences) }}
+                      />
+                    </div>
+                    {panel.graphPath.trim() !== "" ? <p className="thread-panel-breadcrumb">{panel.graphPath}</p> : null}
+                  </div>
                 )}
-              </aside>
-            </>
-          ) : null}
+              </section>
+            );
+          })}
         </div>
       )}
     </div>
@@ -2527,7 +2765,7 @@ function FlowApp() {
                           ariaLabel="Context document editor"
                           inlineReferences={selectedDocument.inlineReferences}
                           onChange={(value) => updateFormField("body", value)}
-                          onReferenceOpen={(documentId, graphPath) => handleInlineReferenceOpen(documentId, graphPath, "right-rail")}
+                          onReferenceOpen={(documentId, graphPath) => handleInlineReferenceOpen(selectedDocument.id, documentId, graphPath, "right-rail")}
                           referenceLookupGraph={selectedDocument.graph}
                           ref={rightRailDocumentEditorRef}
                           onScrollCompleted={() => setEditorScrollTarget(null)}

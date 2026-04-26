@@ -7,6 +7,7 @@ import { slugifyValue } from "./lib/docUtils";
 import type { InlineReference } from "./types";
 
 const INLINE_REFERENCE_PATTERN = /\[\[([^\[\]\n]+)\]\]/g;
+const ESCAPED_INLINE_REFERENCE_PATTERN = /\\\[\\\[([^\[\]\n]+)\\\]\\\]/g;
 const FLOW_REFERENCE_HASH_PREFIX = "#flow-reference?";
 const EMPTY_PARAGRAPH_MARKUP = "<p><br></p>";
 
@@ -72,15 +73,16 @@ turndown.addRule("mark", {
 });
 
 export function markdownToHTML(value: string, inlineReferences?: InlineReference[]): string {
-  if (value.trim() === "") {
+  const normalizedValue = normalizeInlineReferenceTokens(value);
+  if (normalizedValue.trim() === "") {
     return "<p></p>";
   }
 
-  return markdown.render(renderResolvedInlineReferences(value, inlineReferences));
+  return markdown.render(renderResolvedInlineReferences(normalizedValue, inlineReferences));
 }
 
 export function editorHTMLToMarkdown(value: string): string {
-  const normalized = turndown.turndown(value).trim();
+  const normalized = normalizeInlineReferenceTokens(turndown.turndown(value)).trim();
   if (normalized === "") {
     return "";
   }
@@ -133,6 +135,10 @@ function buildFlowReferenceHref(reference: InlineReference): string {
   }
   params.set("token", reference.token);
   return `${FLOW_REFERENCE_HASH_PREFIX}${params.toString()}`;
+}
+
+function normalizeInlineReferenceTokens(value: string): string {
+  return value.replace(ESCAPED_INLINE_REFERENCE_PATTERN, '[[$1]]');
 }
 
 function escapeHTML(value: string): string {

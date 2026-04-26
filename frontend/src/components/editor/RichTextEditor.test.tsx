@@ -143,4 +143,51 @@ describe('RichTextEditor', () => {
 
     expect(mockSetContent).toHaveBeenCalledTimes(1)
   })
+
+  it('resets editor content when inline reference details change on the same array instance', () => {
+    const handleChange = vi.fn()
+    const inlineReferences: Array<{
+      token: string
+      raw: string
+      targetId: string
+      targetType: 'note'
+      targetGraph: string
+      targetTitle: string
+      targetPath: string
+      targetBreadcrumb: string
+    }> = []
+
+    const { rerender } = render(
+      <RichTextEditor
+        ariaLabel="Document body editor"
+        inlineReferences={inlineReferences}
+        onChange={handleChange}
+        value={'See [[note-2]]'}
+      />,
+    )
+
+    mockSetContent.mockClear()
+
+    inlineReferences.push({
+      token: '[[note-2]]',
+      raw: 'note-2',
+      targetId: 'note-2',
+      targetType: 'note',
+      targetGraph: 'execution',
+      targetTitle: 'Follow-up',
+      targetPath: 'data/content/execution/follow-up.md',
+      targetBreadcrumb: 'execution > Follow-up',
+    })
+
+    rerender(
+      <RichTextEditor
+        ariaLabel="Document body editor"
+        inlineReferences={inlineReferences}
+        onChange={handleChange}
+        value={'See [[note-2]]'}
+      />,
+    )
+
+    expect(mockSetContent).toHaveBeenCalledTimes(1)
+  })
 })

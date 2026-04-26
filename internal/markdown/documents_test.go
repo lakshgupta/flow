@@ -502,3 +502,25 @@ func TestInlineReferenceIDs(t *testing.T) {
 		}
 	}
 }
+
+func TestInlineReferenceIDsSupportsLegacyEscapedTokens(t *testing.T) {
+	t.Parallel()
+
+	body := strings.Join([]string{
+		`Legacy token \[\[graph2 > Task1\]\] still resolves.`,
+		`Repeat \[\[ graph2 > Task1 \]\] and add \[\[graph1/note1\]\].`,
+	}, "\n")
+
+	got := InlineReferenceIDs(body)
+	want := []string{"graph2 > Task1", "graph1/note1"}
+
+	if len(got) != len(want) {
+		t.Fatalf("len(InlineReferenceIDs()) = %d, want %d (%v)", len(got), len(want), got)
+	}
+
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("InlineReferenceIDs()[%d] = %q, want %q", index, got[index], want[index])
+		}
+	}
+}

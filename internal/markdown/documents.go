@@ -13,6 +13,7 @@ import (
 const frontmatterDelimiter = "---"
 
 var inlineReferencePattern = regexp.MustCompile(`\[\[([^\[\]\n]+)\]\]`)
+var escapedInlineReferencePattern = regexp.MustCompile(`\\\[\\\[([^\[\]\n]+)\\\]\\\]`)
 
 // DocumentType identifies the canonical Flow document kinds.
 type DocumentType string
@@ -339,6 +340,15 @@ func CompactMarkdown(body string) string {
 	return string(bytes.TrimRight([]byte(normalized), "\n"))
 }
 
+// NormalizeInlineReferenceTokens canonicalizes legacy escaped inline reference tokens.
+func NormalizeInlineReferenceTokens(body string) string {
+	if body == "" {
+		return ""
+	}
+
+	return escapedInlineReferencePattern.ReplaceAllString(body, "[[$1]]")
+}
+
 // NodeLinkIDs extracts the node IDs from a slice of NodeLink values.
 func NodeLinkIDs(links []NodeLink) []string {
 	if len(links) == 0 {
@@ -354,7 +364,7 @@ func NodeLinkIDs(links []NodeLink) []string {
 // InlineReferenceIDs extracts unique inline reference targets from markdown body text.
 // The current canonical token shape is [[target]], with surrounding inner whitespace ignored.
 func InlineReferenceIDs(body string) []string {
-	matches := inlineReferencePattern.FindAllStringSubmatch(body, -1)
+	matches := inlineReferencePattern.FindAllStringSubmatch(NormalizeInlineReferenceTokens(body), -1)
 	if len(matches) == 0 {
 		return nil
 	}

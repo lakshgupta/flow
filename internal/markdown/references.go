@@ -14,7 +14,7 @@ func RewriteInlineReferenceTargets(body string, replacements map[string]string) 
 		return body
 	}
 
-	return inlineReferencePattern.ReplaceAllStringFunc(body, func(token string) string {
+	return inlineReferencePattern.ReplaceAllStringFunc(NormalizeInlineReferenceTokens(body), func(token string) string {
 		rawTarget := strings.TrimSpace(token[2 : len(token)-2])
 		replacement, ok := replacements[rawTarget]
 		if !ok || strings.TrimSpace(replacement) == "" || replacement == rawTarget {

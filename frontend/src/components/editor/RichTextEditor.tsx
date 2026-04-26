@@ -40,6 +40,23 @@ export interface RichTextEditorHandle {
   getMarkdown: () => string
 }
 
+function createInlineReferenceRenderKey(inlineReferences?: InlineReference[]): string {
+  if ((inlineReferences?.length ?? 0) === 0) {
+    return ''
+  }
+
+  return inlineReferences
+    .map((reference) => [
+      reference.token,
+      reference.targetId,
+      reference.targetGraph,
+      reference.targetTitle,
+      reference.targetPath,
+      reference.targetBreadcrumb,
+    ].join('\u0001'))
+    .join('\u0002')
+}
+
 function serializeLiveEditorHTML(root: HTMLElement | null, fallbackHTML: string): string {
   if (root === null) {
     return fallbackHTML
@@ -76,8 +93,9 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
   // Track the last markdown value we emitted so we can skip re-syncing when
   // the parent echoes back the same value after an auto-save.
   const lastEmittedRef = useRef(value)
-  const lastSyncedInlineReferencesRef = useRef(inlineReferences)
-  const renderedHTML = useMemo(() => markdownToHTML(value, inlineReferences), [inlineReferences, value])
+  const inlineReferenceRenderKey = createInlineReferenceRenderKey(inlineReferences)
+  const lastSyncedInlineReferencesKeyRef = useRef(inlineReferenceRenderKey)
+  const renderedHTML = useMemo(() => markdownToHTML(value, inlineReferences), [inlineReferenceRenderKey, inlineReferences, value])
   const lastRenderedHTMLRef = useRef(renderedHTML)
   // Set to true briefly while we programmatically set content so we can
   // suppress the resulting useDocChange callback.
@@ -96,17 +114,17 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
   useEffect(() => {
     if (renderedHTML === lastRenderedHTMLRef.current) return
 
-    if (value === lastEmittedRef.current && inlineReferences === lastSyncedInlineReferencesRef.current) {
+    if (value === lastEmittedRef.current && inlineReferenceRenderKey === lastSyncedInlineReferencesKeyRef.current) {
       lastRenderedHTMLRef.current = renderedHTML
       return
     }
 
     lastRenderedHTMLRef.current = renderedHTML
-    lastSyncedInlineReferencesRef.current = inlineReferences
+    lastSyncedInlineReferencesKeyRef.current = inlineReferenceRenderKey
     lastEmittedRef.current = value
     isSettingRef.current = true
     editor.setContent(renderedHTML || '<p></p>')
-  }, [editor, inlineReferences, renderedHTML, value])
+  }, [editor, inlineReferenceRenderKey, renderedHTML, value])
 
   // Scroll to a heading by its slug when requested by the parent (e.g. TOC click).
   useEffect(() => {

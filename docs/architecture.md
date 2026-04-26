@@ -15,7 +15,7 @@ This document describes the architecture that is implemented today and separates
 - [Constraints And Invariants](#constraints-and-invariants)
 - [Testing And Validation](#testing-and-validation)
 - [Risks And Tradeoffs](#risks-and-tradeoffs)
-- [Planned Architecture: Inline References And Thread View](#planned-architecture-inline-references-and-thread-view)
+- [Inline References And Thread View](#inline-references-and-thread-view)
 - [Related Documents](#related-documents)
 
 ## Overview
@@ -326,9 +326,9 @@ Tests should validate canonical-state behavior first and treat the index and UI 
 - Stored node-to-node relationships now use `links` consistently across canonical Markdown, the backend API, and the GUI.
 - Rich text editing is easier to evolve because canonical state remains Markdown, but round-trip fidelity must be preserved carefully.
 
-## Planned Architecture: Inline References And Thread View
+## Inline References And Thread View
 
-Status: approved design, partially implemented as of April 25, 2026.
+Status: implemented as of April 26, 2026.
 
 The backend now parses inline `[[...]]` tokens from note, task, and command bodies, resolves them against graph-backed documents by exact ID, canonical breadcrumb, same-graph title, or globally unique title, validates those targets, and indexes the resolved document IDs into `soft_references` during rebuild.
 
@@ -341,22 +341,19 @@ The approved design introduces:
 - hyperlink-like rendering for resolved body references,
 - a thread-view navigation mode that preserves followed reference paths.
 
-The current partial implementation now includes:
+The implementation includes:
 
 - a dedicated `GET /api/reference-targets` lookup surface that returns graph-backed targets with canonical breadcrumbs in the form `<graph-path> > <title>`,
 - editor autocomplete after the `[[` trigger that queries that lookup surface and inserts canonical breadcrumb tokens,
 - document read models that expose resolved inline references separately from frontmatter `links`,
 - GUI document editors that render resolved inline references as title-based internal hyperlinks and open the referenced document when clicked,
-- workspace mutation flows that rewrite canonical breadcrumb tokens when a target document title changes or a graph path is renamed.
+- workspace mutation flows that rewrite canonical breadcrumb tokens when a target document title changes or a graph path is renamed,
+- a center-surface thread stack where opening a document from the content tree or graph view establishes the root panel,
+- thread panels that can be re-activated for in-place editing, with the selected panel expanded and neighboring panels collapsed into stack previews,
+- reference-follow navigation that appends the target to the thread and truncates any panels that were previously to the right of the source panel,
+- close actions on thread panels that remove that panel and any panels that followed it from the thread.
 
-Implementing that design will require architectural changes beyond the current system:
-
-- parser and editor support for canonical inline reference tokens,
-- derived index support for resolved body references and backlinks,
-- a dedicated reference-target lookup API,
-- frontend navigation state that can manage a thread stack instead of a single selected document surface.
-
-That work should extend the current architecture rather than redefine it. Until the remaining pieces land, canonical Markdown stores node-to-node relationships in frontmatter `links`, while inline body references use rebuildable derived resolution, editor autocomplete, hyperlink rendering, and rename rewriting but still do not provide the thread-view navigation state.
+Canonical Markdown continues to store node-to-node relationships in frontmatter `links`, while inline body references remain a rebuildable derived relationship model backed by indexed resolution, editor autocomplete, hyperlink rendering, rename rewriting, and thread-view navigation in the GUI.
 
 ## Related Documents
 

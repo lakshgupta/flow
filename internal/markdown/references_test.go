@@ -134,3 +134,34 @@ func TestResolveInlineReferencesReturnsResolvedTargets(t *testing.T) {
 		t.Fatalf("resolved[1] = %#v", resolved[1])
 	}
 }
+
+func TestResolveInlineReferencesSupportsLegacyEscapedTokens(t *testing.T) {
+	t.Parallel()
+
+	documents := []WorkspaceDocument{
+		{
+			Path: "data/content/graph1/note1.md",
+			Document: NoteDocument{
+				Metadata: NoteMetadata{CommonFields: CommonFields{ID: "graph1/note1", Type: NoteType, Graph: "graph1", Title: "Note1"}},
+				Body:     `See \[\[graph2 > Task1\]\] for the next step.`,
+			},
+		},
+		{
+			Path: "data/content/graph2/task1.md",
+			Document: TaskDocument{
+				Metadata: TaskMetadata{CommonFields: CommonFields{ID: "graph2/task1", Type: TaskType, Graph: "graph2", Title: "Task1"}},
+			},
+		},
+	}
+
+	resolved, err := ResolveInlineReferences(documents, documents[0])
+	if err != nil {
+		t.Fatalf("ResolveInlineReferences() error = %v", err)
+	}
+	if len(resolved) != 1 {
+		t.Fatalf("len(resolved) = %d, want 1", len(resolved))
+	}
+	if resolved[0].Token != "[[graph2 > Task1]]" || resolved[0].Target.ID != "graph2/task1" {
+		t.Fatalf("resolved[0] = %#v", resolved[0])
+	}
+}

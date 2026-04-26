@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -772,9 +773,7 @@ func TestFlowGUIStartsLocalServerAndOpensBrowser(t *testing.T) {
 	}
 
 	wantURL := fmt.Sprintf("http://127.0.0.1:%d", port)
-	if openedURL != wantURL {
-		t.Fatalf("openedURL = %q, want %q", openedURL, wantURL)
-	}
+	assertBrowserLaunchURL(t, openedURL, wantURL)
 
 	if !strings.Contains(stdout, "Started local GUI server") {
 		t.Fatalf("stdout = %q", stdout)
@@ -839,9 +838,7 @@ func TestFlowGlobalGUIStartsServerAndOpensBrowser(t *testing.T) {
 	}
 
 	wantURL := fmt.Sprintf("http://127.0.0.1:%d", port)
-	if openedURL != wantURL {
-		t.Fatalf("openedURL = %q, want %q", openedURL, wantURL)
-	}
+	assertBrowserLaunchURL(t, openedURL, wantURL)
 
 	if !strings.Contains(stdout, "Started global GUI server") {
 		t.Fatalf("stdout = %q", stdout)
@@ -911,6 +908,24 @@ func TestFlowGUICleansUpWhenBrowserOpenFails(t *testing.T) {
 
 	if err := runtime.Stop(root); !errors.Is(err, execution.ErrGUIServerNotRunning) {
 		t.Fatalf("runtime.Stop() error = %v, want ErrGUIServerNotRunning", err)
+	}
+}
+
+func assertBrowserLaunchURL(t *testing.T, openedURL string, wantBaseURL string) {
+	t.Helper()
+
+	parsed, err := url.Parse(openedURL)
+	if err != nil {
+		t.Fatalf("url.Parse(%q) error = %v", openedURL, err)
+	}
+
+	baseURL := parsed.Scheme + "://" + parsed.Host + parsed.Path
+	if baseURL != wantBaseURL {
+		t.Fatalf("openedURL base = %q, want %q", baseURL, wantBaseURL)
+	}
+
+	if parsed.Query().Get("flow-launch") == "" {
+		t.Fatalf("openedURL = %q, want flow-launch query parameter", openedURL)
 	}
 }
 
@@ -1449,7 +1464,7 @@ func withWaitForGUIState(wait func(string, bool) error) testOption {
 	return func(env *commandEnv) {
 		env.waitForGUIState = wait
 	}
-	}
+}
 
 func withShutdownWait(waitForShutdown func(string) error) testOption {
 	return func(env *commandEnv) {

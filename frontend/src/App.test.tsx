@@ -59,7 +59,7 @@ type MockResponseOptions = {
   status?: number;
 };
 
-type MockFetchHandler = (url: string, init?: RequestInit) => unknown;
+type MockFetchHandler = (url: string, init?: RequestInit) => unknown | Promise<unknown>;
 
 const workspaceResponse = {
   scope: "local",
@@ -134,7 +134,7 @@ function installFetchMock(handler: MockFetchHandler) {
       return jsonResponse([]);
     }
 
-    const result = handler(url, init);
+    const result = await handler(url, init);
 
     if (result instanceof Response) {
       return result;
@@ -145,6 +145,20 @@ function installFetchMock(handler: MockFetchHandler) {
 
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
+}
+
+function createDeferredValue<T>() {
+  let resolve: ((value: T) => void) | null = null;
+  const promise = new Promise<T>((resolver) => {
+    resolve = resolver;
+  });
+
+  return {
+    promise,
+    resolve(value: T) {
+      resolve?.(value);
+    },
+  };
 }
 
 function getRequestBody(fetchMock: ReturnType<typeof vi.fn>, path: string, method: string): Record<string, unknown> {
@@ -176,7 +190,7 @@ describe("App graph canvas flows", () => {
     vi.restoreAllMocks();
   });
 
-  it("opens the right panel on node double click and persists snapped drag-end positions", async () => {
+  it("opens graph documents as thread roots in the center view and persists snapped drag-end positions", async () => {
     const graphCanvasResponse = {
       selectedGraph: "execution",
       availableGraphs: ["execution"],
@@ -308,12 +322,12 @@ describe("App graph canvas flows", () => {
 
     await user.dblClick(screen.getByRole("button", { name: "Open note-1" }));
 
-    const documentPanel = await screen.findByLabelText("Graph node document");
-    expect(within(documentPanel).getByText("Overview body")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Document content layout")).not.toBeInTheDocument();
+    const documentLayout = await screen.findByLabelText("Document content layout");
+    expect(within(documentLayout).getByText("Overview body")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Graph node document")).not.toBeInTheDocument();
   });
 
-  it("renders inline references as title links and opens the referenced document", async () => {
+  it("follows inline references by appending and replacing thread panels", async () => {
     const graphCanvasResponse = {
       selectedGraph: "execution",
       availableGraphs: ["execution"],
@@ -347,6 +361,17 @@ describe("App graph canvas flows", () => {
           position: { x: 480, y: 220 },
           positionPersisted: false,
         },
+        {
+          id: "note-3",
+          type: "note",
+          graph: "execution",
+          title: "Third note",
+          description: "Third node",
+          path: "data/graphs/execution/third-note.md",
+          featureSlug: "execution",
+          position: { x: 720, y: 320 },
+          positionPersisted: false,
+        },
       ],
       edges: [],
     };
@@ -359,7 +384,7 @@ describe("App graph canvas flows", () => {
       description: "Execution overview",
       path: "data/graphs/execution/overview.md",
       tags: [],
-      body: "See [[note-2]]\n",
+      body: "See [[note-2]] and [[note-3]]\n",
       links: [],
       relatedNoteIds: [],
       inlineReferences: [
@@ -373,6 +398,16 @@ describe("App graph canvas flows", () => {
           targetPath: "data/graphs/execution/follow-up.md",
           targetBreadcrumb: "execution > Follow-up",
         },
+        {
+          token: "[[note-3]]",
+          raw: "note-3",
+          targetId: "note-3",
+          targetType: "note",
+          targetGraph: "execution",
+          targetTitle: "Third note",
+          targetPath: "data/graphs/execution/third-note.md",
+          targetBreadcrumb: "execution > Third note",
+        },
       ],
     };
     const noteTwoResponse = {
@@ -385,6 +420,20 @@ describe("App graph canvas flows", () => {
       path: "data/graphs/execution/follow-up.md",
       tags: [],
       body: "Follow up body\n",
+      links: [],
+      relatedNoteIds: [],
+      inlineReferences: [],
+    };
+    const noteThreeResponse = {
+      id: "note-3",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Third note",
+      description: "Third node",
+      path: "data/graphs/execution/third-note.md",
+      tags: [],
+      body: "Third body\n",
       links: [],
       relatedNoteIds: [],
       inlineReferences: [],
@@ -427,6 +476,10 @@ describe("App graph canvas flows", () => {
         return noteTwoResponse;
       }
 
+      if (url === "/api/documents/note-3") {
+        return noteThreeResponse;
+      }
+
       throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
     });
 
@@ -444,13 +497,314 @@ describe("App graph canvas flows", () => {
     await screen.findByTestId("flow-node-note-1");
     await user.dblClick(screen.getByRole("button", { name: "Open note-1" }));
 
-    const documentPanel = await screen.findByLabelText("Graph node document");
-    expect(within(documentPanel).queryByText("[[note-2]]")).not.toBeInTheDocument();
+    const thread = await screen.findByLabelText("Document thread");
+    await waitFor(() => {
+      expect(within(thread).getByLabelText("Document title")).toHaveValue("Overview");
+    });
+    expect(within(thread).queryByText("[[note-2]]")).not.toBeInTheDocument();
 
-    const referenceLink = within(documentPanel).getByRole("link", { name: "Follow-up" });
+    const referenceLink = within(thread).getByRole("link", { name: "Follow-up" });
     await user.click(referenceLink);
 
-    expect(await within(documentPanel).findByText("Follow up body")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(thread).getByLabelText("Document title")).toHaveValue("Follow-up");
+    });
+    expect(await within(thread).findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(await within(thread).findByText("Follow up body")).toBeInTheDocument();
+
+    const replacementLink = within(thread).getByRole("link", { name: "Third note" });
+    await user.click(replacementLink);
+
+    await waitFor(() => {
+      expect(within(thread).getByLabelText("Document title")).toHaveValue("Third note");
+    });
+    expect(within(thread).queryByText("Follow up body")).not.toBeInTheDocument();
+    expect(await within(thread).findByText("Third body")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Close thread from Third note" }));
+
+    await waitFor(() => {
+      expect(within(thread).getByLabelText("Document title")).toHaveValue("Overview");
+    });
+    expect(within(thread).queryByText("Third body")).not.toBeInTheDocument();
+  });
+
+  it("shows a loading tail instead of stale content while following a delayed thread reference", async () => {
+    const graphCanvasResponse = {
+      selectedGraph: "execution",
+      availableGraphs: ["execution"],
+      nodes: [
+        {
+          id: "note-1",
+          type: "note",
+          graph: "execution",
+          title: "Overview",
+          description: "Execution overview",
+          path: "data/graphs/execution/overview.md",
+          featureSlug: "execution",
+          position: { x: 240, y: 140 },
+          positionPersisted: false,
+        },
+      ],
+      edges: [],
+    };
+
+    const noteOneResponse = {
+      id: "note-1",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Overview",
+      description: "Execution overview",
+      path: "data/graphs/execution/overview.md",
+      tags: [],
+      body: "See [[note-3]]\n",
+      links: [],
+      relatedNoteIds: [],
+      inlineReferences: [
+        {
+          token: "[[note-3]]",
+          raw: "note-3",
+          targetId: "note-3",
+          targetType: "note",
+          targetGraph: "execution",
+          targetTitle: "Third note",
+          targetPath: "data/graphs/execution/third-note.md",
+          targetBreadcrumb: "execution > Third note",
+        },
+      ],
+    };
+    const noteThreeResponse = {
+      id: "note-3",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Third note",
+      description: "Third node",
+      path: "data/graphs/execution/third-note.md",
+      tags: [],
+      body: "Third body\n",
+      links: [],
+      relatedNoteIds: [],
+      inlineReferences: [],
+    };
+    const delayedNoteThree = createDeferredValue<typeof noteThreeResponse>();
+
+    installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        if ((init?.method ?? "GET") === "PUT") {
+          return workspaceResponse;
+        }
+
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/graphs/note") {
+        return noteGraphs("execution");
+      }
+
+      if (url === "/api/graphs/task") {
+        return emptyGraphLists.tasks;
+      }
+
+      if (url === "/api/graphs/command") {
+        return emptyGraphLists.commands;
+      }
+
+      if (url === "/api/graph-canvas?graph=execution") {
+        return graphCanvasResponse;
+      }
+
+      if (url === "/api/documents/note-1") {
+        return noteOneResponse;
+      }
+
+      if (url === "/api/documents/note-3") {
+        return delayedNoteThree.promise;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    const executionButton = (await screen.findByText("Execution")).closest('[data-sidebar="menu-sub-button"]');
+    if (executionButton === null) {
+      throw new Error("missing execution graph button");
+    }
+
+    await user.click(executionButton);
+    await screen.findByTestId("flow-node-note-1");
+    await user.dblClick(screen.getByRole("button", { name: "Open note-1" }));
+
+    const thread = await screen.findByLabelText("Document thread");
+    await waitFor(() => {
+      expect(within(thread).getByLabelText("Document title")).toHaveValue("Overview");
+    });
+    await user.click(await within(thread).findByRole("link", { name: "Third note" }));
+
+    expect(await within(thread).findByText("Loading document content.")).toBeInTheDocument();
+    expect(within(thread).queryByDisplayValue("Overview")).not.toBeInTheDocument();
+
+    delayedNoteThree.resolve(noteThreeResponse);
+
+    await waitFor(() => {
+      expect(within(thread).getByLabelText("Document title")).toHaveValue("Third note");
+    });
+    expect(within(thread).queryByText("Loading document content.")).not.toBeInTheDocument();
+    expect(await within(thread).findByText("Third body")).toBeInTheDocument();
+  });
+
+  it("lets an earlier thread panel become the active editor and save its edits", async () => {
+    const graphCanvasResponse = {
+      selectedGraph: "execution",
+      availableGraphs: ["execution"],
+      nodes: [
+        {
+          id: "note-1",
+          type: "note",
+          graph: "execution",
+          title: "Overview",
+          description: "Execution overview",
+          path: "data/graphs/execution/overview.md",
+          featureSlug: "execution",
+          position: { x: 240, y: 140 },
+          positionPersisted: false,
+        },
+      ],
+      edges: [],
+    };
+
+    const noteOneResponse = {
+      id: "note-1",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Overview",
+      description: "Execution overview",
+      path: "data/graphs/execution/overview.md",
+      tags: [],
+      body: "See [[note-2]]\n",
+      links: [],
+      relatedNoteIds: [],
+      inlineReferences: [
+        {
+          token: "[[note-2]]",
+          raw: "note-2",
+          targetId: "note-2",
+          targetType: "note",
+          targetGraph: "execution",
+          targetTitle: "Follow-up",
+          targetPath: "data/graphs/execution/follow-up.md",
+          targetBreadcrumb: "execution > Follow-up",
+        },
+      ],
+    };
+
+    const noteTwoResponse = {
+      id: "note-2",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Follow-up",
+      description: "Follow up thread",
+      path: "data/graphs/execution/follow-up.md",
+      tags: [],
+      body: "Follow up body\n",
+      links: [],
+      relatedNoteIds: [],
+      inlineReferences: [],
+    };
+
+    const updatedNoteOneResponse = {
+      ...noteOneResponse,
+      title: "Overview revised",
+    };
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/graphs/note") {
+        return noteGraphs("execution");
+      }
+
+      if (url === "/api/graphs/task") {
+        return emptyGraphLists.tasks;
+      }
+
+      if (url === "/api/graphs/command") {
+        return emptyGraphLists.commands;
+      }
+
+      if (url === "/api/graph-canvas?graph=execution") {
+        return graphCanvasResponse;
+      }
+
+      if (url === "/api/documents/note-1") {
+        if ((init?.method ?? "GET") === "PUT") {
+          return updatedNoteOneResponse;
+        }
+
+        return noteOneResponse;
+      }
+
+      if (url === "/api/documents/note-2") {
+        return noteTwoResponse;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    const executionButton = (await screen.findByText("Execution")).closest('[data-sidebar="menu-sub-button"]');
+    if (executionButton === null) {
+      throw new Error("missing execution graph button");
+    }
+
+    await user.click(executionButton);
+    await screen.findByTestId("flow-node-note-1");
+    await user.dblClick(screen.getByRole("button", { name: "Open note-1" }));
+
+    const thread = await screen.findByLabelText("Document thread");
+    await waitFor(() => {
+      expect(within(thread).getByLabelText("Document title")).toHaveValue("Overview");
+    });
+
+    await user.click(within(thread).getByRole("link", { name: "Follow-up" }));
+
+    await waitFor(() => {
+      expect(within(thread).getByLabelText("Document title")).toHaveValue("Follow-up");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Edit thread Overview" }));
+
+    await waitFor(() => {
+      expect(within(thread).getByLabelText("Document title")).toHaveValue("Overview");
+    });
+
+    vi.useFakeTimers();
+    await act(async () => {
+      fireEvent.change(within(thread).getByLabelText("Document title"), { target: { value: "Overview revised" } });
+      await vi.advanceTimersByTimeAsync(800);
+    });
+
+    expect(getRequestBody(fetchMock, "/api/documents/note-1", "PUT")).toMatchObject({
+      title: "Overview revised",
+    });
+    expect(within(thread).getByLabelText("Document title")).toHaveValue("Overview revised");
   });
 
   it("does not reload the shell during document autosave while editing", async () => {
@@ -694,7 +1048,7 @@ describe("App graph canvas flows", () => {
     });
   });
 
-  it("shows a document icon after node selection and lets the right pane maximize and minimize", async () => {
+  it("shows a document icon after node selection and opens a thread root from it", async () => {
     const graphCanvasResponse = {
       selectedGraph: "execution",
       availableGraphs: ["execution"],
@@ -830,47 +1184,13 @@ describe("App graph canvas flows", () => {
     ]);
 
     await user.click(screen.getByRole("button", { name: "Document" }));
-    const documentPanel = await screen.findByLabelText("Graph node document panel");
-    expect(within(documentPanel).getByLabelText("Graph node document")).toBeInTheDocument();
+    const documentLayout = await screen.findByLabelText("Document content layout");
+    expect(documentLayout).toBeInTheDocument();
+    expect(within(screen.getByLabelText("Document body editor")).getByRole("heading", { name: "Overview body", level: 2 })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Graph node document panel")).not.toBeInTheDocument();
 
-    await user.click(within(documentPanel).getByRole("button", { name: "Maximize right pane" }));
-    expect(screen.getByLabelText("Right pane")).toHaveAttribute("data-focus", "true");
-    
-    // The maximized panel now renders the full center document shell
-    const maximizedPanel = await screen.findByLabelText("Document content layout");
-    expect(within(maximizedPanel).getByLabelText("Document table of contents")).toBeInTheDocument();
-    expect(within(maximizedPanel).getByRole("button", { name: "Overview body" })).toBeInTheDocument();
-
-    const rightRailLayout = maximizedPanel;
-    Object.defineProperty(rightRailLayout, "getBoundingClientRect", {
-      configurable: true,
-      value: () => ({
-        x: 100,
-        y: 40,
-        top: 40,
-        left: 100,
-        right: 900,
-        bottom: 640,
-        width: 800,
-        height: 600,
-        toJSON: () => ({}),
-      }),
-    });
-
-    fireEvent.mouseDown(within(documentPanel).getByRole("separator", { name: "Resize table of contents" }), { button: 0, clientX: 740 });
-    fireEvent.mouseMove(window, { clientX: 680 });
-    fireEvent.mouseUp(window);
-
-    await waitFor(() => {
-      const body = getRequestBody(fetchMock, "/api/workspace", "PUT");
-      expect(body).toEqual({
-        panelWidths: {
-          leftRatio: 0.31,
-          rightRatio: 0.22,
-          documentTOCRatio: 0.275,
-        },
-      });
-    });
+    await user.click(screen.getByRole("button", { name: "Close thread from Overview" }));
+    await screen.findByTestId("flow-node-note-2");
 
     await user.click(screen.getByRole("button", { name: "Select note-2" }));
     await user.click(screen.getByRole("button", { name: "Document" }));
@@ -878,8 +1198,8 @@ describe("App graph canvas flows", () => {
       expect(screen.getByLabelText("Right pane")).toHaveAttribute("data-focus", "false");
     });
 
-    const reopenedDocumentPanel = await screen.findByLabelText("Graph node document panel");
-    expect(within(reopenedDocumentPanel).getByText("Details body")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("Details")).toBeInTheDocument();
+    expect(screen.getByText("Details body")).toBeInTheDocument();
   });
 
   it("allows ctrl-click multi-select to enable merge actions", async () => {
