@@ -105,10 +105,19 @@ func ValidateWorkspaceDocuments(documents []WorkspaceDocument) error {
 	}
 
 	for _, item := range normalizedDocuments {
-		_, _, _, referenceIDs := linkTargets(item.Document)
+		_, _, linkIDs, referenceIDs := linkTargets(item.Document)
+		_, sourceGraph := documentBodyAndGraph(item.Document)
+
+		for _, linkID := range linkIDs {
+			if _, exists := documentKindsByID[linkID]; !exists {
+				return fmt.Errorf("%s: reference %q does not exist", item.Path, linkID)
+			}
+		}
 
 		for _, referenceID := range referenceIDs {
-			if _, exists := documentKindsByID[referenceID]; !exists {
+			if _, ok, err := ResolveReferenceTarget(normalizedDocuments, referenceID, sourceGraph); err != nil {
+				return err
+			} else if !ok {
 				return fmt.Errorf("%s: reference %q does not exist", item.Path, referenceID)
 			}
 		}
@@ -177,11 +186,11 @@ func GraphPathFromWorkspacePath(path string) (string, bool, error) {
 func linkTargets(document Document) (string, DocumentType, []string, []string) {
 	switch value := document.(type) {
 	case NoteDocument:
-		return value.Metadata.ID, value.Metadata.Type, nil, NodeLinkIDs(value.Metadata.Links)
+		return value.Metadata.ID, value.Metadata.Type, NodeLinkIDs(value.Metadata.Links), InlineReferenceIDs(value.Body)
 	case TaskDocument:
-		return value.Metadata.ID, value.Metadata.Type, nil, NodeLinkIDs(value.Metadata.Links)
+		return value.Metadata.ID, value.Metadata.Type, NodeLinkIDs(value.Metadata.Links), InlineReferenceIDs(value.Body)
 	case CommandDocument:
-		return value.Metadata.ID, value.Metadata.Type, nil, NodeLinkIDs(value.Metadata.Links)
+		return value.Metadata.ID, value.Metadata.Type, NodeLinkIDs(value.Metadata.Links), InlineReferenceIDs(value.Body)
 	default:
 		return "", "", nil, nil
 	}

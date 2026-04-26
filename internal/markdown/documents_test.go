@@ -238,6 +238,63 @@ func TestSerializeDocumentRoundTripsNote(t *testing.T) {
 	}
 }
 
+func TestSerializeDocumentPreservesLeadingBlankLine(t *testing.T) {
+	t.Parallel()
+
+	input := HomeDocument{
+		Metadata: CommonFields{
+			ID:    "home",
+			Type:  HomeType,
+			Title: "Home",
+		},
+		Body: "\n# Home\n",
+	}
+
+	serialized, err := SerializeDocument(input)
+	if err != nil {
+		t.Fatalf("SerializeDocument() error = %v", err)
+	}
+
+	parsed, err := ParseHomeDocument(serialized)
+	if err != nil {
+		t.Fatalf("ParseHomeDocument() error = %v", err)
+	}
+
+	if parsed.Body != input.Body {
+		t.Fatalf("parsed.Body = %q, want %q", parsed.Body, input.Body)
+	}
+}
+
+func TestSerializeDocumentPreservesTrailingBlankLines(t *testing.T) {
+	t.Parallel()
+
+	input := NoteDocument{
+		Metadata: NoteMetadata{
+			CommonFields: CommonFields{
+				ID:    "note-1",
+				Type:  NoteType,
+				Graph: "notes",
+				Title: "Architecture",
+			},
+		},
+		Body: "Line one\n\n",
+	}
+
+	serialized, err := SerializeDocument(input)
+	if err != nil {
+		t.Fatalf("SerializeDocument() error = %v", err)
+	}
+
+	parsed, err := ParseNoteDocument(serialized)
+	if err != nil {
+		t.Fatalf("ParseNoteDocument() error = %v", err)
+	}
+
+	if parsed.Body != input.Body {
+		t.Fatalf("parsed.Body = %q, want %q", parsed.Body, input.Body)
+	}
+}
+
 func TestSerializeDocumentRoundTripsCommand(t *testing.T) {
 	t.Parallel()
 
@@ -420,5 +477,28 @@ func TestParseDocumentRejectsEdgeType(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "unsupported document type") {
 		t.Fatalf("ParseDocument() error = %v, want containing unsupported document type", err)
+	}
+}
+
+func TestInlineReferenceIDs(t *testing.T) {
+	t.Parallel()
+
+	body := strings.Join([]string{
+		"Start with [[note-a]].",
+		"Repeat [[note-a]] and trim [[ task-1 ]] while ignoring [[]].",
+		"Nested brackets like [[command/run]] stay intact as a single target.",
+	}, "\n")
+
+	got := InlineReferenceIDs(body)
+	want := []string{"note-a", "task-1", "command/run"}
+
+	if len(got) != len(want) {
+		t.Fatalf("len(InlineReferenceIDs()) = %d, want %d (%v)", len(got), len(want), got)
+	}
+
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("InlineReferenceIDs()[%d] = %q, want %q", index, got[index], want[index])
+		}
 	}
 }

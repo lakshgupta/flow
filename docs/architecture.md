@@ -328,7 +328,9 @@ Tests should validate canonical-state behavior first and treat the index and UI 
 
 ## Planned Architecture: Inline References And Thread View
 
-Status: approved design, not implemented as of April 25, 2026.
+Status: approved design, partially implemented as of April 25, 2026.
+
+The backend now parses inline `[[...]]` tokens from note, task, and command bodies, resolves them against graph-backed documents by exact ID, canonical breadcrumb, same-graph title, or globally unique title, validates those targets, and indexes the resolved document IDs into `soft_references` during rebuild.
 
 The next planned relationship feature is a separate body-reference model for note, task, and command content. In that model, graph-connected nodes remain links, while inline `[[<node breadcrumb>]]` tokens inside document bodies become references.
 
@@ -339,15 +341,22 @@ The approved design introduces:
 - hyperlink-like rendering for resolved body references,
 - a thread-view navigation mode that preserves followed reference paths.
 
+The current partial implementation now includes:
+
+- a dedicated `GET /api/reference-targets` lookup surface that returns graph-backed targets with canonical breadcrumbs in the form `<graph-path> > <title>`,
+- editor autocomplete after the `[[` trigger that queries that lookup surface and inserts canonical breadcrumb tokens,
+- document read models that expose resolved inline references separately from frontmatter `links`,
+- GUI document editors that render resolved inline references as title-based internal hyperlinks and open the referenced document when clicked,
+- workspace mutation flows that rewrite canonical breadcrumb tokens when a target document title changes or a graph path is renamed.
+
 Implementing that design will require architectural changes beyond the current system:
 
 - parser and editor support for canonical inline reference tokens,
 - derived index support for resolved body references and backlinks,
 - a dedicated reference-target lookup API,
-- rename flows that rewrite breadcrumb-based body references,
 - frontend navigation state that can manage a thread stack instead of a single selected document surface.
 
-That work should extend the current architecture rather than redefine it. Until it lands, canonical Markdown stores node-to-node relationships in frontmatter `links`, and `references` remain reserved for the planned body-reference model.
+That work should extend the current architecture rather than redefine it. Until the remaining pieces land, canonical Markdown stores node-to-node relationships in frontmatter `links`, while inline body references use rebuildable derived resolution, editor autocomplete, hyperlink rendering, and rename rewriting but still do not provide the thread-view navigation state.
 
 ## Related Documents
 

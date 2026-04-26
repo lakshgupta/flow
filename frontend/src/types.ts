@@ -62,6 +62,26 @@ export type NodeLink = {
   context?: string;
 };
 
+export type InlineReference = {
+  token: string;
+  raw: string;
+  targetId: string;
+  targetType: string;
+  targetGraph: string;
+  targetTitle: string;
+  targetPath: string;
+  targetBreadcrumb: string;
+};
+
+export type ReferenceTargetResponse = {
+  id: string;
+  type: string;
+  graph: string;
+  title: string;
+  path: string;
+  breadcrumb: string;
+};
+
 export type DocumentResponse = {
   id: string;
   type: string;
@@ -80,6 +100,7 @@ export type DocumentResponse = {
   env?: Record<string, string>;
   run?: string;
   relatedNoteIds?: string[];
+  inlineReferences?: InlineReference[];
 };
 
 export type SearchResult = {

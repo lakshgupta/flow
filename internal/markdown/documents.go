@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
 const frontmatterDelimiter = "---"
+
+var inlineReferencePattern = regexp.MustCompile(`\[\[([^\[\]\n]+)\]\]`)
 
 // DocumentType identifies the canonical Flow document kinds.
 type DocumentType string
@@ -271,15 +274,13 @@ func serialize(metadata any, documentType DocumentType, body string) ([]byte, er
 		return nil, fmt.Errorf("serialize %s frontmatter: %w", documentType, err)
 	}
 
-	trimmedBody := strings.TrimLeft(body, "\n")
-
 	var builder strings.Builder
 	builder.WriteString(frontmatterDelimiter)
 	builder.WriteByte('\n')
 	builder.Write(data)
 	builder.WriteString(frontmatterDelimiter)
 	builder.WriteString("\n\n")
-	builder.WriteString(trimmedBody)
+	builder.WriteString(body)
 
 	return []byte(builder.String()), nil
 }
@@ -348,4 +349,38 @@ func NodeLinkIDs(links []NodeLink) []string {
 		ids[i] = link.Node
 	}
 	return ids
+}
+
+// InlineReferenceIDs extracts unique inline reference targets from markdown body text.
+// The current canonical token shape is [[target]], with surrounding inner whitespace ignored.
+func InlineReferenceIDs(body string) []string {
+	matches := inlineReferencePattern.FindAllStringSubmatch(body, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+
+	result := make([]string, 0, len(matches))
+	seen := make(map[string]struct{}, len(matches))
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+
+		target := strings.TrimSpace(match[1])
+		if target == "" {
+			continue
+		}
+		if _, ok := seen[target]; ok {
+			continue
+		}
+
+		seen[target] = struct{}{}
+		result = append(result, target)
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+
+	return result
 }

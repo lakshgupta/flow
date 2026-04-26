@@ -3,7 +3,8 @@ import 'prosekit/basic/typography.css'
 
 import { createEditor } from 'prosekit/core'
 import { ProseKit, useDocChange } from 'prosekit/react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import type { MouseEvent as ReactMouseEvent } from 'react'
 
 import { Calendar } from '@/components/ui/calendar'
 import {
@@ -11,13 +12,15 @@ import {
   DialogContent,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { editorHTMLToMarkdown, markdownToHTML } from '../../richText'
+import { editorHTMLToMarkdown, markdownToHTML, parseFlowReferenceHref } from '../../richText'
 import { headingIdFromText } from '../../lib/docUtils'
 import { toISODateString } from '../../lib/dateEntries'
+import type { InlineReference } from '../../types'
 import { BlockHandle } from './ui/block-handle'
 import { defineEditorExtension } from './define-editor-extension'
 import { DropIndicator } from './ui/drop-indicator'
 import { InlineMenu } from './ui/inline-menu'
+import ReferenceMenu from './ui/reference-menu/reference-menu'
 import { SlashMenu } from './ui/slash-menu'
 
 export interface RichTextEditorProps {
@@ -26,8 +29,37 @@ export interface RichTextEditorProps {
   placeholder?: string
   ariaLabel?: string
   className?: string
+  inlineReferences?: InlineReference[]
+  referenceLookupGraph?: string
+  onReferenceOpen?: (documentId: string, graphPath: string) => void
   scrollToHeadingSlug?: string | null
   onScrollCompleted?: () => void
+}
+
+export interface RichTextEditorHandle {
+  getMarkdown: () => string
+}
+
+function serializeLiveEditorHTML(root: HTMLElement | null, fallbackHTML: string): string {
+  if (root === null) {
+    return fallbackHTML
+  }
+
+  const clone = root.cloneNode(true)
+  if (!(clone instanceof HTMLElement)) {
+    return fallbackHTML
+  }
+
+  for (const placeholder of clone.querySelectorAll('[data-placeholder]')) {
+    placeholder.removeAttribute('data-placeholder')
+    placeholder.classList.remove('prosekit-placeholder')
+  }
+
+  for (const breakElement of clone.querySelectorAll('br.ProseMirror-trailingBreak')) {
+    breakElement.classList.remove('ProseMirror-trailingBreak')
+  }
+
+  return clone.innerHTML
 }
 
 /** Inner component: lives inside ProseKit provider so it can use ProseKit hooks. */
@@ -36,11 +68,17 @@ function DocChangeTracker({ onHtmlChange }: { onHtmlChange: () => void }) {
   return null
 }
 
-export function RichTextEditor({ value, onChange, placeholder, ariaLabel, className, scrollToHeadingSlug, onScrollCompleted }: RichTextEditorProps) {
+export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(function RichTextEditor(
+  { value, onChange, placeholder, ariaLabel, className, inlineReferences, referenceLookupGraph, onReferenceOpen, scrollToHeadingSlug, onScrollCompleted }: RichTextEditorProps,
+  ref,
+) {
   const [datePickerOpen, setDatePickerOpen] = useState(false)
   // Track the last markdown value we emitted so we can skip re-syncing when
   // the parent echoes back the same value after an auto-save.
   const lastEmittedRef = useRef(value)
+  const lastSyncedInlineReferencesRef = useRef(inlineReferences)
+  const renderedHTML = useMemo(() => markdownToHTML(value, inlineReferences), [inlineReferences, value])
+  const lastRenderedHTMLRef = useRef(renderedHTML)
   // Set to true briefly while we programmatically set content so we can
   // suppress the resulting useDocChange callback.
   const isSettingRef = useRef(false)
@@ -48,7 +86,7 @@ export function RichTextEditor({ value, onChange, placeholder, ariaLabel, classN
   const extension = useMemo(() => defineEditorExtension(placeholder), [placeholder])
 
   const editor = useMemo(() => {
-    const initialHTML = markdownToHTML(value)
+    const initialHTML = renderedHTML
     return createEditor({ extension, defaultContent: initialHTML || undefined })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // only run once — external value updates handled via useEffect below
@@ -56,11 +94,19 @@ export function RichTextEditor({ value, onChange, placeholder, ariaLabel, classN
   // When the parent supplies a new markdown value (e.g. switching documents),
   // push it into the editor without triggering our onChange.
   useEffect(() => {
-    if (value === lastEmittedRef.current) return
+    if (renderedHTML === lastRenderedHTMLRef.current) return
+
+    if (value === lastEmittedRef.current && inlineReferences === lastSyncedInlineReferencesRef.current) {
+      lastRenderedHTMLRef.current = renderedHTML
+      return
+    }
+
+    lastRenderedHTMLRef.current = renderedHTML
+    lastSyncedInlineReferencesRef.current = inlineReferences
     lastEmittedRef.current = value
     isSettingRef.current = true
-    editor.setContent(markdownToHTML(value) || '<p></p>')
-  }, [value, editor])
+    editor.setContent(renderedHTML || '<p></p>')
+  }, [editor, inlineReferences, renderedHTML, value])
 
   // Scroll to a heading by its slug when requested by the parent (e.g. TOC click).
   useEffect(() => {
@@ -90,6 +136,30 @@ export function RichTextEditor({ value, onChange, placeholder, ariaLabel, classN
     onChange(markdown)
   }, [editor, onChange])
 
+  const handleEditorClickCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    if (onReferenceOpen === undefined) {
+      return
+    }
+
+    const target = event.target
+    if (!(target instanceof HTMLElement)) {
+      return
+    }
+
+    const anchor = target.closest('a')
+    if (!(anchor instanceof HTMLAnchorElement)) {
+      return
+    }
+
+    const reference = parseFlowReferenceHref(anchor.getAttribute('href') ?? anchor.href)
+    if (reference === null) {
+      return
+    }
+
+    event.preventDefault()
+    onReferenceOpen(reference.documentId, reference.graphPath)
+  }, [onReferenceOpen])
+
   function handleDateRequest() {
     setDatePickerOpen(true)
   }
@@ -104,16 +174,21 @@ export function RichTextEditor({ value, onChange, placeholder, ariaLabel, classN
     editor.commands.insertText({ text: toISODateString(date) })
   }
 
+  useImperativeHandle(ref, () => ({
+    getMarkdown: () => editorHTMLToMarkdown(serializeLiveEditorHTML(editor.view?.dom as HTMLElement | null, editor.getDocHTML())),
+  }), [editor])
+
   return (
     <ProseKit editor={editor}>
       <div className={className ?? 'box-border h-full w-full overflow-y-hidden overflow-x-hidden flex flex-col bg-background text-foreground'}>
-        <div className="relative w-full flex-1 box-border overflow-y-auto">
+        <div className="relative w-full flex-1 box-border overflow-y-auto" onClickCapture={handleEditorClickCapture}>
           <div
             ref={editor.mount}
             aria-label={ariaLabel}
             className="ProseMirror box-border min-h-full px-[max(2rem,calc(50%-28rem))] py-6 outline-hidden outline-0"
           />
           <InlineMenu />
+          <ReferenceMenu graphPath={referenceLookupGraph} />
           <SlashMenu onDateRequest={handleDateRequest} />
           <BlockHandle />
           <DropIndicator />
@@ -131,4 +206,4 @@ export function RichTextEditor({ value, onChange, placeholder, ariaLabel, classN
       </Dialog>
     </ProseKit>
   )
-}
+})

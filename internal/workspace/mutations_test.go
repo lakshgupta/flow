@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/lex/flow/internal/index"
@@ -127,6 +128,30 @@ func TestUpdateDocumentByIDRenamesFileAndRebuildsIndex(t *testing.T) {
 	}
 }
 
+func TestUpdateDocumentByIDRewritesInlineReferenceBreadcrumbs(t *testing.T) {
+	t.Parallel()
+
+	root := createInlineReferenceMutationWorkspace(t)
+	_, err := UpdateDocumentByID(root, "task-1", DocumentPatch{
+		Title: stringPointer("Parser Renamed"),
+	})
+	if err != nil {
+		t.Fatalf("UpdateDocumentByID() error = %v", err)
+	}
+
+	referenceDocument, err := readDocumentFile(filepath.Join(root.FlowPath, "data", "content", "demo", "notes", "reference.md"))
+	if err != nil {
+		t.Fatalf("readDocumentFile(reference) error = %v", err)
+	}
+	referenceNote, ok := referenceDocument.(markdown.NoteDocument)
+	if !ok {
+		t.Fatalf("referenceDocument = %T, want markdown.NoteDocument", referenceDocument)
+	}
+	if strings.TrimSpace(referenceNote.Body) != "See [[demo/execution > Parser Renamed]] for details." {
+		t.Fatalf("referenceNote.Body = %q", referenceNote.Body)
+	}
+}
+
 func TestRenameGraphMovesDirectoryAndRebuildsIndex(t *testing.T) {
 	t.Parallel()
 
@@ -148,6 +173,27 @@ func TestRenameGraphMovesDirectoryAndRebuildsIndex(t *testing.T) {
 	}
 	if len(results) == 0 || results[0].Path != "data/content/renamed/demo/execution/parser.md" {
 		t.Fatalf("search results = %#v, want renamed graph path", results)
+	}
+}
+
+func TestRenameGraphRewritesInlineReferenceBreadcrumbs(t *testing.T) {
+	t.Parallel()
+
+	root := createInlineReferenceMutationWorkspace(t)
+	if err := RenameGraph(root, "demo", "renamed/demo"); err != nil {
+		t.Fatalf("RenameGraph() error = %v", err)
+	}
+
+	referenceDocument, err := readDocumentFile(filepath.Join(root.FlowPath, "data", "content", "external", "reference.md"))
+	if err != nil {
+		t.Fatalf("readDocumentFile(reference) error = %v", err)
+	}
+	referenceNote, ok := referenceDocument.(markdown.NoteDocument)
+	if !ok {
+		t.Fatalf("referenceDocument = %T, want markdown.NoteDocument", referenceDocument)
+	}
+	if strings.TrimSpace(referenceNote.Body) != "Track [[renamed/demo/execution > Parser]] from outside the graph." {
+		t.Fatalf("referenceNote.Body = %q", referenceNote.Body)
 	}
 }
 
@@ -277,6 +323,41 @@ func createMutationWorkspace(t *testing.T) Root {
 			Run:          "go build ./cmd/flow",
 		},
 		Body: "Build body\n",
+	})
+
+	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {
+		t.Fatalf("index.Rebuild() error = %v", err)
+	}
+
+	return root
+}
+
+func createInlineReferenceMutationWorkspace(t *testing.T) Root {
+	t.Helper()
+
+	root, err := ResolveLocal(t.TempDir())
+	if err != nil {
+		t.Fatalf("ResolveLocal() error = %v", err)
+	}
+
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "demo", "execution", "parser.md"), markdown.TaskDocument{
+		Metadata: markdown.TaskMetadata{
+			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "wrong", Title: "Parser"},
+			Status:       "doing",
+		},
+		Body: "Parser body\n",
+	})
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "demo", "notes", "reference.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "wrong", Title: "Reference"},
+		},
+		Body: "See [[demo/execution > Parser]] for details.\n",
+	})
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "external", "reference.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-2", Type: markdown.NoteType, Graph: "wrong", Title: "External Reference"},
+		},
+		Body: "Track [[demo/execution > Parser]] from outside the graph.\n",
 	})
 
 	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {

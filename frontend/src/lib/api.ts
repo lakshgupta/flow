@@ -1,4 +1,4 @@
-import type { CalendarDocumentResponse, GraphTreeResponse, WorkspaceResponse, WorkspaceSnapshot } from "../types";
+import type { CalendarDocumentResponse, GraphTreeResponse, ReferenceTargetResponse, WorkspaceResponse, WorkspaceSnapshot } from "../types";
 
 function normalizeGraphTreeResponse(response: GraphTreeResponse): GraphTreeResponse {
   return {
@@ -47,4 +47,15 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
 
 export async function loadCalendarDocuments(): Promise<CalendarDocumentResponse[]> {
   return requestJSON<CalendarDocumentResponse[]>("/api/calendar-documents");
+}
+
+export async function loadReferenceTargets(query: string, graphPath?: string, limit = 8): Promise<ReferenceTargetResponse[]> {
+  const params = new URLSearchParams();
+  params.set("q", query);
+  params.set("limit", String(limit));
+  if ((graphPath ?? "").trim() !== "") {
+    params.set("graph", graphPath!.trim());
+  }
+
+  return requestJSON<ReferenceTargetResponse[]>(`/api/reference-targets?${params.toString()}`);
 }

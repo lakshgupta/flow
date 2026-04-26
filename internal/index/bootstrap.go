@@ -161,8 +161,32 @@ func Rebuild(indexPath string, flowPaths ...string) error {
 			}
 		}
 
+		inlineReferenceIDsByDocument := make(map[string][]string, len(documents))
+		workspaceDocuments := make([]markdown.WorkspaceDocument, 0, len(documents))
 		for _, document := range documents {
-			if err := insertDocument(transaction, document, documentKindsByID); err != nil {
+			workspaceDocuments = append(workspaceDocuments, markdown.WorkspaceDocument{
+				Path:     document.relativePath,
+				Document: document.document,
+			})
+		}
+		for _, item := range workspaceDocuments {
+			resolved, err := markdown.ResolveInlineReferences(workspaceDocuments, item)
+			if err != nil {
+				return fmt.Errorf("resolve inline references: %w", err)
+			}
+			documentID, _, ok := indexedDocumentIdentity(item.Document)
+			if !ok {
+				continue
+			}
+			ids := make([]string, 0, len(resolved))
+			for _, reference := range resolved {
+				ids = append(ids, reference.Target.ID)
+			}
+			inlineReferenceIDsByDocument[documentID] = ids
+		}
+
+		for _, document := range documents {
+			if err := insertDocument(transaction, document, documentKindsByID, inlineReferenceIDsByDocument); err != nil {
 				return err
 			}
 		}
@@ -279,16 +303,16 @@ func collectDocuments(flowPath string) ([]indexedDocument, error) {
 	return documents, nil
 }
 
-func insertDocument(transaction *sql.Tx, indexed indexedDocument, documentKindsByID map[string]markdown.DocumentType) error {
+func insertDocument(transaction *sql.Tx, indexed indexedDocument, documentKindsByID map[string]markdown.DocumentType, inlineReferenceIDsByDocument map[string][]string) error {
 	switch document := indexed.document.(type) {
 	case markdown.HomeDocument:
 		return insertHomeDocument(transaction, indexed.relativePath, indexed.featureSlug, document)
 	case markdown.NoteDocument:
-		return insertNoteDocument(transaction, indexed.relativePath, indexed.featureSlug, document, documentKindsByID)
+		return insertNoteDocument(transaction, indexed.relativePath, indexed.featureSlug, document, documentKindsByID, inlineReferenceIDsByDocument[document.Metadata.ID])
 	case markdown.TaskDocument:
-		return insertTaskDocument(transaction, indexed.relativePath, indexed.featureSlug, document)
+		return insertTaskDocument(transaction, indexed.relativePath, indexed.featureSlug, document, inlineReferenceIDsByDocument[document.Metadata.ID])
 	case markdown.CommandDocument:
-		return insertCommandDocument(transaction, indexed.relativePath, indexed.featureSlug, document)
+		return insertCommandDocument(transaction, indexed.relativePath, indexed.featureSlug, document, inlineReferenceIDsByDocument[document.Metadata.ID])
 	default:
 		return fmt.Errorf("unsupported parsed document type %T", indexed.document)
 	}
@@ -298,7 +322,7 @@ func insertHomeDocument(transaction *sql.Tx, relativePath string, featureSlug st
 	return insertDocumentRow(transaction, document.Metadata, featureSlug, relativePath, document.Body, "", "", "")
 }
 
-func insertNoteDocument(transaction *sql.Tx, relativePath string, featureSlug string, document markdown.NoteDocument, documentKindsByID map[string]markdown.DocumentType) error {
+func insertNoteDocument(transaction *sql.Tx, relativePath string, featureSlug string, document markdown.NoteDocument, documentKindsByID map[string]markdown.DocumentType, inlineReferenceIDs []string) error {
 	if err := insertDocumentRow(transaction, document.Metadata.CommonFields, featureSlug, relativePath, document.Body, "", "", ""); err != nil {
 		return err
 	}
@@ -317,23 +341,35 @@ func insertNoteDocument(transaction *sql.Tx, relativePath string, featureSlug st
 		}
 	}
 
+	if err := insertReferences(transaction, document.Metadata.ID, inlineReferenceIDs); err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func insertTaskDocument(transaction *sql.Tx, relativePath string, featureSlug string, document markdown.TaskDocument) error {
+func insertTaskDocument(transaction *sql.Tx, relativePath string, featureSlug string, document markdown.TaskDocument, inlineReferenceIDs []string) error {
 	if err := insertDocumentRow(transaction, document.Metadata.CommonFields, featureSlug, relativePath, document.Body, document.Metadata.Status, "", ""); err != nil {
 		return err
 	}
 
-	return insertReferences(transaction, document.Metadata.ID, markdown.NodeLinkIDs(document.Metadata.Links))
+	if err := insertReferences(transaction, document.Metadata.ID, markdown.NodeLinkIDs(document.Metadata.Links)); err != nil {
+		return err
+	}
+
+	return insertReferences(transaction, document.Metadata.ID, inlineReferenceIDs)
 }
 
-func insertCommandDocument(transaction *sql.Tx, relativePath string, featureSlug string, document markdown.CommandDocument) error {
+func insertCommandDocument(transaction *sql.Tx, relativePath string, featureSlug string, document markdown.CommandDocument, inlineReferenceIDs []string) error {
 	if err := insertDocumentRow(transaction, document.Metadata.CommonFields, featureSlug, relativePath, document.Body, "", document.Metadata.Name, document.Metadata.Run); err != nil {
 		return err
 	}
 
 	if err := insertReferences(transaction, document.Metadata.ID, markdown.NodeLinkIDs(document.Metadata.Links)); err != nil {
+		return err
+	}
+
+	if err := insertReferences(transaction, document.Metadata.ID, inlineReferenceIDs); err != nil {
 		return err
 	}
 
@@ -712,7 +748,12 @@ func deriveHomeTitle(body string) string {
 }
 
 func insertReferences(transaction *sql.Tx, documentID string, referenceIDs []string) error {
+	seen := make(map[string]struct{}, len(referenceIDs))
 	for _, referenceID := range referenceIDs {
+		if _, ok := seen[referenceID]; ok {
+			continue
+		}
+		seen[referenceID] = struct{}{}
 		if err := insertReference(transaction, documentID, referenceID); err != nil {
 			return err
 		}
@@ -723,7 +764,7 @@ func insertReferences(transaction *sql.Tx, documentID string, referenceIDs []str
 
 func insertReference(transaction *sql.Tx, documentID string, referenceID string) error {
 	if _, err := transaction.Exec(
-		`INSERT INTO soft_references (document_id, reference_id) VALUES (?, ?)`,
+		`INSERT OR IGNORE INTO soft_references (document_id, reference_id) VALUES (?, ?)`,
 		documentID,
 		referenceID,
 	); err != nil {

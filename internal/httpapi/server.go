@@ -109,23 +109,44 @@ type graphLayoutResponse struct {
 }
 
 type documentResponse struct {
-	ID             string                  `json:"id"`
-	Type           string                  `json:"type"`
-	FeatureSlug    string                  `json:"featureSlug"`
-	Graph          string                  `json:"graph"`
-	Title          string                  `json:"title"`
-	Description    string                  `json:"description"`
-	Path           string                  `json:"path"`
-	Tags           []string                `json:"tags,omitempty"`
-	CreatedAt      string                  `json:"createdAt,omitempty"`
-	UpdatedAt      string                  `json:"updatedAt,omitempty"`
-	Body           string                  `json:"body"`
-	Status         string                  `json:"status,omitempty"`
-	Links          []nodeReferenceResponse `json:"links,omitempty"`
-	Name           string                  `json:"name,omitempty"`
-	Env            map[string]string       `json:"env,omitempty"`
-	Run            string                  `json:"run,omitempty"`
-	RelatedNoteIDs []string                `json:"relatedNoteIds,omitempty"`
+	ID               string                    `json:"id"`
+	Type             string                    `json:"type"`
+	FeatureSlug      string                    `json:"featureSlug"`
+	Graph            string                    `json:"graph"`
+	Title            string                    `json:"title"`
+	Description      string                    `json:"description"`
+	Path             string                    `json:"path"`
+	Tags             []string                  `json:"tags,omitempty"`
+	CreatedAt        string                    `json:"createdAt,omitempty"`
+	UpdatedAt        string                    `json:"updatedAt,omitempty"`
+	Body             string                    `json:"body"`
+	Status           string                    `json:"status,omitempty"`
+	Links            []nodeReferenceResponse   `json:"links,omitempty"`
+	Name             string                    `json:"name,omitempty"`
+	Env              map[string]string         `json:"env,omitempty"`
+	Run              string                    `json:"run,omitempty"`
+	RelatedNoteIDs   []string                  `json:"relatedNoteIds,omitempty"`
+	InlineReferences []inlineReferenceResponse `json:"inlineReferences,omitempty"`
+}
+
+type inlineReferenceResponse struct {
+	Token            string `json:"token"`
+	Raw              string `json:"raw"`
+	TargetID         string `json:"targetId"`
+	TargetType       string `json:"targetType"`
+	TargetGraph      string `json:"targetGraph"`
+	TargetTitle      string `json:"targetTitle"`
+	TargetPath       string `json:"targetPath"`
+	TargetBreadcrumb string `json:"targetBreadcrumb"`
+}
+
+type referenceTargetResponse struct {
+	ID         string `json:"id"`
+	Type       string `json:"type"`
+	Graph      string `json:"graph"`
+	Title      string `json:"title"`
+	Path       string `json:"path"`
+	Breadcrumb string `json:"breadcrumb"`
 }
 
 type errorResponse struct {
@@ -294,6 +315,8 @@ func (handler *apiHandler) ServeHTTP(writer http.ResponseWriter, request *http.R
 		handler.handleRebuildIndex(writer, request)
 	case request.URL.Path == "/api/search" && request.Method == http.MethodGet:
 		handler.handleSearch(writer, request)
+	case request.URL.Path == "/api/reference-targets" && request.Method == http.MethodGet:
+		handler.handleReferenceTargets(writer, request)
 	case request.URL.Path == "/api/gui/stop" && request.Method == http.MethodPost:
 		handler.handleGUIStop(writer, request)
 	case request.URL.Path == "/api/node-view" && request.Method == http.MethodGet:
@@ -713,7 +736,7 @@ func (handler *apiHandler) handleDocument(writer http.ResponseWriter, request *h
 	}
 
 	for _, item := range documents {
-		response, ok, err := buildDocumentResponse(item, noteView)
+		response, ok, err := buildDocumentResponse(item, noteView, documents)
 		if err != nil {
 			writeError(writer, http.StatusInternalServerError, err.Error())
 			return
@@ -941,6 +964,53 @@ func (handler *apiHandler) handleSearch(writer http.ResponseWriter, request *htt
 	writeJSON(writer, http.StatusOK, results)
 }
 
+func (handler *apiHandler) handleReferenceTargets(writer http.ResponseWriter, request *http.Request) {
+	query := strings.TrimSpace(request.URL.Query().Get("q"))
+	if query == "" {
+		query = strings.TrimSpace(request.URL.Query().Get("query"))
+	}
+
+	limit := 8
+	if rawLimit := strings.TrimSpace(request.URL.Query().Get("limit")); rawLimit != "" {
+		parsedLimit, err := strconv.Atoi(rawLimit)
+		if err != nil {
+			writeError(writer, http.StatusBadRequest, "limit must be an integer")
+			return
+		}
+		limit = parsedLimit
+	}
+
+	documents, err := workspace.LoadDocuments(handler.options.Root.FlowPath)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	targets, err := markdown.LookupReferenceTargets(documents, query, strings.TrimSpace(request.URL.Query().Get("graph")), limit)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "must not be empty") {
+			status = http.StatusBadRequest
+		}
+		writeError(writer, status, err.Error())
+		return
+	}
+
+	responses := make([]referenceTargetResponse, len(targets))
+	for index, target := range targets {
+		responses[index] = referenceTargetResponse{
+			ID:         target.ID,
+			Type:       string(target.Type),
+			Graph:      target.Graph,
+			Title:      target.Title,
+			Path:       target.Path,
+			Breadcrumb: target.Breadcrumb,
+		}
+	}
+
+	writeJSON(writer, http.StatusOK, responses)
+}
+
 func (handler *apiHandler) handleNodeView(writer http.ResponseWriter, request *http.Request) {
 	id := strings.TrimSpace(request.URL.Query().Get("id"))
 	graph := strings.TrimSpace(request.URL.Query().Get("graph"))
@@ -988,7 +1058,12 @@ func readWorkspaceConfig(root workspace.Root) (config.Workspace, error) {
 	return config.Workspace{}, err
 }
 
-func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteGraphView) (documentResponse, bool, error) {
+func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteGraphView, documents []markdown.WorkspaceDocument) (documentResponse, bool, error) {
+	inlineReferences, err := resolveInlineReferenceResponses(documents, item)
+	if err != nil {
+		return documentResponse{}, false, err
+	}
+
 	switch document := item.Document.(type) {
 	case markdown.NoteDocument:
 		featureSlug, err := featureSlugFromPath(item.Path)
@@ -998,19 +1073,20 @@ func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteG
 
 		node := noteView.Nodes[document.Metadata.ID]
 		return documentResponse{
-			ID:             document.Metadata.ID,
-			Type:           string(document.Metadata.Type),
-			FeatureSlug:    featureSlug,
-			Graph:          document.Metadata.Graph,
-			Title:          document.Metadata.Title,
-			Description:    document.Metadata.Description,
-			Path:           item.Path,
-			Tags:           cloneStrings(document.Metadata.Tags),
-			CreatedAt:      document.Metadata.CreatedAt,
-			UpdatedAt:      document.Metadata.UpdatedAt,
-			Body:           document.Body,
-			Links:          convertLinks(document.Metadata.Links),
-			RelatedNoteIDs: cloneStrings(node.RelatedNoteIDs),
+			ID:               document.Metadata.ID,
+			Type:             string(document.Metadata.Type),
+			FeatureSlug:      featureSlug,
+			Graph:            document.Metadata.Graph,
+			Title:            document.Metadata.Title,
+			Description:      document.Metadata.Description,
+			Path:             item.Path,
+			Tags:             cloneStrings(document.Metadata.Tags),
+			CreatedAt:        document.Metadata.CreatedAt,
+			UpdatedAt:        document.Metadata.UpdatedAt,
+			Body:             document.Body,
+			Links:            convertLinks(document.Metadata.Links),
+			RelatedNoteIDs:   cloneStrings(node.RelatedNoteIDs),
+			InlineReferences: inlineReferences,
 		}, true, nil
 	case markdown.TaskDocument:
 		featureSlug, err := featureSlugFromPath(item.Path)
@@ -1019,19 +1095,20 @@ func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteG
 		}
 
 		return documentResponse{
-			ID:          document.Metadata.ID,
-			Type:        string(document.Metadata.Type),
-			FeatureSlug: featureSlug,
-			Graph:       document.Metadata.Graph,
-			Title:       document.Metadata.Title,
-			Description: document.Metadata.Description,
-			Path:        item.Path,
-			Tags:        cloneStrings(document.Metadata.Tags),
-			CreatedAt:   document.Metadata.CreatedAt,
-			UpdatedAt:   document.Metadata.UpdatedAt,
-			Body:        document.Body,
-			Status:      document.Metadata.Status,
-			Links:       convertLinks(document.Metadata.Links),
+			ID:               document.Metadata.ID,
+			Type:             string(document.Metadata.Type),
+			FeatureSlug:      featureSlug,
+			Graph:            document.Metadata.Graph,
+			Title:            document.Metadata.Title,
+			Description:      document.Metadata.Description,
+			Path:             item.Path,
+			Tags:             cloneStrings(document.Metadata.Tags),
+			CreatedAt:        document.Metadata.CreatedAt,
+			UpdatedAt:        document.Metadata.UpdatedAt,
+			Body:             document.Body,
+			Status:           document.Metadata.Status,
+			Links:            convertLinks(document.Metadata.Links),
+			InlineReferences: inlineReferences,
 		}, true, nil
 	case markdown.CommandDocument:
 		featureSlug, err := featureSlugFromPath(item.Path)
@@ -1040,21 +1117,22 @@ func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteG
 		}
 
 		return documentResponse{
-			ID:          document.Metadata.ID,
-			Type:        string(document.Metadata.Type),
-			FeatureSlug: featureSlug,
-			Graph:       document.Metadata.Graph,
-			Title:       document.Metadata.Title,
-			Description: document.Metadata.Description,
-			Path:        item.Path,
-			Tags:        cloneStrings(document.Metadata.Tags),
-			CreatedAt:   document.Metadata.CreatedAt,
-			UpdatedAt:   document.Metadata.UpdatedAt,
-			Body:        document.Body,
-			Links:       convertLinks(document.Metadata.Links),
-			Name:        document.Metadata.Name,
-			Env:         cloneMap(document.Metadata.Env),
-			Run:         document.Metadata.Run,
+			ID:               document.Metadata.ID,
+			Type:             string(document.Metadata.Type),
+			FeatureSlug:      featureSlug,
+			Graph:            document.Metadata.Graph,
+			Title:            document.Metadata.Title,
+			Description:      document.Metadata.Description,
+			Path:             item.Path,
+			Tags:             cloneStrings(document.Metadata.Tags),
+			CreatedAt:        document.Metadata.CreatedAt,
+			UpdatedAt:        document.Metadata.UpdatedAt,
+			Body:             document.Body,
+			Links:            convertLinks(document.Metadata.Links),
+			Name:             document.Metadata.Name,
+			Env:              cloneMap(document.Metadata.Env),
+			Run:              document.Metadata.Run,
+			InlineReferences: inlineReferences,
 		}, true, nil
 	default:
 		return documentResponse{}, false, nil
@@ -1189,7 +1267,7 @@ func loadDocumentResponse(root workspace.Root, documentID string) (documentRespo
 	}
 
 	for _, item := range documents {
-		response, ok, err := buildDocumentResponse(item, noteView)
+		response, ok, err := buildDocumentResponse(item, noteView, documents)
 		if err != nil {
 			return documentResponse{}, err
 		}
@@ -1199,6 +1277,32 @@ func loadDocumentResponse(root workspace.Root, documentID string) (documentRespo
 	}
 
 	return documentResponse{}, workspace.DocumentNotFoundError{Selector: documentID}
+}
+
+func resolveInlineReferenceResponses(documents []markdown.WorkspaceDocument, item markdown.WorkspaceDocument) ([]inlineReferenceResponse, error) {
+	resolved, err := markdown.ResolveInlineReferences(documents, item)
+	if err != nil {
+		return nil, err
+	}
+	if len(resolved) == 0 {
+		return nil, nil
+	}
+
+	responses := make([]inlineReferenceResponse, len(resolved))
+	for index, reference := range resolved {
+		responses[index] = inlineReferenceResponse{
+			Token:            reference.Token,
+			Raw:              reference.Raw,
+			TargetID:         reference.Target.ID,
+			TargetType:       string(reference.Target.Type),
+			TargetGraph:      reference.Target.Graph,
+			TargetTitle:      reference.Target.Title,
+			TargetPath:       reference.Target.Path,
+			TargetBreadcrumb: reference.Target.Breadcrumb,
+		}
+	}
+
+	return responses, nil
 }
 
 func loadCalendarDocumentResponses(root workspace.Root) ([]calendarDocumentResponse, error) {

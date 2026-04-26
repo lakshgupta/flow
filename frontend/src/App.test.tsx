@@ -1,5 +1,5 @@
 import { ThemeProvider } from "./lib/theme";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -171,6 +171,7 @@ describe("App graph canvas flows", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -310,6 +311,387 @@ describe("App graph canvas flows", () => {
     const documentPanel = await screen.findByLabelText("Graph node document");
     expect(within(documentPanel).getByText("Overview body")).toBeInTheDocument();
     expect(screen.queryByLabelText("Document content layout")).not.toBeInTheDocument();
+  });
+
+  it("renders inline references as title links and opens the referenced document", async () => {
+    const graphCanvasResponse = {
+      selectedGraph: "execution",
+      availableGraphs: ["execution"],
+      layerGuidance: {
+        magneticThresholdPx: 18,
+        guides: [
+          { layer: 0, x: 140 },
+          { layer: 1, x: 460 },
+        ],
+      },
+      nodes: [
+        {
+          id: "note-1",
+          type: "note",
+          graph: "execution",
+          title: "Overview",
+          description: "Execution overview",
+          path: "data/graphs/execution/overview.md",
+          featureSlug: "execution",
+          position: { x: 140, y: 120 },
+          positionPersisted: false,
+        },
+        {
+          id: "note-2",
+          type: "note",
+          graph: "execution",
+          title: "Follow-up",
+          description: "Follow-up notes",
+          path: "data/graphs/execution/follow-up.md",
+          featureSlug: "execution",
+          position: { x: 480, y: 220 },
+          positionPersisted: false,
+        },
+      ],
+      edges: [],
+    };
+    const noteOneResponse = {
+      id: "note-1",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Overview",
+      description: "Execution overview",
+      path: "data/graphs/execution/overview.md",
+      tags: [],
+      body: "See [[note-2]]\n",
+      links: [],
+      relatedNoteIds: [],
+      inlineReferences: [
+        {
+          token: "[[note-2]]",
+          raw: "note-2",
+          targetId: "note-2",
+          targetType: "note",
+          targetGraph: "execution",
+          targetTitle: "Follow-up",
+          targetPath: "data/graphs/execution/follow-up.md",
+          targetBreadcrumb: "execution > Follow-up",
+        },
+      ],
+    };
+    const noteTwoResponse = {
+      id: "note-2",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Follow-up",
+      description: "Follow-up notes",
+      path: "data/graphs/execution/follow-up.md",
+      tags: [],
+      body: "Follow up body\n",
+      links: [],
+      relatedNoteIds: [],
+      inlineReferences: [],
+    };
+
+    installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        if ((init?.method ?? "GET") === "PUT") {
+          return workspaceResponse;
+        }
+
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/graphs/note") {
+        return noteGraphs("execution");
+      }
+
+      if (url === "/api/graphs/task") {
+        return emptyGraphLists.tasks;
+      }
+
+      if (url === "/api/graphs/command") {
+        return emptyGraphLists.commands;
+      }
+
+      if (url === "/api/graph-canvas?graph=execution") {
+        return graphCanvasResponse;
+      }
+
+      if (url === "/api/documents/note-1") {
+        return noteOneResponse;
+      }
+
+      if (url === "/api/documents/note-2") {
+        return noteTwoResponse;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Content");
+
+    const executionButton = (await screen.findByText("Execution")).closest('[data-sidebar="menu-sub-button"]');
+    if (executionButton === null) {
+      throw new Error("missing execution graph button");
+    }
+
+    await user.click(executionButton);
+    await screen.findByTestId("flow-node-note-1");
+    await user.dblClick(screen.getByRole("button", { name: "Open note-1" }));
+
+    const documentPanel = await screen.findByLabelText("Graph node document");
+    expect(within(documentPanel).queryByText("[[note-2]]")).not.toBeInTheDocument();
+
+    const referenceLink = within(documentPanel).getByRole("link", { name: "Follow-up" });
+    await user.click(referenceLink);
+
+    expect(await within(documentPanel).findByText("Follow up body")).toBeInTheDocument();
+  });
+
+  it("does not reload the shell during document autosave while editing", async () => {
+    const documentResponse = {
+      id: "note-1",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Overview",
+      description: "Execution overview",
+      path: "data/content/execution/overview.md",
+      tags: [],
+      body: "Overview body\n",
+      links: [],
+      relatedNoteIds: [],
+    };
+
+    const updatedDocumentResponse = {
+      ...documentResponse,
+      title: "Overview updated",
+    };
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/documents/note-1") {
+        if ((init?.method ?? "GET") === "PUT") {
+          return updatedDocumentResponse;
+        }
+
+        return documentResponse;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    const fileButton = (await screen.findByText("overview.md")).closest('[data-sidebar="menu-sub-button"]');
+    if (fileButton === null) {
+      throw new Error("missing overview file button");
+    }
+
+    await user.click(fileButton);
+
+    const titleInput = await screen.findByRole("textbox", { name: "Document title" });
+    vi.useFakeTimers();
+    await act(async () => {
+      fireEvent.change(titleInput, { target: { value: "Overview updated" } });
+      await vi.advanceTimersByTimeAsync(800);
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/documents/note-1",
+      expect.objectContaining({
+        method: "PUT",
+      }),
+    );
+
+    const workspaceRequests = fetchMock.mock.calls.filter(([url, init]) => {
+      const requestURL = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
+      return requestURL === "/api/workspace" && (init?.method ?? "GET") === "GET";
+    });
+    const graphRequests = fetchMock.mock.calls.filter(([url, init]) => {
+      const requestURL = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
+      return requestURL === "/api/graphs" && (init?.method ?? "GET") === "GET";
+    });
+
+    expect(workspaceRequests).toHaveLength(1);
+    expect(graphRequests).toHaveLength(1);
+    expect(titleInput).toHaveValue("Overview updated");
+  });
+
+  it("saves pending document edits before switching to another node", async () => {
+    const graphTreeWithTwoFiles = {
+      ...graphTreeResponse,
+      graphs: [
+        {
+          ...graphTreeResponse.graphs[0],
+          files: [
+            graphTreeResponse.graphs[0].files[0],
+            {
+              id: "note-2",
+              type: "note",
+              title: "Follow Up",
+              path: "data/graphs/execution/follow-up.md",
+              fileName: "follow-up.md",
+            },
+          ],
+        },
+      ],
+    };
+    const graphCanvasResponse = {
+      selectedGraph: "execution",
+      availableGraphs: ["execution"],
+      layerGuidance: {
+        magneticThresholdPx: 18,
+        guides: [
+          { layer: 0, x: 140 },
+          { layer: 1, x: 460 },
+        ],
+      },
+      nodes: [
+        {
+          id: "note-1",
+          type: "note",
+          graph: "execution",
+          title: "Overview",
+          description: "Execution overview",
+          path: "data/graphs/execution/overview.md",
+          featureSlug: "execution",
+          position: { x: 140, y: 120 },
+          positionPersisted: false,
+        },
+        {
+          id: "note-2",
+          type: "note",
+          graph: "execution",
+          title: "Follow Up",
+          description: "Execution follow-up",
+          path: "data/graphs/execution/follow-up.md",
+          featureSlug: "execution",
+          position: { x: 460, y: 120 },
+          positionPersisted: false,
+        },
+      ],
+      edges: [],
+    };
+
+    let noteOne = {
+      id: "note-1",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Overview",
+      description: "Execution overview",
+      path: "data/graphs/execution/overview.md",
+      tags: [],
+      body: "Overview body\n",
+      links: [],
+      relatedNoteIds: [],
+    };
+    const noteTwo = {
+      id: "note-2",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Follow Up",
+      description: "Execution follow-up",
+      path: "data/graphs/execution/follow-up.md",
+      tags: [],
+      body: "Follow up body\n",
+      links: [],
+      relatedNoteIds: [],
+    };
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeWithTwoFiles;
+      }
+
+      if (url === "/api/graphs/note") {
+        return noteGraphs("execution");
+      }
+
+      if (url === "/api/graphs/task") {
+        return emptyGraphLists.tasks;
+      }
+
+      if (url === "/api/graphs/command") {
+        return emptyGraphLists.commands;
+      }
+
+      if (url === "/api/graph-canvas?graph=execution") {
+        return graphCanvasResponse;
+      }
+
+      if (url === "/api/documents/note-1" && (init?.method ?? "GET") === "PUT") {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { title: string };
+        noteOne = {
+          ...noteOne,
+          title: body.title,
+        };
+        return noteOne;
+      }
+
+      if (url === "/api/documents/note-1") {
+        return noteOne;
+      }
+
+      if (url === "/api/documents/note-2") {
+        return noteTwo;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    const overviewButton = (await screen.findByText("overview.md")).closest('[data-sidebar="menu-sub-button"]');
+    if (overviewButton === null) {
+      throw new Error("missing overview file button");
+    }
+
+    await user.click(overviewButton);
+
+    const titleInput = await screen.findByRole("textbox", { name: "Document title" });
+    fireEvent.change(titleInput, { target: { value: "Overview updated" } });
+
+    const followUpButton = (await screen.findByText("follow-up.md")).closest('[data-sidebar="menu-sub-button"]');
+    if (followUpButton === null) {
+      throw new Error("missing follow-up file button");
+    }
+
+    await user.click(followUpButton);
+
+    await waitFor(() => {
+      expect(getRequestBody(fetchMock, "/api/documents/note-1", "PUT")).toMatchObject({
+        title: "Overview updated",
+      });
+    });
+
+    await screen.findByText("Follow up body");
+
+    await user.click(overviewButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: "Document title" })).toHaveValue("Overview updated");
+    });
   });
 
   it("shows a document icon after node selection and lets the right pane maximize and minimize", async () => {
@@ -492,7 +874,9 @@ describe("App graph canvas flows", () => {
 
     await user.click(screen.getByRole("button", { name: "Select note-2" }));
     await user.click(screen.getByRole("button", { name: "Document" }));
-    expect(screen.getByLabelText("Right pane")).toHaveAttribute("data-focus", "false");
+    await waitFor(() => {
+      expect(screen.getByLabelText("Right pane")).toHaveAttribute("data-focus", "false");
+    });
 
     const reopenedDocumentPanel = await screen.findByLabelText("Graph node document panel");
     expect(within(reopenedDocumentPanel).getByText("Details body")).toBeInTheDocument();
@@ -683,8 +1067,8 @@ describe("App graph canvas flows", () => {
     expect(within(fileButton).queryByText("Overview")).not.toBeInTheDocument();
 
     await user.click(fileButton);
-    expect(await screen.findByText("Overview body")).toBeInTheDocument();
-    expect(screen.getByLabelText("Document content layout")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Document content layout")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Document title" })).toHaveValue("Overview");
     expect(screen.queryByLabelText("Graph node document")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Document" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Close document" })).not.toBeInTheDocument();
@@ -1079,7 +1463,8 @@ describe("App graph canvas flows", () => {
 
     await user.click(fileButton);
 
-    expect(await screen.findByText("Overview body")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Document content layout")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Document title" })).toHaveValue("Overview");
 
     await user.click(screen.getByRole("button", { name: "Settings" }));
     await user.click(screen.getByRole("button", { name: "Refresh index" }));
@@ -1258,7 +1643,7 @@ describe("App graph canvas flows", () => {
 
     await user.click(fileButton);
 
-    await user.click(screen.getByRole("button", { name: "Toggle document properties" }));
+    await user.click(await screen.findByRole("button", { name: "Toggle document properties" }));
 
     await waitFor(() => {
       const propertiesPanel = screen.getByLabelText("Document properties");
@@ -1386,7 +1771,7 @@ describe("App graph canvas flows", () => {
     await user.click(fileButton);
 
     const tocToggle = await screen.findByRole("button", { name: "Toggle table of contents" });
-    const propertiesToggle = screen.getByRole("button", { name: "Toggle document properties" });
+    const propertiesToggle = await screen.findByRole("button", { name: "Toggle document properties" });
 
     expect(await screen.findByLabelText("Document table of contents")).toBeInTheDocument();
     expect(tocToggle).toHaveAttribute("aria-pressed", "true");

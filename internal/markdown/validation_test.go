@@ -90,6 +90,64 @@ func TestValidateWorkspaceDocumentsRejectsMissingReference(t *testing.T) {
 	}
 }
 
+func TestValidateWorkspaceDocumentsRejectsMissingInlineReference(t *testing.T) {
+	t.Parallel()
+
+	err := ValidateWorkspaceDocuments([]WorkspaceDocument{
+		{
+			Path: "features/release/notes/context.md",
+			Document: NoteDocument{
+				Metadata: NoteMetadata{
+					CommonFields: CommonFields{ID: "note-1", Type: NoteType, Graph: "release"},
+				},
+				Body: "See [[missing-note]] for details.\n",
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("ValidateWorkspaceDocuments() error = nil, want missing inline reference error")
+	}
+
+	if !strings.Contains(err.Error(), "reference \"missing-note\" does not exist") {
+		t.Fatalf("ValidateWorkspaceDocuments() error = %v", err)
+	}
+}
+
+func TestValidateWorkspaceDocumentsAllowsBreadcrumbInlineReference(t *testing.T) {
+	t.Parallel()
+
+	err := ValidateWorkspaceDocuments([]WorkspaceDocument{
+		{
+			Path: "data/content/execution/overview.md",
+			Document: NoteDocument{
+				Metadata: NoteMetadata{
+					CommonFields: CommonFields{ID: "note-1", Type: NoteType, Graph: "execution", Title: "Overview"},
+				},
+				Body: "See [[release > Ship it]] and [[Details]].\n",
+			},
+		},
+		{
+			Path: "data/content/execution/details.md",
+			Document: NoteDocument{
+				Metadata: NoteMetadata{
+					CommonFields: CommonFields{ID: "note-2", Type: NoteType, Graph: "execution", Title: "Details"},
+				},
+			},
+		},
+		{
+			Path: "data/content/release/ship-it.md",
+			Document: TaskDocument{
+				Metadata: TaskMetadata{
+					CommonFields: CommonFields{ID: "task-1", Type: TaskType, Graph: "release", Title: "Ship it"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ValidateWorkspaceDocuments() error = %v", err)
+	}
+}
+
 func TestValidateWorkspaceDocumentsAllowsCrossGraphAndCrossTypeLinks(t *testing.T) {
 	t.Parallel()
 

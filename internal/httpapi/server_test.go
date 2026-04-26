@@ -78,10 +78,18 @@ func TestNewMuxServesWorkspaceAndReadQueryAPIs(t *testing.T) {
 	if len(document.RelatedNoteIDs) != 1 || document.RelatedNoteIDs[0] != "note-2" {
 		t.Fatalf("document.RelatedNoteIDs = %#v, want [note-2]", document.RelatedNoteIDs)
 	}
+	if len(document.InlineReferences) != 1 || document.InlineReferences[0].TargetID != "task-1" || document.InlineReferences[0].TargetTitle != "Parser" {
+		t.Fatalf("document.InlineReferences = %#v, want parser inline reference", document.InlineReferences)
+	}
 
 	results := performJSONRequest[[]index.SearchResult](t, handler, http.MethodGet, "/api/search?q=parser")
 	if len(results) != 1 || results[0].ID != "task-1" {
 		t.Fatalf("search results = %#v, want task-1 match", results)
+	}
+
+	referenceTargets := performJSONRequest[[]referenceTargetResponse](t, handler, http.MethodGet, "/api/reference-targets?q=parser&graph=notes")
+	if len(referenceTargets) != 1 || referenceTargets[0].ID != "task-1" || referenceTargets[0].Breadcrumb != "execution > Parser" {
+		t.Fatalf("referenceTargets = %#v, want parser lookup result", referenceTargets)
 	}
 
 	stopResponse := performJSONRequest[map[string]bool](t, handler, http.MethodPost, "/api/gui/stop")
@@ -758,7 +766,7 @@ func createHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "notes", Title: "Architecture"},
 			Links:        []markdown.NodeLink{{Node: "note-2"}, {Node: "task-1"}},
 		},
-		Body: "Architecture body\n",
+		Body: "Architecture body references [[task-1]].\n",
 	})
 	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "notes", "follow-up.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{

@@ -76,7 +76,7 @@ import type { EdgeTypes } from "@xyflow/react";
 
 const EDGE_TYPES: EdgeTypes = { contextEdge: ContextEdge };
 
-import { RichTextEditor } from "./components/editor/RichTextEditor";
+import { RichTextEditor, type RichTextEditorHandle } from "./components/editor/RichTextEditor";
 import type {
   CalendarDocumentResponse,
   DeleteDocumentResponse,
@@ -144,6 +144,79 @@ function remapGraphPath(path: string, currentPath: string, nextPath: string): st
     return `${nextPath}${path.slice(currentPath.length)}`;
   }
   return path;
+}
+
+function buildGraphTreeFile(document: DocumentResponse): GraphTreeFileData {
+  return {
+    id: document.id,
+    type: document.type,
+    title: document.title,
+    path: document.path,
+    fileName: fileNameFromPath(document.path),
+  };
+}
+
+function updateGraphTreeDocumentEntry(graphTree: GraphTreeResponse | null, previousDocument: DocumentResponse, nextDocument: DocumentResponse): GraphTreeResponse | null {
+  if (graphTree === null) {
+    return graphTree;
+  }
+
+  if (previousDocument.graph !== nextDocument.graph) {
+    return graphTree;
+  }
+
+  let changed = false;
+  const nextGraphs = graphTree.graphs.map((graphNode) => {
+    if (graphNode.graphPath !== nextDocument.graph) {
+      return graphNode;
+    }
+
+    const nextFiles = graphNode.files.map((file) => {
+      if (file.id !== nextDocument.id) {
+        return file;
+      }
+
+      changed = true;
+      return buildGraphTreeFile(nextDocument);
+    });
+
+    return changed ? { ...graphNode, files: nextFiles } : graphNode;
+  });
+
+  return changed ? { ...graphTree, graphs: nextGraphs } : graphTree;
+}
+
+function updateGraphCanvasDocumentEntry(graphCanvas: GraphCanvasResponse | null, previousDocument: DocumentResponse, nextDocument: DocumentResponse): GraphCanvasResponse | null {
+  if (graphCanvas === null) {
+    return graphCanvas;
+  }
+
+  if (previousDocument.graph !== nextDocument.graph || graphCanvas.selectedGraph !== nextDocument.graph) {
+    return graphCanvas;
+  }
+
+  let changed = false;
+  const nextNodes = graphCanvas.nodes.map((node) => {
+    if (node.id !== nextDocument.id) {
+      return node;
+    }
+
+    changed = true;
+    return {
+      ...node,
+      type: nextDocument.type,
+      graph: nextDocument.graph,
+      title: nextDocument.title,
+      description: nextDocument.description,
+      path: nextDocument.path,
+      featureSlug: nextDocument.featureSlug,
+      tags: nextDocument.tags,
+      createdAt: nextDocument.createdAt,
+      updatedAt: nextDocument.updatedAt,
+    };
+  });
+
+  return changed ? { ...graphCanvas, nodes: nextNodes } : graphCanvas;
 }
 
 
@@ -215,10 +288,15 @@ function FlowApp() {
   const centerDocumentLayoutRef = useRef<HTMLDivElement | null>(null);
   const homeDocumentLayoutRef = useRef<HTMLDivElement | null>(null);
   const rightRailDocumentLayoutRef = useRef<HTMLDivElement | null>(null);
+  const centerDocumentEditorRef = useRef<RichTextEditorHandle | null>(null);
+  const homeDocumentEditorRef = useRef<RichTextEditorHandle | null>(null);
+  const rightRailDocumentEditorRef = useRef<RichTextEditorHandle | null>(null);
   const connectingTargetRef = useRef<string | null>(null);
   const homeFormStateRef = useRef<HomeFormState>(emptyHomeFormState);
   const homeAutoSaveTimerRef = useRef<number | null>(null);
   const documentAutoSaveTimerRef = useRef<number | null>(null);
+  const homeSavePromiseRef = useRef<Promise<void> | null>(null);
+  const documentSavePromiseRef = useRef<Promise<void> | null>(null);
   const edgeClickTimerRef = useRef<number | null>(null);
   const formStateRef = useRef<DocumentFormState>(emptyDocumentFormState);
   const selectedDocumentRef = useRef<DocumentResponse | null>(null);
@@ -362,13 +440,49 @@ function FlowApp() {
     return generateTOC(formState.body);
   }, [activeSurface.kind, formState.body, homeFormState.body, selectedDocument]);
 
-  const syncSelectedDocumentState = useCallback((document: DocumentResponse | null): void => {
+  const syncSelectedDocumentState = useCallback((document: DocumentResponse | null, options?: { preserveFormState?: boolean }): void => {
     selectedDocumentRef.current = document;
     setSelectedDocument(document);
-    const nextFormState = createDocumentFormState(document);
-    formStateRef.current = nextFormState;
-    setFormState(nextFormState);
+
+    if (!options?.preserveFormState) {
+      const nextFormState = createDocumentFormState(document);
+      formStateRef.current = nextFormState;
+      setFormState(nextFormState);
+    }
   }, []);
+
+  function syncDocumentBodyFromActiveEditor(): boolean {
+    const editorHandle = selectedDocumentOpenMode === "center" ? centerDocumentEditorRef.current : rightRailDocumentEditorRef.current;
+    if (editorHandle === null) {
+      return false;
+    }
+
+    const nextBody = editorHandle.getMarkdown();
+    if (nextBody === formStateRef.current.body) {
+      return false;
+    }
+
+    const nextState = { ...formStateRef.current, body: nextBody };
+    formStateRef.current = nextState;
+    setFormState(nextState);
+    return true;
+  }
+
+  function syncHomeBodyFromEditor(): boolean {
+    if (homeDocumentEditorRef.current === null) {
+      return false;
+    }
+
+    const nextBody = homeDocumentEditorRef.current.getMarkdown();
+    if (nextBody === homeFormStateRef.current.body) {
+      return false;
+    }
+
+    const nextState = { ...homeFormStateRef.current, body: nextBody };
+    homeFormStateRef.current = nextState;
+    setHomeFormState(nextState);
+    return true;
+  }
 
   function clearMutationFeedback(): void {
     setMutationError("");
@@ -414,7 +528,67 @@ function FlowApp() {
     setCenterDocumentSidePanelMode((current) => (current === panel ? "hidden" : panel));
   }
 
-  function openDocumentInCenter(documentId: string, graphPath: string): void {
+  async function waitForEditorStateToSettle(): Promise<void> {
+    await Promise.resolve();
+
+    if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") {
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => resolve());
+    });
+  }
+
+  async function flushPendingDocumentSave(): Promise<void> {
+    await waitForEditorStateToSettle();
+    const hasUnsyncedEditorState = syncDocumentBodyFromActiveEditor();
+    const hadPendingTimer = documentAutoSaveTimerRef.current !== null;
+
+    if (hadPendingTimer) {
+      clearTimeout(documentAutoSaveTimerRef.current);
+      documentAutoSaveTimerRef.current = null;
+    }
+
+    if (documentSavePromiseRef.current !== null) {
+      await documentSavePromiseRef.current;
+    }
+
+    if ((!hadPendingTimer && !hasUnsyncedEditorState) || selectedDocumentRef.current === null) {
+      return;
+    }
+
+    await handleSaveDocument(selectedDocumentRef.current, formStateRef.current);
+  }
+
+  async function flushPendingHomeSave(): Promise<void> {
+    await waitForEditorStateToSettle();
+    const hasUnsyncedEditorState = syncHomeBodyFromEditor();
+    const hadPendingTimer = homeAutoSaveTimerRef.current !== null;
+
+    if (hadPendingTimer) {
+      clearTimeout(homeAutoSaveTimerRef.current);
+      homeAutoSaveTimerRef.current = null;
+    }
+
+    if (homeSavePromiseRef.current !== null) {
+      await homeSavePromiseRef.current;
+    }
+
+    if (!hadPendingTimer && !hasUnsyncedEditorState) {
+      return;
+    }
+
+    await handleSaveHomeContent(homeFormStateRef.current);
+  }
+
+  async function flushPendingActiveEditorSave(): Promise<void> {
+    await flushPendingDocumentSave();
+    await flushPendingHomeSave();
+  }
+
+  async function openDocumentInCenter(documentId: string, graphPath: string): Promise<void> {
+    await flushPendingActiveEditorSave();
     clearSurfaceFeedback();
     startTransition(() => {
       setActiveSurface({ kind: "graph", graphPath });
@@ -428,7 +602,8 @@ function FlowApp() {
     }
   }
 
-  function openDocumentInRightRail(documentId: string, graphPath: string): void {
+  async function openDocumentInRightRail(documentId: string, graphPath: string): Promise<void> {
+    await flushPendingActiveEditorSave();
     clearSurfaceFeedback();
     startTransition(() => {
       setActiveSurface({ kind: "graph", graphPath });
@@ -812,6 +987,11 @@ function FlowApp() {
     clearSurfaceFeedback();
   }
 
+  async function handleCloseContextPanel(): Promise<void> {
+    await flushPendingDocumentSave();
+    clearContextPanel();
+  }
+
   function openDeleteDialog(target: DeleteDialogState): void {
     clearMutationFeedback();
     setDeleteDialogTarget(target);
@@ -832,7 +1012,8 @@ function FlowApp() {
     });
   }
 
-  function handleSelectHome(): void {
+  async function handleSelectHome(): Promise<void> {
+    await flushPendingActiveEditorSave();
     clearContextPanel();
     setGraphCanvasError("");
     setGraphCreateError("");
@@ -842,7 +1023,8 @@ function FlowApp() {
     });
   }
 
-  function handleSelectGraph(graphPath: string): void {
+  async function handleSelectGraph(graphPath: string): Promise<void> {
+    await flushPendingActiveEditorSave();
     clearContextPanel();
     setGraphCanvasError("");
     setGraphCreateError("");
@@ -853,12 +1035,12 @@ function FlowApp() {
   }
 
   function handleOpenCanvasDocument(documentId: string): void {
-    openDocumentInRightRail(documentId, selectedGraphPath);
+    void openDocumentInRightRail(documentId, selectedGraphPath);
   }
 
   function handleSelectedNodeDocumentButtonClick(): void {
     if (selectedCanvasNode !== null && !selectedNodeMatchesRightRailDocument) {
-      openDocumentInRightRail(selectedCanvasNode.id, selectedGraphPath);
+      void openDocumentInRightRail(selectedCanvasNode.id, selectedGraphPath);
       return;
     }
 
@@ -920,19 +1102,33 @@ function FlowApp() {
   }
 
   function handleSelectDocument(documentId: string, graphPath: string): void {
-    openDocumentInCenter(documentId, graphPath);
+    void openDocumentInCenter(documentId, graphPath);
   }
 
   function handleInspectDocument(documentId: string, graphPath: string): void {
-    openDocumentInRightRail(documentId, graphPath);
+    void openDocumentInRightRail(documentId, graphPath);
+  }
+
+  function handleInlineReferenceOpen(documentId: string, graphPath: string, openMode: DocumentOpenMode): void {
+    const nextGraphPath = graphPath || documentGraphById.get(documentId) || selectedGraphPath;
+    if (nextGraphPath === "") {
+      return;
+    }
+
+    if (openMode === "center") {
+      void openDocumentInCenter(documentId, nextGraphPath);
+      return;
+    }
+
+    void openDocumentInRightRail(documentId, nextGraphPath);
   }
 
   function handleSearchResultNavigate(result: SearchResult): void {
     if (result.type === "home") {
-      handleSelectHome();
+      void handleSelectHome();
       return;
     }
-    openDocumentInRightRail(result.id, result.graph);
+    void openDocumentInRightRail(result.id, result.graph);
   }
 
   function handleTOCNavigate(itemId: string): void {
@@ -1354,61 +1550,89 @@ function FlowApp() {
   }
 
   async function handleSaveDocument(doc: DocumentResponse, state: DocumentFormState): Promise<void> {
-    try {
+    const savePromise = (async () => {
       setSavingDocument(true);
       setMutationError("");
 
-      const payload: Record<string, unknown> = {
-        title: state.title,
-        description: state.description,
-        graph: state.graph,
-        tags: splitList(state.tags),
-        body: state.body,
-        links: splitList(state.links).map((id): NodeLink => ({ node: id })),
-      };
+      try {
+        const payload: Record<string, unknown> = {
+          title: state.title,
+          description: state.description,
+          graph: state.graph,
+          tags: splitList(state.tags),
+          body: state.body,
+          links: splitList(state.links).map((id): NodeLink => ({ node: id })),
+        };
 
-      if (doc.type === "task") {
-        payload.status = state.status;
+        if (doc.type === "task") {
+          payload.status = state.status;
+        }
+
+        if (doc.type === "command") {
+          payload.name = state.name;
+          payload.run = state.run;
+          payload.env = parseEnv(state.env);
+        }
+
+        const updatedDocument = await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(doc.id)}`, {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        });
+
+        if (selectedDocumentRef.current?.id === updatedDocument.id) {
+          syncSelectedDocumentState(updatedDocument, { preserveFormState: true });
+        }
+        setGraphTree((current) => updateGraphTreeDocumentEntry(current, doc, updatedDocument));
+        setGraphCanvasData((current) => updateGraphCanvasDocumentEntry(current, doc, updatedDocument));
+      } catch (mutationFailure) {
+        setMutationError(toErrorMessage(mutationFailure));
+      } finally {
+        setSavingDocument(false);
       }
+    })();
 
-      if (doc.type === "command") {
-        payload.name = state.name;
-        payload.run = state.run;
-        payload.env = parseEnv(state.env);
-      }
+    documentSavePromiseRef.current = savePromise;
 
-      const updatedDocument = await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(doc.id)}`, {
-        method: "PUT",
-        body: JSON.stringify(payload),
-      });
-
-      await refreshShellViews({ nextDocument: updatedDocument, nextDocumentId: updatedDocument.id });
-    } catch (mutationFailure) {
-      setMutationError(toErrorMessage(mutationFailure));
+    try {
+      await savePromise;
     } finally {
-      setSavingDocument(false);
+      if (documentSavePromiseRef.current === savePromise) {
+        documentSavePromiseRef.current = null;
+      }
     }
   }
 
   async function handleSaveHomeContent(state: HomeFormState): Promise<void> {
-    try {
+    const savePromise = (async () => {
       setSavingHome(true);
       setHomeMutationError("");
 
-      await requestJSON<HomeResponse>("/api/home", {
-        method: "PUT",
-        body: JSON.stringify({
-          title: state.title,
-          description: state.description,
-          body: state.body,
-        }),
-      });
+      try {
+        const updatedHome = await requestJSON<HomeResponse>("/api/home", {
+          method: "PUT",
+          body: JSON.stringify({
+            title: state.title,
+            description: state.description,
+            body: state.body,
+          }),
+        });
 
-      await refreshShellViews();
-    } catch (mutationFailure) {
-      setHomeMutationError(toErrorMessage(mutationFailure));
+        setGraphTree((current) => (current === null ? current : { ...current, home: updatedHome }));
+      } catch (mutationFailure) {
+        setHomeMutationError(toErrorMessage(mutationFailure));
+      } finally {
+        setSavingHome(false);
+      }
+    })();
+
+    homeSavePromiseRef.current = savePromise;
+
+    try {
+      await savePromise;
     } finally {
-      setSavingHome(false);
+      if (homeSavePromiseRef.current === savePromise) {
+        homeSavePromiseRef.current = null;
+      }
     }
   }
 
@@ -1670,7 +1894,11 @@ function FlowApp() {
             <div className="home-document-body center-document-body">
               <RichTextEditor
                 ariaLabel="Document body editor"
+                inlineReferences={selectedDocument.inlineReferences}
                 onChange={(value) => updateFormField("body", value)}
+                onReferenceOpen={(documentId, graphPath) => handleInlineReferenceOpen(documentId, graphPath, "center")}
+                referenceLookupGraph={selectedDocument.graph}
+                ref={centerDocumentEditorRef}
                 onScrollCompleted={() => setEditorScrollTarget(null)}
                 placeholder="Type / for headings, lists, quotes, links, and highlights"
                 scrollToHeadingSlug={editorScrollTarget}
@@ -1830,6 +2058,7 @@ function FlowApp() {
                   <RichTextEditor
                     ariaLabel="Home body editor"
                     className="home-editor"
+                    ref={homeDocumentEditorRef}
                     onChange={(value) => updateHomeFormField("body", value)}
                     onScrollCompleted={() => setEditorScrollTarget(null)}
                     placeholder="Start writing…"
@@ -2248,7 +2477,9 @@ function FlowApp() {
                       </Button>
                     )}
                     <Button
-                      onClick={() => clearContextPanel()}
+                      onClick={() => {
+                        void handleCloseContextPanel();
+                      }}
                       type="button"
                       variant="ghost"
                       size="sm"
@@ -2294,7 +2525,11 @@ function FlowApp() {
                       <div className="home-document-body sidebar-document-body">
                         <RichTextEditor
                           ariaLabel="Context document editor"
+                          inlineReferences={selectedDocument.inlineReferences}
                           onChange={(value) => updateFormField("body", value)}
+                          onReferenceOpen={(documentId, graphPath) => handleInlineReferenceOpen(documentId, graphPath, "right-rail")}
+                          referenceLookupGraph={selectedDocument.graph}
+                          ref={rightRailDocumentEditorRef}
                           onScrollCompleted={() => setEditorScrollTarget(null)}
                           placeholder="Type / for headings, lists, quotes, links, and highlights"
                           scrollToHeadingSlug={editorScrollTarget}

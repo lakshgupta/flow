@@ -457,7 +457,7 @@ func TestRebuildIndexesInlineReferences(t *testing.T) {
 	indexPath := filepath.Join(flowPath, "config", "flow.index")
 
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "proj", "note-a.md"),
-		"---\nid: note-a\ntype: note\ngraph: proj\ntitle: Alpha\nlinks:\n  - {node: note-b, context: relates to}\n---\n\nAlpha body\n")
+		"---\nid: note-a\ntype: note\ngraph: proj\ntitle: Alpha\n---\n\nAlpha body references [[proj > Beta]] for follow-up.\n")
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "proj", "note-b.md"),
 		"---\nid: note-b\ntype: note\ngraph: proj\ntitle: Beta\n---\n\nBeta body\n")
 
@@ -471,6 +471,6 @@ func TestRebuildIndexesInlineReferences(t *testing.T) {
 	}
 	defer database.Close()
 
-	// Inline reference between two notes becomes a note_link.
-	assertQueryCount(t, database, `SELECT COUNT(*) FROM note_links`, 1)
+	assertQueryCount(t, database, `SELECT COUNT(*) FROM note_links`, 0)
+	assertQueryCount(t, database, `SELECT COUNT(*) FROM soft_references`, 1)
 }

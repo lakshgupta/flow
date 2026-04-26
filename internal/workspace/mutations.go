@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/lex/flow/internal/index"
@@ -126,11 +127,22 @@ func RenameGraph(root Root, currentName string, nextName string) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("stat renamed graph directory: %w", err)
 	}
+
+	rewriteWrites, err := planGraphReferenceRewriteWrites(root.FlowPath, currentClean, nextClean)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(nextDir), 0o755); err != nil {
 		return fmt.Errorf("create renamed graph parent directory: %w", err)
 	}
 	if err := os.Rename(currentDir, nextDir); err != nil {
 		return fmt.Errorf("rename graph directory: %w", err)
+	}
+	for _, pathValue := range sortedDocumentPaths(rewriteWrites) {
+		absolutePath := filepath.Join(root.FlowPath, filepath.FromSlash(pathValue))
+		if err := writeDocumentFile(absolutePath, rewriteWrites[pathValue], false); err != nil {
+			return err
+		}
 	}
 	if err := rebuildIndex(root); err != nil {
 		return err
@@ -216,8 +228,21 @@ func UpdateDocumentByPath(root Root, pathValue string, patch DocumentPatch) (mar
 	updatedDocument = normalizeDocumentGraphForPath(targetRelativePath, updatedDocument)
 	targetAbsolutePath := filepath.Join(root.FlowPath, filepath.FromSlash(targetRelativePath))
 
-	if err := validateWorkspaceMutation(root.FlowPath, relativePath, targetRelativePath, updatedDocument, false); err != nil {
+	_, _, shouldRewriteBreadcrumbs, err := documentBreadcrumbRewrite(relativePath, document, targetRelativePath, updatedDocument)
+	if err != nil {
 		return markdown.WorkspaceDocument{}, err
+	}
+
+	var rewriteWrites map[string]markdown.Document
+	if shouldRewriteBreadcrumbs {
+		rewriteWrites, err = planDocumentReferenceRewriteWrites(root.FlowPath, relativePath, targetRelativePath, document, updatedDocument)
+		if err != nil {
+			return markdown.WorkspaceDocument{}, err
+		}
+	} else {
+		if err := validateWorkspaceMutation(root.FlowPath, relativePath, targetRelativePath, updatedDocument, false); err != nil {
+			return markdown.WorkspaceDocument{}, err
+		}
 	}
 
 	failIfExists := targetRelativePath != relativePath
@@ -227,6 +252,12 @@ func UpdateDocumentByPath(root Root, pathValue string, patch DocumentPatch) (mar
 	if targetRelativePath != relativePath {
 		if err := os.Remove(absolutePath); err != nil {
 			return markdown.WorkspaceDocument{}, fmt.Errorf("delete previous document path: %w", err)
+		}
+	}
+	for _, pathValue := range sortedDocumentPaths(rewriteWrites) {
+		absoluteRewritePath := filepath.Join(root.FlowPath, filepath.FromSlash(pathValue))
+		if err := writeDocumentFile(absoluteRewritePath, rewriteWrites[pathValue], false); err != nil {
+			return markdown.WorkspaceDocument{}, err
 		}
 	}
 
@@ -943,6 +974,250 @@ func documentGraph(document markdown.Document) string {
 	default:
 		return ""
 	}
+}
+
+func planDocumentReferenceRewriteWrites(flowPath string, currentRelativePath string, targetRelativePath string, currentDocument markdown.Document, targetDocument markdown.Document) (map[string]markdown.Document, error) {
+	oldBreadcrumb, newBreadcrumb, shouldRewrite, err := documentBreadcrumbRewrite(currentRelativePath, currentDocument, targetRelativePath, targetDocument)
+	if err != nil || !shouldRewrite {
+		return nil, err
+	}
+
+	workspaceDocuments, err := LoadDocuments(flowPath)
+	if err != nil {
+		return nil, err
+	}
+
+	rewriteMap := map[string]string{oldBreadcrumb: newBreadcrumb}
+	mutatedDocuments := make([]markdown.WorkspaceDocument, 0, len(workspaceDocuments))
+	writes := map[string]markdown.Document{}
+	for _, item := range workspaceDocuments {
+		if item.Path == currentRelativePath {
+			mutatedDocuments = append(mutatedDocuments, markdown.WorkspaceDocument{Path: targetRelativePath, Document: targetDocument})
+			continue
+		}
+
+		rewrittenItem, changed := rewriteWorkspaceDocumentInlineReferences(item, rewriteMap)
+		mutatedDocuments = append(mutatedDocuments, rewrittenItem)
+		if changed {
+			writes[rewrittenItem.Path] = rewrittenItem.Document
+		}
+	}
+
+	if err := markdown.ValidateWorkspaceDocuments(mutatedDocuments); err != nil {
+		return nil, InvalidMutationError{Err: fmt.Errorf("validate workspace documents: %w", err)}
+	}
+
+	return writes, nil
+}
+
+func planGraphReferenceRewriteWrites(flowPath string, currentGraph string, nextGraph string) (map[string]markdown.Document, error) {
+	workspaceDocuments, err := LoadDocuments(flowPath)
+	if err != nil {
+		return nil, err
+	}
+
+	breadcrumbRewrites := map[string]string{}
+	pathRenames := map[string]string{}
+	for _, item := range workspaceDocuments {
+		graphPath, ok, err := markdown.GraphPathFromWorkspacePath(item.Path)
+		if err != nil {
+			return nil, InvalidMutationError{Err: err}
+		}
+		if !ok {
+			continue
+		}
+
+		renamedGraph, applies := renameGraphPath(graphPath, currentGraph, nextGraph)
+		if !applies {
+			continue
+		}
+
+		renamedPath, err := renameWorkspaceDocumentPath(item.Path, currentGraph, nextGraph)
+		if err != nil {
+			return nil, err
+		}
+		pathRenames[item.Path] = renamedPath
+
+		oldBreadcrumb, ok, err := referenceBreadcrumbForDocument(item.Path, item.Document)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+
+		newBreadcrumb := markdown.ReferenceBreadcrumb(renamedGraph, referenceTitleForDocument(item.Document))
+		if oldBreadcrumb != newBreadcrumb {
+			breadcrumbRewrites[oldBreadcrumb] = newBreadcrumb
+		}
+	}
+
+	if len(pathRenames) == 0 {
+		return nil, nil
+	}
+
+	mutatedDocuments := make([]markdown.WorkspaceDocument, 0, len(workspaceDocuments))
+	writes := map[string]markdown.Document{}
+	for _, item := range workspaceDocuments {
+		targetPath := item.Path
+		targetDocument := item.Document
+		if renamedPath, ok := pathRenames[item.Path]; ok {
+			targetPath = renamedPath
+			targetDocument = normalizeDocumentGraphForPath(targetPath, targetDocument)
+		}
+
+		rewrittenItem, changed := rewriteWorkspaceDocumentInlineReferences(markdown.WorkspaceDocument{Path: targetPath, Document: targetDocument}, breadcrumbRewrites)
+		mutatedDocuments = append(mutatedDocuments, rewrittenItem)
+		if changed {
+			writes[targetPath] = rewrittenItem.Document
+		}
+	}
+
+	if err := markdown.ValidateWorkspaceDocuments(mutatedDocuments); err != nil {
+		return nil, InvalidMutationError{Err: fmt.Errorf("validate workspace documents: %w", err)}
+	}
+
+	return writes, nil
+}
+
+func documentBreadcrumbRewrite(currentRelativePath string, currentDocument markdown.Document, targetRelativePath string, targetDocument markdown.Document) (string, string, bool, error) {
+	oldBreadcrumb, oldOK, err := referenceBreadcrumbForDocument(currentRelativePath, currentDocument)
+	if err != nil {
+		return "", "", false, err
+	}
+	newBreadcrumb, newOK, err := referenceBreadcrumbForDocument(targetRelativePath, targetDocument)
+	if err != nil {
+		return "", "", false, err
+	}
+	if !oldOK || !newOK || oldBreadcrumb == "" || newBreadcrumb == "" || oldBreadcrumb == newBreadcrumb {
+		return "", "", false, nil
+	}
+
+	return oldBreadcrumb, newBreadcrumb, true, nil
+}
+
+func referenceBreadcrumbForDocument(pathValue string, document markdown.Document) (string, bool, error) {
+	normalizedItem, err := markdown.NormalizeWorkspaceDocument(markdown.WorkspaceDocument{Path: pathValue, Document: document})
+	if err != nil {
+		return "", false, InvalidMutationError{Err: err}
+	}
+
+	graphPath := documentGraph(normalizedItem.Document)
+	title := referenceTitleForDocument(normalizedItem.Document)
+	if graphPath == "" || title == "" {
+		return "", false, nil
+	}
+
+	return markdown.ReferenceBreadcrumb(graphPath, title), true, nil
+}
+
+func referenceTitleForDocument(document markdown.Document) string {
+	var title string
+	switch value := document.(type) {
+	case markdown.NoteDocument:
+		title = value.Metadata.Title
+	case markdown.TaskDocument:
+		title = value.Metadata.Title
+	case markdown.CommandDocument:
+		title = value.Metadata.Title
+	default:
+		return ""
+	}
+
+	title = strings.TrimSpace(title)
+	if title != "" {
+		return title
+	}
+
+	return strings.TrimSpace(documentIDFor(document))
+}
+
+func rewriteWorkspaceDocumentInlineReferences(item markdown.WorkspaceDocument, rewriteMap map[string]string) (markdown.WorkspaceDocument, bool) {
+	if len(rewriteMap) == 0 {
+		return item, false
+	}
+
+	switch document := item.Document.(type) {
+	case markdown.HomeDocument:
+		rewrittenBody := markdown.RewriteInlineReferenceTargets(document.Body, rewriteMap)
+		if rewrittenBody == document.Body {
+			return item, false
+		}
+		document.Body = rewrittenBody
+		item.Document = document
+		return item, true
+	case markdown.NoteDocument:
+		rewrittenBody := markdown.RewriteInlineReferenceTargets(document.Body, rewriteMap)
+		if rewrittenBody == document.Body {
+			return item, false
+		}
+		document.Body = rewrittenBody
+		item.Document = document
+		return item, true
+	case markdown.TaskDocument:
+		rewrittenBody := markdown.RewriteInlineReferenceTargets(document.Body, rewriteMap)
+		if rewrittenBody == document.Body {
+			return item, false
+		}
+		document.Body = rewrittenBody
+		item.Document = document
+		return item, true
+	case markdown.CommandDocument:
+		rewrittenBody := markdown.RewriteInlineReferenceTargets(document.Body, rewriteMap)
+		if rewrittenBody == document.Body {
+			return item, false
+		}
+		document.Body = rewrittenBody
+		item.Document = document
+		return item, true
+	default:
+		return item, false
+	}
+}
+
+func renameGraphPath(graphPath string, currentGraph string, nextGraph string) (string, bool) {
+	if graphPath == currentGraph {
+		return nextGraph, true
+	}
+
+	prefix := currentGraph + "/"
+	if strings.HasPrefix(graphPath, prefix) {
+		return nextGraph + strings.TrimPrefix(graphPath, currentGraph), true
+	}
+
+	return "", false
+}
+
+func renameWorkspaceDocumentPath(pathValue string, currentGraph string, nextGraph string) (string, error) {
+	graphPath, ok, err := markdown.GraphPathFromWorkspacePath(pathValue)
+	if err != nil {
+		return "", InvalidMutationError{Err: err}
+	}
+	if !ok {
+		return pathValue, nil
+	}
+
+	renamedGraph, applies := renameGraphPath(graphPath, currentGraph, nextGraph)
+	if !applies {
+		return pathValue, nil
+	}
+
+	fileName := filepath.Base(filepath.FromSlash(pathValue))
+	renamedPath, err := markdown.RelativeGraphDocumentPath(renamedGraph, fileName)
+	if err != nil {
+		return "", InvalidMutationError{Err: err}
+	}
+
+	return filepath.ToSlash(renamedPath), nil
+}
+
+func sortedDocumentPaths(documents map[string]markdown.Document) []string {
+	paths := make([]string, 0, len(documents))
+	for pathValue := range documents {
+		paths = append(paths, pathValue)
+	}
+	sort.Strings(paths)
+	return paths
 }
 
 func cloneLinks(values []markdown.NodeLink) []markdown.NodeLink {

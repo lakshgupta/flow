@@ -914,6 +914,51 @@ func TestFlowGUICleansUpWhenBrowserOpenFails(t *testing.T) {
 	}
 }
 
+func TestFlowGUIReportsChildStartupErrorWhenStateFileIsMissing(t *testing.T) {
+	rootDir := t.TempDir()
+	root := mustResolveLocalRootForTest(t, rootDir)
+
+	stderr := runExpectErrorForTest(
+		t,
+		[]string{"gui"},
+		rootDir,
+		withLaunchGUIProcess(func(global bool, launchedRoot workspace.Root) error {
+			if global {
+				t.Fatal("launchGUIProcess() global = true, want false")
+			}
+
+			if launchedRoot.WorkspacePath != root.WorkspacePath {
+				t.Fatalf("launchedRoot.WorkspacePath = %q, want %q", launchedRoot.WorkspacePath, root.WorkspacePath)
+			}
+
+			return os.WriteFile(
+				guiStartupLogPath(launchedRoot),
+				[]byte("error: gui port 4317 is unavailable: listen tcp 127.0.0.1:4317: bind: address already in use\n"),
+				0o644,
+			)
+		}),
+		withWaitForGUIState(func(path string, wantExists bool) error {
+			if !wantExists {
+				t.Fatalf("wantExists = false, want true")
+			}
+
+			if path != execution.GUIStatePath(root) {
+				t.Fatalf("path = %q, want %q", path, execution.GUIStatePath(root))
+			}
+
+			return errors.New("gui state file was not created")
+		}),
+	)
+
+	if strings.Contains(stderr, "gui state file was not created") {
+		t.Fatalf("stderr = %q, want child startup error instead of generic timeout", stderr)
+	}
+
+	if !strings.Contains(stderr, "wait for gui state: gui port 4317 is unavailable") {
+		t.Fatalf("stderr = %q", stderr)
+	}
+}
+
 func TestFlowGUIStopStopsLocalServer(t *testing.T) {
 	rootDir := t.TempDir()
 	runtime := execution.NewGUIRuntime()
@@ -1399,6 +1444,12 @@ func withWaitForGUI(wait func(string) error) testOption {
 		env.waitForGUI = wait
 	}
 }
+
+func withWaitForGUIState(wait func(string, bool) error) testOption {
+	return func(env *commandEnv) {
+		env.waitForGUIState = wait
+	}
+	}
 
 func withShutdownWait(waitForShutdown func(string) error) testOption {
 	return func(env *commandEnv) {
