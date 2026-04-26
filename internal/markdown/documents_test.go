@@ -18,7 +18,7 @@ func TestParseNoteDocument(t *testing.T) {
 		"description: Shared description",
 		"tags:",
 		"  - design",
-		"references:",
+		"links:",
 		"  - task-1",
 		"createdAt: 2026-03-16T10:00:00Z",
 		"updatedAt: 2026-03-16T11:00:00Z",
@@ -46,8 +46,8 @@ func TestParseNoteDocument(t *testing.T) {
 		t.Fatalf("document.Metadata.Description = %q, want Shared description", document.Metadata.Description)
 	}
 
-	if document.Metadata.References[0].Node != "task-1" {
-		t.Fatalf("document.Metadata.References = %#v", document.Metadata.References)
+	if document.Metadata.Links[0].Node != "task-1" {
+		t.Fatalf("document.Metadata.Links = %#v", document.Metadata.Links)
 	}
 
 	if !strings.Contains(document.Body, "Body text.") {
@@ -66,9 +66,7 @@ func TestParseTaskDocument(t *testing.T) {
 		"title: Implement parser",
 		"description: Shared task description",
 		"status: todo",
-		"dependsOn:",
-		"  - task-0",
-		"references:",
+		"links:",
 		"  - note-1",
 		"---",
 		"",
@@ -88,8 +86,8 @@ func TestParseTaskDocument(t *testing.T) {
 		t.Fatalf("document.Metadata.Description = %q, want Shared task description", document.Metadata.Description)
 	}
 
-	if document.Metadata.DependsOn[0] != "task-0" {
-		t.Fatalf("document.Metadata.DependsOn = %#v", document.Metadata.DependsOn)
+	if document.Metadata.Links[0].Node != "note-1" {
+		t.Fatalf("document.Metadata.Links = %#v", document.Metadata.Links)
 	}
 }
 
@@ -104,9 +102,7 @@ func TestParseCommandDocument(t *testing.T) {
 		"title: Build binary",
 		"description: Shared command description",
 		"name: build",
-		"dependsOn:",
-		"  - cmd-0",
-		"references:",
+		"links:",
 		"  - note-1",
 		"env:",
 		"  GOOS: linux",
@@ -166,9 +162,8 @@ func TestSerializeDocumentRoundTripsTask(t *testing.T) {
 				Description: "Task description",
 				Tags:        []string{"parser", "test"},
 			},
-			Status:     "todo",
-			DependsOn:  []string{"task-0"},
-			References: []NodeReference{{Node: "note-1"}},
+			Status: "todo",
+			Links:  []NodeLink{{Node: "note-1"}},
 		},
 		Body: "Task body\n",
 	}
@@ -211,7 +206,7 @@ func TestSerializeDocumentRoundTripsNote(t *testing.T) {
 				CreatedAt:   "2026-03-17T10:00:00Z",
 				UpdatedAt:   "2026-03-17T11:00:00Z",
 			},
-			References: []NodeReference{{Node: "note-2"}, {Node: "task-1"}},
+			Links: []NodeLink{{Node: "note-2"}, {Node: "task-1"}},
 		},
 		Body: "# Note\n\nRound-trip body\n",
 	}
@@ -234,8 +229,8 @@ func TestSerializeDocumentRoundTripsNote(t *testing.T) {
 		t.Fatalf("parsed.Metadata.Description = %q, want %q", parsed.Metadata.Description, input.Metadata.Description)
 	}
 
-	if !slicesEqual(NodeReferenceIDs(parsed.Metadata.References), NodeReferenceIDs(input.Metadata.References)) {
-		t.Fatalf("parsed.Metadata.References = %#v, want %#v", parsed.Metadata.References, input.Metadata.References)
+	if !slicesEqual(NodeLinkIDs(parsed.Metadata.Links), NodeLinkIDs(input.Metadata.Links)) {
+		t.Fatalf("parsed.Metadata.Links = %#v, want %#v", parsed.Metadata.Links, input.Metadata.Links)
 	}
 
 	if CompactMarkdown(parsed.Body) != CompactMarkdown(input.Body) {
@@ -257,9 +252,8 @@ func TestSerializeDocumentRoundTripsCommand(t *testing.T) {
 				Tags:        []string{"release", "cli"},
 				CreatedAt:   "2026-03-17T10:00:00Z",
 			},
-			Name:       "build",
-			DependsOn:  []string{"cmd-0"},
-			References: []NodeReference{{Node: "note-1"}},
+			Name:  "build",
+			Links: []NodeLink{{Node: "note-1"}},
 			Env: map[string]string{
 				"GOOS":   "linux",
 				"GOARCH": "amd64",
@@ -291,8 +285,8 @@ func TestSerializeDocumentRoundTripsCommand(t *testing.T) {
 		t.Fatalf("parsed.Metadata.Description = %q, want %q", parsed.Metadata.Description, input.Metadata.Description)
 	}
 
-	if !slicesEqual(parsed.Metadata.DependsOn, input.Metadata.DependsOn) {
-		t.Fatalf("parsed.Metadata.DependsOn = %#v, want %#v", parsed.Metadata.DependsOn, input.Metadata.DependsOn)
+	if !slicesEqual(NodeLinkIDs(parsed.Metadata.Links), NodeLinkIDs(input.Metadata.Links)) {
+		t.Fatalf("parsed.Metadata.Links = %#v, want %#v", parsed.Metadata.Links, input.Metadata.Links)
 	}
 
 	if parsed.Metadata.Env["GOOS"] != "linux" || parsed.Metadata.Env["GOARCH"] != "amd64" {
@@ -380,7 +374,7 @@ func TestParseTaskDocumentRejectsMismatchedType(t *testing.T) {
 	}
 }
 
-func TestParseNoteDocumentInlineReferences(t *testing.T) {
+func TestParseNoteDocumentInlineLinks(t *testing.T) {
 	t.Parallel()
 
 	input := strings.Join([]string{
@@ -389,7 +383,7 @@ func TestParseNoteDocumentInlineReferences(t *testing.T) {
 		"type: note",
 		"graph: notes",
 		"title: Reference Note",
-		"references:",
+		"links:",
 		"  - plain-id",
 		"  - node: rich-id",
 		"    context: informs the approach",
@@ -402,16 +396,16 @@ func TestParseNoteDocumentInlineReferences(t *testing.T) {
 		t.Fatalf("ParseNoteDocument() error = %v", err)
 	}
 
-	if len(document.Metadata.References) != 2 {
-		t.Fatalf("len(References) = %d, want 2", len(document.Metadata.References))
+	if len(document.Metadata.Links) != 2 {
+		t.Fatalf("len(Links) = %d, want 2", len(document.Metadata.Links))
 	}
 
-	if document.Metadata.References[0].Node != "plain-id" || document.Metadata.References[0].Context != "" {
-		t.Fatalf("References[0] = %+v, want {Node: plain-id, Context: }", document.Metadata.References[0])
+	if document.Metadata.Links[0].Node != "plain-id" || document.Metadata.Links[0].Context != "" {
+		t.Fatalf("Links[0] = %+v, want {Node: plain-id, Context: }", document.Metadata.Links[0])
 	}
 
-	if document.Metadata.References[1].Node != "rich-id" || document.Metadata.References[1].Context != "informs the approach" {
-		t.Fatalf("References[1] = %+v, want {Node: rich-id, Context: informs the approach}", document.Metadata.References[1])
+	if document.Metadata.Links[1].Node != "rich-id" || document.Metadata.Links[1].Context != "informs the approach" {
+		t.Fatalf("Links[1] = %+v, want {Node: rich-id, Context: informs the approach}", document.Metadata.Links[1])
 	}
 }
 

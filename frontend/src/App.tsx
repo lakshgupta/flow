@@ -172,6 +172,7 @@ function FlowApp() {
   const [searchError, setSearchError] = useState<string>("");
   const [panelError, setPanelError] = useState<string>("");
   const [stoppingGUI, setStoppingGUI] = useState<boolean>(false);
+  const [rebuildingIndex, setRebuildingIndex] = useState<boolean>(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState<boolean>(false);
   const [settingsTab, setSettingsTab] = useState<"general" | "theme" | "stop">("general");
   const [formState, setFormState] = useState<DocumentFormState>(emptyDocumentFormState);
@@ -690,7 +691,7 @@ function FlowApp() {
     };
   }, [selectedGraphPath, graphCanvasReloadToken]);
 
-  async function refreshShellViews(options?: { nextDocument?: DocumentResponse | null; nextDocumentId?: string }): Promise<void> {
+  async function refreshShellViews(options?: { nextDocument?: DocumentResponse | null; nextDocumentId?: string; reloadCurrentDocument?: boolean }): Promise<void> {
     const snapshot = await loadWorkspaceSnapshot();
     setWorkspace(snapshot.workspaceData);
     setGraphTree(snapshot.graphTreeData);
@@ -706,6 +707,15 @@ function FlowApp() {
         setActiveSurface({ kind: "graph", graphPath: options.nextDocument?.graph ?? selectedGraphPath });
       });
       setSelectedCanvasNodeId(options.nextDocument.id);
+    } else if (options?.reloadCurrentDocument && selectedDocumentId !== "") {
+      try {
+        const refreshedDocument = await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(selectedDocumentId)}`);
+        syncSelectedDocumentState(refreshedDocument);
+        setPanelError("");
+      } catch (loadError) {
+        syncSelectedDocumentState(null);
+        setPanelError(toErrorMessage(loadError));
+      }
     }
 
     if (activeSurface.kind === "graph") {
@@ -978,6 +988,23 @@ function FlowApp() {
     }
   }
 
+  async function handleRebuildIndex(): Promise<void> {
+    try {
+      setRebuildingIndex(true);
+      setMutationError("");
+      setMutationSuccess("");
+      await requestJSON<{ rebuilt: boolean }>("/api/index/rebuild", {
+        method: "POST",
+      });
+      await refreshShellViews({ reloadCurrentDocument: true });
+      setMutationSuccess("Index refreshed.");
+    } catch (rebuildError) {
+      setMutationError(toErrorMessage(rebuildError));
+    } finally {
+      setRebuildingIndex(false);
+    }
+  }
+
   function beginDocumentTOCResize(event: React.MouseEvent<HTMLDivElement>, layout: HTMLDivElement | null): void {
     if (!isPrimaryMouseButton(event.button) || layout === null) {
       return;
@@ -1097,23 +1124,14 @@ function FlowApp() {
         method: "POST",
         body: JSON.stringify(createGraphDocumentPayload(type, graphPath, trimmed)),
       });
+      setSelectedDocumentOpenMode("right-rail");
+      setRightPanelTab("document");
+      setRightRailCollapsed(false);
+      await refreshShellViews({ nextDocument: createdDocument, nextDocumentId: createdDocument.id });
+      setSelectedCanvasNodeId(createdDocument.id);
       if (origin === "canvas") {
-        setSelectedDocumentOpenMode("right-rail");
-        setRightPanelTab("document");
-        setRightRailCollapsed(false);
-        await refreshShellViews({ nextDocument: createdDocument, nextDocumentId: createdDocument.id });
-        setSelectedCanvasNodeId(createdDocument.id);
         setMutationError("");
         setMutationSuccess(`${formatDocumentType(createdDocument.type)} created.`);
-      } else {
-        const snapshot = await loadWorkspaceSnapshot();
-        setGraphTree(snapshot.graphTreeData);
-        startTransition(() => setActiveSurface({ kind: "graph", graphPath }));
-        setSelectedCanvasNodeId(createdDocument.id);
-        setSelectedDocumentOpenMode("right-rail");
-        setSelectedDocumentId(createdDocument.id);
-        setRightPanelTab("document");
-        setRightRailCollapsed(false);
       }
     } catch (createError) {
       setGraphCreateError(toErrorMessage(createError));
@@ -1351,13 +1369,11 @@ function FlowApp() {
 
       if (doc.type === "task") {
         payload.status = state.status;
-        payload.dependsOn = splitList(state.dependsOn);
       }
 
       if (doc.type === "command") {
         payload.name = state.name;
         payload.run = state.run;
-        payload.dependsOn = splitList(state.dependsOn);
         payload.env = parseEnv(state.env);
       }
 
@@ -2296,26 +2312,6 @@ function FlowApp() {
                         </div>
                       )}
 
-                      {(selectedDocument.dependsOn ?? []).length > 0 && (
-                        <section className="detail-section">
-                          <h4>Dependencies</h4>
-                          <div className="link-list">
-                            {(selectedDocument.dependsOn ?? []).map((dependencyId) => (
-                              <Button
-                                key={dependencyId}
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleInspectDocument(dependencyId, documentGraphById.get(dependencyId) ?? selectedDocument.graph)}
-                                className="rounded-full h-7 px-3 text-xs"
-                                type="button"
-                              >
-                                {dependencyId}
-                              </Button>
-                            ))}
-                          </div>
-                        </section>
-                      )}
-
                       {selectedDocumentLinks.outgoing.length > 0 && (
                         <section className="detail-section">
                           <h4>Outgoing Links</h4>
@@ -2540,6 +2536,19 @@ function FlowApp() {
                             <div className="flex flex-col gap-1">
                               <Label>Config</Label>
                               <div className="text-sm text-muted-foreground break-all">{workspace.configPath}</div>
+                            </div>
+                            <div className="flex flex-col gap-3 rounded-lg border p-4">
+                              <div className="flex flex-col gap-1">
+                                <Label>Refresh index</Label>
+                                <p className="text-sm text-muted-foreground">
+                                  Rebuild the derived index after files are changed outside the app so search, graphs, and open documents reflect the latest state.
+                                </p>
+                              </div>
+                              <div>
+                                <Button disabled={rebuildingIndex} onClick={() => void handleRebuildIndex()} type="button" variant="outline">
+                                  {rebuildingIndex ? "Refreshing index..." : "Refresh index"}
+                                </Button>
+                              </div>
                             </div>
                           </div>
                         ) : (

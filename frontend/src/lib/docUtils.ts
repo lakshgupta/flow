@@ -14,7 +14,6 @@ export const emptyDocumentFormState: DocumentFormState = {
   description: "",
   body: "",
   status: "",
-  dependsOn: "",
   links: "",
   name: "",
   env: "",
@@ -80,14 +79,13 @@ export function createGraphDocumentPayload(type: GraphCreateType, graphPath: str
   };
 
   if (type === "task") {
-    return { ...basePayload, status: "todo", dependsOn: [] };
+    return { ...basePayload, status: "todo" };
   }
 
   if (type === "command") {
     return {
       ...basePayload,
       name: userFileName,
-      dependsOn: [],
       env: {},
       run: `echo "Describe ${title.toLowerCase()}"`,
     };
@@ -151,7 +149,6 @@ export function createDocumentFormState(document: DocumentResponse | null): Docu
     description: document.description,
     body: document.body,
     status: document.status ?? "",
-    dependsOn: joinList(document.dependsOn),
     links: joinList((document.links ?? []).map((link) => link.node)),
     name: document.name ?? "",
     env: serializeEnv(document.env),

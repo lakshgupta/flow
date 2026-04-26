@@ -303,7 +303,7 @@ func insertNoteDocument(transaction *sql.Tx, relativePath string, featureSlug st
 		return err
 	}
 
-	for _, ref := range document.Metadata.References {
+	for _, ref := range document.Metadata.Links {
 		if documentKindsByID[ref.Node] == markdown.NoteType {
 			if err := insertNoteLink(transaction, document.Metadata.ID, ref.Node); err != nil {
 				return err
@@ -325,11 +325,7 @@ func insertTaskDocument(transaction *sql.Tx, relativePath string, featureSlug st
 		return err
 	}
 
-	if err := insertDependencies(transaction, document.Metadata.ID, document.Metadata.DependsOn); err != nil {
-		return err
-	}
-
-	return insertReferences(transaction, document.Metadata.ID, markdown.NodeReferenceIDs(document.Metadata.References))
+	return insertReferences(transaction, document.Metadata.ID, markdown.NodeLinkIDs(document.Metadata.Links))
 }
 
 func insertCommandDocument(transaction *sql.Tx, relativePath string, featureSlug string, document markdown.CommandDocument) error {
@@ -337,11 +333,7 @@ func insertCommandDocument(transaction *sql.Tx, relativePath string, featureSlug
 		return err
 	}
 
-	if err := insertDependencies(transaction, document.Metadata.ID, document.Metadata.DependsOn); err != nil {
-		return err
-	}
-
-	if err := insertReferences(transaction, document.Metadata.ID, markdown.NodeReferenceIDs(document.Metadata.References)); err != nil {
+	if err := insertReferences(transaction, document.Metadata.ID, markdown.NodeLinkIDs(document.Metadata.Links)); err != nil {
 		return err
 	}
 
@@ -717,20 +709,6 @@ func deriveHomeTitle(body string) string {
 	}
 
 	return "Home"
-}
-
-func insertDependencies(transaction *sql.Tx, documentID string, dependencyIDs []string) error {
-	for _, dependencyID := range dependencyIDs {
-		if _, err := transaction.Exec(
-			`INSERT INTO hard_dependencies (document_id, depends_on_id) VALUES (?, ?)`,
-			documentID,
-			dependencyID,
-		); err != nil {
-			return fmt.Errorf("insert dependency for %q: %w", documentID, err)
-		}
-	}
-
-	return nil
 }
 
 func insertReferences(transaction *sql.Tx, documentID string, referenceIDs []string) error {

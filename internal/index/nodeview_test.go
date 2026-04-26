@@ -13,7 +13,7 @@ func TestReadNodeViewReturnsNoteDocument(t *testing.T) {
 	indexPath := filepath.Join(flowPath, "config", "flow.index")
 
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "arch", "overview.md"),
-		"---\nid: note-1\ntype: note\ngraph: arch\ntitle: Overview\nreferences:\n  - note-2\n---\n\nNote body.\n")
+		"---\nid: note-1\ntype: note\ngraph: arch\ntitle: Overview\nlinks:\n  - note-2\n---\n\nNote body.\n")
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "arch", "detail.md"),
 		"---\nid: note-2\ntype: note\ngraph: arch\ntitle: Detail\n---\n\nDetail body.\n")
 
@@ -50,11 +50,8 @@ func TestReadNodeViewReturnsNoteDocument(t *testing.T) {
 	if view.Run != "" {
 		t.Errorf("view.Run = %q, want empty", view.Run)
 	}
-	if len(view.References) != 1 || view.References[0] != "note-2" {
-		t.Errorf("view.References = %v, want [note-2]", view.References)
-	}
-	if len(view.DependsOn) != 0 {
-		t.Errorf("view.DependsOn = %v, want empty", view.DependsOn)
+	if len(view.Links) != 1 || view.Links[0] != "note-2" {
+		t.Errorf("view.Links = %v, want [note-2]", view.Links)
 	}
 }
 
@@ -66,7 +63,7 @@ func TestReadNodeViewReturnsTaskDocument(t *testing.T) {
 	indexPath := filepath.Join(flowPath, "config", "flow.index")
 
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "work", "impl.md"),
-		"---\nid: task-1\ntype: task\ngraph: work\ntitle: Implement feature\nstatus: todo\ndependsOn:\n  - task-0\nreferences:\n  - note-1\n---\n\nTask body.\n")
+		"---\nid: task-1\ntype: task\ngraph: work\ntitle: Implement feature\nstatus: todo\nlinks:\n  - task-0\n  - note-1\n---\n\nTask body.\n")
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "work", "setup.md"),
 		"---\nid: task-0\ntype: task\ngraph: work\ntitle: Setup\nstatus: done\n---\n\nSetup body.\n")
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "work", "context.md"),
@@ -90,11 +87,8 @@ func TestReadNodeViewReturnsTaskDocument(t *testing.T) {
 	if view.Status != "todo" {
 		t.Errorf("view.Status = %q, want todo", view.Status)
 	}
-	if len(view.DependsOn) != 1 || view.DependsOn[0] != "task-0" {
-		t.Errorf("view.DependsOn = %v, want [task-0]", view.DependsOn)
-	}
-	if len(view.References) != 1 || view.References[0] != "note-1" {
-		t.Errorf("view.References = %v, want [note-1]", view.References)
+	if len(view.Links) != 2 || view.Links[0] != "note-1" || view.Links[1] != "task-0" {
+		t.Errorf("view.Links = %v, want [note-1 task-0]", view.Links)
 	}
 }
 
@@ -106,7 +100,7 @@ func TestReadNodeViewReturnsCommandDocument(t *testing.T) {
 	indexPath := filepath.Join(flowPath, "config", "flow.index")
 
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "release", "build.md"),
-		"---\nid: cmd-1\ntype: command\ngraph: release\ntitle: Build\nname: build\nrun: go build ./cmd/flow\ndependsOn:\n  - cmd-0\n---\n\nCommand body.\n")
+		"---\nid: cmd-1\ntype: command\ngraph: release\ntitle: Build\nname: build\nrun: go build ./cmd/flow\nlinks:\n  - cmd-0\n---\n\nCommand body.\n")
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "release", "setup.md"),
 		"---\nid: cmd-0\ntype: command\ngraph: release\ntitle: Setup\nname: setup\nrun: ./setup.sh\n---\n\nSetup body.\n")
 
@@ -128,8 +122,8 @@ func TestReadNodeViewReturnsCommandDocument(t *testing.T) {
 	if view.Run != "go build ./cmd/flow" {
 		t.Errorf("view.Run = %q, want go build ./cmd/flow", view.Run)
 	}
-	if len(view.DependsOn) != 1 || view.DependsOn[0] != "cmd-0" {
-		t.Errorf("view.DependsOn = %v, want [cmd-0]", view.DependsOn)
+	if len(view.Links) != 1 || view.Links[0] != "cmd-0" {
+		t.Errorf("view.Links = %v, want [cmd-0]", view.Links)
 	}
 }
 
@@ -141,7 +135,7 @@ func TestReadNodeViewOutboundEdgesAlwaysEmpty(t *testing.T) {
 	indexPath := filepath.Join(flowPath, "config", "flow.index")
 
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "arch", "a.md"),
-		"---\nid: note-a\ntype: note\ngraph: arch\ntitle: Node A\nreferences:\n  - {node: note-b, context: relates to}\n---\n\nA body.\n")
+		"---\nid: note-a\ntype: note\ngraph: arch\ntitle: Node A\nlinks:\n  - {node: note-b, context: relates to}\n---\n\nA body.\n")
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "arch", "b.md"),
 		"---\nid: note-b\ntype: note\ngraph: arch\ntitle: Node B\n---\n\nB body.\n")
 
@@ -155,10 +149,10 @@ func TestReadNodeViewOutboundEdgesAlwaysEmpty(t *testing.T) {
 	}
 
 	if len(view.OutboundEdges) != 0 {
-		t.Errorf("len(view.OutboundEdges) = %d, want 0 (edges are now inline references)", len(view.OutboundEdges))
+		t.Errorf("len(view.OutboundEdges) = %d, want 0 (edges are stored as links)", len(view.OutboundEdges))
 	}
-	if len(view.References) != 1 || view.References[0] != "note-b" {
-		t.Errorf("view.References = %v, want [note-b]", view.References)
+	if len(view.Links) != 1 || view.Links[0] != "note-b" {
+		t.Errorf("view.Links = %v, want [note-b]", view.Links)
 	}
 }
 

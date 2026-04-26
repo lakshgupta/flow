@@ -121,7 +121,6 @@ type documentResponse struct {
 	UpdatedAt      string                  `json:"updatedAt,omitempty"`
 	Body           string                  `json:"body"`
 	Status         string                  `json:"status,omitempty"`
-	DependsOn      []string                `json:"dependsOn,omitempty"`
 	Links          []nodeReferenceResponse `json:"links,omitempty"`
 	Name           string                  `json:"name,omitempty"`
 	Env            map[string]string       `json:"env,omitempty"`
@@ -146,7 +145,6 @@ type createDocumentRequest struct {
 	UpdatedAt   string                  `json:"updatedAt"`
 	Body        string                  `json:"body"`
 	Status      string                  `json:"status"`
-	DependsOn   []string                `json:"dependsOn"`
 	Links       []nodeReferenceResponse `json:"links"`
 	Name        string                  `json:"name"`
 	Env         map[string]string       `json:"env"`
@@ -164,7 +162,6 @@ type updateDocumentRequest struct {
 	UpdatedAt   *string                  `json:"updatedAt"`
 	Body        *string                  `json:"body"`
 	Status      *string                  `json:"status"`
-	DependsOn   *[]string                `json:"dependsOn"`
 	Links       *[]nodeReferenceResponse `json:"links"`
 	Name        *string                  `json:"name"`
 	Env         *map[string]string       `json:"env"`
@@ -203,6 +200,10 @@ type deleteDocumentResponse struct {
 type deleteGraphResponse struct {
 	Deleted bool   `json:"deleted"`
 	Name    string `json:"name"`
+}
+
+type rebuildIndexResponse struct {
+	Rebuilt bool `json:"rebuilt"`
 }
 
 type mergeDocumentsRequest struct {
@@ -289,6 +290,8 @@ func (handler *apiHandler) ServeHTTP(writer http.ResponseWriter, request *http.R
 		handler.handleGraphLayout(writer, request)
 	case request.URL.Path == "/api/workspace" && request.Method == http.MethodGet:
 		handler.handleWorkspace(writer, request)
+	case request.URL.Path == "/api/index/rebuild" && request.Method == http.MethodPost:
+		handler.handleRebuildIndex(writer, request)
 	case request.URL.Path == "/api/search" && request.Method == http.MethodGet:
 		handler.handleSearch(writer, request)
 	case request.URL.Path == "/api/gui/stop" && request.Method == http.MethodPost:
@@ -327,8 +330,7 @@ func (handler *apiHandler) handleCreateDocument(writer http.ResponseWriter, requ
 		UpdatedAt:   payload.UpdatedAt,
 		Body:        payload.Body,
 		Status:      payload.Status,
-		DependsOn:   payload.DependsOn,
-		References:  nodeReferencesFromPayload(payload.Links),
+		Links:       nodeLinksFromPayload(payload.Links),
 		Name:        payload.Name,
 		Env:         payload.Env,
 		Run:         payload.Run,
@@ -405,6 +407,15 @@ func (handler *apiHandler) handleUpdateWorkspace(writer http.ResponseWriter, req
 	}
 
 	handler.handleWorkspace(writer, request)
+}
+
+func (handler *apiHandler) handleRebuildIndex(writer http.ResponseWriter, _ *http.Request) {
+	if err := index.Rebuild(handler.options.Root.IndexPath, handler.options.Root.FlowPath); err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, rebuildIndexResponse{Rebuilt: true})
 }
 
 func (handler *apiHandler) handleHome(writer http.ResponseWriter, _ *http.Request) {
@@ -741,8 +752,7 @@ func (handler *apiHandler) handleUpdateDocument(writer http.ResponseWriter, requ
 		UpdatedAt:   payload.UpdatedAt,
 		Body:        payload.Body,
 		Status:      payload.Status,
-		DependsOn:   payload.DependsOn,
-		References:  nodeReferencesPatchFromPayload(payload.Links),
+		Links:       nodeLinksPatchFromPayload(payload.Links),
 		Name:        payload.Name,
 		Env:         payload.Env,
 		Run:         payload.Run,
@@ -844,7 +854,7 @@ func (handler *apiHandler) handleAddReference(writer http.ResponseWriter, reques
 		return
 	}
 
-	if err := workspace.AddReference(handler.options.Root, payload.FromID, payload.ToID, payload.Context); err != nil {
+	if err := workspace.AddLink(handler.options.Root, payload.FromID, payload.ToID, payload.Context); err != nil {
 		writeMutationError(writer, err)
 		return
 	}
@@ -865,7 +875,7 @@ func (handler *apiHandler) handleRemoveReference(writer http.ResponseWriter, req
 		return
 	}
 
-	if err := workspace.RemoveReference(handler.options.Root, payload.FromID, payload.ToID); err != nil {
+	if err := workspace.RemoveLink(handler.options.Root, payload.FromID, payload.ToID); err != nil {
 		writeMutationError(writer, err)
 		return
 	}
@@ -886,7 +896,7 @@ func (handler *apiHandler) handleUpdateReferenceContext(writer http.ResponseWrit
 		return
 	}
 
-	if err := workspace.UpdateReferenceContext(handler.options.Root, payload.FromID, payload.ToID, payload.Context); err != nil {
+	if err := workspace.UpdateLinkContext(handler.options.Root, payload.FromID, payload.ToID, payload.Context); err != nil {
 		writeMutationError(writer, err)
 		return
 	}
@@ -999,7 +1009,7 @@ func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteG
 			CreatedAt:      document.Metadata.CreatedAt,
 			UpdatedAt:      document.Metadata.UpdatedAt,
 			Body:           document.Body,
-			Links:          convertReferences(document.Metadata.References),
+			Links:          convertLinks(document.Metadata.Links),
 			RelatedNoteIDs: cloneStrings(node.RelatedNoteIDs),
 		}, true, nil
 	case markdown.TaskDocument:
@@ -1021,8 +1031,7 @@ func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteG
 			UpdatedAt:   document.Metadata.UpdatedAt,
 			Body:        document.Body,
 			Status:      document.Metadata.Status,
-			DependsOn:   cloneStrings(document.Metadata.DependsOn),
-			Links:       convertReferences(document.Metadata.References),
+			Links:       convertLinks(document.Metadata.Links),
 		}, true, nil
 	case markdown.CommandDocument:
 		featureSlug, err := featureSlugFromPath(item.Path)
@@ -1042,8 +1051,7 @@ func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteG
 			CreatedAt:   document.Metadata.CreatedAt,
 			UpdatedAt:   document.Metadata.UpdatedAt,
 			Body:        document.Body,
-			DependsOn:   cloneStrings(document.Metadata.DependsOn),
-			Links:       convertReferences(document.Metadata.References),
+			Links:       convertLinks(document.Metadata.Links),
 			Name:        document.Metadata.Name,
 			Env:         cloneMap(document.Metadata.Env),
 			Run:         document.Metadata.Run,
@@ -1070,38 +1078,38 @@ func featureSlugFromPath(path string) (string, error) {
 	return "", fmt.Errorf("document path %q is not in canonical data/content/<graph-path>/<file>.md layout", path)
 }
 
-func convertReferences(refs []markdown.NodeReference) []nodeReferenceResponse {
-	if len(refs) == 0 {
+func convertLinks(links []markdown.NodeLink) []nodeReferenceResponse {
+	if len(links) == 0 {
 		return nil
 	}
 
-	result := make([]nodeReferenceResponse, len(refs))
-	for i, ref := range refs {
-		result[i] = nodeReferenceResponse{Node: ref.Node, Context: ref.Context}
+	result := make([]nodeReferenceResponse, len(links))
+	for i, link := range links {
+		result[i] = nodeReferenceResponse{Node: link.Node, Context: link.Context}
 	}
 
 	return result
 }
 
-func nodeReferencesFromPayload(refs []nodeReferenceResponse) []markdown.NodeReference {
-	if len(refs) == 0 {
+func nodeLinksFromPayload(links []nodeReferenceResponse) []markdown.NodeLink {
+	if len(links) == 0 {
 		return nil
 	}
 
-	result := make([]markdown.NodeReference, len(refs))
-	for i, ref := range refs {
-		result[i] = markdown.NodeReference{Node: ref.Node, Context: ref.Context}
+	result := make([]markdown.NodeLink, len(links))
+	for i, link := range links {
+		result[i] = markdown.NodeLink{Node: link.Node, Context: link.Context}
 	}
 
 	return result
 }
 
-func nodeReferencesPatchFromPayload(refs *[]nodeReferenceResponse) *[]markdown.NodeReference {
-	if refs == nil {
+func nodeLinksPatchFromPayload(links *[]nodeReferenceResponse) *[]markdown.NodeLink {
+	if links == nil {
 		return nil
 	}
 
-	converted := nodeReferencesFromPayload(*refs)
+	converted := nodeLinksFromPayload(*links)
 	return &converted
 }
 

@@ -25,8 +25,7 @@ func TestBuildTaskLayerViewComputesCrossGraphLayers(t *testing.T) {
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Parser"},
-					DependsOn:    []string{"task-0"},
-					References:   []markdown.NodeReference{{Node: "note-1"}},
+					Links:        []markdown.NodeLink{{Node: "task-0"}, {Node: "note-1"}},
 				},
 			},
 		},
@@ -35,7 +34,7 @@ func TestBuildTaskLayerViewComputesCrossGraphLayers(t *testing.T) {
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-2", Type: markdown.TaskType, Graph: "execution", Title: "Tests"},
-					DependsOn:    []string{"task-0"},
+					Links:        []markdown.NodeLink{{Node: "task-0"}},
 				},
 			},
 		},
@@ -44,7 +43,7 @@ func TestBuildTaskLayerViewComputesCrossGraphLayers(t *testing.T) {
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-3", Type: markdown.TaskType, Graph: "release", Title: "Release"},
-					DependsOn:    []string{"task-1", "task-2"},
+					Links:        []markdown.NodeLink{{Node: "task-1"}, {Node: "task-2"}},
 				},
 			},
 		},
@@ -82,22 +81,25 @@ func TestBuildTaskLayerViewComputesCrossGraphLayers(t *testing.T) {
 	}
 }
 
-func TestBuildTaskLayerViewRejectsMissingDependency(t *testing.T) {
+func TestBuildTaskLayerViewIgnoresLinksOutsideTaskSet(t *testing.T) {
 	t.Parallel()
 
-	_, err := BuildTaskLayerView([]markdown.WorkspaceDocument{
+	view, err := BuildTaskLayerView([]markdown.WorkspaceDocument{
 		{
 			Path: "data/content/execution/parser.md",
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Parser"},
-					DependsOn:    []string{"task-0"},
+					Links:        []markdown.NodeLink{{Node: "task-0"}},
 				},
 			},
 		},
 	})
-	if err == nil {
-		t.Fatal("BuildTaskLayerView() error = nil, want missing dependency error")
+	if err != nil {
+		t.Fatalf("BuildTaskLayerView() error = %v", err)
+	}
+	if len(view.Layers) != 1 {
+		t.Fatalf("len(view.Layers) = %d, want 1", len(view.Layers))
 	}
 }
 
@@ -110,7 +112,7 @@ func TestBuildTaskLayerViewRejectsCycle(t *testing.T) {
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-a", Type: markdown.TaskType, Graph: "execution", Title: "A"},
-					DependsOn:    []string{"task-b"},
+					Links:        []markdown.NodeLink{{Node: "task-b"}},
 				},
 			},
 		},
@@ -119,7 +121,7 @@ func TestBuildTaskLayerViewRejectsCycle(t *testing.T) {
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-b", Type: markdown.TaskType, Graph: "execution", Title: "B"},
-					DependsOn:    []string{"task-a"},
+					Links:        []markdown.NodeLink{{Node: "task-a"}},
 				},
 			},
 		},
@@ -159,7 +161,7 @@ func TestBuildCommandLayerViewComputesSelectedGraphLayers(t *testing.T) {
 				Metadata: markdown.CommandMetadata{
 					CommonFields: markdown.CommonFields{ID: "cmd-2", Type: markdown.CommandType, Graph: "release", Title: "Build"},
 					Name:         "build",
-					DependsOn:    []string{"cmd-0"},
+					Links:        []markdown.NodeLink{{Node: "cmd-0"}},
 					Run:          "go build ./cmd/flow",
 				},
 			},
@@ -170,7 +172,7 @@ func TestBuildCommandLayerViewComputesSelectedGraphLayers(t *testing.T) {
 				Metadata: markdown.CommandMetadata{
 					CommonFields: markdown.CommonFields{ID: "cmd-3", Type: markdown.CommandType, Graph: "release", Title: "Package"},
 					Name:         "package",
-					DependsOn:    []string{"cmd-2"},
+					Links:        []markdown.NodeLink{{Node: "cmd-2"}},
 					Run:          "tar -czf flow.tgz flow",
 				},
 			},
@@ -235,7 +237,7 @@ func TestBuildCommandLayerViewRejectsCycle(t *testing.T) {
 				Metadata: markdown.CommandMetadata{
 					CommonFields: markdown.CommonFields{ID: "cmd-a", Type: markdown.CommandType, Graph: "release", Title: "A"},
 					Name:         "a",
-					DependsOn:    []string{"cmd-b"},
+					Links:        []markdown.NodeLink{{Node: "cmd-b"}},
 					Run:          "./a.sh",
 				},
 			},
@@ -246,7 +248,7 @@ func TestBuildCommandLayerViewRejectsCycle(t *testing.T) {
 				Metadata: markdown.CommandMetadata{
 					CommonFields: markdown.CommonFields{ID: "cmd-b", Type: markdown.CommandType, Graph: "release", Title: "B"},
 					Name:         "b",
-					DependsOn:    []string{"cmd-a"},
+					Links:        []markdown.NodeLink{{Node: "cmd-a"}},
 					Run:          "./b.sh",
 				},
 			},
@@ -266,7 +268,7 @@ func TestBuildNoteGraphViewComputesBidirectionalRelationships(t *testing.T) {
 			Document: markdown.NoteDocument{
 				Metadata: markdown.NoteMetadata{
 					CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "notes", Title: "Alpha"},
-					References:   []markdown.NodeReference{{Node: "note-2"}, {Node: "task-1"}},
+					Links:        []markdown.NodeLink{{Node: "note-2"}, {Node: "task-1"}},
 				},
 			},
 		},
@@ -275,7 +277,7 @@ func TestBuildNoteGraphViewComputesBidirectionalRelationships(t *testing.T) {
 			Document: markdown.NoteDocument{
 				Metadata: markdown.NoteMetadata{
 					CommonFields: markdown.CommonFields{ID: "note-2", Type: markdown.NoteType, Graph: "notes", Title: "Beta"},
-					References:   []markdown.NodeReference{{Node: "note-1"}, {Node: "note-3"}},
+					Links:        []markdown.NodeLink{{Node: "note-1"}, {Node: "note-3"}},
 				},
 			},
 		},
@@ -314,7 +316,7 @@ func TestBuildNoteGraphViewComputesBidirectionalRelationships(t *testing.T) {
 	assertStringSlicesEqual(t, view.Nodes["note-1"].RelatedNoteIDs, []string{"note-2"})
 	assertStringSlicesEqual(t, view.Nodes["note-2"].RelatedNoteIDs, []string{"note-1", "note-3"})
 	assertStringSlicesEqual(t, view.Nodes["note-3"].RelatedNoteIDs, []string{"note-2"})
-	assertStringSlicesEqual(t, view.Nodes["note-1"].References, []string{"note-2", "task-1"})
+	assertStringSlicesEqual(t, view.Nodes["note-1"].Links, []string{"note-2", "task-1"})
 
 	if view.Nodes["note-3"].FeatureSlug != "research" {
 		t.Fatalf("view.Nodes[note-3].FeatureSlug = %q, want research", view.Nodes["note-3"].FeatureSlug)
@@ -356,7 +358,7 @@ func TestBuildTaskFocusedGraphSnapshotCollapsesAndExpandsBoundaries(t *testing.T
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Parser"},
-					DependsOn:    []string{"task-0"},
+					Links:        []markdown.NodeLink{{Node: "task-0"}},
 				},
 			},
 		},
@@ -373,7 +375,7 @@ func TestBuildTaskFocusedGraphSnapshotCollapsesAndExpandsBoundaries(t *testing.T
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-3", Type: markdown.TaskType, Graph: "release", Title: "Release"},
-					DependsOn:    []string{"task-1", "task-2"},
+					Links:        []markdown.NodeLink{{Node: "task-1"}, {Node: "task-2"}},
 				},
 			},
 		},
@@ -382,7 +384,7 @@ func TestBuildTaskFocusedGraphSnapshotCollapsesAndExpandsBoundaries(t *testing.T
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-4", Type: markdown.TaskType, Graph: "release", Title: "Follow Up"},
-					DependsOn:    []string{"task-3"},
+					Links:        []markdown.NodeLink{{Node: "task-3"}},
 				},
 			},
 		},
@@ -452,7 +454,7 @@ func TestBuildCommandFocusedGraphSnapshotExpandsDependencyBoundary(t *testing.T)
 				Metadata: markdown.CommandMetadata{
 					CommonFields: markdown.CommonFields{ID: "cmd-2", Type: markdown.CommandType, Graph: "release", Title: "Build"},
 					Name:         "build",
-					DependsOn:    []string{"cmd-0", "cmd-1"},
+					Links:        []markdown.NodeLink{{Node: "cmd-0"}, {Node: "cmd-1"}},
 					Run:          "go build ./cmd/flow",
 				},
 			},

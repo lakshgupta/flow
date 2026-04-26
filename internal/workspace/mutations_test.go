@@ -200,8 +200,8 @@ func TestDeleteDocumentByIDCleansUpNoteRelationshipsAndSoftReferences(t *testing
 	if !ok {
 		t.Fatalf("followUpDocument = %T, want markdown.NoteDocument", followUpDocument)
 	}
-	if len(followUpNote.Metadata.References) != 0 {
-		t.Fatalf("followUpNote.Metadata.References = %#v, want empty", followUpNote.Metadata.References)
+	if len(followUpNote.Metadata.Links) != 0 {
+		t.Fatalf("followUpNote.Metadata.Links = %#v, want empty", followUpNote.Metadata.Links)
 	}
 
 	taskDocument, err := readDocumentFile(filepath.Join(root.FlowPath, "data", "content", "demo", "execution", "parser.md"))
@@ -212,8 +212,8 @@ func TestDeleteDocumentByIDCleansUpNoteRelationshipsAndSoftReferences(t *testing
 	if !ok {
 		t.Fatalf("taskDocument = %T, want markdown.TaskDocument", taskDocument)
 	}
-	if len(task.Metadata.References) != 0 {
-		t.Fatalf("task.Metadata.References = %#v, want empty", task.Metadata.References)
+	if len(task.Metadata.Links) != 0 {
+		t.Fatalf("task.Metadata.Links = %#v, want empty", task.Metadata.Links)
 	}
 
 	commandDocument, err := readDocumentFile(filepath.Join(root.FlowPath, "data", "content", "release", "build.md"))
@@ -224,8 +224,8 @@ func TestDeleteDocumentByIDCleansUpNoteRelationshipsAndSoftReferences(t *testing
 	if !ok {
 		t.Fatalf("commandDocument = %T, want markdown.CommandDocument", commandDocument)
 	}
-	if len(command.Metadata.References) != 0 {
-		t.Fatalf("command.Metadata.References = %#v, want empty", command.Metadata.References)
+	if len(command.Metadata.Links) != 0 {
+		t.Fatalf("command.Metadata.Links = %#v, want empty", command.Metadata.Links)
 	}
 
 	results, err := index.Search(root.IndexPath, "architecture", 10)
@@ -250,14 +250,14 @@ func createMutationWorkspace(t *testing.T) Root {
 	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "demo", "notes", "architecture.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "wrong", Title: "Architecture", Description: "Architecture description"},
-			References:   []markdown.NodeReference{{Node: "note-2"}},
+			Links:        []markdown.NodeLink{{Node: "note-2"}},
 		},
 		Body: "Architecture body\n",
 	})
 	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "demo", "notes", "follow-up.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "note-2", Type: markdown.NoteType, Graph: "wrong", Title: "Follow Up", Description: "Follow up description"},
-			References:   []markdown.NodeReference{{Node: "note-1"}},
+			Links:        []markdown.NodeLink{{Node: "note-1"}},
 		},
 		Body: "Follow up body\n",
 	})
@@ -265,7 +265,7 @@ func createMutationWorkspace(t *testing.T) Root {
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "wrong", Title: "Parser", Description: "Parser description"},
 			Status:       "doing",
-			References:   []markdown.NodeReference{{Node: "note-1"}},
+			Links:        []markdown.NodeLink{{Node: "note-1"}},
 		},
 		Body: "Parser body\n",
 	})
@@ -273,7 +273,7 @@ func createMutationWorkspace(t *testing.T) Root {
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "wrong", Title: "Build", Description: "Build description"},
 			Name:         "build",
-			References:   []markdown.NodeReference{{Node: "note-1"}},
+			Links:        []markdown.NodeLink{{Node: "note-1"}},
 			Run:          "go build ./cmd/flow",
 		},
 		Body: "Build body\n",
@@ -303,9 +303,9 @@ func writeMutationDocument(t *testing.T, path string, document markdown.Document
 	}
 }
 
-// TestDeleteDocumentByIDCleansUpDependsOnInChildTasks verifies that when a parent task
-// is deleted, every task that listed it in dependsOn has the deleted ID removed.
-func TestDeleteDocumentByIDCleansUpDependsOnInChildTasks(t *testing.T) {
+// TestDeleteDocumentByIDCleansUpReferencesInChildTasks verifies that when a parent task
+// is deleted, every task that referenced it has the deleted ID removed.
+func TestDeleteDocumentByIDCleansUpReferencesInChildTasks(t *testing.T) {
 	t.Parallel()
 
 	root := createDependencyCleanupWorkspace(t)
@@ -315,7 +315,7 @@ func TestDeleteDocumentByIDCleansUpDependsOnInChildTasks(t *testing.T) {
 		t.Fatalf("DeleteDocumentByID() error = %v", err)
 	}
 
-	// child-task had dependsOn: ["parent-task"] — must now be empty.
+	// child-task had references: ["parent-task"] — must now be empty.
 	childTaskDoc, err := readDocumentFile(filepath.Join(root.FlowPath, "data", "content", "proj", "child-task.md"))
 	if err != nil {
 		t.Fatalf("readDocumentFile(child-task) error = %v", err)
@@ -324,14 +324,14 @@ func TestDeleteDocumentByIDCleansUpDependsOnInChildTasks(t *testing.T) {
 	if !ok {
 		t.Fatalf("childTaskDoc = %T, want markdown.TaskDocument", childTaskDoc)
 	}
-	if len(childTask.Metadata.DependsOn) != 0 {
-		t.Fatalf("childTask.Metadata.DependsOn = %v, want empty after parent deletion", childTask.Metadata.DependsOn)
+	if len(childTask.Metadata.Links) != 0 {
+		t.Fatalf("childTask.Metadata.Links = %v, want empty after parent deletion", childTask.Metadata.Links)
 	}
 }
 
-// TestDeleteDocumentByIDCleansUpDependsOnInChildCommands verifies that when a parent
-// command is deleted, every command that listed it in dependsOn has the deleted ID removed.
-func TestDeleteDocumentByIDCleansUpDependsOnInChildCommands(t *testing.T) {
+// TestDeleteDocumentByIDCleansUpReferencesInChildCommands verifies that when a parent
+// command is deleted, every command that referenced it has the deleted ID removed.
+func TestDeleteDocumentByIDCleansUpReferencesInChildCommands(t *testing.T) {
 	t.Parallel()
 
 	root := createDependencyCleanupWorkspace(t)
@@ -341,7 +341,7 @@ func TestDeleteDocumentByIDCleansUpDependsOnInChildCommands(t *testing.T) {
 		t.Fatalf("DeleteDocumentByID() error = %v", err)
 	}
 
-	// child-cmd had dependsOn: ["parent-cmd"] — must now be empty.
+	// child-cmd had references: ["parent-cmd"] — must now be empty.
 	childCmdDoc, err := readDocumentFile(filepath.Join(root.FlowPath, "data", "content", "proj", "child-cmd.md"))
 	if err != nil {
 		t.Fatalf("readDocumentFile(child-cmd) error = %v", err)
@@ -350,8 +350,8 @@ func TestDeleteDocumentByIDCleansUpDependsOnInChildCommands(t *testing.T) {
 	if !ok {
 		t.Fatalf("childCmdDoc = %T, want markdown.CommandDocument", childCmdDoc)
 	}
-	if len(childCmd.Metadata.DependsOn) != 0 {
-		t.Fatalf("childCmd.Metadata.DependsOn = %v, want empty after parent deletion", childCmd.Metadata.DependsOn)
+	if len(childCmd.Metadata.Links) != 0 {
+		t.Fatalf("childCmd.Metadata.Links = %v, want empty after parent deletion", childCmd.Metadata.Links)
 	}
 }
 
@@ -377,16 +377,16 @@ func TestDeleteDocumentByIDCleansUpReferencesToDeletedTaskOrCommand(t *testing.T
 	if !ok {
 		t.Fatalf("refNoteDoc = %T, want markdown.NoteDocument", refNoteDoc)
 	}
-	if len(refNote.Metadata.References) != 0 {
-		t.Fatalf("refNote.Metadata.References = %v, want empty after target deletion", refNote.Metadata.References)
+	if len(refNote.Metadata.Links) != 0 {
+		t.Fatalf("refNote.Metadata.Links = %v, want empty after target deletion", refNote.Metadata.Links)
 	}
 }
 
 // createDependencyCleanupWorkspace builds a minimal workspace for testing graph
 // edge cleanup on deletion.
 //
-//	parent-task  ←  child-task (task dependsOn)
-//	parent-cmd   ←  child-cmd  (command dependsOn)
+//	parent-task  ←  child-task (task references)
+//	parent-cmd   ←  child-cmd  (command references)
 //	parent-task  ←  ref-note   (references)
 func createDependencyCleanupWorkspace(t *testing.T) Root {
 	t.Helper()
@@ -407,7 +407,7 @@ func createDependencyCleanupWorkspace(t *testing.T) Root {
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "child-task", Type: markdown.TaskType, Graph: "proj", Title: "Child Task"},
 			Status:       "todo",
-			DependsOn:    []string{"parent-task"},
+			Links:        []markdown.NodeLink{{Node: "parent-task"}},
 		},
 		Body: "Child task body\n",
 	})
@@ -422,14 +422,14 @@ func createDependencyCleanupWorkspace(t *testing.T) Root {
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{ID: "child-cmd", Type: markdown.CommandType, Graph: "proj", Title: "Child Command"},
 			Name:         "child-cmd",
-			DependsOn:    []string{"parent-cmd"},
+			Links:        []markdown.NodeLink{{Node: "parent-cmd"}},
 			Run:          "echo child",
 		},
 	})
 	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "proj", "ref-note.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "ref-note", Type: markdown.NoteType, Graph: "proj", Title: "Ref Note"},
-			References:   []markdown.NodeReference{{Node: "parent-task"}},
+			Links:        []markdown.NodeLink{{Node: "parent-task"}},
 		},
 		Body: "Ref note body\n",
 	})
@@ -465,8 +465,8 @@ func TestAddReferenceAppendsInlineReference(t *testing.T) {
 		t.Fatalf("index.Rebuild() error = %v", err)
 	}
 
-	if err := AddReference(root, "note-a", "note-b", "informs"); err != nil {
-		t.Fatalf("AddReference() error = %v", err)
+	if err := AddLink(root, "note-a", "note-b", "informs"); err != nil {
+		t.Fatalf("AddLink() error = %v", err)
 	}
 
 	doc, err := findDocumentByID(root.FlowPath, "note-a")
@@ -477,8 +477,8 @@ func TestAddReferenceAppendsInlineReference(t *testing.T) {
 	if !ok {
 		t.Fatalf("note-a document is not a NoteDocument")
 	}
-	if len(note.Metadata.References) != 1 || note.Metadata.References[0].Node != "note-b" || note.Metadata.References[0].Context != "informs" {
-		t.Fatalf("note-a.references = %+v, want [{Node:note-b Context:informs}]", note.Metadata.References)
+	if len(note.Metadata.Links) != 1 || note.Metadata.Links[0].Node != "note-b" || note.Metadata.Links[0].Context != "informs" {
+		t.Fatalf("note-a.links = %+v, want [{Node:note-b Context:informs}]", note.Metadata.Links)
 	}
 }
 
@@ -495,7 +495,7 @@ func TestRemoveReferenceRemovesInlineReference(t *testing.T) {
 	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "proj", "note-a.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "note-a", Type: markdown.NoteType, Graph: "proj", Title: "Alpha"},
-			References:   []markdown.NodeReference{{Node: "note-b", Context: "informs"}},
+			Links:        []markdown.NodeLink{{Node: "note-b", Context: "informs"}},
 		},
 	})
 	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "proj", "note-b.md"), markdown.NoteDocument{
@@ -507,8 +507,8 @@ func TestRemoveReferenceRemovesInlineReference(t *testing.T) {
 		t.Fatalf("index.Rebuild() error = %v", err)
 	}
 
-	if err := RemoveReference(root, "note-a", "note-b"); err != nil {
-		t.Fatalf("RemoveReference() error = %v", err)
+	if err := RemoveLink(root, "note-a", "note-b"); err != nil {
+		t.Fatalf("RemoveLink() error = %v", err)
 	}
 
 	doc, err := findDocumentByID(root.FlowPath, "note-a")
@@ -519,8 +519,8 @@ func TestRemoveReferenceRemovesInlineReference(t *testing.T) {
 	if !ok {
 		t.Fatalf("note-a document is not a NoteDocument")
 	}
-	if len(note.Metadata.References) != 0 {
-		t.Fatalf("note-a.references = %+v, want empty after removal", note.Metadata.References)
+	if len(note.Metadata.Links) != 0 {
+		t.Fatalf("note-a.links = %+v, want empty after removal", note.Metadata.Links)
 	}
 }
 

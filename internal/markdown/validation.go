@@ -36,12 +36,6 @@ func ValidateCommandDocument(document CommandDocument) error {
 		return fmt.Errorf("command run must not be empty")
 	}
 
-	for _, dependencyID := range document.Metadata.DependsOn {
-		if strings.TrimSpace(dependencyID) == "" {
-			return fmt.Errorf("command dependencies must not contain empty ids")
-		}
-	}
-
 	for key := range document.Metadata.Env {
 		if !envKeyPattern.MatchString(key) {
 			return fmt.Errorf("command env key %q is invalid", key)
@@ -111,22 +105,7 @@ func ValidateWorkspaceDocuments(documents []WorkspaceDocument) error {
 	}
 
 	for _, item := range normalizedDocuments {
-		sourceID, sourceType, dependencyIDs, referenceIDs := linkTargets(item.Document)
-
-		for _, dependencyID := range dependencyIDs {
-			dependencyType, exists := documentKindsByID[dependencyID]
-			if !exists {
-				return fmt.Errorf("%s: %s dependency %q does not exist", item.Path, sourceType, dependencyID)
-			}
-
-			if dependencyType != sourceType {
-				return fmt.Errorf("%s: %s dependency %q must reference another %s", item.Path, sourceType, dependencyID, sourceType)
-			}
-
-			if dependencyID == sourceID {
-				return fmt.Errorf("%s: %s dependency %q must not reference itself", item.Path, sourceType, dependencyID)
-			}
-		}
+		_, _, _, referenceIDs := linkTargets(item.Document)
 
 		for _, referenceID := range referenceIDs {
 			if _, exists := documentKindsByID[referenceID]; !exists {
@@ -198,11 +177,11 @@ func GraphPathFromWorkspacePath(path string) (string, bool, error) {
 func linkTargets(document Document) (string, DocumentType, []string, []string) {
 	switch value := document.(type) {
 	case NoteDocument:
-		return value.Metadata.ID, value.Metadata.Type, nil, NodeReferenceIDs(value.Metadata.References)
+		return value.Metadata.ID, value.Metadata.Type, nil, NodeLinkIDs(value.Metadata.Links)
 	case TaskDocument:
-		return value.Metadata.ID, value.Metadata.Type, value.Metadata.DependsOn, NodeReferenceIDs(value.Metadata.References)
+		return value.Metadata.ID, value.Metadata.Type, nil, NodeLinkIDs(value.Metadata.Links)
 	case CommandDocument:
-		return value.Metadata.ID, value.Metadata.Type, value.Metadata.DependsOn, NodeReferenceIDs(value.Metadata.References)
+		return value.Metadata.ID, value.Metadata.Type, nil, NodeLinkIDs(value.Metadata.Links)
 	default:
 		return "", "", nil, nil
 	}

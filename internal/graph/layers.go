@@ -19,8 +19,7 @@ type TaskNode struct {
 	Tags        []string `json:"tags,omitempty"`
 	CreatedAt   string   `json:"createdAt,omitempty"`
 	UpdatedAt   string   `json:"updatedAt,omitempty"`
-	DependsOn   []string `json:"dependsOn,omitempty"`
-	References  []string `json:"references,omitempty"`
+	Links       []string `json:"links,omitempty"`
 	Layer       int      `json:"layer"`
 }
 
@@ -46,7 +45,7 @@ type NoteNode struct {
 	Tags           []string `json:"tags,omitempty"`
 	CreatedAt      string   `json:"createdAt,omitempty"`
 	UpdatedAt      string   `json:"updatedAt,omitempty"`
-	References     []string `json:"references,omitempty"`
+	Links          []string `json:"links,omitempty"`
 	RelatedNoteIDs []string `json:"relatedNoteIds,omitempty"`
 }
 
@@ -125,8 +124,7 @@ type CommandNode struct {
 	Tags        []string          `json:"tags,omitempty"`
 	CreatedAt   string            `json:"createdAt,omitempty"`
 	UpdatedAt   string            `json:"updatedAt,omitempty"`
-	DependsOn   []string          `json:"dependsOn,omitempty"`
-	References  []string          `json:"references,omitempty"`
+	Links       []string          `json:"links,omitempty"`
 	Name        string            `json:"name"`
 	Run         string            `json:"run"`
 	Env         map[string]string `json:"env,omitempty"`
@@ -175,8 +173,7 @@ func BuildTaskLayerView(documents []markdown.WorkspaceDocument) (TaskLayerView, 
 			Tags:        cloneStrings(taskDocument.Metadata.Tags),
 			CreatedAt:   taskDocument.Metadata.CreatedAt,
 			UpdatedAt:   taskDocument.Metadata.UpdatedAt,
-			DependsOn:   cloneStrings(taskDocument.Metadata.DependsOn),
-			References:  markdown.NodeReferenceIDs(taskDocument.Metadata.References),
+			Links:       markdown.NodeLinkIDs(taskDocument.Metadata.Links),
 		}
 		indegree[taskDocument.Metadata.ID] = 0
 	}
@@ -186,11 +183,11 @@ func BuildTaskLayerView(documents []markdown.WorkspaceDocument) (TaskLayerView, 
 		if !ok {
 			continue
 		}
-		for _, depID := range taskDocument.Metadata.DependsOn {
-			if _, exists := taskNodes[depID]; !exists {
-				return TaskLayerView{}, fmt.Errorf("task %q depends on missing task %q", taskDocument.Metadata.ID, depID)
+		for _, refID := range markdown.NodeLinkIDs(taskDocument.Metadata.Links) {
+			if _, exists := taskNodes[refID]; !exists {
+				continue
 			}
-			adjacency[depID] = append(adjacency[depID], taskDocument.Metadata.ID)
+			adjacency[refID] = append(adjacency[refID], taskDocument.Metadata.ID)
 			indegree[taskDocument.Metadata.ID]++
 		}
 	}
@@ -245,7 +242,7 @@ func BuildTaskLayerView(documents []markdown.WorkspaceDocument) (TaskLayerView, 
 			}
 		}
 		slices.Sort(unresolved)
-		return TaskLayerView{}, fmt.Errorf("task dependency cycle detected among %s", strings.Join(unresolved, ", "))
+		return TaskLayerView{}, fmt.Errorf("task link cycle detected among %s", strings.Join(unresolved, ", "))
 	}
 
 	return TaskLayerView{Layers: layers, Tasks: taskNodes}, nil
@@ -283,8 +280,7 @@ func BuildCommandLayerView(documents []markdown.WorkspaceDocument, selectedGraph
 			Tags:        cloneStrings(commandDocument.Metadata.Tags),
 			CreatedAt:   commandDocument.Metadata.CreatedAt,
 			UpdatedAt:   commandDocument.Metadata.UpdatedAt,
-			DependsOn:   cloneStrings(commandDocument.Metadata.DependsOn),
-			References:  markdown.NodeReferenceIDs(commandDocument.Metadata.References),
+			Links:       markdown.NodeLinkIDs(commandDocument.Metadata.Links),
 			Name:        commandDocument.Metadata.Name,
 			Run:         commandDocument.Metadata.Run,
 			Env:         cloneStringMap(commandDocument.Metadata.Env),
@@ -302,11 +298,11 @@ func BuildCommandLayerView(documents []markdown.WorkspaceDocument, selectedGraph
 		if !ok {
 			continue
 		}
-		for _, depID := range commandDocument.Metadata.DependsOn {
-			if _, exists := commandNodes[depID]; !exists {
-				return CommandLayerView{}, fmt.Errorf("command %q depends on missing command %q", commandDocument.Metadata.ID, depID)
+		for _, refID := range markdown.NodeLinkIDs(commandDocument.Metadata.Links) {
+			if _, exists := commandNodes[refID]; !exists {
+				continue
 			}
-			adjacency[depID] = append(adjacency[depID], commandDocument.Metadata.ID)
+			adjacency[refID] = append(adjacency[refID], commandDocument.Metadata.ID)
 			indegree[commandDocument.Metadata.ID]++
 		}
 	}
@@ -376,7 +372,7 @@ func BuildCommandLayerView(documents []markdown.WorkspaceDocument, selectedGraph
 			}
 		}
 		slices.Sort(unresolved)
-		return CommandLayerView{}, fmt.Errorf("command dependency cycle detected among %s", strings.Join(unresolved, ", "))
+		return CommandLayerView{}, fmt.Errorf("command link cycle detected among %s", strings.Join(unresolved, ", "))
 	}
 
 	return CommandLayerView{
@@ -414,15 +410,14 @@ func BuildTaskFocusedGraphSnapshot(documents []markdown.WorkspaceDocument, selec
 			Tags:        cloneStrings(taskDocument.Metadata.Tags),
 			CreatedAt:   taskDocument.Metadata.CreatedAt,
 			UpdatedAt:   taskDocument.Metadata.UpdatedAt,
-			DependsOn:   cloneStrings(taskDocument.Metadata.DependsOn),
-			References:  markdown.NodeReferenceIDs(taskDocument.Metadata.References),
+			Links:       markdown.NodeLinkIDs(taskDocument.Metadata.Links),
 		}
 		nodes[node.ID] = node
 		summaries[node.ID] = dependencySnapshotNode{
-			ID:        node.ID,
-			Graph:     node.Graph,
-			Title:     node.Title,
-			DependsOn: cloneStrings(taskDocument.Metadata.DependsOn),
+			ID:    node.ID,
+			Graph: node.Graph,
+			Title: node.Title,
+			Links: markdown.NodeLinkIDs(taskDocument.Metadata.Links),
 		}
 	}
 
@@ -472,18 +467,17 @@ func BuildCommandFocusedGraphSnapshot(documents []markdown.WorkspaceDocument, se
 			Tags:        cloneStrings(commandDocument.Metadata.Tags),
 			CreatedAt:   commandDocument.Metadata.CreatedAt,
 			UpdatedAt:   commandDocument.Metadata.UpdatedAt,
-			DependsOn:   cloneStrings(commandDocument.Metadata.DependsOn),
-			References:  markdown.NodeReferenceIDs(commandDocument.Metadata.References),
+			Links:       markdown.NodeLinkIDs(commandDocument.Metadata.Links),
 			Name:        commandDocument.Metadata.Name,
 			Run:         commandDocument.Metadata.Run,
 			Env:         cloneStringMap(commandDocument.Metadata.Env),
 		}
 		nodes[node.ID] = node
 		summaries[node.ID] = dependencySnapshotNode{
-			ID:        node.ID,
-			Graph:     node.Graph,
-			Title:     node.Title,
-			DependsOn: cloneStrings(commandDocument.Metadata.DependsOn),
+			ID:    node.ID,
+			Graph: node.Graph,
+			Title: node.Title,
+			Links: markdown.NodeLinkIDs(commandDocument.Metadata.Links),
 		}
 	}
 
@@ -508,7 +502,7 @@ func BuildCommandFocusedGraphSnapshot(documents []markdown.WorkspaceDocument, se
 	}, nil
 }
 
-// BuildNoteGraphView computes the symmetric note graph from note references.
+// BuildNoteGraphView computes the symmetric note graph from note links.
 func BuildNoteGraphView(documents []markdown.WorkspaceDocument) (NoteGraphView, error) {
 	noteNodes := map[string]NoteNode{}
 	graphNotes := map[string][]string{}
@@ -525,7 +519,7 @@ func BuildNoteGraphView(documents []markdown.WorkspaceDocument) (NoteGraphView, 
 			return NoteGraphView{}, err
 		}
 
-		refIDs := markdown.NodeReferenceIDs(noteDocument.Metadata.References)
+		refIDs := markdown.NodeLinkIDs(noteDocument.Metadata.Links)
 		noteNodes[noteDocument.Metadata.ID] = NoteNode{
 			ID:          noteDocument.Metadata.ID,
 			FeatureSlug: featureSlug,
@@ -535,7 +529,7 @@ func BuildNoteGraphView(documents []markdown.WorkspaceDocument) (NoteGraphView, 
 			Tags:        cloneStrings(noteDocument.Metadata.Tags),
 			CreatedAt:   noteDocument.Metadata.CreatedAt,
 			UpdatedAt:   noteDocument.Metadata.UpdatedAt,
-			References:  refIDs,
+			Links:       refIDs,
 		}
 		rawReferences[noteDocument.Metadata.ID] = refIDs
 		graphNotes[noteDocument.Metadata.Graph] = append(graphNotes[noteDocument.Metadata.Graph], noteDocument.Metadata.ID)
@@ -615,10 +609,10 @@ func BuildNoteGraphView(documents []markdown.WorkspaceDocument) (NoteGraphView, 
 }
 
 type dependencySnapshotNode struct {
-	ID        string
-	Graph     string
-	Title     string
-	DependsOn []string
+	ID    string
+	Graph string
+	Title string
+	Links []string
 }
 
 type focusedDependencySnapshot struct {
@@ -665,13 +659,13 @@ func buildFocusedDependencySnapshot(nodes map[string]dependencySnapshotNode, sel
 			included[id] = struct{}{}
 		}
 
-		for _, dependencyID := range node.DependsOn {
-			if _, ok := nodes[dependencyID]; !ok {
-				return focusedDependencySnapshot{}, fmt.Errorf("%q depends on missing node %q", id, dependencyID)
+		for _, referenceID := range node.Links {
+			if _, ok := nodes[referenceID]; !ok {
+				continue
 			}
 
-			adjacency[dependencyID] = append(adjacency[dependencyID], id)
-			reverseAdjacency[id] = append(reverseAdjacency[id], dependencyID)
+			adjacency[referenceID] = append(adjacency[referenceID], id)
+			reverseAdjacency[id] = append(reverseAdjacency[id], referenceID)
 		}
 	}
 
@@ -980,13 +974,13 @@ func cloneStrings(values []string) []string {
 	return cloned
 }
 
-func cloneNodeReferences(refs []markdown.NodeReference) []markdown.NodeReference {
-	if len(refs) == 0 {
+func cloneNodeLinks(links []markdown.NodeLink) []markdown.NodeLink {
+	if len(links) == 0 {
 		return nil
 	}
 
-	cloned := make([]markdown.NodeReference, len(refs))
-	copy(cloned, refs)
+	cloned := make([]markdown.NodeLink, len(links))
+	copy(cloned, links)
 	return cloned
 }
 

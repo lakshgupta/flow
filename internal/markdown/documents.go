@@ -21,26 +21,26 @@ const (
 	CommandType DocumentType = "command"
 )
 
-// NodeReference is an inline reference from one document to another, with optional context.
-type NodeReference struct {
+// NodeLink is a stored link from one document to another, with optional context.
+type NodeLink struct {
 	Node    string `yaml:"node"`
 	Context string `yaml:"context,omitempty"`
 }
 
 // UnmarshalYAML implements custom decoding so that a plain scalar string (legacy format) is
-// treated as NodeReference{Node: value}.
-func (r *NodeReference) UnmarshalYAML(value *yaml.Node) error {
+// treated as NodeLink{Node: value}.
+func (r *NodeLink) UnmarshalYAML(value *yaml.Node) error {
 	if value.Kind == yaml.ScalarNode {
 		r.Node = value.Value
 		r.Context = ""
 		return nil
 	}
-	type plain NodeReference
+	type plain NodeLink
 	var p plain
 	if err := value.Decode(&p); err != nil {
 		return err
 	}
-	*r = NodeReference(p)
+	*r = NodeLink(p)
 	return nil
 }
 
@@ -59,23 +59,21 @@ type CommonFields struct {
 // NoteMetadata describes note frontmatter fields.
 type NoteMetadata struct {
 	CommonFields `yaml:",inline"`
-	References   []NodeReference `yaml:"references,omitempty"`
+	Links        []NodeLink `yaml:"links,omitempty"`
 }
 
 // TaskMetadata describes task frontmatter fields.
 type TaskMetadata struct {
 	CommonFields `yaml:",inline"`
-	Status       string          `yaml:"status,omitempty"`
-	DependsOn    []string        `yaml:"dependsOn,omitempty"`
-	References   []NodeReference `yaml:"references,omitempty"`
+	Status       string     `yaml:"status,omitempty"`
+	Links        []NodeLink `yaml:"links,omitempty"`
 }
 
 // CommandMetadata describes command frontmatter fields.
 type CommandMetadata struct {
 	CommonFields `yaml:",inline"`
 	Name         string            `yaml:"name,omitempty"`
-	DependsOn    []string          `yaml:"dependsOn,omitempty"`
-	References   []NodeReference   `yaml:"references,omitempty"`
+	Links        []NodeLink        `yaml:"links,omitempty"`
 	Env          map[string]string `yaml:"env,omitempty"`
 	Run          string            `yaml:"run,omitempty"`
 }
@@ -340,14 +338,14 @@ func CompactMarkdown(body string) string {
 	return string(bytes.TrimRight([]byte(normalized), "\n"))
 }
 
-// NodeReferenceIDs extracts the node IDs from a slice of NodeReference values.
-func NodeReferenceIDs(refs []NodeReference) []string {
-	if len(refs) == 0 {
+// NodeLinkIDs extracts the node IDs from a slice of NodeLink values.
+func NodeLinkIDs(links []NodeLink) []string {
+	if len(links) == 0 {
 		return nil
 	}
-	ids := make([]string, len(refs))
-	for i, r := range refs {
-		ids[i] = r.Node
+	ids := make([]string, len(links))
+	for i, link := range links {
+		ids[i] = link.Node
 	}
 	return ids
 }

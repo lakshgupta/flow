@@ -25,8 +25,8 @@ export interface DocumentPropertiesPanelProps {
   selectedDocument: DocumentResponse;
   formState: DocumentFormState;
   linkStats: {
-    outgoing: DocumentLinkStat[];
-    incoming: DocumentLinkStat[];
+		outgoing: DocumentLinkStat[];
+		incoming: DocumentLinkStat[];
   };
   updateFormField: (field: keyof DocumentFormState, value: string) => void;
 }
@@ -120,17 +120,6 @@ export function DocumentPropertiesPanel({
               />
             </label>
           ) : null}
-
-          <label className="center-document-properties-field editor-field">
-            <span>Dependencies</span>
-            <textarea
-              aria-label={`${selectedDocument.type === "task" ? "Task" : "Command"} dependencies`}
-              placeholder="Dependency document IDs, one per line or comma separated"
-              rows={4}
-              value={formState.dependsOn}
-              onChange={(event) => updateFormField("dependsOn", event.target.value)}
-            />
-          </label>
 
           {selectedDocument.type === "command" ? (
             <>

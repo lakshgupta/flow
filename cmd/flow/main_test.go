@@ -210,7 +210,7 @@ func TestFlowGlobalConfigureAndInit(t *testing.T) {
 
 func TestFlowCreateTaskWritesMarkdownAndReindexes(t *testing.T) {
 	rootDir := t.TempDir()
-	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "graphs", "knowledge", "architecture.md"), markdown.NoteDocument{
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "knowledge", "architecture.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{
 				ID:    "note-1",
@@ -220,7 +220,7 @@ func TestFlowCreateTaskWritesMarkdownAndReindexes(t *testing.T) {
 			},
 		},
 	})
-	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "graphs", "execution", "foundation", "foundation.md"), markdown.TaskDocument{
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "execution", "foundation", "foundation.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{
 				ID:    "task-0",
@@ -240,7 +240,6 @@ func TestFlowCreateTaskWritesMarkdownAndReindexes(t *testing.T) {
 		"--title", "Build parser",
 		"--description", "Parser task description",
 		"--status", "todo",
-		"--depends-on", "task-0",
 		"--reference", "note-1",
 		"--tag", "backend",
 		"--body", "Task body",
@@ -253,7 +252,7 @@ func TestFlowCreateTaskWritesMarkdownAndReindexes(t *testing.T) {
 		t.Fatalf("stdout = %q", stdout)
 	}
 
-	documentPath := filepath.Join(rootDir, ".flow", "data", "graphs", "execution", "parser", "parser.md")
+	documentPath := filepath.Join(rootDir, ".flow", "data", "content", "execution", "parser", "parser.md")
 	data, err := os.ReadFile(documentPath)
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
@@ -280,7 +279,7 @@ func TestFlowCreateTaskWritesMarkdownAndReindexes(t *testing.T) {
 	defer indexDB.Close()
 
 	assertIntQuery(t, indexDB, `SELECT COUNT(*) FROM documents`, 4)
-	assertIntQuery(t, indexDB, `SELECT COUNT(*) FROM hard_dependencies`, 1)
+	assertIntQuery(t, indexDB, `SELECT COUNT(*) FROM hard_dependencies`, 0)
 	assertIntQuery(t, indexDB, `SELECT COUNT(*) FROM soft_references`, 1)
 
 	var taskStatus string
@@ -295,7 +294,7 @@ func TestFlowCreateTaskWritesMarkdownAndReindexes(t *testing.T) {
 
 func TestFlowUpdateCommandWritesMarkdownAndReindexes(t *testing.T) {
 	rootDir := t.TempDir()
-	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "graphs", "demo", "notes", "architecture.md"), markdown.NoteDocument{
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "demo", "notes", "architecture.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{
 				ID:    "note-1",
@@ -305,7 +304,7 @@ func TestFlowUpdateCommandWritesMarkdownAndReindexes(t *testing.T) {
 			},
 		},
 	})
-	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "graphs", "release", "prepare.md"), markdown.CommandDocument{
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "release", "prepare.md"), markdown.CommandDocument{
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{
 				ID:    "cmd-0",
@@ -317,7 +316,7 @@ func TestFlowUpdateCommandWritesMarkdownAndReindexes(t *testing.T) {
 			Run:  "./prepare.sh",
 		},
 	})
-	documentPath := filepath.Join(rootDir, ".flow", "data", "graphs", "release", "build.md")
+	documentPath := filepath.Join(rootDir, ".flow", "data", "content", "release", "build.md")
 	writeDocumentForTest(t, documentPath, markdown.CommandDocument{
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{
@@ -326,9 +325,8 @@ func TestFlowUpdateCommandWritesMarkdownAndReindexes(t *testing.T) {
 				Graph: "release",
 				Title: "Build",
 			},
-			Name:       "build",
-			DependsOn:  []string{"cmd-0"},
-			References: []markdown.NodeReference{{Node: "note-1"}},
+			Name:  "build",
+			Links: []markdown.NodeLink{{Node: "note-1"}},
 			Env: map[string]string{
 				"GOOS": "linux",
 			},
@@ -343,7 +341,7 @@ func TestFlowUpdateCommandWritesMarkdownAndReindexes(t *testing.T) {
 
 	stdout, stderr := runForTest(t, []string{
 		"update",
-		"--path", "data/graphs/release/build.md",
+		"--path", "data/content/release/build.md",
 		"--graph", "delivery/release",
 		"--title", "Build binary",
 		"--description", "Release build description",
@@ -360,7 +358,7 @@ func TestFlowUpdateCommandWritesMarkdownAndReindexes(t *testing.T) {
 		t.Fatalf("stdout = %q", stdout)
 	}
 
-	documentPath = filepath.Join(rootDir, ".flow", "data", "graphs", "delivery", "release", "build.md")
+	documentPath = filepath.Join(rootDir, ".flow", "data", "content", "delivery", "release", "build.md")
 	data, err := os.ReadFile(documentPath)
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
@@ -412,7 +410,7 @@ func TestFlowUpdateCommandWritesMarkdownAndReindexes(t *testing.T) {
 
 func TestFlowDeleteNoteRemovesMarkdownAndReindexes(t *testing.T) {
 	rootDir := t.TempDir()
-	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "graphs", "demo", "execution", "parser.md"), markdown.TaskDocument{
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "demo", "execution", "parser.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{
 				ID:    "task-1",
@@ -422,7 +420,7 @@ func TestFlowDeleteNoteRemovesMarkdownAndReindexes(t *testing.T) {
 			},
 		},
 	})
-	documentPath := filepath.Join(rootDir, ".flow", "data", "graphs", "demo", "notes", "architecture.md")
+	documentPath := filepath.Join(rootDir, ".flow", "data", "content", "demo", "notes", "architecture.md")
 	writeDocumentForTest(t, documentPath, markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{
@@ -431,7 +429,7 @@ func TestFlowDeleteNoteRemovesMarkdownAndReindexes(t *testing.T) {
 				Graph: "notes",
 				Title: "Architecture",
 			},
-			References: []markdown.NodeReference{{Node: "task-1"}},
+			Links: []markdown.NodeLink{{Node: "task-1"}},
 		},
 		Body: "Note body",
 	})
@@ -440,7 +438,7 @@ func TestFlowDeleteNoteRemovesMarkdownAndReindexes(t *testing.T) {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
 
-	stdout, stderr := runForTest(t, []string{"delete", "--path", "data/graphs/demo/notes/architecture.md"}, rootDir)
+	stdout, stderr := runForTest(t, []string{"delete", "--path", "data/content/demo/notes/architecture.md"}, rootDir)
 	if stderr != "" {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
@@ -462,7 +460,7 @@ func TestFlowDeleteNoteRemovesMarkdownAndReindexes(t *testing.T) {
 
 func TestFlowCreateCommandRejectsDuplicateShortName(t *testing.T) {
 	rootDir := t.TempDir()
-	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "graphs", "release", "build.md"), markdown.CommandDocument{
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "release", "build.md"), markdown.CommandDocument{
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{
 				ID:    "cmd-1",
@@ -490,9 +488,9 @@ func TestFlowCreateCommandRejectsDuplicateShortName(t *testing.T) {
 	}
 }
 
-func TestFlowUpdateCommandRejectsTaskDependency(t *testing.T) {
+func TestFlowUpdateCommandRejectsMissingReference(t *testing.T) {
 	rootDir := t.TempDir()
-	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "graphs", "demo", "execution", "parser.md"), markdown.TaskDocument{
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "demo", "execution", "parser.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{
 				ID:    "task-1",
@@ -502,7 +500,7 @@ func TestFlowUpdateCommandRejectsTaskDependency(t *testing.T) {
 			},
 		},
 	})
-	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "graphs", "release", "build.md"), markdown.CommandDocument{
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "release", "build.md"), markdown.CommandDocument{
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{
 				ID:    "cmd-1",
@@ -517,18 +515,18 @@ func TestFlowUpdateCommandRejectsTaskDependency(t *testing.T) {
 
 	stderr := runExpectErrorForTest(t, []string{
 		"update",
-		"--path", "data/graphs/release/build.md",
-		"--depends-on", "task-1",
+		"--path", "data/content/release/build.md",
+		"--reference", "missing-note",
 	}, rootDir)
 
-	if !strings.Contains(stderr, "must reference another command") {
+	if !strings.Contains(stderr, "reference \"missing-note\" does not exist") {
 		t.Fatalf("stderr = %q", stderr)
 	}
 }
 
-func TestFlowCreateTaskRejectsCrossTypeDependency(t *testing.T) {
+func TestFlowCreateTaskRejectsMissingReference(t *testing.T) {
 	rootDir := t.TempDir()
-	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "graphs", "release", "build.md"), markdown.CommandDocument{
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "release", "build.md"), markdown.CommandDocument{
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{
 				ID:    "cmd-1",
@@ -547,10 +545,10 @@ func TestFlowCreateTaskRejectsCrossTypeDependency(t *testing.T) {
 		"--file", "parser",
 		"--id", "task-1",
 		"--graph", "execution/parser",
-		"--depends-on", "cmd-1",
+		"--reference", "missing-note",
 	}, rootDir)
 
-	if !strings.Contains(stderr, "must reference another task") {
+	if !strings.Contains(stderr, "reference \"missing-note\" does not exist") {
 		t.Fatalf("stderr = %q", stderr)
 	}
 }
@@ -562,28 +560,28 @@ func TestFlowTUIRendersWorkspaceSections(t *testing.T) {
 		t.Fatalf("stderr = %q", stderr)
 	}
 
-	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "graphs", "notes", "architecture.md"), markdown.NoteDocument{
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "notes", "architecture.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "notes", Title: "Architecture"},
 		},
 		Body: "Build architecture notes.\n",
 	})
-	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "graphs", "execution", "foundation.md"), markdown.TaskDocument{
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "execution", "foundation.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "task-0", Type: markdown.TaskType, Graph: "planning", Title: "Foundation"},
 			Status:       "todo",
 		},
 		Body: "Foundation body.\n",
 	})
-	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "graphs", "execution", "parser", "parser.md"), markdown.TaskDocument{
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "execution", "parser", "parser.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "planning", Title: "Parser"},
 			Status:       "todo",
-			DependsOn:    []string{"task-0"},
+			Links:        []markdown.NodeLink{{Node: "task-0"}},
 		},
 		Body: "Parser body.\n",
 	})
-	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "graphs", "release", "build.md"), markdown.CommandDocument{
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "release", "build.md"), markdown.CommandDocument{
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "release", Title: "Build"},
 			Name:         "build",
@@ -620,7 +618,7 @@ func TestFlowTUIRendersWorkspaceSections(t *testing.T) {
 
 func TestFlowSearchRebuildsMissingIndex(t *testing.T) {
 	rootDir := t.TempDir()
-	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "graphs", "notes", "architecture.md"), markdown.NoteDocument{
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "notes", "architecture.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "notes", Title: "Architecture"},
 		},
@@ -632,7 +630,7 @@ func TestFlowSearchRebuildsMissingIndex(t *testing.T) {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
 
-	if !strings.Contains(stdout, "- note note-1 [notes] data/graphs/notes/architecture.md") {
+	if !strings.Contains(stdout, "- note note-1 [notes] data/content/notes/architecture.md") {
 		t.Fatalf("stdout = %q", stdout)
 	}
 
@@ -652,18 +650,17 @@ func TestFlowSearchRebuildsMissingIndex(t *testing.T) {
 
 func TestFlowRunExecutesCommandByShortName(t *testing.T) {
 	rootDir := t.TempDir()
-	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "graphs", "release", "prepare.md"), markdown.CommandDocument{
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "release", "prepare.md"), markdown.CommandDocument{
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{ID: "cmd-0", Type: markdown.CommandType, Graph: "release", Title: "Prepare"},
 			Name:         "prepare",
 			Run:          "printf prepare",
 		},
 	})
-	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "graphs", "release", "build.md"), markdown.CommandDocument{
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "release", "build.md"), markdown.CommandDocument{
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "release", Title: "Build"},
 			Name:         "build",
-			DependsOn:    []string{"cmd-0"},
 			Env: map[string]string{
 				"GOOS": "linux",
 			},
@@ -691,16 +688,8 @@ func TestFlowRunExecutesCommandByShortName(t *testing.T) {
 		t.Fatalf("received = %#v", received)
 	}
 
-	if len(received.DependencyIDs) != 1 || received.DependencyIDs[0] != "cmd-0" {
-		t.Fatalf("received.DependencyIDs = %#v, want [cmd-0]", received.DependencyIDs)
-	}
-
 	if !strings.Contains(strings.Join(received.Environment, "\n"), "GOOS=linux") {
 		t.Fatalf("received.Environment = %#v", received.Environment)
-	}
-
-	if !strings.Contains(stdout, "Checked dependencies: cmd-0") {
-		t.Fatalf("stdout = %q", stdout)
 	}
 
 	if !strings.Contains(stdout, "Running command Build (cmd-1)") {
@@ -718,7 +707,7 @@ func TestFlowRunExecutesCommandByShortName(t *testing.T) {
 
 func TestFlowRunSurfacesCommandFailure(t *testing.T) {
 	rootDir := t.TempDir()
-	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "graphs", "release", "build.md"), markdown.CommandDocument{
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "release", "build.md"), markdown.CommandDocument{
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "release", Title: "Build"},
 			Name:         "build",
@@ -1224,7 +1213,7 @@ func TestFlowNodeNeighborsReturnsNeighborSummaries(t *testing.T) {
 	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "proj", "source.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "note-src", Type: markdown.NoteType, Graph: "proj", Title: "Source"},
-			References:   []markdown.NodeReference{{Node: "note-ref"}},
+			Links:        []markdown.NodeLink{{Node: "note-ref"}},
 		},
 	})
 	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "proj", "ref.md"), markdown.NoteDocument{

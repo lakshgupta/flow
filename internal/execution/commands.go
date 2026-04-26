@@ -12,17 +12,16 @@ import (
 
 // CommandExecution describes one explicit command run prepared from workspace state.
 type CommandExecution struct {
-	ID            string
-	Name          string
-	Title         string
-	Graph         string
-	Path          string
-	Run           string
-	WorkingDir    string
-	Environment   []string
-	DependencyIDs []string
-	Shell         string
-	Args          []string
+	ID          string
+	Name        string
+	Title       string
+	Graph       string
+	Path        string
+	Run         string
+	WorkingDir  string
+	Environment []string
+	Shell       string
+	Args        []string
 }
 
 type commandRecord struct {
@@ -68,70 +67,19 @@ func PrepareCommandExecution(root workspace.Root, selector string, processEnv []
 		return CommandExecution{}, fmt.Errorf("command %q not found", trimmedSelector)
 	}
 
-	dependencyIDs, err := resolveCommandDependencies(record.document.Metadata.ID, commandsByID)
-	if err != nil {
-		return CommandExecution{}, err
-	}
-
 	shell, args := shellCommand(record.document.Metadata.Run)
 	return CommandExecution{
-		ID:            record.document.Metadata.ID,
-		Name:          record.document.Metadata.Name,
-		Title:         record.document.Metadata.Title,
-		Graph:         record.document.Metadata.Graph,
-		Path:          record.path,
-		Run:           record.document.Metadata.Run,
-		WorkingDir:    root.WorkspacePath,
-		Environment:   mergeEnvironment(processEnv, record.document.Metadata.Env),
-		DependencyIDs: dependencyIDs,
-		Shell:         shell,
-		Args:          args,
+		ID:          record.document.Metadata.ID,
+		Name:        record.document.Metadata.Name,
+		Title:       record.document.Metadata.Title,
+		Graph:       record.document.Metadata.Graph,
+		Path:        record.path,
+		Run:         record.document.Metadata.Run,
+		WorkingDir:  root.WorkspacePath,
+		Environment: mergeEnvironment(processEnv, record.document.Metadata.Env),
+		Shell:       shell,
+		Args:        args,
 	}, nil
-}
-
-func resolveCommandDependencies(commandID string, commandsByID map[string]commandRecord) ([]string, error) {
-	ordered := []string{}
-	visiting := map[string]bool{}
-	visited := map[string]bool{}
-
-	var visit func(string) error
-	visit = func(currentID string) error {
-		record, ok := commandsByID[currentID]
-		if !ok {
-			return fmt.Errorf("command %q depends on missing command %q", commandID, currentID)
-		}
-
-		if visiting[currentID] {
-			return fmt.Errorf("command dependency cycle detected at %q", currentID)
-		}
-		if visited[currentID] {
-			return nil
-		}
-
-		visiting[currentID] = true
-		for _, depID := range record.document.Metadata.DependsOn {
-			if _, ok := commandsByID[depID]; !ok {
-				return fmt.Errorf("command %q depends on missing command %q", currentID, depID)
-			}
-			if err := visit(depID); err != nil {
-				return err
-			}
-		}
-		visiting[currentID] = false
-		visited[currentID] = true
-
-		if currentID != commandID {
-			ordered = append(ordered, currentID)
-		}
-
-		return nil
-	}
-
-	if err := visit(commandID); err != nil {
-		return nil, err
-	}
-
-	return ordered, nil
 }
 
 func mergeEnvironment(processEnv []string, commandEnv map[string]string) []string {

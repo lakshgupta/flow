@@ -950,6 +950,153 @@ describe("App graph canvas flows", () => {
     });
   });
 
+  it("rebuilds the index from settings and refreshes the open document", async () => {
+    let currentGraphTree = graphTreeResponse;
+    let currentDocument = {
+      id: "note-1",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Overview",
+      description: "Execution overview",
+      path: "data/content/execution/overview.md",
+      tags: [],
+      body: "Overview body\n",
+      links: [],
+      relatedNoteIds: [],
+    };
+    let currentGraphCanvas = {
+      selectedGraph: "execution",
+      availableGraphs: ["execution"],
+      layerGuidance: {
+        magneticThresholdPx: 18,
+        guides: [
+          { layer: 0, x: 140 },
+          { layer: 1, x: 460 },
+        ],
+      },
+      nodes: [
+        {
+          id: "note-1",
+          type: "note",
+          graph: "execution",
+          title: "Overview",
+          description: "Execution overview",
+          path: "data/content/execution/overview.md",
+          featureSlug: "execution",
+          position: { x: 140, y: 120 },
+          positionPersisted: false,
+        },
+      ],
+      edges: [],
+    };
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return currentGraphTree;
+      }
+
+      if (url === "/api/graphs/note") {
+        return noteGraphs("execution");
+      }
+
+      if (url === "/api/graphs/task") {
+        return emptyGraphLists.tasks;
+      }
+
+      if (url === "/api/graphs/command") {
+        return emptyGraphLists.commands;
+      }
+
+      if (url === "/api/graph-canvas?graph=execution") {
+        return currentGraphCanvas;
+      }
+
+      if (url === "/api/documents/note-1") {
+        return currentDocument;
+      }
+
+      if (url === "/api/index/rebuild" && (init?.method ?? "GET") === "POST") {
+        currentGraphTree = {
+          ...graphTreeResponse,
+          graphs: [
+            {
+              ...graphTreeResponse.graphs[0],
+              files: [
+                {
+                  ...graphTreeResponse.graphs[0].files[0],
+                  title: "Refreshed Overview",
+                  path: "data/content/execution/refreshed-overview.md",
+                  fileName: "refreshed-overview.md",
+                },
+              ],
+            },
+          ],
+        };
+        currentDocument = {
+          ...currentDocument,
+          title: "Refreshed Overview",
+          path: "data/content/execution/refreshed-overview.md",
+          body: "Refreshed body\n",
+        };
+        currentGraphCanvas = {
+          ...currentGraphCanvas,
+          nodes: currentGraphCanvas.nodes.map((node) => node.id === "note-1"
+            ? {
+                ...node,
+                title: "Refreshed Overview",
+                path: "data/content/execution/refreshed-overview.md",
+              }
+            : node),
+        };
+        return { rebuilt: true };
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Content");
+
+    const executionButton = (await screen.findByText("Execution")).closest('[data-sidebar="menu-sub-button"]');
+    if (executionButton === null) {
+      throw new Error("missing execution graph button");
+    }
+
+    await user.click(executionButton);
+    await screen.findByTestId("flow-node-note-1");
+
+    const fileButton = screen.getByText("overview.md").closest('[data-sidebar="menu-sub-button"]');
+    if (fileButton === null) {
+      throw new Error("missing overview file button");
+    }
+
+    await user.click(fileButton);
+
+    expect(await screen.findByText("Overview body")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("button", { name: "Refresh index" }));
+
+    await waitFor(() => {
+      const rebuildCall = fetchMock.mock.calls.find(([url, requestInit]) => {
+        const requestURL = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
+        return requestURL === "/api/index/rebuild" && (requestInit?.method ?? "GET") === "POST";
+      });
+      expect(rebuildCall).toBeDefined();
+    });
+
+    expect(await screen.findByText("refreshed-overview.md")).toBeInTheDocument();
+    expect(await screen.findByText("Refreshed body")).toBeInTheDocument();
+    expect(await screen.findByText("Index refreshed.")).toBeInTheDocument();
+  });
+
   it("shows a document table of contents on the Home surface and persists resize", async () => {
     const customHomeResponse = {
       ...homeResponse,
@@ -1503,6 +1650,142 @@ describe("App graph canvas flows", () => {
       expect(payload.graph).toBe("execution/empty");
       expect(payload.featureSlug).toBe("execution");
       expect(payload.title).toBe("New Note");
+    });
+
+    expect(await screen.findByDisplayValue("New Note")).toBeInTheDocument();
+  });
+
+  it("refreshes the empty canvas after creating a note from the graph tree menu", async () => {
+    let noteCreated = false;
+    const createdDocument = {
+      id: "note-new",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution/empty",
+      title: "New Note",
+      description: "",
+      path: "data/graphs/execution/empty/new-note-kf12oi.md",
+      tags: [],
+      body: "",
+      links: [],
+      relatedNoteIds: [],
+    };
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return {
+          home: homeResponse,
+          graphs: [
+            {
+              graphPath: "execution/empty",
+              displayName: "Empty",
+              directCount: noteCreated ? 1 : 0,
+              totalCount: noteCreated ? 1 : 0,
+              hasChildren: false,
+              countLabel: noteCreated ? "1 direct / 1 total" : "0 direct / 0 total",
+              files: noteCreated
+                ? [
+                    {
+                      id: "note-new",
+                      type: "note",
+                      title: "New Note",
+                      path: "data/graphs/execution/empty/new-note-kf12oi.md",
+                      fileName: "new-note-kf12oi.md",
+                    },
+                  ]
+                : [],
+            },
+          ],
+        };
+      }
+
+      if (url === "/api/graphs/note") {
+        return noteGraphs("execution/empty");
+      }
+
+      if (url === "/api/graphs/task") {
+        return emptyGraphLists.tasks;
+      }
+
+      if (url === "/api/graphs/command") {
+        return emptyGraphLists.commands;
+      }
+
+      if (url === "/api/graph-canvas?graph=execution%2Fempty") {
+        return noteCreated
+          ? {
+              selectedGraph: "execution/empty",
+              availableGraphs: ["execution/empty"],
+              layerGuidance: { magneticThresholdPx: 18, guides: [{ layer: 0, x: 140 }] },
+              nodes: [
+                {
+                  id: "note-new",
+                  type: "note",
+                  graph: "execution/empty",
+                  title: "New Note",
+                  description: "",
+                  path: "data/graphs/execution/empty/new-note-kf12oi.md",
+                  featureSlug: "execution",
+                  position: { x: 140, y: 120 },
+                  positionPersisted: false,
+                },
+              ],
+              edges: [],
+            }
+          : {
+              selectedGraph: "execution/empty",
+              availableGraphs: ["execution/empty"],
+              layerGuidance: { magneticThresholdPx: 18, guides: [] },
+              nodes: [],
+              edges: [],
+            };
+      }
+
+      if (url === "/api/documents" && init?.method === "POST") {
+        noteCreated = true;
+        return createdDocument;
+      }
+
+      if (url === "/api/documents/note-new") {
+        return createdDocument;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Content");
+
+    const emptyGraphButton = (await screen.findByText("Empty")).closest('[data-sidebar="menu-sub-button"]');
+    if (emptyGraphButton === null) {
+      throw new Error("missing empty graph button");
+    }
+
+    await user.click(emptyGraphButton);
+
+    expect(await screen.findByText("Start this canvas with the first document.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "More actions for Empty" }));
+    await user.click(await screen.findByRole("menuitem", { name: /Add note/i }));
+    await user.type(await screen.findByLabelText("File name"), "new-note");
+    await user.click(screen.getByRole("button", { name: /^Create$/i }));
+
+    await waitFor(() => {
+      const payload = getRequestBody(fetchMock, "/api/documents", "POST");
+      expect(payload.type).toBe("note");
+      expect(payload.graph).toBe("execution/empty");
+      expect(payload.featureSlug).toBe("execution");
+      expect(payload.title).toBe("New Note");
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Start this canvas with the first document.")).not.toBeInTheDocument();
     });
 
     expect(await screen.findByDisplayValue("New Note")).toBeInTheDocument();

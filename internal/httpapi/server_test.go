@@ -270,6 +270,47 @@ func TestNewMuxUpdatesWorkspacePanelWidths(t *testing.T) {
 	}
 }
 
+func TestNewMuxRebuildsIndexAfterExternalFileChange(t *testing.T) {
+	t.Parallel()
+
+	root := createHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "execution", "external-note.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-external", Type: markdown.NoteType, Graph: "execution", Title: "External Note"},
+		},
+		Body: "Changed outside Flow\n",
+	})
+
+	results := performJSONRequest[[]index.SearchResult](t, handler, http.MethodGet, "/api/search?q=external")
+	if len(results) != 0 {
+		t.Fatalf("search results before rebuild = %#v, want empty", results)
+	}
+
+	rebuilt := performJSONRequest[rebuildIndexResponse](t, handler, http.MethodPost, "/api/index/rebuild")
+	if !rebuilt.Rebuilt {
+		t.Fatalf("rebuilt = %#v, want rebuilt=true", rebuilt)
+	}
+
+	results = performJSONRequest[[]index.SearchResult](t, handler, http.MethodGet, "/api/search?q=external")
+	if len(results) != 1 || results[0].ID != "note-external" {
+		t.Fatalf("search results after rebuild = %#v, want note-external", results)
+	}
+
+	graphTree := performJSONRequest[graphTreeResponse](t, handler, http.MethodGet, "/api/graphs")
+	if !slices.ContainsFunc(graphTree.Graphs, func(node graphTreeNodeResponse) bool {
+		return node.GraphPath == "execution" && slices.ContainsFunc(node.Files, func(file graphTreeFileResponse) bool {
+			return file.ID == "note-external"
+		})
+	}) {
+		t.Fatalf("graphTree.Graphs = %#v, want execution graph to include note-external", graphTree.Graphs)
+	}
+}
+
 func TestNewMuxGraphTreeRebuildsMissingIndex(t *testing.T) {
 	t.Parallel()
 
@@ -352,7 +393,6 @@ func TestNewMuxMutatesDocumentsAndReindexes(t *testing.T) {
 		"graph":       "release",
 		"title":       "Publish release",
 		"status":      "todo",
-		"dependsOn":   []string{"task-1"},
 		"links":       []map[string]any{{"node": "note-1"}},
 		"body":        "Publish task body\n",
 	})
@@ -457,8 +497,8 @@ func TestNewMuxDeleteNoteCleansUpReferences(t *testing.T) {
 	}
 
 	task := performJSONRequest[documentResponse](t, handler, http.MethodGet, "/api/documents/task-1")
-	if len(task.Links) != 0 {
-		t.Fatalf("task.Links = %#v, want empty", task.Links)
+	if len(task.Links) != 1 || task.Links[0].Node != "task-0" {
+		t.Fatalf("task.Links = %#v, want [task-0]", task.Links)
 	}
 
 	assertStatus(t, handler, http.MethodGet, "/api/documents/note-1", http.StatusNotFound)
@@ -716,14 +756,14 @@ func createHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "notes", "architecture.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "notes", Title: "Architecture"},
-			References:   []markdown.NodeReference{{Node: "note-2"}, {Node: "task-1"}},
+			Links:        []markdown.NodeLink{{Node: "note-2"}, {Node: "task-1"}},
 		},
 		Body: "Architecture body\n",
 	})
 	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "notes", "follow-up.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "note-2", Type: markdown.NoteType, Graph: "notes", Title: "Follow Up"},
-			References:   []markdown.NodeReference{{Node: "note-1"}},
+			Links:        []markdown.NodeLink{{Node: "note-1"}},
 		},
 		Body: "Follow up body\n",
 	})
@@ -738,8 +778,7 @@ func createHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Parser"},
 			Status:       "doing",
-			DependsOn:    []string{"task-0"},
-			References:   []markdown.NodeReference{{Node: "note-1"}},
+			Links:        []markdown.NodeLink{{Node: "task-0"}, {Node: "note-1"}},
 		},
 		Body: "Parser body\n",
 	})
@@ -747,7 +786,7 @@ func createHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "release", Title: "Build"},
 			Name:         "build",
-			References:   []markdown.NodeReference{{Node: "note-1"}},
+			Links:        []markdown.NodeLink{{Node: "note-1"}},
 			Run:          "go build ./cmd/flow",
 		},
 		Body: "Build release binary\n",
@@ -875,22 +914,21 @@ func createGraphCanvasHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "execution", "overview.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "execution", Title: "Overview", Description: "Execution overview"},
-			References:   []markdown.NodeReference{{Node: "cmd-1"}},
+			Links:        []markdown.NodeLink{{Node: "cmd-1"}},
 		},
 		Body: "Overview body\n",
 	})
 	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "execution", "build.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Build"},
-			DependsOn:    []string{"task-0"},
-			References:   []markdown.NodeReference{{Node: "note-1"}},
+			Links:        []markdown.NodeLink{{Node: "note-1"}},
 		},
 		Body: "Build body\n",
 	})
 	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "execution", "parser", "details.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{ID: "note-2", Type: markdown.NoteType, Graph: "execution/parser", Title: "Parser Details"},
-			References:   []markdown.NodeReference{{Node: "note-1"}},
+			Links:        []markdown.NodeLink{{Node: "note-1"}},
 		},
 		Body: "Parser details\n",
 	})
@@ -1200,8 +1238,8 @@ func ioContains(body string, needle string) bool {
 	return false
 }
 
-// TestNewMuxLinksAPIAddsAndRemovesInlineReference tests POST /api/links and DELETE /api/links
-func TestNewMuxReferencesAPIAddsAndRemovesInlineReference(t *testing.T) {
+// TestNewMuxLinksAPIAddsAndRemovesInlineLink tests POST /api/links and DELETE /api/links.
+func TestNewMuxLinksAPIAddsAndRemovesInlineLink(t *testing.T) {
 	t.Parallel()
 
 	root := createReferencesAPITestWorkspace(t)
@@ -1210,15 +1248,15 @@ func TestNewMuxReferencesAPIAddsAndRemovesInlineReference(t *testing.T) {
 		t.Fatalf("NewMux() error = %v", err)
 	}
 
-	// Add a reference from note-1 to note-2 with context "informs"
+	// Add a link from note-1 to note-2 with context "informs".
 	resp := performJSONRequestWithBody[documentResponse](t, handler, http.MethodPost, "/api/links", map[string]any{
 		"fromId":  "note-1",
 		"toId":    "note-2",
 		"context": "informs",
 	})
 	found := false
-	for _, ref := range resp.Links {
-		if ref.Node == "note-2" && ref.Context == "informs" {
+	for _, link := range resp.Links {
+		if link.Node == "note-2" && link.Context == "informs" {
 			found = true
 		}
 	}
@@ -1226,25 +1264,25 @@ func TestNewMuxReferencesAPIAddsAndRemovesInlineReference(t *testing.T) {
 		t.Fatalf("link to note-2 with context 'informs' not found in note-1: %#v", resp.Links)
 	}
 
-	// Remove the link
+	// Remove the link.
 	resp2 := performJSONRequestWithBody[documentResponse](t, handler, http.MethodDelete, "/api/links", map[string]any{
 		"fromId": "note-1",
 		"toId":   "note-2",
 	})
-	for _, ref := range resp2.Links {
-		if ref.Node == "note-2" {
+	for _, link := range resp2.Links {
+		if link.Node == "note-2" {
 			t.Fatalf("link to note-2 still present after removal: %#v", resp2.Links)
 		}
 	}
 
-	// Add a link with empty context
+	// Add a link with empty context.
 	resp3 := performJSONRequestWithBody[documentResponse](t, handler, http.MethodPost, "/api/links", map[string]any{
 		"fromId": "note-1",
 		"toId":   "note-2",
 	})
 	found = false
-	for _, ref := range resp3.Links {
-		if ref.Node == "note-2" && ref.Context == "" {
+	for _, link := range resp3.Links {
+		if link.Node == "note-2" && link.Context == "" {
 			found = true
 		}
 	}
@@ -1253,8 +1291,8 @@ func TestNewMuxReferencesAPIAddsAndRemovesInlineReference(t *testing.T) {
 	}
 }
 
-// TestNewMuxReferencesAPIValidation tests validation for /api/links
-func TestNewMuxReferencesAPIValidation(t *testing.T) {
+// TestNewMuxLinksAPIValidation tests validation for /api/links.
+func TestNewMuxLinksAPIValidation(t *testing.T) {
 	t.Parallel()
 
 	root := createReferencesAPITestWorkspace(t)

@@ -47,8 +47,7 @@ type CreateDocumentInput struct {
 	UpdatedAt   string
 	Body        string
 	Status      string
-	DependsOn   []string
-	References  []markdown.NodeReference
+	Links       []markdown.NodeLink
 	Name        string
 	Env         map[string]string
 	Run         string
@@ -66,8 +65,7 @@ type DocumentPatch struct {
 	UpdatedAt   *string
 	Body        *string
 	Status      *string
-	DependsOn   *[]string
-	References  *[]markdown.NodeReference
+	Links       *[]markdown.NodeLink
 	Name        *string
 	Env         *map[string]string
 	Run         *string
@@ -387,30 +385,30 @@ func MergeDocuments(root Root, input MergeDocumentsInput) (markdown.WorkspaceDoc
 	return merged, nil
 }
 
-// documentReferences returns a copy of the references list for any document type.
-func documentReferences(doc markdown.Document) []markdown.NodeReference {
+// documentLinks returns a copy of the links list for any document type.
+func documentLinks(doc markdown.Document) []markdown.NodeLink {
 	switch d := doc.(type) {
 	case markdown.NoteDocument:
-		return cloneReferences(d.Metadata.References)
+		return cloneLinks(d.Metadata.Links)
 	case markdown.TaskDocument:
-		return cloneReferences(d.Metadata.References)
+		return cloneLinks(d.Metadata.Links)
 	case markdown.CommandDocument:
-		return cloneReferences(d.Metadata.References)
+		return cloneLinks(d.Metadata.Links)
 	default:
 		return nil
 	}
 }
 
-// AddReference appends a NodeReference{Node: toID, Context: context} to the source
-// document's references list. It is a no-op when the reference already exists.
-func AddReference(root Root, fromID, toID, context string) error {
+// AddLink appends a NodeLink{Node: toID, Context: context} to the source
+// document's links list. It is a no-op when the link already exists.
+func AddLink(root Root, fromID, toID, context string) error {
 	fromID = strings.TrimSpace(fromID)
 	toID = strings.TrimSpace(toID)
 	if fromID == "" || toID == "" {
-		return InvalidMutationError{Err: errors.New("reference source and target IDs are required")}
+		return InvalidMutationError{Err: errors.New("link source and target IDs are required")}
 	}
 	if fromID == toID {
-		return InvalidMutationError{Err: errors.New("reference source and target must be different documents")}
+		return InvalidMutationError{Err: errors.New("link source and target must be different documents")}
 	}
 
 	if _, err := findDocumentByID(root.FlowPath, toID); err != nil {
@@ -422,25 +420,25 @@ func AddReference(root Root, fromID, toID, context string) error {
 		return err
 	}
 
-	currentRefs := documentReferences(sourceDoc.Document)
-	for _, ref := range currentRefs {
-		if ref.Node == toID {
+	currentLinks := documentLinks(sourceDoc.Document)
+	for _, link := range currentLinks {
+		if link.Node == toID {
 			return nil // already exists
 		}
 	}
 
-	newRefs := append(currentRefs, markdown.NodeReference{Node: toID, Context: strings.TrimSpace(context)})
-	_, err = UpdateDocumentByPath(root, sourceDoc.Path, DocumentPatch{References: &newRefs})
+	newLinks := append(currentLinks, markdown.NodeLink{Node: toID, Context: strings.TrimSpace(context)})
+	_, err = UpdateDocumentByPath(root, sourceDoc.Path, DocumentPatch{Links: &newLinks})
 	return err
 }
 
-// RemoveReference removes the reference to toID from the source document's references
-// list. It is a no-op when the reference does not exist.
-func RemoveReference(root Root, fromID, toID string) error {
+// RemoveLink removes the link to toID from the source document's links
+// list. It is a no-op when the link does not exist.
+func RemoveLink(root Root, fromID, toID string) error {
 	fromID = strings.TrimSpace(fromID)
 	toID = strings.TrimSpace(toID)
 	if fromID == "" || toID == "" {
-		return InvalidMutationError{Err: errors.New("reference source and target IDs are required")}
+		return InvalidMutationError{Err: errors.New("link source and target IDs are required")}
 	}
 
 	sourceDoc, err := findDocumentByID(root.FlowPath, fromID)
@@ -448,23 +446,23 @@ func RemoveReference(root Root, fromID, toID string) error {
 		return err
 	}
 
-	currentRefs := documentReferences(sourceDoc.Document)
-	newRefs := removeNodeReference(currentRefs, toID)
-	if len(newRefs) == len(currentRefs) {
+	currentLinks := documentLinks(sourceDoc.Document)
+	newLinks := removeNodeLink(currentLinks, toID)
+	if len(newLinks) == len(currentLinks) {
 		return nil // nothing to remove
 	}
 
-	_, err = UpdateDocumentByPath(root, sourceDoc.Path, DocumentPatch{References: &newRefs})
+	_, err = UpdateDocumentByPath(root, sourceDoc.Path, DocumentPatch{Links: &newLinks})
 	return err
 }
 
-// UpdateReferenceContext sets the context annotation on an existing reference
-// from fromID to toID. An error is returned when the reference does not exist.
-func UpdateReferenceContext(root Root, fromID, toID, context string) error {
+// UpdateLinkContext sets the context annotation on an existing link
+// from fromID to toID. An error is returned when the link does not exist.
+func UpdateLinkContext(root Root, fromID, toID, context string) error {
 	fromID = strings.TrimSpace(fromID)
 	toID = strings.TrimSpace(toID)
 	if fromID == "" || toID == "" {
-		return InvalidMutationError{Err: errors.New("reference source and target IDs are required")}
+		return InvalidMutationError{Err: errors.New("link source and target IDs are required")}
 	}
 
 	sourceDoc, err := findDocumentByID(root.FlowPath, fromID)
@@ -472,22 +470,22 @@ func UpdateReferenceContext(root Root, fromID, toID, context string) error {
 		return err
 	}
 
-	currentRefs := documentReferences(sourceDoc.Document)
+	currentLinks := documentLinks(sourceDoc.Document)
 	found := false
-	newRefs := make([]markdown.NodeReference, len(currentRefs))
-	for i, ref := range currentRefs {
-		if ref.Node == toID {
-			newRefs[i] = markdown.NodeReference{Node: ref.Node, Context: strings.TrimSpace(context)}
+	newLinks := make([]markdown.NodeLink, len(currentLinks))
+	for i, link := range currentLinks {
+		if link.Node == toID {
+			newLinks[i] = markdown.NodeLink{Node: link.Node, Context: strings.TrimSpace(context)}
 			found = true
 		} else {
-			newRefs[i] = ref
+			newLinks[i] = link
 		}
 	}
 	if !found {
-		return InvalidMutationError{Err: fmt.Errorf("reference from %q to %q not found", fromID, toID)}
+		return InvalidMutationError{Err: fmt.Errorf("link from %q to %q not found", fromID, toID)}
 	}
 
-	_, err = UpdateDocumentByPath(root, sourceDoc.Path, DocumentPatch{References: &newRefs})
+	_, err = UpdateDocumentByPath(root, sourceDoc.Path, DocumentPatch{Links: &newLinks})
 	return err
 }
 
@@ -530,7 +528,7 @@ func buildCreateDocument(input CreateDocumentInput) markdown.Document {
 		return markdown.NoteDocument{
 			Metadata: markdown.NoteMetadata{
 				CommonFields: common,
-				References:   cloneReferences(input.References),
+				Links:        cloneLinks(input.Links),
 			},
 			Body: input.Body,
 		}
@@ -539,8 +537,7 @@ func buildCreateDocument(input CreateDocumentInput) markdown.Document {
 			Metadata: markdown.TaskMetadata{
 				CommonFields: common,
 				Status:       input.Status,
-				DependsOn:    cloneStrings(input.DependsOn),
-				References:   cloneReferences(input.References),
+				Links:        cloneLinks(input.Links),
 			},
 			Body: input.Body,
 		}
@@ -549,8 +546,7 @@ func buildCreateDocument(input CreateDocumentInput) markdown.Document {
 			Metadata: markdown.CommandMetadata{
 				CommonFields: common,
 				Name:         input.Name,
-				DependsOn:    cloneStrings(input.DependsOn),
-				References:   cloneReferences(input.References),
+				Links:        cloneLinks(input.Links),
 				Env:          cloneMap(input.Env),
 				Run:          input.Run,
 			},
@@ -567,8 +563,8 @@ func applyDocumentPatch(document markdown.Document, patch DocumentPatch) (markdo
 	switch value := document.(type) {
 	case markdown.NoteDocument:
 		patchCommonFields(&value.Metadata.CommonFields, patch)
-		if patch.References != nil {
-			value.Metadata.References = cloneReferences(*patch.References)
+		if patch.Links != nil {
+			value.Metadata.Links = cloneLinks(*patch.Links)
 		}
 		if patch.Body != nil {
 			value.Body = *patch.Body
@@ -579,11 +575,8 @@ func applyDocumentPatch(document markdown.Document, patch DocumentPatch) (markdo
 		if patch.Status != nil {
 			value.Metadata.Status = *patch.Status
 		}
-		if patch.DependsOn != nil {
-			value.Metadata.DependsOn = cloneStrings(*patch.DependsOn)
-		}
-		if patch.References != nil {
-			value.Metadata.References = cloneReferences(*patch.References)
+		if patch.Links != nil {
+			value.Metadata.Links = cloneLinks(*patch.Links)
 		}
 		if patch.Body != nil {
 			value.Body = *patch.Body
@@ -594,11 +587,8 @@ func applyDocumentPatch(document markdown.Document, patch DocumentPatch) (markdo
 		if patch.Name != nil {
 			value.Metadata.Name = *patch.Name
 		}
-		if patch.DependsOn != nil {
-			value.Metadata.DependsOn = cloneStrings(*patch.DependsOn)
-		}
-		if patch.References != nil {
-			value.Metadata.References = cloneReferences(*patch.References)
+		if patch.Links != nil {
+			value.Metadata.Links = cloneLinks(*patch.Links)
 		}
 		if patch.Env != nil {
 			value.Metadata.Env = cloneMap(*patch.Env)
@@ -616,7 +606,7 @@ func applyDocumentPatch(document markdown.Document, patch DocumentPatch) (markdo
 }
 
 func (patch DocumentPatch) isEmpty() bool {
-	return patch.ID == nil && patch.Graph == nil && patch.FileName == nil && patch.Title == nil && patch.Description == nil && patch.Tags == nil && patch.CreatedAt == nil && patch.UpdatedAt == nil && patch.Body == nil && patch.Status == nil && patch.DependsOn == nil && patch.References == nil && patch.Name == nil && patch.Env == nil && patch.Run == nil
+	return patch.ID == nil && patch.Graph == nil && patch.FileName == nil && patch.Title == nil && patch.Description == nil && patch.Tags == nil && patch.CreatedAt == nil && patch.UpdatedAt == nil && patch.Body == nil && patch.Status == nil && patch.Links == nil && patch.Name == nil && patch.Env == nil && patch.Run == nil
 }
 
 func patchCommonFields(fields *markdown.CommonFields, patch DocumentPatch) {
@@ -779,7 +769,6 @@ func prepareDeletionDocuments(relativePath string, document markdown.Document, w
 		}
 		if deletedID != "" {
 			item = removeReferenceFromWorkspaceDocument(item, deletedID)
-			item = removeDependsOnFromWorkspaceDocument(item, deletedID)
 		}
 		targets = append(targets, item)
 	}
@@ -790,30 +779,16 @@ func prepareDeletionDocuments(relativePath string, document markdown.Document, w
 
 	return targets, nil
 }
-
-func removeDependsOnFromWorkspaceDocument(item markdown.WorkspaceDocument, dependencyID string) markdown.WorkspaceDocument {
-	switch document := item.Document.(type) {
-	case markdown.TaskDocument:
-		document.Metadata.DependsOn = removeString(document.Metadata.DependsOn, dependencyID)
-		return markdown.WorkspaceDocument{Path: item.Path, Document: document}
-	case markdown.CommandDocument:
-		document.Metadata.DependsOn = removeString(document.Metadata.DependsOn, dependencyID)
-		return markdown.WorkspaceDocument{Path: item.Path, Document: document}
-	default:
-		return item
-	}
-}
-
 func removeReferenceFromWorkspaceDocument(item markdown.WorkspaceDocument, referenceID string) markdown.WorkspaceDocument {
 	switch document := item.Document.(type) {
 	case markdown.NoteDocument:
-		document.Metadata.References = removeNodeReference(document.Metadata.References, referenceID)
+		document.Metadata.Links = removeNodeLink(document.Metadata.Links, referenceID)
 		return markdown.WorkspaceDocument{Path: item.Path, Document: document}
 	case markdown.TaskDocument:
-		document.Metadata.References = removeNodeReference(document.Metadata.References, referenceID)
+		document.Metadata.Links = removeNodeLink(document.Metadata.Links, referenceID)
 		return markdown.WorkspaceDocument{Path: item.Path, Document: document}
 	case markdown.CommandDocument:
-		document.Metadata.References = removeNodeReference(document.Metadata.References, referenceID)
+		document.Metadata.Links = removeNodeLink(document.Metadata.Links, referenceID)
 		return markdown.WorkspaceDocument{Path: item.Path, Document: document}
 	default:
 		return item
@@ -970,23 +945,23 @@ func documentGraph(document markdown.Document) string {
 	}
 }
 
-func cloneReferences(values []markdown.NodeReference) []markdown.NodeReference {
+func cloneLinks(values []markdown.NodeLink) []markdown.NodeLink {
 	if len(values) == 0 {
 		return nil
 	}
-	cloned := make([]markdown.NodeReference, len(values))
+	cloned := make([]markdown.NodeLink, len(values))
 	copy(cloned, values)
 	return cloned
 }
 
-func removeNodeReference(values []markdown.NodeReference, nodeID string) []markdown.NodeReference {
+func removeNodeLink(values []markdown.NodeLink, nodeID string) []markdown.NodeLink {
 	if len(values) == 0 {
 		return nil
 	}
-	filtered := make([]markdown.NodeReference, 0, len(values))
-	for _, ref := range values {
-		if ref.Node != nodeID {
-			filtered = append(filtered, ref)
+	filtered := make([]markdown.NodeLink, 0, len(values))
+	for _, link := range values {
+		if link.Node != nodeID {
+			filtered = append(filtered, link)
 		}
 	}
 	if len(filtered) == 0 {

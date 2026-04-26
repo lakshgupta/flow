@@ -49,8 +49,7 @@ type GraphCanvasNode struct {
 	UpdatedAt         string              `json:"updatedAt,omitempty"`
 	Position          GraphCanvasPosition `json:"position"`
 	PositionPersisted bool                `json:"positionPersisted"`
-	dependsOn         []string
-	references        []markdown.NodeReference
+	links             []markdown.NodeLink
 	orderIndex        int
 }
 
@@ -161,7 +160,7 @@ func buildGraphCanvasNode(item markdown.WorkspaceDocument) (GraphCanvasNode, str
 			Tags:        cloneStrings(document.Metadata.Tags),
 			CreatedAt:   document.Metadata.CreatedAt,
 			UpdatedAt:   document.Metadata.UpdatedAt,
-			references:  cloneNodeReferences(document.Metadata.References),
+			links:       cloneNodeLinks(document.Metadata.Links),
 		}, graphPath, true, nil
 	case markdown.TaskDocument:
 		return GraphCanvasNode{
@@ -175,8 +174,7 @@ func buildGraphCanvasNode(item markdown.WorkspaceDocument) (GraphCanvasNode, str
 			Tags:        cloneStrings(document.Metadata.Tags),
 			CreatedAt:   document.Metadata.CreatedAt,
 			UpdatedAt:   document.Metadata.UpdatedAt,
-			dependsOn:   cloneStrings(document.Metadata.DependsOn),
-			references:  cloneNodeReferences(document.Metadata.References),
+			links:       cloneNodeLinks(document.Metadata.Links),
 		}, graphPath, true, nil
 	case markdown.CommandDocument:
 		return GraphCanvasNode{
@@ -190,8 +188,7 @@ func buildGraphCanvasNode(item markdown.WorkspaceDocument) (GraphCanvasNode, str
 			Tags:        cloneStrings(document.Metadata.Tags),
 			CreatedAt:   document.Metadata.CreatedAt,
 			UpdatedAt:   document.Metadata.UpdatedAt,
-			dependsOn:   cloneStrings(document.Metadata.DependsOn),
-			references:  cloneNodeReferences(document.Metadata.References),
+			links:       cloneNodeLinks(document.Metadata.Links),
 		}, graphPath, true, nil
 	default:
 		return GraphCanvasNode{}, "", false, nil
@@ -288,34 +285,19 @@ func buildGraphCanvasAdjacency(nodesByID map[string]GraphCanvasNode) (map[string
 	}
 
 	for _, node := range nodesByID {
-		for _, dependencyID := range node.dependsOn {
-			if _, ok := nodesByID[dependencyID]; !ok {
+		for _, link := range node.links {
+			if _, ok := nodesByID[link.Node]; !ok {
 				continue
 			}
 
-			edgeID := graphCanvasEdgeID("dependency", dependencyID, node.ID)
+			edgeID := graphCanvasEdgeID("link", node.ID, link.Node)
 			if _, ok := edgeSeen[edgeID]; ok {
 				continue
 			}
 
 			edgeSeen[edgeID] = struct{}{}
-			adjacency[dependencyID] = append(adjacency[dependencyID], node.ID)
-			indegree[node.ID]++
-		}
-
-		for _, ref := range node.references {
-			if _, ok := nodesByID[ref.Node]; !ok {
-				continue
-			}
-
-			edgeID := graphCanvasEdgeID("link", node.ID, ref.Node)
-			if _, ok := edgeSeen[edgeID]; ok {
-				continue
-			}
-
-			edgeSeen[edgeID] = struct{}{}
-			adjacency[node.ID] = append(adjacency[node.ID], ref.Node)
-			indegree[ref.Node]++
+			adjacency[node.ID] = append(adjacency[node.ID], link.Node)
+			indegree[link.Node]++
 		}
 	}
 
@@ -411,31 +393,17 @@ func buildGraphCanvasEdges(nodesByID map[string]GraphCanvasNode) []GraphCanvasEd
 	edgeByID := map[string]GraphCanvasEdge{}
 
 	for _, node := range nodesByID {
-		for _, dependencyID := range node.dependsOn {
-			if _, ok := nodesByID[dependencyID]; !ok {
+		for _, link := range node.links {
+			if _, ok := nodesByID[link.Node]; !ok {
 				continue
 			}
 
 			edge := GraphCanvasEdge{
-				ID:     graphCanvasEdgeID("dependency", dependencyID, node.ID),
-				Source: dependencyID,
-				Target: node.ID,
-				Kind:   "dependency",
-			}
-			edgeByID[edge.ID] = edge
-		}
-
-		for _, ref := range node.references {
-			if _, ok := nodesByID[ref.Node]; !ok {
-				continue
-			}
-
-			edge := GraphCanvasEdge{
-				ID:      graphCanvasEdgeID("link", node.ID, ref.Node),
+				ID:      graphCanvasEdgeID("link", node.ID, link.Node),
 				Source:  node.ID,
-				Target:  ref.Node,
+				Target:  link.Node,
 				Kind:    "link",
-				Context: ref.Context,
+				Context: link.Context,
 			}
 			edgeByID[edge.ID] = edge
 		}

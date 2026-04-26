@@ -75,7 +75,6 @@ export type DocumentResponse = {
   updatedAt?: string;
   body: string;
   status?: string;
-  dependsOn?: string[];
   links?: NodeLink[];
   name?: string;
   env?: Record<string, string>;
@@ -101,7 +100,6 @@ export type DocumentFormState = {
   description: string;
   body: string;
   status: string;
-  dependsOn: string;
   links: string;
   name: string;
   env: string;
@@ -210,7 +208,6 @@ export type CreateDocumentPayload = {
   updatedAt: string;
   body: string;
   status?: string;
-  dependsOn?: string[];
   links?: NodeLink[];
   name?: string;
   env?: Record<string, string>;

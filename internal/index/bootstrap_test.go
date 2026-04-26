@@ -50,11 +50,11 @@ func TestRebuildIndexesMarkdownDocuments(t *testing.T) {
 	indexPath := filepath.Join(flowPath, "config", "flow.index")
 
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "home.md"), "# Home\n\nWorkspace landing page.\n")
-	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "knowledge", "architecture.md"), "---\nid: note-1\ntype: note\ngraph: wrong\ntitle: Architecture\nreferences:\n  - task-1\n---\n\nNote body\n")
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "knowledge", "architecture.md"), "---\nid: note-1\ntype: note\ngraph: wrong\ntitle: Architecture\nlinks:\n  - task-1\n---\n\nNote body\n")
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "demo", "planning", "foundation.md"), "---\nid: task-0\ntype: task\ngraph: wrong\ntitle: Foundation\nstatus: todo\n---\n\nFoundation body\n")
-	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "demo", "execution", "parser.md"), "---\nid: task-1\ntype: task\ngraph: stale\ntitle: Build parser\nstatus: todo\ndependsOn:\n  - task-0\nreferences:\n  - note-1\n---\n\nTask body\n")
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "demo", "execution", "parser.md"), "---\nid: task-1\ntype: task\ngraph: stale\ntitle: Build parser\nstatus: todo\nlinks:\n  - note-1\n---\n\nTask body\n")
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "release", "prepare.md"), "---\nid: cmd-0\ntype: command\ngraph: old\ntitle: Prepare\nname: prepare\nrun: ./prepare.sh\n---\n\nPrepare body\n")
-	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "release", "build.md"), "---\nid: cmd-1\ntype: command\ngraph: release\ntitle: Build\nname: build\ndependsOn:\n  - cmd-0\nreferences:\n  - note-1\nenv:\n  GOOS: linux\n  GOARCH: amd64\nrun: go build ./cmd/flow\n---\n\nCommand body\n")
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "release", "build.md"), "---\nid: cmd-1\ntype: command\ngraph: release\ntitle: Build\nname: build\nlinks:\n  - note-1\nenv:\n  GOOS: linux\n  GOARCH: amd64\nrun: go build ./cmd/flow\n---\n\nCommand body\n")
 
 	if err := Rebuild(indexPath, flowPath); err != nil {
 		t.Fatalf("Rebuild() error = %v", err)
@@ -67,7 +67,7 @@ func TestRebuildIndexesMarkdownDocuments(t *testing.T) {
 	defer database.Close()
 
 	assertQueryCount(t, database, `SELECT COUNT(*) FROM documents`, 6)
-	assertQueryCount(t, database, `SELECT COUNT(*) FROM hard_dependencies`, 2)
+	assertQueryCount(t, database, `SELECT COUNT(*) FROM hard_dependencies`, 0)
 	assertQueryCount(t, database, `SELECT COUNT(*) FROM soft_references`, 3)
 	assertQueryCount(t, database, `SELECT COUNT(*) FROM note_links`, 0)
 	assertQueryCount(t, database, `SELECT COUNT(*) FROM command_env`, 2)
@@ -213,7 +213,7 @@ func TestRebuildBuildsGraphProjectionWithDirectAndTotalCounts(t *testing.T) {
 	}
 }
 
-func TestRebuildRejectsCrossTypeTaskDependency(t *testing.T) {
+func TestRebuildAllowsCrossTypeTaskReference(t *testing.T) {
 	t.Parallel()
 
 	rootDir := t.TempDir()
@@ -221,11 +221,11 @@ func TestRebuildRejectsCrossTypeTaskDependency(t *testing.T) {
 	indexPath := filepath.Join(flowPath, "config", "flow.index")
 
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "release", "build.md"), "---\nid: cmd-1\ntype: command\ngraph: release\ntitle: Build\nname: build\nrun: go build ./cmd/flow\n---\n\nBuild\n")
-	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "demo", "parser.md"), "---\nid: task-1\ntype: task\ngraph: execution\ntitle: Build parser\nstatus: todo\ndependsOn:\n  - cmd-1\n---\n\nTask body\n")
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "demo", "parser.md"), "---\nid: task-1\ntype: task\ngraph: execution\ntitle: Build parser\nstatus: todo\nlinks:\n  - cmd-1\n---\n\nTask body\n")
 
 	err := Rebuild(indexPath, flowPath)
-	if err == nil {
-		t.Fatal("Rebuild() error = nil, want cross-type hard dependency validation error")
+	if err != nil {
+		t.Fatalf("Rebuild() error = %v", err)
 	}
 }
 
@@ -252,8 +252,8 @@ func TestRebuildStoresBidirectionalNoteLinksOnce(t *testing.T) {
 	flowPath := filepath.Join(rootDir, ".flow")
 	indexPath := filepath.Join(flowPath, "config", "flow.index")
 
-	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "demo", "alpha.md"), "---\nid: note-1\ntype: note\ngraph: notes\ntitle: Alpha\nreferences:\n  - note-2\n  - task-1\n---\n\nAlpha\n")
-	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "demo", "beta.md"), "---\nid: note-2\ntype: note\ngraph: notes\ntitle: Beta\nreferences:\n  - note-1\n---\n\nBeta\n")
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "demo", "alpha.md"), "---\nid: note-1\ntype: note\ngraph: notes\ntitle: Alpha\nlinks:\n  - note-2\n  - task-1\n---\n\nAlpha\n")
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "demo", "beta.md"), "---\nid: note-2\ntype: note\ngraph: notes\ntitle: Beta\nlinks:\n  - note-1\n---\n\nBeta\n")
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "demo", "task.md"), "---\nid: task-1\ntype: task\ngraph: execution\ntitle: Task\nstatus: todo\n---\n\nTask\n")
 
 	if err := Rebuild(indexPath, flowPath); err != nil {
@@ -457,7 +457,7 @@ func TestRebuildIndexesInlineReferences(t *testing.T) {
 	indexPath := filepath.Join(flowPath, "config", "flow.index")
 
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "proj", "note-a.md"),
-		"---\nid: note-a\ntype: note\ngraph: proj\ntitle: Alpha\nreferences:\n  - {node: note-b, context: relates to}\n---\n\nAlpha body\n")
+		"---\nid: note-a\ntype: note\ngraph: proj\ntitle: Alpha\nlinks:\n  - {node: note-b, context: relates to}\n---\n\nAlpha body\n")
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "proj", "note-b.md"),
 		"---\nid: note-b\ntype: note\ngraph: proj\ntitle: Beta\n---\n\nBeta body\n")
 

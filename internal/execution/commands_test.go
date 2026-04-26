@@ -25,7 +25,6 @@ func TestPrepareCommandExecutionResolvesShortNameAndMergesEnv(t *testing.T) {
 		Metadata: markdown.CommandMetadata{
 			CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "release", Title: "Build"},
 			Name:         "build",
-			DependsOn:    []string{"cmd-0"},
 			Env: map[string]string{
 				"GOOS":   "linux",
 				"GOARCH": "amd64",
@@ -41,10 +40,6 @@ func TestPrepareCommandExecutionResolvesShortNameAndMergesEnv(t *testing.T) {
 
 	if execution.ID != "cmd-1" || execution.Name != "build" {
 		t.Fatalf("execution = %#v", execution)
-	}
-
-	if len(execution.DependencyIDs) != 1 || execution.DependencyIDs[0] != "cmd-0" {
-		t.Fatalf("execution.DependencyIDs = %#v, want [cmd-0]", execution.DependencyIDs)
 	}
 
 	env := envMap(execution.Environment)
@@ -86,22 +81,13 @@ func TestPrepareCommandExecutionResolvesByID(t *testing.T) {
 	}
 }
 
-func TestPrepareCommandExecutionRejectsMissingDependency(t *testing.T) {
+func TestPrepareCommandExecutionRejectsMissingCommand(t *testing.T) {
 	t.Parallel()
 
 	root := createExecutionTestWorkspace(t)
-	writeExecutionDocument(t, filepath.Join(root.FlowPath, "data", "content", "release", "build.md"), markdown.CommandDocument{
-		Metadata: markdown.CommandMetadata{
-			CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "release", Title: "Build"},
-			Name:         "build",
-			DependsOn:    []string{"cmd-0"},
-			Run:          "go build ./cmd/flow",
-		},
-	})
-
-	_, err := PrepareCommandExecution(root, "build", nil)
+	_, err := PrepareCommandExecution(root, "missing", nil)
 	if err == nil {
-		t.Fatal("PrepareCommandExecution() error = nil, want missing dependency error")
+		t.Fatal("PrepareCommandExecution() error = nil, want missing command error")
 	}
 }
 

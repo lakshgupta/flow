@@ -20,8 +20,7 @@ type NodeView struct {
 	Body          string     `json:"body"`
 	From          string     `json:"from,omitempty"`
 	To            string     `json:"to,omitempty"`
-	DependsOn     []string   `json:"dependsOn,omitempty"`
-	References    []string   `json:"references,omitempty"`
+	Links         []string   `json:"links,omitempty"`
 	Run           string     `json:"run,omitempty"`
 	OutboundEdges []EdgeView `json:"outboundEdges,omitempty"`
 	InboundEdges  []EdgeView `json:"inboundEdges,omitempty"`
@@ -87,20 +86,11 @@ func ReadNodeView(indexPath, id, graph string) (NodeView, error) {
 		return view, nil
 	}
 
-	dependsOn, err := queryStringColumn(database,
-		`SELECT depends_on_id FROM hard_dependencies WHERE document_id = ? ORDER BY depends_on_id`,
-		trimmedID,
-	)
+	links, err := queryNodeReferences(database, trimmedID, view.Type)
 	if err != nil {
-		return NodeView{}, fmt.Errorf("query hard dependencies: %w", err)
+		return NodeView{}, fmt.Errorf("query links: %w", err)
 	}
-	view.DependsOn = dependsOn
-
-	references, err := queryNodeReferences(database, trimmedID, view.Type)
-	if err != nil {
-		return NodeView{}, fmt.Errorf("query references: %w", err)
-	}
-	view.References = references
+	view.Links = links
 
 	outbound, err := queryOutboundEdges(database, trimmedID, trimmedGraph)
 	if err != nil {
