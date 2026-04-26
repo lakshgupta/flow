@@ -97,24 +97,47 @@ export function graphCanvasTypeClassName(value: string): string {
   return "note";
 }
 
+function graphCanvasNodeShape(value?: string): string {
+  return value === "circle" ? "circle" : "card";
+}
+
+function graphCanvasNodeDimensions(shape?: string): { width: number; height: number } {
+  if (graphCanvasNodeShape(shape) === "circle") {
+    return { width: 132, height: 132 };
+  }
+
+  return { width: CANVAS_NODE_W, height: CANVAS_NODE_H };
+}
+
 export function renderGraphCanvasNodeLabel(data: GraphCanvasFlowNodeInput): React.ReactNode {
   return (
     <article
       className={[
         "graph-canvas-node",
         `graph-canvas-node-${graphCanvasTypeClassName(data.type)}`,
+        data.shape === "circle" ? "graph-canvas-node-circle" : "",
         data.isCanvasSelected ? "graph-canvas-node-selected" : "",
         data.isPanelDocument ? "graph-canvas-node-panel" : "",
       ]
         .filter((value) => value !== "")
         .join(" ")}
     >
-      <div className="graph-canvas-node-topline">
-        <span className="graph-canvas-node-badge">{graphCanvasTypeLabel(data.type)}</span>
-        <span className="graph-canvas-node-graph">{data.graph}</span>
-      </div>
-      <strong className="graph-canvas-node-title">{data.title}</strong>
-      {data.description !== "" ? <p className="graph-canvas-node-description">{data.description}</p> : null}
+      {data.shape === "circle" ? (
+        <>
+          <span className="graph-canvas-node-badge">{graphCanvasTypeLabel(data.type)}</span>
+          <strong className="graph-canvas-node-title">{data.title}</strong>
+          <span className="graph-canvas-node-graph">{data.graph}</span>
+        </>
+      ) : (
+        <>
+          <div className="graph-canvas-node-topline">
+            <span className="graph-canvas-node-badge">{graphCanvasTypeLabel(data.type)}</span>
+            <span className="graph-canvas-node-graph">{data.graph}</span>
+          </div>
+          <strong className="graph-canvas-node-title">{data.title}</strong>
+          {data.description !== "" ? <p className="graph-canvas-node-description">{data.description}</p> : null}
+        </>
+      )}
     </article>
   );
 }
@@ -130,12 +153,14 @@ export function buildGraphCanvasFlowNodes(
   }
 
   return graphCanvasData.nodes.map((item) => ({
+    ...graphCanvasNodeDimensions(item.shape),
     id: item.id,
     position: graphCanvasPositions[item.id] ?? item.position,
     data: {
       label: renderGraphCanvasNodeLabel({
         id: item.id,
         type: item.type,
+        shape: graphCanvasNodeShape(item.shape),
         title: item.title,
         description: item.description,
         graph: item.graph,
@@ -147,6 +172,7 @@ export function buildGraphCanvasFlowNodes(
       }),
       id: item.id,
       type: item.type,
+      shape: graphCanvasNodeShape(item.shape),
       title: item.title,
       description: item.description,
       graph: item.graph,
@@ -157,11 +183,11 @@ export function buildGraphCanvasFlowNodes(
       isPanelDocument: item.id === selectedDocumentId,
     },
     className: "graph-canvas-ghost-node",
-    width: 288,
-    height: 130,
+    width: graphCanvasNodeDimensions(item.shape).width,
+    height: graphCanvasNodeDimensions(item.shape).height,
     style: {
-      width: "288px",
-      height: "130px",
+      width: `${graphCanvasNodeDimensions(item.shape).width}px`,
+      height: `${graphCanvasNodeDimensions(item.shape).height}px`,
       padding: 0,
       border: "none",
       borderRadius: 0,
@@ -190,11 +216,17 @@ export function buildGraphCanvasFlowEdges(
     const isConnected =
       selectedCanvasNodeId !== "" &&
       (edge.source === selectedCanvasNodeId || edge.target === selectedCanvasNodeId);
-    const edgeColor = hasSelection
-      ? isConnected
-        ? "var(--graph-edge)"
-        : "var(--graph-edge-dim)"
-      : "var(--graph-edge)";
+    const edgeColor = isLinkEdge
+      ? hasSelection
+        ? isConnected
+          ? "var(--graph-edge)"
+          : "var(--graph-edge-dim)"
+        : "var(--graph-edge)"
+      : hasSelection
+        ? isConnected
+          ? "var(--graph-reference-edge)"
+          : "var(--graph-reference-edge-dim)"
+        : "var(--graph-reference-edge)";
 
     return {
       id: edge.id,
@@ -216,6 +248,7 @@ export function buildGraphCanvasFlowEdges(
         stroke: edgeColor,
         strokeWidth: hasSelection ? (isConnected ? 2.6 : 1.25) : 2,
         opacity: hasSelection ? (isConnected ? 1 : 0.25) : 0.85,
+        strokeDasharray: isLinkEdge ? undefined : "6 4",
       },
     };
   });
@@ -263,11 +296,16 @@ const COLLIDE_R = Math.sqrt(NODE_W * NODE_W + NODE_H * NODE_H) / 2 + 28;
 type PortSpec = { x: number; y: number; position: Position };
 
 function getNodePorts(pos: GraphCanvasPosition): PortSpec[] {
+  return getNodePortsForShape(pos, "card");
+}
+
+function getNodePortsForShape(pos: GraphCanvasPosition, shape?: string): PortSpec[] {
+  const dimensions = graphCanvasNodeDimensions(shape);
   return [
-    { x: pos.x + CANVAS_NODE_W / 2, y: pos.y, position: Position.Top },
-    { x: pos.x + CANVAS_NODE_W, y: pos.y + CANVAS_NODE_H / 2, position: Position.Right },
-    { x: pos.x + CANVAS_NODE_W / 2, y: pos.y + CANVAS_NODE_H, position: Position.Bottom },
-    { x: pos.x, y: pos.y + CANVAS_NODE_H / 2, position: Position.Left },
+    { x: pos.x + dimensions.width / 2, y: pos.y, position: Position.Top },
+    { x: pos.x + dimensions.width, y: pos.y + dimensions.height / 2, position: Position.Right },
+    { x: pos.x + dimensions.width / 2, y: pos.y + dimensions.height, position: Position.Bottom },
+    { x: pos.x, y: pos.y + dimensions.height / 2, position: Position.Left },
   ];
 }
 
@@ -277,11 +315,11 @@ function getNodePorts(pos: GraphCanvasPosition): PortSpec[] {
  * re-route to the closest pair of connection points as nodes are dragged.
  */
 export function pickBestEdgePorts(
-  sourcePos: GraphCanvasPosition,
-  targetPos: GraphCanvasPosition,
+  sourceNode: Node<GraphCanvasFlowNodeData>,
+  targetNode: Node<GraphCanvasFlowNodeData>,
 ): { sourceX: number; sourceY: number; sourcePosition: Position; targetX: number; targetY: number; targetPosition: Position } {
-  const sourcePorts = getNodePorts(sourcePos);
-  const targetPorts = getNodePorts(targetPos);
+  const sourcePorts = getNodePortsForShape(graphCanvasOverlayPosition(sourceNode), sourceNode.data.shape);
+  const targetPorts = getNodePortsForShape(graphCanvasOverlayPosition(targetNode), targetNode.data.shape);
 
   let bestDistSq = Infinity;
   let bestSrc = sourcePorts[2]; // default: bottom

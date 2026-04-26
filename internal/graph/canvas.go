@@ -39,6 +39,7 @@ type GraphCanvasLayerGuidance struct {
 type GraphCanvasNode struct {
 	ID                string              `json:"id"`
 	Type              string              `json:"type"`
+	Shape             string              `json:"shape,omitempty"`
 	FeatureSlug       string              `json:"featureSlug"`
 	Graph             string              `json:"graph"`
 	Title             string              `json:"title"`
@@ -50,7 +51,13 @@ type GraphCanvasNode struct {
 	Position          GraphCanvasPosition `json:"position"`
 	PositionPersisted bool                `json:"positionPersisted"`
 	links             []markdown.NodeLink
+	references        []graphCanvasReference
 	orderIndex        int
+}
+
+type graphCanvasReference struct {
+	TargetID string
+	Context  string
 }
 
 // GraphCanvasEdge stores one projected relationship between two visible canvas nodes.
@@ -88,20 +95,70 @@ func BuildGraphCanvasView(documents []markdown.WorkspaceDocument, selectedGraph 
 	}
 
 	nodesByID := map[string]GraphCanvasNode{}
+	allNodesByID := map[string]GraphCanvasNode{}
 	orderedIDs := []string{}
+	visibleDocuments := make([]markdown.WorkspaceDocument, 0)
 
 	for _, item := range documents {
 		node, graphPath, ok, err := buildGraphCanvasNode(item)
 		if err != nil {
 			return GraphCanvasView{}, err
 		}
-		if !ok || !graphScopeContains(trimmedSelectedGraph, graphPath) {
+		if !ok {
+			continue
+		}
+
+		allNodesByID[node.ID] = node
+		if !graphScopeContains(trimmedSelectedGraph, graphPath) {
 			continue
 		}
 
 		node.orderIndex = len(orderedIDs)
 		nodesByID[node.ID] = node
 		orderedIDs = append(orderedIDs, node.ID)
+		visibleDocuments = append(visibleDocuments, item)
+	}
+
+	for _, item := range visibleDocuments {
+		sourceID, sourceGraph, ok := graphCanvasDocumentIdentity(item.Document)
+		if !ok {
+			continue
+		}
+
+		sourceNode, ok := nodesByID[sourceID]
+		if !ok {
+			continue
+		}
+
+		resolved, err := markdown.ResolveInlineReferences(documents, item)
+		if err != nil {
+			return GraphCanvasView{}, fmt.Errorf("resolve graph canvas references for %s: %w", sourceID, err)
+		}
+
+		for _, reference := range resolved {
+			targetNode, ok := allNodesByID[reference.Target.ID]
+			if !ok {
+				targetNode = buildGraphCanvasReferenceNode(reference.Target)
+				allNodesByID[targetNode.ID] = targetNode
+			}
+
+			if targetNode.Graph != sourceGraph {
+				targetNode.Shape = "circle"
+			}
+
+			if _, exists := nodesByID[targetNode.ID]; !exists {
+				targetNode.orderIndex = len(orderedIDs)
+				nodesByID[targetNode.ID] = targetNode
+				orderedIDs = append(orderedIDs, targetNode.ID)
+			} else {
+				nodesByID[targetNode.ID] = targetNode
+			}
+			allNodesByID[targetNode.ID] = targetNode
+
+			sourceNode.references = appendGraphCanvasReference(sourceNode.references, targetNode.ID, reference.Target.Breadcrumb)
+		}
+
+		nodesByID[sourceID] = sourceNode
 	}
 
 	seedPlan := seedGraphCanvasPositions(nodesByID, orderedIDs)
@@ -131,6 +188,46 @@ func BuildGraphCanvasView(documents []markdown.WorkspaceDocument, selectedGraph 
 		Nodes:           nodes,
 		Edges:           edges,
 	}, nil
+}
+
+func graphCanvasDocumentIdentity(document markdown.Document) (string, string, bool) {
+	switch value := document.(type) {
+	case markdown.NoteDocument:
+		return value.Metadata.ID, value.Metadata.Graph, true
+	case markdown.TaskDocument:
+		return value.Metadata.ID, value.Metadata.Graph, true
+	case markdown.CommandDocument:
+		return value.Metadata.ID, value.Metadata.Graph, true
+	default:
+		return "", "", false
+	}
+}
+
+func buildGraphCanvasReferenceNode(target markdown.ReferenceTarget) GraphCanvasNode {
+	featureSlug := strings.TrimSpace(target.Graph)
+	if parts := strings.Split(featureSlug, "/"); len(parts) > 0 && parts[0] != "" {
+		featureSlug = parts[0]
+	}
+
+	return GraphCanvasNode{
+		ID:          target.ID,
+		Type:        string(target.Type),
+		FeatureSlug: featureSlug,
+		Graph:       target.Graph,
+		Title:       target.Title,
+		Description: "",
+		Path:        target.Path,
+	}
+}
+
+func appendGraphCanvasReference(references []graphCanvasReference, targetID string, context string) []graphCanvasReference {
+	for _, reference := range references {
+		if reference.TargetID == targetID {
+			return references
+		}
+	}
+
+	return append(references, graphCanvasReference{TargetID: targetID, Context: context})
 }
 
 type graphCanvasSeedPlan struct {
@@ -299,6 +396,21 @@ func buildGraphCanvasAdjacency(nodesByID map[string]GraphCanvasNode) (map[string
 			adjacency[node.ID] = append(adjacency[node.ID], link.Node)
 			indegree[link.Node]++
 		}
+
+		for _, reference := range node.references {
+			if _, ok := nodesByID[reference.TargetID]; !ok {
+				continue
+			}
+
+			edgeID := graphCanvasEdgeID("reference", node.ID, reference.TargetID)
+			if _, ok := edgeSeen[edgeID]; ok {
+				continue
+			}
+
+			edgeSeen[edgeID] = struct{}{}
+			adjacency[node.ID] = append(adjacency[node.ID], reference.TargetID)
+			indegree[reference.TargetID]++
+		}
 	}
 
 	for id, targets := range adjacency {
@@ -404,6 +516,21 @@ func buildGraphCanvasEdges(nodesByID map[string]GraphCanvasNode) []GraphCanvasEd
 				Target:  link.Node,
 				Kind:    "link",
 				Context: link.Context,
+			}
+			edgeByID[edge.ID] = edge
+		}
+
+		for _, reference := range node.references {
+			if _, ok := nodesByID[reference.TargetID]; !ok {
+				continue
+			}
+
+			edge := GraphCanvasEdge{
+				ID:      graphCanvasEdgeID("reference", node.ID, reference.TargetID),
+				Source:  node.ID,
+				Target:  reference.TargetID,
+				Kind:    "reference",
+				Context: reference.Context,
 			}
 			edgeByID[edge.ID] = edge
 		}

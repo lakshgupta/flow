@@ -166,6 +166,7 @@ export type GraphCanvasLayerGuidance = {
 export type GraphCanvasNodePayload = {
   id: string;
   type: string;
+  shape?: string;
   graph: string;
   title: string;
   description: string;
@@ -241,6 +242,7 @@ export type GraphCanvasFlowNodeData = {
   label: ReactNode;
   id: string;
   type: string;
+  shape: string;
   title: string;
   description: string;
   graph: string;

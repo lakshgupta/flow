@@ -2529,16 +2529,17 @@ function FlowApp() {
                                   const sourceNode = graphCanvasNodes.find((node) => node.id === edge.source);
                                   const targetNode = graphCanvasNodes.find((node) => node.id === edge.target);
                                   if (!sourceNode || !targetNode) return null;
-                                  const sourcePos = graphCanvasOverlayPosition(sourceNode);
-                                  const targetPos = graphCanvasOverlayPosition(targetNode);
+                                  const isReferenceEdge = edge.kind === "reference";
                                   const isConnected = selectedCanvasNodeId !== "" &&
                                     (edge.source === selectedCanvasNodeId || edge.target === selectedCanvasNodeId);
                                   const hasSelection = selectedCanvasNodeId !== "";
                                   const isSelectedEdge = edge.id === selectedEdgeId;
-                                  const stroke = hasSelection ? (isConnected ? "var(--graph-edge)" : "var(--graph-edge-dim)") : "var(--graph-edge)";
+                                  const stroke = isReferenceEdge
+                                    ? (hasSelection ? (isConnected ? "var(--graph-reference-edge)" : "var(--graph-reference-edge-dim)") : "var(--graph-reference-edge)")
+                                    : (hasSelection ? (isConnected ? "var(--graph-edge)" : "var(--graph-edge-dim)") : "var(--graph-edge)");
                                   const strokeWidth = isSelectedEdge ? 3.4 : hasSelection ? (isConnected ? 2.6 : 1.25) : 2;
                                   const opacity = hasSelection ? (isConnected ? 1 : 0.25) : 0.85;
-                                  const ports = pickBestEdgePorts(sourcePos, targetPos);
+                                  const ports = pickBestEdgePorts(sourceNode, targetNode);
                                   const [edgePath, labelX, labelY] = getSmoothStepPath({ ...ports, borderRadius: 8 });
                                   const markerId = (isConnected || !hasSelection) ? "graph-canvas-arrow" : "graph-canvas-arrow-dim";
                                   return (
@@ -2552,6 +2553,11 @@ function FlowApp() {
                                         pointerEvents="stroke"
                                         onClick={(event) => {
                                           event.stopPropagation();
+                                          if (isReferenceEdge) {
+                                            clearEdgeClickTimer();
+                                            setSelectedEdgeId(edge.id);
+                                            return;
+                                          }
                                           handleGraphCanvasEdgeClick(edge.id, edge.source);
                                         }}
                                         onMouseEnter={() => {
@@ -2566,10 +2572,16 @@ function FlowApp() {
                                           setHoveredEdgeTooltip((current) => current?.edgeId === edge.id ? null : current);
                                         }}
                                         onDoubleClick={(event) => {
+                                          if (isReferenceEdge) {
+                                            return;
+                                          }
                                           event.stopPropagation();
                                           handleGraphCanvasEdgeDoubleClick(edge.source, edge.target, edge.context ?? "", edge.id);
                                         }}
                                         onContextMenu={(event) => {
+                                          if (isReferenceEdge) {
+                                            return;
+                                          }
                                           event.preventDefault();
                                           event.stopPropagation();
                                           void handleDeleteEdge(edge.source, edge.target);
@@ -2581,7 +2593,8 @@ function FlowApp() {
                                         strokeWidth={strokeWidth}
                                         fill="none"
                                         opacity={opacity}
-                                        markerEnd={`url(#${markerId})`}
+                                        markerEnd={isReferenceEdge ? undefined : `url(#${markerId})`}
+                                        strokeDasharray={isReferenceEdge ? "6 4" : undefined}
                                         pointerEvents="none"
                                       >
                                         {edge.context ? <title>{edge.context}</title> : null}

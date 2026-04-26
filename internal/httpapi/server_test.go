@@ -600,8 +600,8 @@ func TestNewMuxServesGraphCanvasScopeWithPersistedAndSeededPositions(t *testing.
 		t.Fatalf("view.SelectedGraph = %q, want execution", view.SelectedGraph)
 	}
 
-	if len(view.Nodes) != 4 {
-		t.Fatalf("len(view.Nodes) = %d, want 4", len(view.Nodes))
+	if len(view.Nodes) != 5 {
+		t.Fatalf("len(view.Nodes) = %d, want 5", len(view.Nodes))
 	}
 	if view.LayerGuidance.MagneticThresholdPx != 18 {
 		t.Fatalf("view.LayerGuidance.MagneticThresholdPx = %v, want 18", view.LayerGuidance.MagneticThresholdPx)
@@ -628,13 +628,25 @@ func TestNewMuxServesGraphCanvasScopeWithPersistedAndSeededPositions(t *testing.
 		t.Fatalf("task.Position = %#v, want layer-0 seeded position", task.Position)
 	}
 
-	if len(view.Edges) != 3 {
-		t.Fatalf("len(view.Edges) = %d, want 3", len(view.Edges))
+	parserDetails := graphCanvasNodeByID(t, view.Nodes, "note-2")
+	if parserDetails.Shape != "circle" {
+		t.Fatalf("parserDetails.Shape = %q, want circle", parserDetails.Shape)
+	}
+
+	releaseReference := graphCanvasNodeByID(t, view.Nodes, "note-3")
+	if releaseReference.Shape != "circle" {
+		t.Fatalf("releaseReference.Shape = %q, want circle", releaseReference.Shape)
+	}
+
+	if len(view.Edges) != 5 {
+		t.Fatalf("len(view.Edges) = %d, want 5", len(view.Edges))
 	}
 	assertGraphCanvasEdgeIDs(t, view.Edges, []string{
 		"link:note-1:cmd-1",
 		"link:task-1:note-1",
 		"link:note-2:note-1",
+		"reference:note-1:note-2",
+		"reference:note-1:note-3",
 	})
 }
 
@@ -652,8 +664,8 @@ func TestNewMuxGraphCanvasRebuildsMissingIndex(t *testing.T) {
 	}
 
 	view := performJSONRequest[graph.GraphCanvasView](t, handler, http.MethodGet, "/api/graph-canvas?graph=execution")
-	if len(view.Nodes) != 4 {
-		t.Fatalf("len(view.Nodes) = %d, want 4", len(view.Nodes))
+	if len(view.Nodes) != 5 {
+		t.Fatalf("len(view.Nodes) = %d, want 5", len(view.Nodes))
 	}
 	if _, err := os.Stat(root.IndexPath); err != nil {
 		t.Fatalf("Stat(index) error = %v", err)
@@ -924,7 +936,7 @@ func createGraphCanvasHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "execution", Title: "Overview", Description: "Execution overview"},
 			Links:        []markdown.NodeLink{{Node: "cmd-1"}},
 		},
-		Body: "Overview body\n",
+		Body: "Overview body with [[execution/parser > Parser Details]] and [[release > Launch]].\n",
 	})
 	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "execution", "build.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
@@ -947,6 +959,12 @@ func createGraphCanvasHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 			Run:          "./parser.sh",
 		},
 		Body: "Run parser\n",
+	})
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "release", "launch.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-3", Type: markdown.NoteType, Graph: "release", Title: "Launch"},
+		},
+		Body: "Launch body\n",
 	})
 
 	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {

@@ -321,10 +321,120 @@ describe("App graph canvas flows", () => {
     });
 
     await user.dblClick(screen.getByRole("button", { name: "Open note-1" }));
-
     const documentLayout = await screen.findByLabelText("Document content layout");
     expect(within(documentLayout).getByText("Overview body")).toBeInTheDocument();
     expect(screen.queryByLabelText("Graph node document")).not.toBeInTheDocument();
+  });
+
+  it("renders dotted reference edges and circular cross-graph reference targets on the canvas", async () => {
+    const graphCanvasResponse = {
+      selectedGraph: "execution",
+      availableGraphs: ["execution", "release"],
+      layerGuidance: {
+        magneticThresholdPx: 18,
+        guides: [
+          { layer: 0, x: 140 },
+          { layer: 1, x: 460 },
+        ],
+      },
+      nodes: [
+        {
+          id: "note-1",
+          type: "note",
+          graph: "execution",
+          title: "Overview",
+          description: "Execution overview",
+          path: "data/graphs/execution/overview.md",
+          featureSlug: "execution",
+          position: { x: 140, y: 120 },
+          positionPersisted: false,
+        },
+        {
+          id: "note-3",
+          type: "note",
+          shape: "circle",
+          graph: "release",
+          title: "Launch",
+          description: "",
+          path: "data/graphs/release/launch.md",
+          featureSlug: "release",
+          position: { x: 460, y: 120 },
+          positionPersisted: false,
+        },
+      ],
+      edges: [
+        {
+          id: "reference:note-1:note-3",
+          source: "note-1",
+          target: "note-3",
+          kind: "reference",
+          context: "release > Launch",
+        },
+      ],
+    };
+    const documentResponse = {
+      id: "note-1",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Overview",
+      description: "Execution overview",
+      path: "data/graphs/execution/overview.md",
+      tags: [],
+      body: "Overview body\n",
+      links: [],
+      relatedNoteIds: [],
+    };
+
+    installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        if ((init?.method ?? "GET") === "PUT") {
+          return workspaceResponse;
+        }
+
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/graphs/note") {
+        return noteGraphs("execution", "release");
+      }
+
+      if (url === "/api/graphs/task") {
+        return emptyGraphLists.tasks;
+      }
+
+      if (url === "/api/graphs/command") {
+        return emptyGraphLists.commands;
+      }
+
+      if (url === "/api/graph-canvas?graph=execution") {
+        return graphCanvasResponse;
+      }
+
+      if (url === "/api/documents/note-1") {
+        return documentResponse;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    const executionButton = (await screen.findByText("Execution")).closest('[data-sidebar="menu-sub-button"]');
+    if (executionButton === null) {
+      throw new Error("missing execution graph button");
+    }
+
+    await user.click(executionButton);
+    await screen.findByTestId("flow-node-note-1");
+
+    expect(document.querySelector('[data-nodeid="note-3"] .graph-canvas-node-circle')).not.toBeNull();
+    expect(document.querySelector('.graph-canvas-overlay svg path[stroke-dasharray="6 4"]')).not.toBeNull();
   });
 
   it("follows inline references by appending and replacing thread panels", async () => {
