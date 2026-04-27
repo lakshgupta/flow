@@ -2,7 +2,6 @@ import {
   applyNodeChanges,
   Background,
   Controls,
-  getSmoothStepPath,
   ReactFlow,
   ReactFlowProvider,
   useViewport,
@@ -10,12 +9,16 @@ import {
   type Node,
   type NodeChange,
 } from "@xyflow/react";
-import { CalendarDays, CheckSquare, FileText, Info, Maximize2, Minimize2, PaintbrushVertical, Search, Settings, Terminal, Trash2, TriangleAlert, X } from "lucide-react";
+import { CalendarDays, FileText, Info, Maximize2, Minimize2, PaintbrushVertical, Search, Settings, Trash2, TriangleAlert, X } from "lucide-react";
 import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppSidebar } from "./components/AppSidebar";
+import type { GraphCanvasOverlayController } from "./components/graphCanvasOverlayController";
+import { GraphCanvasOverlayInteraction } from "./components/GraphCanvasOverlayInteraction";
+import { GraphCanvasOverlayNodes } from "./components/GraphCanvasOverlayNodes";
 import { GraphTree } from "./components/GraphTree";
 import { HomeCalendarPanel } from "./components/HomeCalendarPanel";
+import { GraphCanvasOverlayEdges } from "./components/GraphCanvasOverlayEdges";
 import { TableOfContents } from "./components/TableOfContents";
 import { DocumentPropertiesPanel } from "./components/DocumentPropertiesPanel";
 import { Badge } from "./components/ui/badge";
@@ -63,11 +66,9 @@ import {
   ContextEdge,
   EdgeEditContext,
   countConnectedGraphCanvasEdges,
-  graphCanvasOverlayPosition,
   graphCanvasTypeLabel,
   normalizeGraphCanvasResponse,
   selectedGraphCanvasNode,
-  pickBestEdgePorts,
 } from "./lib/graphCanvasUtils";
 import { markdownToHTML, parseFlowReferenceHref } from "./richText";
 import { useTheme } from "./lib/theme";
@@ -351,6 +352,46 @@ function FlowApp() {
   const hasRightRailDocument = selectedDocumentId !== "" && selectedDocumentOpenMode === "right-rail";
   const showRightRailDocumentButton = activeSurface.kind === "graph" && !isCenterDocumentOpen && (selectedCanvasNode !== null || hasRightRailDocument);
   const selectedNodeMatchesRightRailDocument = selectedCanvasNode !== null && hasRightRailDocument && selectedDocumentId === selectedCanvasNode.id;
+  const graphCanvasOverlayController: GraphCanvasOverlayController = {
+    state: {
+      edges: graphCanvasData?.edges ?? [],
+      graphCanvasNodes,
+      rfViewport,
+      selectedCanvasNodeId,
+      selectedEdgeId,
+      hoveredEdgeTooltip,
+      shiftSelectedNodes,
+      connectingTarget,
+      canvasContextMenu,
+      connectingFrom,
+      connectingPointerPos,
+      connectingStartPos,
+    },
+    actions: {
+      clearEdgeClickTimer,
+      selectEdge: setSelectedEdgeId,
+      handleGraphCanvasEdgeClick,
+      handleGraphCanvasEdgeHover,
+      clearHoveredEdgeTooltip: (edgeId) => {
+        setHoveredEdgeTooltip((current) => current?.edgeId === edgeId ? null : current);
+      },
+      handleGraphCanvasEdgeDoubleClick,
+      handleDeleteEdge,
+      onNodeClick: handleGraphCanvasOverlayNodeClick,
+      onNodeDoubleClick: handleGraphCanvasOverlayNodeDoubleClick,
+      onNodePointerDown: handleGraphCanvasOverlayPointerDown,
+      onHandlePointerDown: handleConnectionHandlePointerDown,
+      onMerge: () => {
+        void handleMergeDocuments();
+      },
+      closeCanvasContextMenu: () => {
+        setCanvasContextMenu(null);
+      },
+      createGraphDocument: (type) => {
+        void handleCreateGraphDocument(type);
+      },
+    },
+  };
   const documentGraphById = useMemo(() => {
     const graphByID = new Map<string, string>();
 
@@ -764,6 +805,34 @@ function FlowApp() {
 
   function isAdditiveNodeSelection(event: Pick<React.MouseEvent, "shiftKey" | "ctrlKey" | "metaKey">): boolean {
     return event.shiftKey || event.ctrlKey || event.metaKey;
+  }
+
+  function handleGraphCanvasOverlayNodeClick(event: React.MouseEvent<HTMLDivElement>, nodeId: string): void {
+    event.stopPropagation();
+    setHoveredEdgeTooltip(null);
+    if (isAdditiveNodeSelection(event)) {
+      setShiftSelectedNodes((prev) => {
+        if (prev.includes(nodeId)) {
+          return prev.filter((id) => id !== nodeId);
+        }
+        if (prev.length > 0) {
+          const firstType = graphCanvasNodes.find((n) => n.id === prev[0])?.data.type;
+          if (firstType !== graphCanvasNodes.find((n) => n.id === nodeId)?.data.type) {
+            return prev;
+          }
+        }
+        return [...prev, nodeId];
+      });
+      return;
+    }
+
+    setSelectedCanvasNodeId(nodeId);
+    setShiftSelectedNodes([]);
+  }
+
+  function handleGraphCanvasOverlayNodeDoubleClick(event: React.MouseEvent<HTMLDivElement>, nodeId: string): void {
+    event.stopPropagation();
+    handleOpenCanvasDocument(nodeId);
   }
 
   function startSidebarResize(
@@ -2466,224 +2535,11 @@ function FlowApp() {
                           <Background gap={32} color="var(--muted-foreground)" />
                         </ReactFlow>
                         </EdgeEditContext.Provider>
-                        {canvasContextMenu && (
-                          <div
-                            className="canvas-context-menu"
-                            style={{ left: canvasContextMenu.x, top: canvasContextMenu.y }}
-                            onContextMenu={(e) => e.preventDefault()}
-                          >
-                            <button type="button" className="flow-dropdown-item" onClick={() => { setCanvasContextMenu(null); void handleCreateGraphDocument("note"); }}>
-                              <FileText size={13} /> Add note
-                            </button>
-                            <button type="button" className="flow-dropdown-item" onClick={() => { setCanvasContextMenu(null); void handleCreateGraphDocument("task"); }}>
-                              <CheckSquare size={13} /> Add task
-                            </button>
-                            <button type="button" className="flow-dropdown-item" onClick={() => { setCanvasContextMenu(null); void handleCreateGraphDocument("command"); }}>
-                              <Terminal size={13} /> Add command
-                            </button>
-                          </div>
-                        )}
-                        {connectingFrom !== null && connectingPointerPos !== null && connectingStartPos !== null && (
-                          <svg
-                            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 9998 }}
-                          >
-                            <line
-                              x1={connectingStartPos.x}
-                              y1={connectingStartPos.y}
-                              x2={connectingPointerPos.x}
-                              y2={connectingPointerPos.y}
-                              stroke="var(--graph-edge)"
-                              strokeWidth={2.5}
-                              strokeDasharray="6 4"
-                            />
-                            <circle
-                              cx={connectingPointerPos.x}
-                              cy={connectingPointerPos.y}
-                              r={5}
-                              fill={connectingTarget !== null ? "var(--graph-edge)" : "var(--graph-edge-hover)"}
-                            />
-                          </svg>
-                        )}
+                        <GraphCanvasOverlayInteraction controller={graphCanvasOverlayController} />
                         <div className="graph-canvas-overlay">
-                          {graphCanvasData.edges.length > 0 && (
-                            <svg
-                              style={{
-                                position: "absolute",
-                                inset: 0,
-                                width: "100%",
-                                height: "100%",
-                                overflow: "visible",
-                                pointerEvents: "none",
-                              }}
-                            >
-                              <defs>
-                                <marker id="graph-canvas-arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
-                                  <path d="M 0 0 L 10 3.5 L 0 7 Z" fill="var(--graph-edge)" />
-                                </marker>
-                                <marker id="graph-canvas-arrow-dim" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
-                                  <path d="M 0 0 L 10 3.5 L 0 7 Z" fill="var(--graph-edge-dim)" />
-                                </marker>
-                              </defs>
-                              <g transform={`translate(${rfViewport.x} ${rfViewport.y}) scale(${rfViewport.zoom})`}>
-                                {graphCanvasData.edges.map((edge) => {
-                                  const sourceNode = graphCanvasNodes.find((node) => node.id === edge.source);
-                                  const targetNode = graphCanvasNodes.find((node) => node.id === edge.target);
-                                  if (!sourceNode || !targetNode) return null;
-                                  const isReferenceEdge = edge.kind === "reference";
-                                  const isConnected = selectedCanvasNodeId !== "" &&
-                                    (edge.source === selectedCanvasNodeId || edge.target === selectedCanvasNodeId);
-                                  const hasSelection = selectedCanvasNodeId !== "";
-                                  const isSelectedEdge = edge.id === selectedEdgeId;
-                                  const stroke = isReferenceEdge
-                                    ? (hasSelection ? (isConnected ? "var(--graph-reference-edge)" : "var(--graph-reference-edge-dim)") : "var(--graph-reference-edge)")
-                                    : (hasSelection ? (isConnected ? "var(--graph-edge)" : "var(--graph-edge-dim)") : "var(--graph-edge)");
-                                  const strokeWidth = isSelectedEdge ? 3.4 : hasSelection ? (isConnected ? 2.6 : 1.25) : 2;
-                                  const opacity = hasSelection ? (isConnected ? 1 : 0.25) : 0.85;
-                                  const ports = pickBestEdgePorts(sourceNode, targetNode);
-                                  const [edgePath, labelX, labelY] = getSmoothStepPath({ ...ports, borderRadius: 8 });
-                                  const markerId = (isConnected || !hasSelection) ? "graph-canvas-arrow" : "graph-canvas-arrow-dim";
-                                  return (
-                                    <g key={edge.id}>
-                                      <path
-                                        d={edgePath}
-                                        stroke="transparent"
-                                        strokeWidth={20}
-                                        strokeOpacity={0}
-                                        fill="none"
-                                        pointerEvents="stroke"
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          if (isReferenceEdge) {
-                                            clearEdgeClickTimer();
-                                            setSelectedEdgeId(edge.id);
-                                            return;
-                                          }
-                                          handleGraphCanvasEdgeClick(edge.id, edge.source);
-                                        }}
-                                        onMouseEnter={() => {
-                                          handleGraphCanvasEdgeHover(
-                                            edge.id,
-                                            edge.context ?? "",
-                                            labelX * rfViewport.zoom + rfViewport.x,
-                                            labelY * rfViewport.zoom + rfViewport.y,
-                                          );
-                                        }}
-                                        onMouseLeave={() => {
-                                          setHoveredEdgeTooltip((current) => current?.edgeId === edge.id ? null : current);
-                                        }}
-                                        onDoubleClick={(event) => {
-                                          if (isReferenceEdge) {
-                                            return;
-                                          }
-                                          event.stopPropagation();
-                                          handleGraphCanvasEdgeDoubleClick(edge.source, edge.target, edge.context ?? "", edge.id);
-                                        }}
-                                        onContextMenu={(event) => {
-                                          if (isReferenceEdge) {
-                                            return;
-                                          }
-                                          event.preventDefault();
-                                          event.stopPropagation();
-                                          void handleDeleteEdge(edge.source, edge.target);
-                                        }}
-                                      />
-                                      <path
-                                        d={edgePath}
-                                        stroke={stroke}
-                                        strokeWidth={strokeWidth}
-                                        fill="none"
-                                        opacity={opacity}
-                                        markerEnd={isReferenceEdge ? undefined : `url(#${markerId})`}
-                                        strokeDasharray={isReferenceEdge ? "6 4" : undefined}
-                                        pointerEvents="none"
-                                      >
-                                        {edge.context ? <title>{edge.context}</title> : null}
-                                      </path>
-                                    </g>
-                                  );
-                                })}
-                              </g>
-                            </svg>
-                          )}
-                          {hoveredEdgeTooltip !== null && (
-                            <div
-                              className="graph-edge-hover-tooltip"
-                              style={{
-                                left: hoveredEdgeTooltip.x,
-                                top: hoveredEdgeTooltip.y,
-                                transform: "translate(-50%, calc(-100% - 10px))",
-                              }}
-                            >
-                              {hoveredEdgeTooltip.context}
-                            </div>
-                          )}
-                          {graphCanvasNodes.map((node) => {
-                            const position = graphCanvasOverlayPosition(node);
-                            const screenX = position.x * rfViewport.zoom + rfViewport.x;
-                            const screenY = position.y * rfViewport.zoom + rfViewport.y;
-                            return (
-                              <div
-                                key={node.id}
-                                data-nodeid={node.id}
-                                className={[
-                                  "graph-canvas-overlay-node",
-                                  shiftSelectedNodes.includes(node.id) ? "canvas-node-shift-selected" : "",
-                                  connectingTarget === node.id ? "canvas-node-connecting-target" : "",
-                                ].filter(Boolean).join(" ")}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setHoveredEdgeTooltip(null);
-                                  if (isAdditiveNodeSelection(event)) {
-                                    setShiftSelectedNodes((prev) => {
-                                      if (prev.includes(node.id)) {
-                                        return prev.filter((id) => id !== node.id);
-                                      }
-                                      if (prev.length > 0) {
-                                        const firstType = graphCanvasNodes.find((n) => n.id === prev[0])?.data.type;
-                                        if (firstType !== node.data.type) return prev;
-                                      }
-                                      return [...prev, node.id];
-                                    });
-                                  } else {
-                                    setSelectedCanvasNodeId(node.id);
-                                    setShiftSelectedNodes([]);
-                                  }
-                                }}
-                                onDoubleClick={(event) => {
-                                  event.stopPropagation();
-                                  handleOpenCanvasDocument(node.id);
-                                }}
-                                onPointerDown={(event) => handleGraphCanvasOverlayPointerDown(event, node.id)}
-                                style={{ transform: `translate(${screenX}px, ${screenY}px) scale(${rfViewport.zoom})`, transformOrigin: 'top left' }}
-                              >
-                                {node.data.label}
-                                {shiftSelectedNodes.includes(node.id) && (
-                                  <div className="canvas-selection-badge">{shiftSelectedNodes.indexOf(node.id) + 1}</div>
-                                )}
-                                {(["top", "right", "bottom", "left"] as const).map((pos) => (
-                                  <div
-                                    key={pos}
-                                    className={`canvas-connect-handle canvas-connect-handle-${pos}`}
-                                    onClick={(e) => e.stopPropagation()}
-                                    onPointerDown={(e) => handleConnectionHandlePointerDown(e, node.id)}
-                                  />
-                                ))}
-                              </div>
-                            );
-                          })}
+                          <GraphCanvasOverlayEdges controller={graphCanvasOverlayController} />
+                          <GraphCanvasOverlayNodes controller={graphCanvasOverlayController} />
                         </div>
-                        {shiftSelectedNodes.length >= 2 && (
-                          <div className="canvas-action-bar">
-                            <span className="canvas-action-bar-count">{shiftSelectedNodes.length} selected</span>
-                            <button
-                              type="button"
-                              className="canvas-action-bar-btn"
-                              onClick={() => { void handleMergeDocuments(); }}
-                            >
-                              Merge
-                            </button>
-                          </div>
-                        )}
                       </div>
                     )}
             </div>

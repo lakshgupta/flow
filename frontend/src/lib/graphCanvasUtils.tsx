@@ -21,6 +21,18 @@ export type GraphCanvasFlowEdgeData = {
   kind: string;
 };
 
+export type GraphCanvasEdgeVisualState = {
+  isReferenceEdge: boolean;
+  hasSelection: boolean;
+  isConnected: boolean;
+  isSelected: boolean;
+  stroke: string;
+  strokeWidth: number;
+  opacity: number;
+  strokeDasharray?: string;
+  markerId: "graph-canvas-arrow" | "graph-canvas-arrow-dim" | null;
+};
+
 export type EdgeEditHandler = (sourceId: string, targetId: string, context: string) => void;
 export const EdgeEditContext = createContext<EdgeEditHandler>(() => {});
 
@@ -152,15 +164,14 @@ export function buildGraphCanvasFlowNodes(
     return [];
   }
 
-  return graphCanvasData.nodes.map((item) => ({
-    ...graphCanvasNodeDimensions(item.shape),
-    id: item.id,
-    position: graphCanvasPositions[item.id] ?? item.position,
-    data: {
+  return graphCanvasData.nodes.map((item) => {
+    const shape = graphCanvasNodeShape(item.shape);
+    const dimensions = graphCanvasNodeDimensions(shape);
+    const data: GraphCanvasFlowNodeData = {
       label: renderGraphCanvasNodeLabel({
         id: item.id,
         type: item.type,
-        shape: graphCanvasNodeShape(item.shape),
+        shape,
         title: item.title,
         description: item.description,
         graph: item.graph,
@@ -172,7 +183,7 @@ export function buildGraphCanvasFlowNodes(
       }),
       id: item.id,
       type: item.type,
-      shape: graphCanvasNodeShape(item.shape),
+      shape,
       title: item.title,
       description: item.description,
       graph: item.graph,
@@ -181,25 +192,71 @@ export function buildGraphCanvasFlowNodes(
       positionPersisted: item.positionPersisted,
       isCanvasSelected: item.id === selectedCanvasNodeId,
       isPanelDocument: item.id === selectedDocumentId,
-    },
-    className: "graph-canvas-ghost-node",
-    width: graphCanvasNodeDimensions(item.shape).width,
-    height: graphCanvasNodeDimensions(item.shape).height,
-    style: {
-      width: `${graphCanvasNodeDimensions(item.shape).width}px`,
-      height: `${graphCanvasNodeDimensions(item.shape).height}px`,
-      padding: 0,
-      border: "none",
-      borderRadius: 0,
-      background: "transparent",
-      boxShadow: "none",
-      opacity: 0,
-      pointerEvents: "none",
-    },
-    draggable: false,
-    connectable: false,
-    selectable: false,
-  }));
+    };
+
+    return {
+      ...dimensions,
+      id: item.id,
+      position: graphCanvasPositions[item.id] ?? item.position,
+      data,
+      className: "graph-canvas-ghost-node",
+      width: dimensions.width,
+      height: dimensions.height,
+      style: {
+        width: `${dimensions.width}px`,
+        height: `${dimensions.height}px`,
+        padding: 0,
+        border: "none",
+        borderRadius: 0,
+        background: "transparent",
+        boxShadow: "none",
+        opacity: 0,
+        pointerEvents: "none",
+      },
+      draggable: false,
+      connectable: false,
+      selectable: false,
+    };
+  });
+}
+
+export function isEditableGraphCanvasEdge(edge: Pick<GraphCanvasEdgePayload, "kind">): boolean {
+  return edge.kind === "link";
+}
+
+export function graphCanvasEdgeVisualState(
+  edge: GraphCanvasEdgePayload,
+  selectedCanvasNodeId: string,
+  selectedEdgeId = "",
+): GraphCanvasEdgeVisualState {
+  const isReferenceEdge = !isEditableGraphCanvasEdge(edge);
+  const hasSelection = selectedCanvasNodeId !== "";
+  const isConnected = selectedCanvasNodeId !== "" &&
+    (edge.source === selectedCanvasNodeId || edge.target === selectedCanvasNodeId);
+  const isSelected = selectedEdgeId !== "" && edge.id === selectedEdgeId;
+  const stroke = isReferenceEdge
+    ? hasSelection
+      ? isConnected
+        ? "var(--graph-reference-edge)"
+        : "var(--graph-reference-edge-dim)"
+      : "var(--graph-reference-edge)"
+    : hasSelection
+      ? isConnected
+        ? "var(--graph-edge)"
+        : "var(--graph-edge-dim)"
+      : "var(--graph-edge)";
+
+  return {
+    isReferenceEdge,
+    hasSelection,
+    isConnected,
+    isSelected,
+    stroke,
+    strokeWidth: isSelected ? 3.4 : hasSelection ? (isConnected ? 2.6 : 1.25) : 2,
+    opacity: hasSelection ? (isConnected ? 1 : 0.25) : 0.85,
+    strokeDasharray: isReferenceEdge ? "6 4" : undefined,
+    markerId: isReferenceEdge ? null : (isConnected || !hasSelection) ? "graph-canvas-arrow" : "graph-canvas-arrow-dim",
+  };
 }
 
 export function buildGraphCanvasFlowEdges(
@@ -210,23 +267,9 @@ export function buildGraphCanvasFlowEdges(
     return [];
   }
 
-  const hasSelection = selectedCanvasNodeId !== "";
   return graphCanvasData.edges.map((edge: GraphCanvasEdgePayload) => {
-    const isLinkEdge = edge.kind === "link";
-    const isConnected =
-      selectedCanvasNodeId !== "" &&
-      (edge.source === selectedCanvasNodeId || edge.target === selectedCanvasNodeId);
-    const edgeColor = isLinkEdge
-      ? hasSelection
-        ? isConnected
-          ? "var(--graph-edge)"
-          : "var(--graph-edge-dim)"
-        : "var(--graph-edge)"
-      : hasSelection
-        ? isConnected
-          ? "var(--graph-reference-edge)"
-          : "var(--graph-reference-edge-dim)"
-        : "var(--graph-reference-edge)";
+    const visual = graphCanvasEdgeVisualState(edge, selectedCanvasNodeId);
+    const isLinkEdge = isEditableGraphCanvasEdge(edge);
 
     return {
       id: edge.id,
@@ -242,13 +285,13 @@ export function buildGraphCanvasFlowEdges(
         type: MarkerType.ArrowClosed,
         width: 18,
         height: 18,
-        color: edgeColor,
+        color: visual.stroke,
       },
       style: {
-        stroke: edgeColor,
-        strokeWidth: hasSelection ? (isConnected ? 2.6 : 1.25) : 2,
-        opacity: hasSelection ? (isConnected ? 1 : 0.25) : 0.85,
-        strokeDasharray: isLinkEdge ? undefined : "6 4",
+        stroke: visual.stroke,
+        strokeWidth: visual.strokeWidth,
+        opacity: visual.opacity,
+        strokeDasharray: visual.strokeDasharray,
       },
     };
   });
@@ -294,10 +337,6 @@ const NODE_H = CANVAS_NODE_H;
 const COLLIDE_R = Math.sqrt(NODE_W * NODE_W + NODE_H * NODE_H) / 2 + 28;
 
 type PortSpec = { x: number; y: number; position: Position };
-
-function getNodePorts(pos: GraphCanvasPosition): PortSpec[] {
-  return getNodePortsForShape(pos, "card");
-}
 
 function getNodePortsForShape(pos: GraphCanvasPosition, shape?: string): PortSpec[] {
   const dimensions = graphCanvasNodeDimensions(shape);
