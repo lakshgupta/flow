@@ -168,6 +168,28 @@ func TestNewMuxServesHomeAndGraphTreeAPIs(t *testing.T) {
 	}
 }
 
+func TestNewMuxServesHomeInlineReferencesWithoutFrontmatter(t *testing.T) {
+	t.Parallel()
+
+	root := createHTTPAPITestWorkspace(t)
+	if err := os.WriteFile(root.HomePath, []byte("# Home\n\nSee [[task-1]].\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(home) error = %v", err)
+	}
+
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	home := performJSONRequest[homeResponse](t, handler, http.MethodGet, "/api/home")
+	if len(home.InlineReferences) != 1 {
+		t.Fatalf("len(home.InlineReferences) = %d, want 1", len(home.InlineReferences))
+	}
+	if home.InlineReferences[0].TargetID != "task-1" || home.InlineReferences[0].TargetTitle != "Parser" {
+		t.Fatalf("home.InlineReferences[0] = %#v, want task-1 Parser target", home.InlineReferences[0])
+	}
+}
+
 func TestNewMuxUpdatesHomeAndReindexes(t *testing.T) {
 	t.Parallel()
 

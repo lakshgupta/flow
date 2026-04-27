@@ -285,6 +285,8 @@ func normalizeReferenceLookupKey(value string) string {
 
 func documentBodyAndGraph(document Document) (string, string) {
 	switch value := document.(type) {
+	case HomeDocument:
+		return value.Body, ""
 	case NoteDocument:
 		return value.Body, value.Metadata.Graph
 	case TaskDocument:

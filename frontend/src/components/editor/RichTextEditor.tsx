@@ -12,7 +12,7 @@ import {
   DialogContent,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { editorHTMLToMarkdown, markdownToHTML, parseFlowReferenceHref } from '../../richText'
+import { editorHTMLToMarkdown, markdownToHTML, parseFlowReferenceHref, parseFlowDateHref } from '../../richText'
 import { headingIdFromText } from '../../lib/docUtils'
 import { toISODateString } from '../../lib/dateEntries'
 import type { InlineReference } from '../../types'
@@ -32,6 +32,7 @@ export interface RichTextEditorProps {
   inlineReferences?: InlineReference[]
   referenceLookupGraph?: string
   onReferenceOpen?: (documentId: string, graphPath: string) => void
+  onDateOpen?: (date: string) => void
   scrollToHeadingSlug?: string | null
   onScrollCompleted?: () => void
 }
@@ -86,7 +87,7 @@ function DocChangeTracker({ onHtmlChange }: { onHtmlChange: () => void }) {
 }
 
 export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(function RichTextEditor(
-  { value, onChange, placeholder, ariaLabel, className, inlineReferences, referenceLookupGraph, onReferenceOpen, scrollToHeadingSlug, onScrollCompleted }: RichTextEditorProps,
+  { value, onChange, placeholder, ariaLabel, className, inlineReferences, referenceLookupGraph, onReferenceOpen, onDateOpen, scrollToHeadingSlug, onScrollCompleted }: RichTextEditorProps,
   ref,
 ) {
   const [datePickerOpen, setDatePickerOpen] = useState(false)
@@ -155,10 +156,6 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
   }, [editor, onChange])
 
   const handleEditorClickCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
-    if (onReferenceOpen === undefined) {
-      return
-    }
-
     const target = event.target
     if (!(target instanceof HTMLElement)) {
       return
@@ -169,14 +166,27 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
       return
     }
 
-    const reference = parseFlowReferenceHref(anchor.getAttribute('href') ?? anchor.href)
+    const href = anchor.getAttribute('href') ?? anchor.href
+
+    const dateResult = parseFlowDateHref(href)
+    if (dateResult !== null) {
+      event.preventDefault()
+      onDateOpen?.(dateResult.date)
+      return
+    }
+
+    if (onReferenceOpen === undefined) {
+      return
+    }
+
+    const reference = parseFlowReferenceHref(href)
     if (reference === null) {
       return
     }
 
     event.preventDefault()
     onReferenceOpen(reference.documentId, reference.graphPath)
-  }, [onReferenceOpen])
+  }, [onReferenceOpen, onDateOpen])
 
   function handleDateRequest() {
     setDatePickerOpen(true)

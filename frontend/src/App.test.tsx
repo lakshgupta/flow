@@ -623,11 +623,13 @@ describe("App graph canvas flows", () => {
     expect(await within(thread).findByText("Follow up body")).toBeInTheDocument();
 
     const replacementLink = within(thread).getByRole("link", { name: "Third note" });
-    await user.click(replacementLink);
+    fireEvent.click(replacementLink);
 
     await waitFor(() => {
-      expect(within(thread).getByLabelText("Document title")).toHaveValue("Third note");
-    });
+      expect(within(thread).getByRole("button", { name: "Close thread from Third note" })).toBeInTheDocument();
+    }, { timeout: 3000 });
+    const activeThirdPanel = within(thread).getByLabelText("Active thread document Third note");
+    expect(within(activeThirdPanel).getByLabelText("Document title")).toHaveValue("Third note");
     expect(within(thread).queryByText("Follow up body")).not.toBeInTheDocument();
     expect(await within(thread).findByText("Third body")).toBeInTheDocument();
 
@@ -899,7 +901,7 @@ describe("App graph canvas flows", () => {
       expect(within(thread).getByLabelText("Document title")).toHaveValue("Follow-up");
     });
 
-    await user.click(screen.getByRole("button", { name: "Edit thread Overview" }));
+    await user.click(screen.getByLabelText("Thread document Overview"));
 
     await waitFor(() => {
       expect(within(thread).getByLabelText("Document title")).toHaveValue("Overview");
@@ -1948,6 +1950,7 @@ describe("App graph canvas flows", () => {
     render(<ThemeProvider><App /></ThemeProvider>);
 
     const layout = await screen.findByLabelText("Home content layout");
+    await user.click(await screen.findByRole("button", { name: "Show table of contents" }));
     const toc = await screen.findByLabelText("Document table of contents");
     expect(within(toc).getByRole("button", { name: "Roadmap" })).toBeInTheDocument();
 
@@ -2203,15 +2206,16 @@ describe("App graph canvas flows", () => {
     const tocToggle = await screen.findByRole("button", { name: "Toggle table of contents" });
     const propertiesToggle = await screen.findByRole("button", { name: "Toggle document properties" });
 
+    expect(screen.queryByLabelText("Document table of contents")).not.toBeInTheDocument();
+    expect(tocToggle).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(tocToggle);
     expect(await screen.findByLabelText("Document table of contents")).toBeInTheDocument();
     expect(tocToggle).toHaveAttribute("aria-pressed", "true");
 
     await user.click(tocToggle);
     expect(screen.queryByLabelText("Document table of contents")).not.toBeInTheDocument();
     expect(tocToggle).toHaveAttribute("aria-pressed", "false");
-
-    await user.click(tocToggle);
-    expect(await screen.findByLabelText("Document table of contents")).toBeInTheDocument();
 
     await user.click(propertiesToggle);
 
@@ -2306,6 +2310,8 @@ describe("App graph canvas flows", () => {
     }
 
     await user.click(fileButton);
+
+    await user.click(await screen.findByRole("button", { name: "Toggle table of contents" }));
 
     const layout = await screen.findByLabelText("Document content layout");
     Object.defineProperty(layout, "getBoundingClientRect", {

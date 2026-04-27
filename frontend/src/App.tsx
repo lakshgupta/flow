@@ -70,7 +70,7 @@ import {
   normalizeGraphCanvasResponse,
   selectedGraphCanvasNode,
 } from "./lib/graphCanvasUtils";
-import { markdownToHTML, parseFlowReferenceHref } from "./richText";
+import { markdownToHTML, parseFlowReferenceHref, parseFlowDateHref } from "./richText";
 import { useTheme } from "./lib/theme";
 import { todayString } from "./lib/dateEntries";
 import { toErrorMessage } from "./lib/utils";
@@ -126,13 +126,22 @@ type ThreadDocumentEntry = {
   graphPath: string;
 };
 
+const HOME_THREAD_DOCUMENT_ID = "home";
 const DEFAULT_DOCUMENT_TOC_RATIO = 0.18;
 const MIN_DOCUMENT_TOC_RATIO = 0.14;
 const MAX_DOCUMENT_TOC_RATIO = 0.32;
+const MIN_THREAD_PANEL_WIDTH_PX = 420;
+const THREAD_PANEL_VIEWPORT_MARGIN_PX = 112;
 const DOCUMENT_FILE_NAME_PATTERN = /^[a-z0-9][a-z0-9._/-]*$/;
 
 function clampDocumentTOCRatio(value: number): number {
   return Math.min(Math.max(value, MIN_DOCUMENT_TOC_RATIO), MAX_DOCUMENT_TOC_RATIO);
+}
+
+function clampThreadPanelWidth(width: number): number {
+  const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1280;
+  const maxWidth = Math.max(MIN_THREAD_PANEL_WIDTH_PX, viewportWidth - THREAD_PANEL_VIEWPORT_MARGIN_PX);
+  return Math.min(Math.max(width, MIN_THREAD_PANEL_WIDTH_PX), maxWidth);
 }
 
 function isValidDocumentFileName(value: string): boolean {
@@ -283,7 +292,9 @@ function FlowApp() {
   const [leftSidebarWidth, setLeftSidebarWidth] = useState<number>(256);
   const [rightSidebarWidth, setRightSidebarWidth] = useState<number>(320);
   const [documentTOCRatio, setDocumentTOCRatio] = useState<number>(DEFAULT_DOCUMENT_TOC_RATIO);
-  const [centerDocumentSidePanelMode, setCenterDocumentSidePanelMode] = useState<CenterDocumentSidePanelMode>("toc");
+  const [threadPanelWidths, setThreadPanelWidths] = useState<Record<string, number>>({});
+  const [centerDocumentSidePanelMode, setCenterDocumentSidePanelMode] = useState<CenterDocumentSidePanelMode>("hidden");
+  const [homeTOCVisible, setHomeTOCVisible] = useState<boolean>(false);
   const [isResizingLeft, setIsResizingLeft] = useState<boolean>(false);
   const [isResizingRight, setIsResizingRight] = useState<boolean>(false);
   const [canvasContextMenu, setCanvasContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -336,10 +347,14 @@ function FlowApp() {
   const selectedCanvasNodeEdgeCount = countConnectedGraphCanvasEdges(graphCanvasData, selectedCanvasNodeId);
   const workspaceSurfaceSection = activeSurface.kind === "graph" ? "Content" : "Home";
   const workspaceSurfaceTitle = activeSurface.kind === "graph" ? selectedGraphNode?.displayName ?? selectedGraphPath : null;
+  const isHomeThreadRoot = documentThread.length > 0 && documentThread[0]?.documentId === HOME_THREAD_DOCUMENT_ID;
   const isCenterDocumentOpen = selectedDocumentId !== "" && selectedDocumentOpenMode === "center";
+  const isThreadStackOpen = selectedDocumentOpenMode === "center" && (selectedDocumentId !== "" || (isHomeThreadRoot && activeSurface.kind === "home"));
   const isSelectedDocumentLoading = selectedDocumentId !== "" && (selectedDocument === null || selectedDocument.id !== selectedDocumentId);
   const activeThreadTailId = documentThread.length > 0 ? documentThread[documentThread.length - 1]?.documentId ?? "" : "";
-  const activeThreadDocumentId = selectedDocumentOpenMode === "center" && selectedDocumentId !== "" ? selectedDocumentId : activeThreadTailId;
+  const activeThreadDocumentId = selectedDocumentOpenMode === "center"
+    ? (selectedDocumentId !== "" ? selectedDocumentId : activeSurface.kind === "home" ? HOME_THREAD_DOCUMENT_ID : activeThreadTailId)
+    : activeThreadTailId;
   const showCenterDocumentSidePanel = centerDocumentSidePanelMode !== "hidden";
   const centerDocumentSidePanelLabel = centerDocumentSidePanelMode === "properties" ? "Document properties" : "Document table of contents";
   const centerDocumentSidePanelTitle = centerDocumentSidePanelMode === "properties" ? "Properties" : "Table of Contents";
@@ -406,7 +421,7 @@ function FlowApp() {
   const threadPanels = useMemo(() => {
     return documentThread.map((entry, index) => {
       const isTail = index === documentThread.length - 1;
-      const isActive = selectedDocumentOpenMode === "center" && selectedDocumentId === entry.documentId;
+      const isActive = selectedDocumentOpenMode === "center" && activeThreadDocumentId === entry.documentId;
       const document = isActive && selectedDocument?.id === entry.documentId
         ? selectedDocument
         : threadDocumentsById[entry.documentId] ?? null;
@@ -418,7 +433,7 @@ function FlowApp() {
         isTail,
       };
     });
-  }, [documentThread, selectedDocument, selectedDocumentId, selectedDocumentOpenMode, threadDocumentsById]);
+  }, [activeThreadDocumentId, documentThread, selectedDocument, selectedDocumentOpenMode, threadDocumentsById]);
   const selectedDocumentLinks = useMemo(() => {
     if (selectedDocument === null) {
       return {
@@ -474,7 +489,7 @@ function FlowApp() {
       return;
     }
 
-    setCenterDocumentSidePanelMode("toc");
+    setCenterDocumentSidePanelMode("hidden");
   }, [isCenterDocumentOpen, selectedDocumentId]);
 
   useEffect(() => {
@@ -624,6 +639,13 @@ function FlowApp() {
     setCenterDocumentSidePanelMode((current) => (current === panel ? "hidden" : panel));
   }
 
+  function handleDateOpen(date: string): void {
+    setCalendarFocusDate(date);
+    setRightPanelTab("calendar");
+    setRightRailCollapsed(false);
+    setRightRailMaximized(false);
+  }
+
   async function waitForEditorStateToSettle(): Promise<void> {
     await Promise.resolve();
 
@@ -715,7 +737,7 @@ function FlowApp() {
   }
 
   async function openDocumentInThreadFromSource(sourceDocumentId: string, targetDocumentId: string, graphPath: string): Promise<void> {
-    await flushPendingDocumentSave();
+    await flushPendingActiveEditorSave();
     clearSurfaceFeedback();
 
     const currentThread = documentThreadRef.current;
@@ -727,6 +749,8 @@ function FlowApp() {
 
     const baseThread = sourceIndex >= 0
       ? currentThread.slice(0, sourceIndex + 1)
+      : sourceDocumentId === HOME_THREAD_DOCUMENT_ID
+        ? [{ documentId: HOME_THREAD_DOCUMENT_ID, graphPath: "" }]
       : sourceDocumentId !== "" && sourceGraphPath !== ""
         ? [{ documentId: sourceDocumentId, graphPath: sourceGraphPath }]
         : [];
@@ -747,12 +771,28 @@ function FlowApp() {
   }
 
   async function activateThreadDocument(documentId: string, graphPath: string): Promise<void> {
-    if (selectedDocumentOpenMode === "center" && selectedDocumentId === documentId) {
+    if (selectedDocumentOpenMode === "center" && activeThreadDocumentId === documentId) {
       return;
     }
 
-    await flushPendingDocumentSave();
+    await flushPendingActiveEditorSave();
     clearSurfaceFeedback();
+
+    if (documentId === HOME_THREAD_DOCUMENT_ID) {
+      setSelectedDocumentOpenMode("center");
+      setSelectedDocumentId("");
+      setSelectedCanvasNodeId("");
+      syncSelectedDocumentState(null);
+      startTransition(() => {
+        setActiveSurface({ kind: "home" });
+      });
+      if (rightPanelTab === "document") {
+        setRightPanelTab("search");
+        setRightRailCollapsed(true);
+      }
+      return;
+    }
+
     setSelectedDocumentOpenMode("center");
     setSelectedDocumentId(documentId);
     setSelectedCanvasNodeId(documentId);
@@ -768,7 +808,7 @@ function FlowApp() {
   }
 
   async function closeDocumentThreadFrom(index: number): Promise<void> {
-    await flushPendingDocumentSave();
+    await flushPendingActiveEditorSave();
 
     const nextThread = documentThreadRef.current.slice(0, index);
     clearSurfaceFeedback();
@@ -778,6 +818,18 @@ function FlowApp() {
       setSelectedDocumentId("");
       setSelectedDocumentOpenMode("right-rail");
       syncSelectedDocumentState(null);
+      return;
+    }
+
+    if (nextThread.length === 1 && nextThread[0]?.documentId === HOME_THREAD_DOCUMENT_ID) {
+      clearDocumentThread();
+      setSelectedDocumentId("");
+      setSelectedDocumentOpenMode("right-rail");
+      setSelectedCanvasNodeId("");
+      syncSelectedDocumentState(null);
+      startTransition(() => {
+        setActiveSurface({ kind: "home" });
+      });
       return;
     }
 
@@ -1447,6 +1499,39 @@ function FlowApp() {
     beginDocumentTOCResize(event, centerDocumentLayoutRef.current);
   }
 
+  function beginThreadPanelResize(event: React.MouseEvent<HTMLDivElement>, panel: HTMLElement | null, panelKey: string): void {
+    if (!isPrimaryMouseButton(event.button) || panel === null) {
+      return;
+    }
+
+    const bounds = panel.getBoundingClientRect();
+    if (bounds.width <= 0) {
+      return;
+    }
+
+    const startX = event.clientX;
+    const startWidth = bounds.width;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      setThreadPanelWidths((prev) => ({ ...prev, [panelKey]: clampThreadPanelWidth(startWidth + deltaX) }));
+    };
+
+    const handleMouseUp = () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
   function handleHomeDocumentTOCResizeMouseDown(event: React.MouseEvent<HTMLDivElement>): void {
     beginDocumentTOCResize(event, homeDocumentLayoutRef.current);
   }
@@ -2040,10 +2125,21 @@ function FlowApp() {
       ) : (
         <div className="thread-stack" aria-label="Document thread">
           {threadPanels.map((panel, index) => {
+            const panelIsHome = panel.documentId === HOME_THREAD_DOCUMENT_ID;
             const panelDocument = panel.document;
-            const panelTitle = panel.isActive ? formState.title : panelDocument?.title ?? panel.documentId;
-            const panelDescription = panel.isActive ? formState.description : panelDocument?.description ?? "";
-            const panelDocumentIsLoading = panel.isActive && isSelectedDocumentLoading && selectedDocumentId === panel.documentId;
+            const panelTitle = panelIsHome
+              ? homeFormState.title
+              : panel.isActive ? formState.title : panelDocument?.title ?? panel.documentId;
+            const panelDescription = panelIsHome
+              ? homeFormState.description
+              : panel.isActive ? formState.description : panelDocument?.description ?? "";
+            const panelDocumentIsLoading = !panelIsHome && panel.isActive && isSelectedDocumentLoading && selectedDocumentId === panel.documentId;
+
+            const panelKey = `${panel.documentId}:${index}`;
+            const panelCustomWidth = threadPanelWidths[panelKey];
+            const threadPanelStyle = panelCustomWidth !== undefined
+              ? { "--thread-panel-width": `${panelCustomWidth}px` } as React.CSSProperties
+              : undefined;
 
             return (
               <section
@@ -2051,10 +2147,26 @@ function FlowApp() {
                 className={`thread-panel ${panel.isActive ? "thread-panel-active" : "thread-panel-readonly"}`}
                 aria-label={panel.isActive ? `Active thread document ${panelTitle}` : `Thread document ${panelTitle}`}
                 data-active={panel.isActive ? "true" : "false"}
+                style={threadPanelStyle}
+                onClick={(event) => {
+                  if (panel.isActive) {
+                    return;
+                  }
+                  const target = event.target;
+                  if (!(target instanceof HTMLElement)) {
+                    return;
+                  }
+                  if (target.closest("button") !== null || target.closest("a") !== null) {
+                    return;
+                  }
+                  void activateThreadDocument(panel.documentId, panel.graphPath);
+                }}
               >
                 <div className="thread-panel-header">
                   <div className="thread-panel-header-leading">
-                    {panelDocument !== null ? (
+                    {panelIsHome ? (
+                      <Badge variant="outline" className="center-document-type-badge">Home</Badge>
+                    ) : panelDocument !== null ? (
                       <Badge variant="outline" className="center-document-type-badge">{formatDocumentType(panelDocument.type)}</Badge>
                     ) : null}
                     <span className="thread-panel-step">Thread {index + 1}</span>
@@ -2062,33 +2174,37 @@ function FlowApp() {
                   <div className="thread-panel-header-actions">
                     {panel.isActive ? (
                       <>
-                        {savingDocument && <span className="home-save-success">Saving…</span>}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          className="center-document-toolbar-toggle"
-                          data-active={centerDocumentSidePanelMode === "toc" ? "true" : "false"}
-                          aria-label="Toggle table of contents"
-                          aria-pressed={centerDocumentSidePanelMode === "toc"}
-                          title="Toggle table of contents"
-                          onClick={() => toggleCenterDocumentSidePanel("toc")}
-                        >
-                          <FileText size={16} />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          className="center-document-toolbar-toggle"
-                          data-active={centerDocumentSidePanelMode === "properties" ? "true" : "false"}
-                          aria-label="Toggle document properties"
-                          aria-pressed={centerDocumentSidePanelMode === "properties"}
-                          title="Toggle document properties"
-                          onClick={() => toggleCenterDocumentSidePanel("properties")}
-                        >
-                          <Info size={16} />
-                        </Button>
+                        {panelIsHome ? <>{savingHome && <span className="home-save-success">Saving…</span>}</> : (
+                          <>
+                            {savingDocument && <span className="home-save-success">Saving…</span>}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              className="center-document-toolbar-toggle"
+                              data-active={centerDocumentSidePanelMode === "toc" ? "true" : "false"}
+                              aria-label="Toggle table of contents"
+                              aria-pressed={centerDocumentSidePanelMode === "toc"}
+                              title="Toggle table of contents"
+                              onClick={() => toggleCenterDocumentSidePanel("toc")}
+                            >
+                              <FileText size={16} />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              className="center-document-toolbar-toggle"
+                              data-active={centerDocumentSidePanelMode === "properties" ? "true" : "false"}
+                              aria-label="Toggle document properties"
+                              aria-pressed={centerDocumentSidePanelMode === "properties"}
+                              title="Toggle document properties"
+                              onClick={() => toggleCenterDocumentSidePanel("properties")}
+                            >
+                              <Info size={16} />
+                            </Button>
+                          </>
+                        )}
                         {isMaximizedRightRail && (
                           <Button
                             onClick={() => toggleRightRailMaximized()}
@@ -2102,18 +2218,7 @@ function FlowApp() {
                           </Button>
                         )}
                       </>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        aria-label={`Edit thread ${panelTitle || panel.documentId}`}
-                        title={`Edit ${panelTitle || panel.documentId}`}
-                        onClick={() => void activateThreadDocument(panel.documentId, panel.graphPath)}
-                      >
-                        Edit
-                      </Button>
-                    )}
+                    ) : null}
                     <Button
                       type="button"
                       variant="ghost"
@@ -2130,6 +2235,34 @@ function FlowApp() {
                 {panel.isActive && panelDocumentIsLoading ? (
                   <div className="detail-empty thread-panel-loading">
                     <p>Loading document content.</p>
+                  </div>
+                ) : panel.isActive && panelIsHome ? (
+                  <div className="thread-panel-shell thread-panel-shell-home">
+                    <div className="thread-panel-title-block">
+                      <input
+                        className="center-document-toolbar-title"
+                        placeholder="Home title"
+                        value={homeFormState.title}
+                        onChange={(event) => updateHomeFormField("title", event.target.value)}
+                        aria-label="Home title"
+                      />
+                    </div>
+                    <div className="center-document-main home-document home-thread-main">
+                      <div className="home-document-body center-document-body home-thread-body">
+                        <RichTextEditor
+                          ariaLabel="Home body editor"
+                          className="home-editor"
+                          inlineReferences={graphTree?.home.inlineReferences}
+                          onChange={(value) => updateHomeFormField("body", value)}
+                          onReferenceOpen={(documentId, graphPath) => handleInlineReferenceOpen(HOME_THREAD_DOCUMENT_ID, documentId, graphPath, "center")}
+                          onDateOpen={handleDateOpen}
+                          onScrollCompleted={() => setEditorScrollTarget(null)}
+                          placeholder="Start writing…"
+                          scrollToHeadingSlug={editorScrollTarget}
+                          value={homeFormState.body}
+                        />
+                      </div>
+                    </div>
                   </div>
                 ) : panel.isActive ? (
                   <div className="thread-panel-shell">
@@ -2157,7 +2290,7 @@ function FlowApp() {
                             inlineReferences={selectedDocument?.inlineReferences}
                             onChange={(value) => updateFormField("body", value)}
                             onReferenceOpen={(documentId, graphPath) => handleInlineReferenceOpen(panel.documentId, documentId, graphPath, "center")}
-                            referenceLookupGraph={selectedDocument?.graph}
+                            onDateOpen={handleDateOpen}
                             ref={centerDocumentEditorRef}
                             onScrollCompleted={() => setEditorScrollTarget(null)}
                             placeholder="Type / for headings, lists, quotes, links, and highlights"
@@ -2199,6 +2332,50 @@ function FlowApp() {
                     </div>
                     {panel.graphPath.trim() !== "" ? <p className="thread-panel-breadcrumb">{panel.graphPath}</p> : null}
                   </div>
+                ) : panelIsHome ? (
+                  <div className="thread-panel-shell thread-panel-shell-readonly">
+                    <div className="thread-panel-title-block">
+                      <h2 className="thread-panel-title">{panelTitle}</h2>
+                      {panelDescription.trim() !== "" ? <p className="thread-panel-description">{panelDescription}</p> : null}
+                    </div>
+                    <div
+                      className="thread-panel-readonly-body thread-panel-readonly-body-home"
+                      onClickCapture={(event) => {
+                        const target = event.target;
+                        if (!(target instanceof HTMLElement)) {
+                          return;
+                        }
+
+                        const anchor = target.closest("a");
+                        if (!(anchor instanceof HTMLAnchorElement)) {
+                          return;
+                        }
+
+                        const href = anchor.getAttribute("href") ?? anchor.href;
+
+                        const dateResult = parseFlowDateHref(href);
+                        if (dateResult !== null) {
+                          event.preventDefault();
+                          handleDateOpen(dateResult.date);
+                          return;
+                        }
+
+                        const reference = parseFlowReferenceHref(href);
+                        if (reference === null) {
+                          return;
+                        }
+
+                        event.preventDefault();
+                        void handleInlineReferenceOpen(HOME_THREAD_DOCUMENT_ID, reference.documentId, reference.graphPath, "center");
+                      }}
+                    >
+                      <div
+                        className="ProseMirror thread-panel-rendered-markdown"
+                        aria-label="Thread panel content for Home"
+                        dangerouslySetInnerHTML={{ __html: markdownToHTML(homeFormState.body, graphTree?.home.inlineReferences) }}
+                      />
+                    </div>
+                  </div>
                 ) : panelDocument === null ? (
                   <div className="detail-empty thread-panel-loading">
                     <p>Loading document content.</p>
@@ -2222,7 +2399,16 @@ function FlowApp() {
                           return;
                         }
 
-                        const reference = parseFlowReferenceHref(anchor.getAttribute("href") ?? anchor.href);
+                        const href = anchor.getAttribute("href") ?? anchor.href;
+
+                        const dateResult = parseFlowDateHref(href);
+                        if (dateResult !== null) {
+                          event.preventDefault();
+                          handleDateOpen(dateResult.date);
+                          return;
+                        }
+
+                        const reference = parseFlowReferenceHref(href);
                         if (reference === null) {
                           return;
                         }
@@ -2240,6 +2426,17 @@ function FlowApp() {
                     {panel.graphPath.trim() !== "" ? <p className="thread-panel-breadcrumb">{panel.graphPath}</p> : null}
                   </div>
                 )}
+
+                <div
+                  className="thread-panel-resize-handle"
+                  role="separator"
+                  aria-label="Resize thread panel"
+                  aria-orientation="vertical"
+                  onMouseDown={(event) => {
+                    const panelElement = event.currentTarget.closest(".thread-panel");
+                    beginThreadPanelResize(event, panelElement instanceof HTMLElement ? panelElement : null, panelKey);
+                  }}
+                />
               </section>
             );
           })}
@@ -2336,9 +2533,26 @@ function FlowApp() {
 
           <div className="workspace-shell-body">
         <section className="middle-shell">
-          {activeSurface.kind === "home" ? (
+          {isThreadStackOpen ? (
+            renderCenterDocumentShell(false)
+          ) : activeSurface.kind === "home" ? (
             <div className="home-surface">
               {homeMutationError !== "" && <p className="status-line status-line-error home-status-message">{homeMutationError}</p>}
+              <div className="home-surface-toolbar">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="center-document-toolbar-toggle"
+                  data-active={homeTOCVisible ? "true" : "false"}
+                  aria-label={homeTOCVisible ? "Hide table of contents" : "Show table of contents"}
+                  aria-pressed={homeTOCVisible}
+                  title={homeTOCVisible ? "Hide table of contents" : "Show table of contents"}
+                  onClick={() => setHomeTOCVisible((current) => !current)}
+                >
+                  <FileText size={16} />
+                </Button>
+              </div>
               {showFreshStartGuide && (
                 <section className="fresh-start-panel shell-inner-card" aria-label="Fresh workspace guide">
                   <div className="fresh-start-copy">
@@ -2359,14 +2573,18 @@ function FlowApp() {
                 ref={homeDocumentLayoutRef}
                 className="home-document-layout center-document-layout"
                 aria-label="Home content layout"
+                data-side-panel={homeTOCVisible ? "toc" : "hidden"}
                 style={{ "--document-toc-ratio": documentTOCRatio.toString() } as React.CSSProperties}
               >
                 <div className="center-document-main">
                   <RichTextEditor
                     ariaLabel="Home body editor"
                     className="home-editor"
+                    inlineReferences={graphTree?.home.inlineReferences}
                     ref={homeDocumentEditorRef}
                     onChange={(value) => updateHomeFormField("body", value)}
+                    onReferenceOpen={(documentId, graphPath) => handleInlineReferenceOpen(HOME_THREAD_DOCUMENT_ID, documentId, graphPath, "center")}
+                    onDateOpen={handleDateOpen}
                     onScrollCompleted={() => setEditorScrollTarget(null)}
                     placeholder="Start writing…"
                     scrollToHeadingSlug={editorScrollTarget}
@@ -2374,42 +2592,44 @@ function FlowApp() {
                   />
                 </div>
 
-                <div
-                  className="center-document-toc-resizer"
-                  onMouseDown={handleHomeDocumentTOCResizeMouseDown}
-                  role="separator"
-                  aria-label="Resize table of contents"
-                  aria-orientation="vertical"
-                />
+                {homeTOCVisible ? (
+                  <>
+                    <div
+                      className="center-document-toc-resizer"
+                      onMouseDown={handleHomeDocumentTOCResizeMouseDown}
+                      role="separator"
+                      aria-label="Resize table of contents"
+                      aria-orientation="vertical"
+                    />
 
-                <aside className="center-document-toc" aria-label="Document table of contents">
-                  <div className="center-document-toc-header">
-                    <h4>Table of Contents</h4>
-                  </div>
-                  {tocItems.length > 0 ? (
-                    <nav className="toc-nav">
-                      <ul className="toc-list">
-                        {tocItems.map((item, index) => (
-                          <li key={index} className={`toc-item toc-level-${item.level}`} style={{ marginLeft: `${(item.level - 1) * 1}rem` }}>
-                            <button
-                              type="button"
-                              className="toc-link"
-                              onClick={() => handleTOCNavigate(item.id)}
-                            >
-                              {item.text}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </nav>
-                  ) : (
-                    <p className="empty-state-inline">No headings yet.</p>
-                  )}
-                </aside>
+                    <aside className="center-document-toc" aria-label="Document table of contents">
+                      <div className="center-document-toc-header">
+                        <h4>Table of Contents</h4>
+                      </div>
+                      {tocItems.length > 0 ? (
+                        <nav className="toc-nav">
+                          <ul className="toc-list">
+                            {tocItems.map((item, index) => (
+                              <li key={index} className={`toc-item toc-level-${item.level}`} style={{ marginLeft: `${(item.level - 1) * 1}rem` }}>
+                                <button
+                                  type="button"
+                                  className="toc-link"
+                                  onClick={() => handleTOCNavigate(item.id)}
+                                >
+                                  {item.text}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </nav>
+                      ) : (
+                        <p className="empty-state-inline">No headings yet.</p>
+                      )}
+                    </aside>
+                  </>
+                ) : null}
               </div>
             </div>
-          ) : isCenterDocumentOpen ? (
-            renderCenterDocumentShell(false)
           ) : (
             <div className="graph-canvas-outer">
                     {graphCanvasError !== "" ? (
@@ -2635,6 +2855,7 @@ function FlowApp() {
                           inlineReferences={selectedDocument.inlineReferences}
                           onChange={(value) => updateFormField("body", value)}
                           onReferenceOpen={(documentId, graphPath) => handleInlineReferenceOpen(selectedDocument.id, documentId, graphPath, "right-rail")}
+                          onDateOpen={handleDateOpen}
                           referenceLookupGraph={selectedDocument.graph}
                           ref={rightRailDocumentEditorRef}
                           onScrollCompleted={() => setEditorScrollTarget(null)}
@@ -2791,6 +3012,13 @@ function FlowApp() {
                       documents={calendarDocumentsForDisplay}
                       selectedDate={calendarFocusDate}
                       onDateChange={setCalendarFocusDate}
+                      onDocumentOpen={(doc) => {
+                        if (doc.type === "home") {
+                          void handleSelectHome();
+                        } else {
+                          handleSelectDocument(doc.id, doc.graph);
+                        }
+                      }}
                       error={calendarError}
                     />
                   </CardContent>

@@ -23,6 +23,7 @@ export type HomeResponse = {
   description: string;
   path: string;
   body: string;
+  inlineReferences?: InlineReference[];
 };
 
 export type CalendarDocumentResponse = {

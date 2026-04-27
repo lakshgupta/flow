@@ -11,6 +11,7 @@ type HomeCalendarPanelProps = {
   documents: CalendarDocumentResponse[];
   selectedDate: string;
   onDateChange: (date: string) => void;
+  onDocumentOpen?: (document: CalendarDocumentResponse) => void;
   error?: string;
 };
 
@@ -18,6 +19,7 @@ type CalendarMention = {
   key: string;
   sourceLabel: string;
   block: string;
+  document: CalendarDocumentResponse;
 };
 
 function calendarDocumentLabel(document: CalendarDocumentResponse): string {
@@ -32,7 +34,7 @@ function calendarDocumentLabel(document: CalendarDocumentResponse): string {
   return `${document.graph} / ${document.title}`;
 }
 
-export function HomeCalendarPanel({ documents, selectedDate, onDateChange, error = "" }: HomeCalendarPanelProps) {
+export function HomeCalendarPanel({ documents, selectedDate, onDateChange, onDocumentOpen, error = "" }: HomeCalendarPanelProps) {
 
   const datesWithContent = useMemo(() => {
     const dateStrs = new Set<string>();
@@ -54,6 +56,7 @@ export function HomeCalendarPanel({ documents, selectedDate, onDateChange, error
         key: `${document.id}:${index}`,
         sourceLabel: calendarDocumentLabel(document),
         block,
+        document,
       })),
     );
   }, [documents, selectedDate]);
@@ -84,7 +87,14 @@ export function HomeCalendarPanel({ documents, selectedDate, onDateChange, error
           <div className="home-cal-mentions">
             {mentions.map((mention) => (
               <div key={mention.key} className="home-cal-item">
-                <p className="home-cal-source">{mention.sourceLabel}</p>
+                <button
+                  type="button"
+                  className="home-cal-source home-cal-source-btn"
+                  onClick={() => onDocumentOpen?.(mention.document)}
+                  title={`Open ${mention.sourceLabel}`}
+                >
+                  {mention.sourceLabel}
+                </button>
                 <div
                   className="home-cal-content rich-editor-preview"
                   dangerouslySetInnerHTML={{ __html: md.render(mention.block) }}

@@ -50,12 +50,13 @@ type updatePanelWidthsRequest struct {
 }
 
 type homeResponse struct {
-	ID          string `json:"id"`
-	Type        string `json:"type"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Path        string `json:"path"`
-	Body        string `json:"body"`
+	ID               string                    `json:"id"`
+	Type             string                    `json:"type"`
+	Title            string                    `json:"title"`
+	Description      string                    `json:"description"`
+	Path             string                    `json:"path"`
+	Body             string                    `json:"body"`
+	InlineReferences []inlineReferenceResponse `json:"inlineReferences,omitempty"`
 }
 
 type calendarDocumentResponse struct {
@@ -1403,6 +1404,47 @@ func loadHomeResponse(root workspace.Root) (homeResponse, error) {
 	}
 
 	home.Path = relativePath
+
+	documents, err := workspace.LoadDocuments(root.FlowPath)
+	if err != nil {
+		return homeResponse{}, fmt.Errorf("load workspace documents: %w", err)
+	}
+
+	var homeItem *markdown.WorkspaceDocument
+	for _, item := range documents {
+		if filepath.ToSlash(item.Path) != relativePath {
+			continue
+		}
+		copyItem := item
+		homeItem = &copyItem
+		break
+	}
+
+	if homeItem == nil {
+		synthesized, normalizeErr := markdown.NormalizeWorkspaceDocument(markdown.WorkspaceDocument{
+			Path: relativePath,
+			Document: markdown.HomeDocument{
+				Metadata: markdown.CommonFields{
+					ID:          home.ID,
+					Type:        markdown.HomeType,
+					Title:       home.Title,
+					Description: home.Description,
+				},
+				Body: home.Body,
+			},
+		})
+		if normalizeErr != nil {
+			return homeResponse{}, fmt.Errorf("normalize synthetic home document: %w", normalizeErr)
+		}
+		homeItem = &synthesized
+	}
+
+	inlineReferences, err := resolveInlineReferenceResponses(documents, *homeItem)
+	if err != nil {
+		return homeResponse{}, fmt.Errorf("resolve home inline references: %w", err)
+	}
+	home.InlineReferences = inlineReferences
+
 	return home, nil
 }
 

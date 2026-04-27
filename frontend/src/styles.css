@@ -2742,7 +2742,14 @@ pre {
   flex-direction: column;
   flex: 1 1 auto;
   width: 100%;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.home-surface-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.25rem 1.5rem 0;
 }
 
 .home-document-layout {
@@ -2893,7 +2900,8 @@ pre {
 }
 
 .thread-panel {
-  flex: 0 0 min(21rem, calc(100vw - 14rem));
+  position: relative;
+  flex: 0 0 var(--thread-panel-width, min(21rem, calc(100vw - 14rem)));
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -2907,7 +2915,7 @@ pre {
 }
 
 .thread-panel-active {
-  flex-basis: min(56rem, calc(100vw - 7rem));
+  flex-basis: var(--thread-panel-width, min(56rem, calc(100vw - 7rem)));
   background: color-mix(in srgb, var(--card) 97%, var(--background) 3%);
   border-color: color-mix(in srgb, var(--primary) 18%, var(--border));
   transform: translateY(-0.25rem);
@@ -2951,8 +2959,29 @@ pre {
   padding: 0 1rem 1rem;
 }
 
+.thread-panel-shell-home {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.home-thread-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.home-thread-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: none;
+  margin: 0;
+}
+
 .thread-panel-shell-readonly {
   gap: 0.85rem;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .thread-panel-title-block {
@@ -2973,15 +3002,39 @@ pre {
 }
 
 .thread-panel-readonly-body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
-  max-height: min(16rem, calc(100vh - 22rem));
   padding-right: 0.2rem;
-  mask-image: linear-gradient(to bottom, black 0%, black 82%, transparent 100%);
+}
+
+.thread-panel-readonly-body-home {
+  max-height: none;
+  flex: 1 1 auto;
+  min-height: 0;
+  mask-image: none;
 }
 
 .thread-panel-rendered-markdown {
   min-height: 100%;
   padding: 0;
+}
+
+/* Date links inserted via the / trigger */
+.flow-date-link {
+  color: var(--primary);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+  border-radius: 0.2em;
+  padding: 0 0.1em;
+  transition: background-color 0.12s ease;
+}
+
+.flow-date-link:hover {
+  background-color: color-mix(in srgb, var(--primary) 12%, transparent);
+  text-decoration-style: solid;
 }
 
 .thread-panel[data-active="false"] .thread-panel-title {
@@ -2994,6 +3047,34 @@ pre {
 
 .thread-panel-loading {
   margin: 0 1rem 1rem;
+}
+
+.thread-panel-resize-handle {
+  position: absolute;
+  right: -0.45rem;
+  top: 0.9rem;
+  bottom: 0.9rem;
+  width: 0.9rem;
+  cursor: col-resize;
+  z-index: 2;
+  touch-action: none;
+}
+
+.thread-panel-resize-handle::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--border) 75%, var(--primary));
+  opacity: 0.45;
+  transform: translateX(-50%);
+}
+
+.thread-panel-resize-handle:hover::before,
+.thread-panel-resize-handle:active::before {
+  opacity: 0.9;
 }
 
 .center-document-toc-resizer {
@@ -3159,10 +3240,22 @@ pre {
   margin: 0 auto;
 }
 
+/* Inside a thread panel, content should be left-aligned with the title — no centering. */
+.thread-panel .center-document-body {
+  max-width: none;
+  margin: 0;
+}
+
 .center-document-body .ProseMirror {
   min-height: 100%;
   padding: 1rem clamp(1rem, 2.8vw, 2rem);
   line-height: 1.6;
+}
+
+/* Keep empty table rows compact in the rich-text editor. */
+.ProseMirror table td > p,
+.ProseMirror table th > p {
+  margin: 0;
 }
 
 .home-editor {
@@ -3173,10 +3266,13 @@ pre {
 }
 
 .home-editor .ProseMirror {
-  padding-left: max(2rem, calc(50% - 24rem));
-  padding-right: max(2rem, calc(50% - 24rem));
-  padding-top: 2rem;
-  padding-bottom: 2rem;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding-left: 2rem !important;
+  padding-right: 1.75rem !important;
+  padding-top: 1.5rem;
+  padding-bottom: 1.5rem;
   line-height: 1.6;
 }
 
@@ -4317,6 +4413,21 @@ pre {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--muted-foreground);
+}
+
+.home-cal-source-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+
+.home-cal-source-btn:hover {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
 }
 
 .home-cal-content {
