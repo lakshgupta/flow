@@ -183,6 +183,7 @@ func BuildTaskLayerView(documents []markdown.WorkspaceDocument) (TaskLayerView, 
 		if !ok {
 			continue
 		}
+		// Process links as dependencies
 		for _, refID := range markdown.NodeLinkIDs(taskDocument.Metadata.Links) {
 			if _, exists := taskNodes[refID]; !exists {
 				continue

@@ -17,7 +17,7 @@ func TestRenderShowsGroupedListsLayersAndSearch(t *testing.T) {
 	flowPath := filepath.Join(rootDir, ".flow")
 	writeMarkdownDocumentForRender(t, filepath.Join(flowPath, "data", "content", "notes", "architecture.md"), "---\nid: note-1\ntype: note\ngraph: notes\ntitle: Architecture\n---\n\nBuild architecture notes.\n")
 	writeMarkdownDocumentForRender(t, filepath.Join(flowPath, "data", "content", "execution", "foundation.md"), "---\nid: task-0\ntype: task\ngraph: ignored\ntitle: Foundation\nstatus: todo\n---\n\nFoundation work.\n")
-	writeMarkdownDocumentForRender(t, filepath.Join(flowPath, "data", "content", "execution", "parser", "parser.md"), "---\nid: task-1\ntype: task\ngraph: ignored\ntitle: Parser\nstatus: todo\ndependsOn:\n  - task-0\n---\n\nParser work.\n")
+	writeMarkdownDocumentForRender(t, filepath.Join(flowPath, "data", "content", "execution", "parser", "parser.md"), "---\nid: task-1\ntype: task\ngraph: ignored\ntitle: Parser\nstatus: todo\nlinks:\n  - node: task-0\n---\n\nParser work.\n")
 	writeMarkdownDocumentForRender(t, filepath.Join(flowPath, "data", "content", "release", "build.md"), "---\nid: cmd-1\ntype: command\ngraph: ignored\ntitle: Build\nname: build\nrun: go build ./cmd/flow\n---\n\nBuild release binary.\n")
 
 	root, err := workspace.ResolveLocal(rootDir)
