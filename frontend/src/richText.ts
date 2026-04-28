@@ -99,12 +99,19 @@ export function markdownToHTML(value: string, inlineReferences?: InlineReference
 }
 
 export function editorHTMLToMarkdown(value: string): string {
-  const normalized = normalizeInlineReferenceTokens(turndown.turndown(value)).trim();
+  const normalizedHTML = normalizeEmptyParagraphMarkup(value);
+  const normalized = normalizeInlineReferenceTokens(turndown.turndown(normalizedHTML)).trim();
   if (normalized === "") {
     return "";
   }
 
   return `${normalized}\n`;
+}
+
+function normalizeEmptyParagraphMarkup(value: string): string {
+  // ProseMirror may emit BR-only paragraphs with multiple <br> nodes; collapse
+  // them to a stable representation to avoid growth across save/reload cycles.
+  return value.replace(/<p>(?:\s*<br(?:\s[^>]*)?>\s*)+<\/p>/gi, EMPTY_PARAGRAPH_MARKUP);
 }
 
 export function parseFlowDateHref(href: string): { date: string } | null {

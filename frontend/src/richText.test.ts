@@ -17,6 +17,13 @@ describe('richText conversion', () => {
     expect(markdownToHTML(markdown)).toContain('<p><br></p>')
   })
 
+  it('collapses repeated BR-only paragraphs to a stable empty paragraph', () => {
+    const markdown = editorHTMLToMarkdown('<table><tbody><tr><td><p><br><br><br class="ProseMirror-trailingBreak"></p></td></tr></tbody></table>')
+
+    expect(markdown).not.toContain('<br><br>')
+    expect(markdown).toContain('<p><br></p>')
+  })
+
   it('preserves inline reference tokens when converting editor HTML to markdown', () => {
     const markdown = editorHTMLToMarkdown('<p>[[graph2 > Task1]] test</p>')
 
