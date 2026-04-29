@@ -71,6 +71,7 @@ import {
   selectedGraphCanvasNode,
 } from "./lib/graphCanvasUtils";
 import { markdownToHTML, parseFlowReferenceHref, parseFlowDateHref } from "./richText";
+import { graphDirectoryColorHex, resolveGraphDirectoryColor } from "./lib/graphColors";
 import { useTheme } from "./lib/theme";
 import { todayString } from "./lib/dateEntries";
 import { toErrorMessage } from "./lib/utils";
@@ -341,7 +342,22 @@ function FlowApp() {
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab | "document">("search");
   const [editorScrollTarget, setEditorScrollTarget] = useState<string | null>(null);
 
-  const graphCanvasNodes = buildGraphCanvasFlowNodes(graphCanvasData, graphCanvasPositions, selectedCanvasNodeId, selectedDocumentId);
+  const graphDirectoryColorsByPath = useMemo(() => {
+    const next: Record<string, string> = {};
+    for (const graphNode of graphTree?.graphs ?? []) {
+      if ((graphNode.color ?? "").trim() !== "") {
+        next[graphNode.graphPath] = graphNode.color ?? "";
+      }
+    }
+    return next;
+  }, [graphTree]);
+  const graphCanvasNodes = buildGraphCanvasFlowNodes(
+    graphCanvasData,
+    graphCanvasPositions,
+    selectedCanvasNodeId,
+    selectedDocumentId,
+    graphDirectoryColorsByPath,
+  );
   const graphCanvasEdgesRaw = buildGraphCanvasFlowEdges(graphCanvasData, selectedCanvasNodeId);
   const graphCanvasEdges = selectedEdgeId === ""
     ? graphCanvasEdgesRaw
@@ -1704,6 +1720,21 @@ function FlowApp() {
     }
   }
 
+  async function handleSidebarSetGraphColor(graphPath: string, color: string | null): Promise<void> {
+    try {
+      clearMutationFeedback();
+      await requestJSON<{ name: string; color?: string }>(`/api/graphs/${encodeURIComponent(graphPath)}/color`, {
+        method: "PUT",
+        body: JSON.stringify({ color: color ?? "" }),
+      });
+
+      const snapshot = await loadWorkspaceSnapshot();
+      setGraphTree(snapshot.graphTreeData);
+    } catch (err) {
+      setMutationError(toErrorMessage(err));
+    }
+  }
+
   function handleSidebarCreateNode(graphPath: string, type: "note" | "task" | "command" = "note"): void {
     setCreateNodeDialog({ type, graphPath, origin: "sidebar" });
     setCreateNodeFileName("");
@@ -2285,14 +2316,18 @@ function FlowApp() {
 
             const panelKey = `${panel.documentId}:${index}`;
             const panelCustomWidth = threadPanelWidths[panelKey];
-            const threadPanelStyle = panelCustomWidth !== undefined
-              ? { "--thread-panel-width": `${panelCustomWidth}px` } as React.CSSProperties
-              : undefined;
+            const panelGraphColor = panelIsHome
+              ? undefined
+              : graphDirectoryColorHex(resolveGraphDirectoryColor(panel.graphPath, graphDirectoryColorsByPath));
+            const threadPanelStyle = {
+              ...(panelCustomWidth !== undefined ? { "--thread-panel-width": `${panelCustomWidth}px` } : {}),
+              ...(panelGraphColor !== undefined ? { "--thread-graph-color": panelGraphColor } : {}),
+            } as React.CSSProperties;
 
             return (
               <section
                 key={`${panel.documentId}:${index}`}
-                className={`thread-panel ${panel.isActive ? "thread-panel-active" : "thread-panel-readonly"}`}
+                className={`thread-panel ${panel.isActive ? "thread-panel-active" : "thread-panel-readonly"} ${panelGraphColor ? "thread-panel-tinted" : ""}`}
                 aria-label={panel.isActive ? `Active thread document ${panelTitle}` : `Thread document ${panelTitle}`}
                 data-active={panel.isActive ? "true" : "false"}
                 data-thread-panel-key={panelKey}
@@ -2655,6 +2690,7 @@ function FlowApp() {
             onRenameNode={handleSidebarRenameNode}
             onDeleteNode={handleSidebarDeleteNode}
             onDeleteGraph={(graphPath) => void handleSidebarDeleteGraph(graphPath)}
+            onSetGraphColor={(graphPath, color) => void handleSidebarSetGraphColor(graphPath, color)}
           />
         )}
       />

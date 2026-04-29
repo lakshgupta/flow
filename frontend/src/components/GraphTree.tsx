@@ -1,11 +1,16 @@
-import { CheckSquare, ChevronDown, ChevronRight, FileText, FolderPlus, Home, Layers, Minus, MoreHorizontal, Pencil, Plus, Star, Terminal, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { CheckSquare, ChevronDown, ChevronRight, FileText, FolderPlus, Home, Layers, Minus, MoreHorizontal, Paintbrush, Pencil, Plus, Star, Terminal, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import {
@@ -17,6 +22,7 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "./ui/sidebar";
+import { GRAPH_DIRECTORY_COLOR_OPTIONS, graphDirectoryColorHex } from "../lib/graphColors";
 import { useFavorites } from "../lib/useFavorites";
 import type { GraphTreeFileData, GraphTreeNodeData, GraphTreeResponse, SurfaceState } from "../types";
 
@@ -61,11 +67,21 @@ type FileTreeRowProps = {
   onRenameNode: (documentId: string, fileName: string) => void;
   onDeleteNode: (file: GraphTreeFileData, graphPath: string) => void;
   onDeleteGraph: (graphPath: string) => void;
+  onSetGraphColor: (graphPath: string, color: string | null) => void;
   collapsed: Set<string>;
   onToggleCollapse: (path: string) => void;
   isFavorite: (path: string) => boolean;
   toggleFavorite: (path: string) => void;
 };
+
+function graphRowStyle(color?: string): CSSProperties | undefined {
+  const colorHex = graphDirectoryColorHex(color);
+  if (!colorHex) {
+    return undefined;
+  }
+
+  return { "--graph-row-color": colorHex } as CSSProperties;
+}
 
 function FileTreeRow({
   node,
@@ -80,6 +96,7 @@ function FileTreeRow({
   onRenameNode,
   onDeleteNode,
   onDeleteGraph,
+  onSetGraphColor,
   collapsed,
   onToggleCollapse,
   isFavorite,
@@ -91,6 +108,7 @@ function FileTreeRow({
   const hasChildren = node.children.length > 0;
   const hasExpandableContent = hasChildren || files.length > 0;
   const isCollapsed = collapsed.has(node.data.graphPath);
+  const graphColorStyle = graphRowStyle(node.data.color);
   const [addingSubdir, setAddingSubdir] = useState(false);
   const [subdirName, setSubdirName] = useState("");
   const subdirInputRef = useRef<HTMLInputElement>(null);
@@ -103,7 +121,7 @@ function FileTreeRow({
 
   return (
     <>
-      <SidebarMenuSubItem className="graph-tree-row group" style={{ paddingLeft: `${depth * 0.75}rem` }}>
+      <SidebarMenuSubItem className={`graph-tree-row group ${graphColorStyle ? "graph-tree-row-colored" : ""}`} style={{ paddingLeft: `${depth * 0.75}rem`, ...graphColorStyle }}>
         {hasExpandableContent ? (
           <button
             type="button"
@@ -154,6 +172,26 @@ function FileTreeRow({
               <Pencil size={12} />
               Rename
             </DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Paintbrush size={12} />
+                Color
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuRadioGroup
+                  value={node.data.color && node.data.color.trim() !== "" ? node.data.color : "none"}
+                  onValueChange={(value) => onSetGraphColor(node.data.graphPath, value === "none" ? null : value)}
+                >
+                  <DropdownMenuRadioItem value="none">None</DropdownMenuRadioItem>
+                  {GRAPH_DIRECTORY_COLOR_OPTIONS.map((option) => (
+                    <DropdownMenuRadioItem key={option.id} value={option.id}>
+                      <span className="graph-color-swatch" style={{ backgroundColor: option.hex }} aria-hidden="true" />
+                      {option.label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => { setAddingSubdir(true); }}>
               <FolderPlus size={12} />
@@ -283,6 +321,7 @@ function FileTreeRow({
             onRenameNode={onRenameNode}
             onDeleteNode={onDeleteNode}
             onDeleteGraph={onDeleteGraph}
+            onSetGraphColor={onSetGraphColor}
             collapsed={collapsed}
             onToggleCollapse={onToggleCollapse}
             isFavorite={isFavorite}
@@ -306,9 +345,10 @@ type GraphTreeProps = {
   onRenameNode: (documentId: string, fileName: string) => void;
   onDeleteNode: (file: GraphTreeFileData, graphPath: string) => void;
   onDeleteGraph: (graphPath: string) => void;
+  onSetGraphColor: (graphPath: string, color: string | null) => void;
 };
 
-export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSelectHome, onSelectGraph, onOpenDocument, onCreateGraph, onCreateNode, onRenameGraph, onRenameNode, onDeleteNode, onDeleteGraph }: GraphTreeProps) {
+export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSelectHome, onSelectGraph, onOpenDocument, onCreateGraph, onCreateNode, onRenameGraph, onRenameNode, onDeleteNode, onDeleteGraph, onSetGraphColor }: GraphTreeProps) {
   const { toggleFavorite, isFavorite } = useFavorites();
   const [contentExpanded, setContentExpanded] = useState(true);
   const [favoritesExpanded, setFavoritesExpanded] = useState(true);
@@ -377,8 +417,9 @@ export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSele
                   const isActive =
                     activeSurface.kind === "graph" && activeSurface.graphPath === graph.graphPath;
                   const isFav = isFavorite(graph.graphPath);
+                  const graphColorStyle = graphRowStyle(graph.color);
                   return (
-                    <SidebarMenuSubItem key={graph.graphPath} className="graph-tree-row group">
+                    <SidebarMenuSubItem key={graph.graphPath} className={`graph-tree-row group ${graphColorStyle ? "graph-tree-row-colored" : ""}`} style={graphColorStyle}>
                       <SidebarMenuSubButton
                         className="graph-sub-button"
                         isActive={isActive}
@@ -456,6 +497,7 @@ export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSele
                     onRenameNode={onRenameNode}
                     onDeleteNode={onDeleteNode}
                     onDeleteGraph={onDeleteGraph}
+                    onSetGraphColor={onSetGraphColor}
                     collapsed={collapsed}
                     onToggleCollapse={handleToggleCollapse}
                     isFavorite={isFavorite}

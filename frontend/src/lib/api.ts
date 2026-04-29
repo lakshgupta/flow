@@ -5,6 +5,7 @@ function normalizeGraphTreeResponse(response: GraphTreeResponse): GraphTreeRespo
     ...response,
     graphs: response.graphs.map((graphNode) => ({
       ...graphNode,
+      color: graphNode.color ?? "",
       files: graphNode.files ?? [],
     })),
   };

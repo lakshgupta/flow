@@ -1,8 +1,10 @@
 import { EdgeLabelRenderer, MarkerType, Position, BaseEdge, getSmoothStepPath } from "@xyflow/react";
 import type { Edge, EdgeProps, Node } from "@xyflow/react";
+import type { CSSProperties } from "react";
 import { createContext, useContext } from "react";
 
 import { fileNameFromPath } from "./docUtils";
+import { graphDirectoryColorHex, resolveGraphDirectoryColor } from "./graphColors";
 import type {
   GraphCanvasEdgePayload,
   GraphCanvasFlowNodeData,
@@ -122,17 +124,20 @@ function graphCanvasNodeDimensions(shape?: string): { width: number; height: num
 }
 
 export function renderGraphCanvasNodeLabel(data: GraphCanvasFlowNodeInput): React.ReactNode {
+  const graphColor = graphDirectoryColorHex(data.graphColor);
   return (
     <article
       className={[
         "graph-canvas-node",
         `graph-canvas-node-${graphCanvasTypeClassName(data.type)}`,
+        graphColor ? "graph-canvas-node-tinted" : "",
         data.shape === "circle" ? "graph-canvas-node-circle" : "",
         data.isCanvasSelected ? "graph-canvas-node-selected" : "",
         data.isPanelDocument ? "graph-canvas-node-panel" : "",
       ]
         .filter((value) => value !== "")
         .join(" ")}
+      style={graphColor ? { "--graph-node-color": graphColor } as CSSProperties : undefined}
     >
       {data.shape === "circle" ? (
         <>
@@ -159,6 +164,7 @@ export function buildGraphCanvasFlowNodes(
   graphCanvasPositions: Record<string, GraphCanvasPosition>,
   selectedCanvasNodeId: string,
   selectedDocumentId: string,
+  graphDirectoryColorsByPath: Record<string, string>,
 ): Node<GraphCanvasFlowNodeData>[] {
   if (graphCanvasData === null) {
     return [];
@@ -167,6 +173,7 @@ export function buildGraphCanvasFlowNodes(
   return graphCanvasData.nodes.map((item) => {
     const shape = graphCanvasNodeShape(item.shape);
     const dimensions = graphCanvasNodeDimensions(shape);
+    const graphColor = resolveGraphDirectoryColor(item.graph, graphDirectoryColorsByPath);
     const data: GraphCanvasFlowNodeData = {
       label: renderGraphCanvasNodeLabel({
         id: item.id,
@@ -175,6 +182,7 @@ export function buildGraphCanvasFlowNodes(
         title: item.title,
         description: item.description,
         graph: item.graph,
+        graphColor,
         featureSlug: item.featureSlug,
         fileName: fileNameFromPath(item.path),
         positionPersisted: item.positionPersisted,
@@ -187,6 +195,7 @@ export function buildGraphCanvasFlowNodes(
       title: item.title,
       description: item.description,
       graph: item.graph,
+      graphColor,
       featureSlug: item.featureSlug,
       fileName: fileNameFromPath(item.path),
       positionPersisted: item.positionPersisted,

@@ -2,6 +2,7 @@ package config
 
 import (
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -43,7 +44,7 @@ func TestWriteAndReadRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	configPath := filepath.Join(t.TempDir(), ".flow", FileName)
-	input := Workspace{GUI: GUI{Port: 4317, Appearance: AppearanceDark, PanelWidths: PanelWidths{LeftRatio: 0.27, RightRatio: 0.21, DocumentTOCRatio: 0.2}}}
+	input := Workspace{GUI: GUI{Port: 4317, Appearance: AppearanceDark, PanelWidths: PanelWidths{LeftRatio: 0.27, RightRatio: 0.21, DocumentTOCRatio: 0.2}, GraphDirectoryColors: map[string]string{"execution": GraphDirectoryColorSage, "execution/parser": GraphDirectoryColorSky}}}
 
 	if err := Write(configPath, input); err != nil {
 		t.Fatalf("Write() error = %v", err)
@@ -54,7 +55,7 @@ func TestWriteAndReadRoundTrip(t *testing.T) {
 		t.Fatalf("Read() error = %v", err)
 	}
 
-	if loaded != input {
+	if !reflect.DeepEqual(loaded, input) {
 		t.Fatalf("Read() = %#v, want %#v", loaded, input)
 	}
 }
@@ -111,5 +112,34 @@ func TestParseClampsInvalidPanelWidths(t *testing.T) {
 
 	if workspace.GUI.PanelWidths.LeftRatio != DefaultLeftPanelRatio || workspace.GUI.PanelWidths.RightRatio != DefaultRightPanelRatio {
 		t.Fatalf("workspace.GUI.PanelWidths = %#v, want default ratios after clamp", workspace.GUI.PanelWidths)
+	}
+}
+
+func TestParseValidGraphDirectoryColors(t *testing.T) {
+	t.Parallel()
+
+	workspace, err := Parse([]byte("gui:\n  port: 4317\n  graphDirectoryColors:\n    execution: mint\n    execution/parser: sky\n"))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if workspace.GUI.GraphDirectoryColors["execution"] != GraphDirectoryColorMint {
+		t.Fatalf("workspace.GUI.GraphDirectoryColors[execution] = %q, want %q", workspace.GUI.GraphDirectoryColors["execution"], GraphDirectoryColorMint)
+	}
+	if workspace.GUI.GraphDirectoryColors["execution/parser"] != GraphDirectoryColorSky {
+		t.Fatalf("workspace.GUI.GraphDirectoryColors[execution/parser] = %q, want %q", workspace.GUI.GraphDirectoryColors["execution/parser"], GraphDirectoryColorSky)
+	}
+}
+
+func TestParseRejectsInvalidGraphDirectoryColor(t *testing.T) {
+	t.Parallel()
+
+	_, err := Parse([]byte("gui:\n  port: 4317\n  graphDirectoryColors:\n    execution: neon\n"))
+	if err == nil {
+		t.Fatal("Parse() error = nil, want validation error")
+	}
+
+	if !strings.Contains(err.Error(), "gui.graphDirectoryColors") {
+		t.Fatalf("Parse() error = %v, want gui.graphDirectoryColors validation", err)
 	}
 }

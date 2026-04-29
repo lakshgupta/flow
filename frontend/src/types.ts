@@ -42,6 +42,7 @@ export type GraphTreeNodeData = {
   totalCount: number;
   hasChildren: boolean;
   countLabel: string;
+  color?: string;
   files: GraphTreeFileData[];
 };
 
@@ -247,6 +248,7 @@ export type GraphCanvasFlowNodeData = {
   title: string;
   description: string;
   graph: string;
+  graphColor?: string;
   featureSlug: string;
   fileName: string;
   positionPersisted: boolean;

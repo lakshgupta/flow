@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -29,6 +30,19 @@ const (
 	AppearanceDark   = "dark"
 )
 
+// Supported persisted graph directory color selections.
+const (
+	GraphDirectoryColorRose  = "rose"
+	GraphDirectoryColorPeach = "peach"
+	GraphDirectoryColorAmber = "amber"
+	GraphDirectoryColorLemon = "lemon"
+	GraphDirectoryColorMint  = "mint"
+	GraphDirectoryColorSage  = "sage"
+	GraphDirectoryColorSky   = "sky"
+	GraphDirectoryColorLilac = "lilac"
+	GraphDirectoryColorBlush = "blush"
+)
+
 // Workspace holds persisted workspace settings.
 type Workspace struct {
 	GUI GUI `yaml:"gui"`
@@ -36,9 +50,10 @@ type Workspace struct {
 
 // GUI holds loopback server settings for a workspace.
 type GUI struct {
-	Port        int         `yaml:"port"`
-	Appearance  string      `yaml:"appearance,omitempty"`
-	PanelWidths PanelWidths `yaml:"panelWidths"`
+	Port                 int               `yaml:"port"`
+	Appearance           string            `yaml:"appearance,omitempty"`
+	PanelWidths          PanelWidths       `yaml:"panelWidths"`
+	GraphDirectoryColors map[string]string `yaml:"graphDirectoryColors,omitempty"`
 }
 
 // PanelWidths stores persisted panel width ratios for the desktop GUI shell.
@@ -85,6 +100,21 @@ func (workspace Workspace) Validate() error {
 
 	if workspace.GUI.PanelWidths.LeftRatio+workspace.GUI.PanelWidths.RightRatio >= 0.9 {
 		return fmt.Errorf("gui.panelWidths ratios must leave space for the middle panel")
+	}
+
+	for graphPath, color := range workspace.GUI.GraphDirectoryColors {
+		if strings.TrimSpace(graphPath) == "" {
+			return fmt.Errorf("gui.graphDirectoryColors keys must not be empty")
+		}
+
+		cleanedGraphPath := filepath.Clean(graphPath)
+		if strings.HasPrefix(cleanedGraphPath, "..") {
+			return fmt.Errorf("gui.graphDirectoryColors key %q is invalid", graphPath)
+		}
+
+		if !isSupportedGraphDirectoryColor(color) {
+			return fmt.Errorf("gui.graphDirectoryColors[%q] must be one of %q, %q, %q, %q, %q, %q, %q, %q, or %q", graphPath, GraphDirectoryColorRose, GraphDirectoryColorPeach, GraphDirectoryColorAmber, GraphDirectoryColorLemon, GraphDirectoryColorMint, GraphDirectoryColorSage, GraphDirectoryColorSky, GraphDirectoryColorLilac, GraphDirectoryColorBlush)
+		}
 	}
 
 	return nil
@@ -183,5 +213,39 @@ func normalizeWorkspace(workspace Workspace) Workspace {
 		workspace.GUI.PanelWidths = defaultWorkspace.GUI.PanelWidths
 	}
 
+	normalizedGraphDirectoryColors := map[string]string{}
+	for graphPath, color := range workspace.GUI.GraphDirectoryColors {
+		trimmedGraphPath := strings.TrimSpace(graphPath)
+		trimmedColor := strings.TrimSpace(color)
+		if trimmedGraphPath == "" || trimmedColor == "" {
+			continue
+		}
+
+		normalizedGraphDirectoryColors[filepath.ToSlash(filepath.Clean(trimmedGraphPath))] = trimmedColor
+	}
+
+	if len(normalizedGraphDirectoryColors) > 0 {
+		workspace.GUI.GraphDirectoryColors = normalizedGraphDirectoryColors
+	} else {
+		workspace.GUI.GraphDirectoryColors = nil
+	}
+
 	return workspace
+}
+
+func isSupportedGraphDirectoryColor(value string) bool {
+	switch value {
+	case GraphDirectoryColorRose,
+		GraphDirectoryColorPeach,
+		GraphDirectoryColorAmber,
+		GraphDirectoryColorLemon,
+		GraphDirectoryColorMint,
+		GraphDirectoryColorSage,
+		GraphDirectoryColorSky,
+		GraphDirectoryColorLilac,
+		GraphDirectoryColorBlush:
+		return true
+	default:
+		return false
+	}
 }

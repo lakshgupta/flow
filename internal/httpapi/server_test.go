@@ -303,7 +303,7 @@ func TestNewMuxUpdatesWorkspacePanelWidths(t *testing.T) {
 func TestNewMuxRebuildsIndexAfterExternalFileChange(t *testing.T) {
 	t.Parallel()
 
-	root := createHTTPAPITestWorkspace(t)
+	root := createGraphTreeHTTPAPITestWorkspace(t)
 	handler, err := NewMux(Options{Root: root})
 	if err != nil {
 		t.Fatalf("NewMux() error = %v", err)
@@ -366,7 +366,7 @@ func TestNewMuxGraphTreeRebuildsMissingIndex(t *testing.T) {
 func TestNewMuxRejectsUnknownOrInvalidAPIRequests(t *testing.T) {
 	t.Parallel()
 
-	root := createHTTPAPITestWorkspace(t)
+	root := createGraphTreeHTTPAPITestWorkspace(t)
 	handler, err := NewMux(Options{Root: root})
 	if err != nil {
 		t.Fatalf("NewMux() error = %v", err)
@@ -501,6 +501,62 @@ func TestNewMuxRenamesGraphsAndReindexes(t *testing.T) {
 	}
 	if !slices.Contains(paths, "delivery/execution") {
 		t.Fatalf("graph paths = %#v, want delivery/execution", paths)
+	}
+}
+
+func TestNewMuxUpdatesGraphDirectoryColorAndPersistsAcrossRenameAndDelete(t *testing.T) {
+	t.Parallel()
+
+	root := createGraphTreeHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	updated := performJSONRequestWithBody[updateGraphColorResponse](t, handler, http.MethodPut, "/api/graphs/execution/color", map[string]any{
+		"color": config.GraphDirectoryColorMint,
+	})
+	if updated.Name != "execution" || updated.Color != config.GraphDirectoryColorMint {
+		t.Fatalf("updated = %#v, want execution + mint", updated)
+	}
+
+	graphTree := performJSONRequest[graphTreeResponse](t, handler, http.MethodGet, "/api/graphs")
+	if !slices.ContainsFunc(graphTree.Graphs, func(node graphTreeNodeResponse) bool {
+		return node.GraphPath == "execution" && node.Color == config.GraphDirectoryColorMint
+	}) {
+		t.Fatalf("graphTree.Graphs = %#v, want execution color mint", graphTree.Graphs)
+	}
+
+	workspaceConfig, err := config.Read(root.ConfigPath)
+	if err != nil {
+		t.Fatalf("config.Read() error = %v", err)
+	}
+	if workspaceConfig.GUI.GraphDirectoryColors["execution"] != config.GraphDirectoryColorMint {
+		t.Fatalf("workspaceConfig.GUI.GraphDirectoryColors = %#v, want execution=mint", workspaceConfig.GUI.GraphDirectoryColors)
+	}
+
+	performJSONRequestWithBody[createGraphResponse](t, handler, http.MethodPatch, "/api/graphs/execution", map[string]any{
+		"name": "delivery/execution",
+	})
+
+	workspaceConfig, err = config.Read(root.ConfigPath)
+	if err != nil {
+		t.Fatalf("config.Read() after rename error = %v", err)
+	}
+	if workspaceConfig.GUI.GraphDirectoryColors["delivery/execution"] != config.GraphDirectoryColorMint {
+		t.Fatalf("workspaceConfig.GUI.GraphDirectoryColors = %#v, want delivery/execution=mint", workspaceConfig.GUI.GraphDirectoryColors)
+	}
+	if _, exists := workspaceConfig.GUI.GraphDirectoryColors["execution"]; exists {
+		t.Fatalf("workspaceConfig.GUI.GraphDirectoryColors = %#v, did not expect execution key", workspaceConfig.GUI.GraphDirectoryColors)
+	}
+
+	performJSONRequest[deleteGraphResponse](t, handler, http.MethodDelete, "/api/graphs/delivery%2Fexecution")
+	workspaceConfig, err = config.Read(root.ConfigPath)
+	if err != nil {
+		t.Fatalf("config.Read() after delete error = %v", err)
+	}
+	if len(workspaceConfig.GUI.GraphDirectoryColors) != 0 {
+		t.Fatalf("workspaceConfig.GUI.GraphDirectoryColors = %#v, want empty after delete", workspaceConfig.GUI.GraphDirectoryColors)
 	}
 }
 

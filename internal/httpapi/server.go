@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -75,6 +76,7 @@ type graphTreeNodeResponse struct {
 	TotalCount  int                     `json:"totalCount"`
 	HasChildren bool                    `json:"hasChildren"`
 	CountLabel  string                  `json:"countLabel"`
+	Color       string                  `json:"color,omitempty"`
 	Files       []graphTreeFileResponse `json:"files"`
 }
 
@@ -213,6 +215,15 @@ type createGraphResponse struct {
 	Name string `json:"name"`
 }
 
+type updateGraphColorRequest struct {
+	Color string `json:"color"`
+}
+
+type updateGraphColorResponse struct {
+	Name  string `json:"name"`
+	Color string `json:"color,omitempty"`
+}
+
 type deleteDocumentResponse struct {
 	Deleted bool   `json:"deleted"`
 	ID      string `json:"id"`
@@ -302,6 +313,8 @@ func (handler *apiHandler) ServeHTTP(writer http.ResponseWriter, request *http.R
 		handler.handleGraphTree(writer, request)
 	case request.URL.Path == "/api/graphs" && request.Method == http.MethodPost:
 		handler.handleCreateGraph(writer, request)
+	case strings.HasPrefix(request.URL.Path, "/api/graphs/") && strings.HasSuffix(request.URL.Path, "/color") && request.Method == http.MethodPut:
+		handler.handleUpdateGraphColor(writer, request)
 	case strings.HasPrefix(request.URL.Path, "/api/graphs/") && request.Method == http.MethodPatch:
 		handler.handleRenameGraph(writer, request)
 	case strings.HasPrefix(request.URL.Path, "/api/graphs/") && request.Method == http.MethodDelete:
@@ -548,6 +561,7 @@ func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.R
 	}
 
 	response := graphTreeResponse{Home: home, Graphs: make([]graphTreeNodeResponse, 0, len(nodes))}
+	graphDirectoryColors := workspaceConfigGraphColors(handler.options.Root)
 	for _, node := range nodes {
 		response.Graphs = append(response.Graphs, graphTreeNodeResponse{
 			GraphPath:   node.GraphPath,
@@ -556,6 +570,7 @@ func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.R
 			TotalCount:  node.TotalCount,
 			HasChildren: node.HasChildren,
 			CountLabel:  fmt.Sprintf("%d direct / %d total", node.DirectCount, node.TotalCount),
+			Color:       graphDirectoryColors[node.GraphPath],
 			Files:       filesByGraph[node.GraphPath],
 		})
 	}
@@ -796,7 +811,12 @@ func (handler *apiHandler) handleUpdateDocument(writer http.ResponseWriter, requ
 }
 
 func (handler *apiHandler) handleRenameGraph(writer http.ResponseWriter, request *http.Request) {
-	graphName := strings.TrimPrefix(request.URL.Path, "/api/graphs/")
+	graphName, ok := graphNameFromGraphRequestPath(request.URL.Path)
+	if !ok {
+		writeError(writer, http.StatusBadRequest, "graph name must not be empty")
+		return
+	}
+
 	if strings.TrimSpace(graphName) == "" {
 		writeError(writer, http.StatusBadRequest, "graph name must not be empty")
 		return
@@ -807,9 +827,15 @@ func (handler *apiHandler) handleRenameGraph(writer http.ResponseWriter, request
 		writeError(writer, http.StatusBadRequest, err.Error())
 		return
 	}
+	payload.Name = strings.TrimSpace(payload.Name)
 
 	if err := workspace.RenameGraph(handler.options.Root, graphName, payload.Name); err != nil {
 		writeMutationError(writer, err)
+		return
+	}
+
+	if err := remapGraphDirectoryColors(handler.options.Root, graphName, payload.Name); err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -817,7 +843,12 @@ func (handler *apiHandler) handleRenameGraph(writer http.ResponseWriter, request
 }
 
 func (handler *apiHandler) handleDeleteGraph(writer http.ResponseWriter, request *http.Request) {
-	graphName := strings.TrimPrefix(request.URL.Path, "/api/graphs/")
+	graphName, ok := graphNameFromGraphRequestPath(request.URL.Path)
+	if !ok {
+		writeError(writer, http.StatusBadRequest, "graph name must not be empty")
+		return
+	}
+
 	if strings.TrimSpace(graphName) == "" {
 		writeError(writer, http.StatusBadRequest, "graph name must not be empty")
 		return
@@ -828,7 +859,61 @@ func (handler *apiHandler) handleDeleteGraph(writer http.ResponseWriter, request
 		return
 	}
 
+	if err := deleteGraphDirectoryColors(handler.options.Root, graphName); err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
 	writeJSON(writer, http.StatusOK, deleteGraphResponse{Deleted: true, Name: graphName})
+}
+
+func (handler *apiHandler) handleUpdateGraphColor(writer http.ResponseWriter, request *http.Request) {
+	graphName, ok := graphNameFromGraphColorRequestPath(request.URL.Path)
+	if !ok {
+		writeError(writer, http.StatusBadRequest, "graph name must not be empty")
+		return
+	}
+
+	graphDir := filepath.Join(handler.options.Root.GraphsPath, filepath.FromSlash(graphName))
+	if _, err := os.Stat(graphDir); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			writeError(writer, http.StatusNotFound, fmt.Sprintf("graph %q not found", graphName))
+			return
+		}
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var payload updateGraphColorRequest
+	if err := decodeJSONRequest(request, &payload); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	workspaceConfig, err := readWorkspaceConfig(handler.options.Root)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	color := strings.TrimSpace(payload.Color)
+	if color == "" {
+		if len(workspaceConfig.GUI.GraphDirectoryColors) > 0 {
+			delete(workspaceConfig.GUI.GraphDirectoryColors, graphName)
+		}
+	} else {
+		if workspaceConfig.GUI.GraphDirectoryColors == nil {
+			workspaceConfig.GUI.GraphDirectoryColors = map[string]string{}
+		}
+		workspaceConfig.GUI.GraphDirectoryColors[graphName] = color
+	}
+
+	if err := config.Write(handler.options.Root.ConfigPath, workspaceConfig); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, updateGraphColorResponse{Name: graphName, Color: workspaceConfig.GUI.GraphDirectoryColors[graphName]})
 }
 
 func (handler *apiHandler) handleDeleteDocument(writer http.ResponseWriter, request *http.Request) {
@@ -1057,6 +1142,96 @@ func readWorkspaceConfig(root workspace.Root) (config.Workspace, error) {
 	}
 
 	return config.Workspace{}, err
+}
+
+func workspaceConfigGraphColors(root workspace.Root) map[string]string {
+	workspaceConfig, err := readWorkspaceConfig(root)
+	if err != nil {
+		return map[string]string{}
+	}
+	if workspaceConfig.GUI.GraphDirectoryColors == nil {
+		return map[string]string{}
+	}
+
+	return workspaceConfig.GUI.GraphDirectoryColors
+}
+
+func graphNameFromGraphRequestPath(path string) (string, bool) {
+	graphNameRaw := strings.TrimPrefix(path, "/api/graphs/")
+	if graphNameRaw == "" {
+		return "", false
+	}
+
+	decoded, err := url.PathUnescape(graphNameRaw)
+	if err != nil {
+		return "", false
+	}
+
+	return strings.TrimSpace(decoded), strings.TrimSpace(decoded) != ""
+}
+
+func graphNameFromGraphColorRequestPath(path string) (string, bool) {
+	if !strings.HasSuffix(path, "/color") {
+		return "", false
+	}
+
+	trimmed := strings.TrimSuffix(path, "/color")
+	return graphNameFromGraphRequestPath(trimmed)
+}
+
+func remapGraphDirectoryColors(root workspace.Root, currentGraph string, nextGraph string) error {
+	workspaceConfig, err := readWorkspaceConfig(root)
+	if err != nil {
+		return err
+	}
+
+	if len(workspaceConfig.GUI.GraphDirectoryColors) == 0 {
+		return nil
+	}
+
+	nextColors := make(map[string]string, len(workspaceConfig.GUI.GraphDirectoryColors))
+	for graphPath, color := range workspaceConfig.GUI.GraphDirectoryColors {
+		remapped := graphPath
+		if graphPath == currentGraph {
+			remapped = nextGraph
+		} else if strings.HasPrefix(graphPath, currentGraph+"/") {
+			remapped = nextGraph + strings.TrimPrefix(graphPath, currentGraph)
+		}
+		nextColors[remapped] = color
+	}
+
+	workspaceConfig.GUI.GraphDirectoryColors = nextColors
+	if err := config.Write(root.ConfigPath, workspaceConfig); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func deleteGraphDirectoryColors(root workspace.Root, graphName string) error {
+	workspaceConfig, err := readWorkspaceConfig(root)
+	if err != nil {
+		return err
+	}
+
+	if len(workspaceConfig.GUI.GraphDirectoryColors) == 0 {
+		return nil
+	}
+
+	nextColors := make(map[string]string, len(workspaceConfig.GUI.GraphDirectoryColors))
+	for graphPath, color := range workspaceConfig.GUI.GraphDirectoryColors {
+		if graphPath == graphName || strings.HasPrefix(graphPath, graphName+"/") {
+			continue
+		}
+		nextColors[graphPath] = color
+	}
+
+	workspaceConfig.GUI.GraphDirectoryColors = nextColors
+	if err := config.Write(root.ConfigPath, workspaceConfig); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteGraphView, documents []markdown.WorkspaceDocument) (documentResponse, bool, error) {
