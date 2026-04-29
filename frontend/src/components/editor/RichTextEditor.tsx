@@ -213,7 +213,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
           <div
             ref={editor.mount}
             aria-label={ariaLabel}
-            className="ProseMirror box-border min-h-full px-[max(2rem,calc(50%-28rem))] py-6 outline-hidden outline-0"
+            className="ProseMirror flow-editor-content box-border min-h-full py-4 outline-hidden outline-0"
           />
           <InlineMenu />
           <ReferenceMenu graphPath={referenceLookupGraph} />

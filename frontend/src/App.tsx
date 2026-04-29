@@ -9,7 +9,7 @@ import {
   type Node,
   type NodeChange,
 } from "@xyflow/react";
-import { CalendarDays, FileText, Info, Maximize2, Minimize2, PaintbrushVertical, Search, Settings, Trash2, TriangleAlert, X } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, FileText, Info, Maximize2, Minimize2, PaintbrushVertical, Rows3, Search, Settings, Trash2, TriangleAlert, X } from "lucide-react";
 import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppSidebar } from "./components/AppSidebar";
@@ -104,6 +104,7 @@ import "./styles.css";
 type RightPanelTab = "calendar" | "search";
 type DocumentOpenMode = "center" | "right-rail";
 type CenterDocumentSidePanelMode = "hidden" | "toc" | "properties";
+type ThreadDensityMode = "comfortable" | "dense" | "ultra";
 type RenameDialogState =
   | { kind: "graph"; graphPath: string }
   | { kind: "node"; documentId: string; fileName: string };
@@ -293,6 +294,8 @@ function FlowApp() {
   const [rightSidebarWidth, setRightSidebarWidth] = useState<number>(320);
   const [documentTOCRatio, setDocumentTOCRatio] = useState<number>(DEFAULT_DOCUMENT_TOC_RATIO);
   const [threadPanelWidths, setThreadPanelWidths] = useState<Record<string, number>>({});
+  const [threadDensityMode, setThreadDensityMode] = useState<ThreadDensityMode>("comfortable");
+  const [threadExpanded, setThreadExpanded] = useState<boolean>(false);
   const [centerDocumentSidePanelMode, setCenterDocumentSidePanelMode] = useState<CenterDocumentSidePanelMode>("hidden");
   const [homeTOCVisible, setHomeTOCVisible] = useState<boolean>(false);
   const [isResizingLeft, setIsResizingLeft] = useState<boolean>(false);
@@ -319,6 +322,7 @@ function FlowApp() {
   const documentSavePromiseRef = useRef<Promise<void> | null>(null);
   const edgeClickTimerRef = useRef<number | null>(null);
   const documentThreadRef = useRef<ThreadDocumentEntry[]>([]);
+  const threadStackRef = useRef<HTMLDivElement | null>(null);
   const selectedDocumentOpenModeRef = useRef<DocumentOpenMode>("right-rail");
   const formStateRef = useRef<DocumentFormState>(emptyDocumentFormState);
   const selectedDocumentRef = useRef<DocumentResponse | null>(null);
@@ -367,6 +371,16 @@ function FlowApp() {
   const hasRightRailDocument = selectedDocumentId !== "" && selectedDocumentOpenMode === "right-rail";
   const showRightRailDocumentButton = activeSurface.kind === "graph" && !isCenterDocumentOpen && (selectedCanvasNode !== null || hasRightRailDocument);
   const selectedNodeMatchesRightRailDocument = selectedCanvasNode !== null && hasRightRailDocument && selectedDocumentId === selectedCanvasNode.id;
+  const nextThreadDensityMode: ThreadDensityMode = threadDensityMode === "comfortable"
+    ? "dense"
+    : threadDensityMode === "dense"
+      ? "ultra"
+      : "comfortable";
+  const nextThreadDensityLabel = nextThreadDensityMode === "comfortable"
+    ? "comfortable"
+    : nextThreadDensityMode === "dense"
+      ? "dense"
+      : "ultra";
   const graphCanvasOverlayController: GraphCanvasOverlayController = {
     state: {
       edges: graphCanvasData?.edges ?? [],
@@ -434,6 +448,28 @@ function FlowApp() {
       };
     });
   }, [activeThreadDocumentId, documentThread, selectedDocument, selectedDocumentOpenMode, threadDocumentsById]);
+  const activeThreadPanelKey = useMemo(() => {
+    if (threadPanels.length === 0) {
+      return "";
+    }
+
+    const activeIndex = threadPanels.findIndex((panel) => panel.isActive);
+    const resolvedIndex = activeIndex >= 0 ? activeIndex : threadPanels.length - 1;
+    const panel = threadPanels[resolvedIndex];
+    if (panel === undefined) {
+      return "";
+    }
+
+    return `${panel.documentId}:${resolvedIndex}`;
+  }, [threadPanels]);
+  const activeThreadPanelIndex = useMemo(() => {
+    if (threadPanels.length === 0) {
+      return -1;
+    }
+
+    const activeIndex = threadPanels.findIndex((panel) => panel.isActive);
+    return activeIndex >= 0 ? activeIndex : threadPanels.length - 1;
+  }, [threadPanels]);
   const selectedDocumentLinks = useMemo(() => {
     if (selectedDocument === null) {
       return {
@@ -533,6 +569,81 @@ function FlowApp() {
     selectedDocumentOpenModeRef.current = selectedDocumentOpenMode;
   }, [selectedDocumentOpenMode]);
 
+  useEffect(() => {
+    if (!isThreadStackOpen || activeThreadPanelKey === "") {
+      return;
+    }
+
+    const stack = threadStackRef.current;
+    if (stack === null) {
+      return;
+    }
+
+    const panel = Array.from(stack.querySelectorAll<HTMLElement>("[data-thread-panel-key]"))
+      .find((node) => node.dataset.threadPanelKey === activeThreadPanelKey);
+    if (panel === undefined) {
+      return;
+    }
+
+    const prefersReducedMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    panel.scrollIntoView({
+      behavior: prefersReducedMotion ? "auto" : "smooth",
+      inline: "center",
+      block: "nearest",
+    });
+  }, [activeThreadPanelKey, isThreadStackOpen]);
+
+  const moveThreadFocus = useCallback((delta: -1 | 1): void => {
+    if (!isThreadStackOpen || threadPanels.length === 0 || activeThreadPanelIndex < 0) {
+      return;
+    }
+
+    const nextIndex = Math.min(Math.max(activeThreadPanelIndex + delta, 0), threadPanels.length - 1);
+    if (nextIndex === activeThreadPanelIndex) {
+      return;
+    }
+
+    const nextPanel = threadPanels[nextIndex];
+    if (nextPanel === undefined) {
+      return;
+    }
+
+    void activateThreadDocument(nextPanel.documentId, nextPanel.graphPath);
+  }, [activeThreadPanelIndex, isThreadStackOpen, threadPanels]);
+
+  useEffect(() => {
+    if (!isThreadStackOpen) {
+      return;
+    }
+
+    function handleThreadKeyboardNavigate(event: KeyboardEvent): void {
+      if (!event.altKey) {
+        return;
+      }
+
+      const target = event.target;
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) {
+          return;
+        }
+      }
+
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        moveThreadFocus(-1);
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        moveThreadFocus(1);
+      }
+    }
+
+    window.addEventListener("keydown", handleThreadKeyboardNavigate);
+    return () => {
+      window.removeEventListener("keydown", handleThreadKeyboardNavigate);
+    };
+  }, [isThreadStackOpen, moveThreadFocus]);
+
   const syncSelectedDocumentState = useCallback((document: DocumentResponse | null, options?: { preserveFormState?: boolean }): void => {
     selectedDocumentRef.current = document;
     setSelectedDocument(document);
@@ -603,6 +714,15 @@ function FlowApp() {
   }, []);
 
   function collapseRightRail(): void {
+    const shouldResetNodeView = rightPanelTab === "calendar"
+      && selectedDocumentOpenModeRef.current === "center"
+      && documentThreadRef.current.length <= 1
+      && documentThreadRef.current.length > 0;
+
+    if (shouldResetNodeView) {
+      setThreadExpanded(true);
+    }
+
     setRightRailMaximized(false);
     setRightRailCollapsed(true);
   }
@@ -627,12 +747,28 @@ function FlowApp() {
       return;
     }
 
+    if (tab === "calendar") {
+      setRightSidebarWidth((current) => Math.max(current, 300));
+    }
+
     if (tab !== "document") {
       setRightRailMaximized(false);
     }
 
+    setThreadExpanded(false);
     setRightPanelTab(tab);
     setRightRailCollapsed(false);
+  }
+
+  function toggleThreadExpanded(): void {
+    setThreadExpanded((current) => {
+      const next = !current;
+      if (next) {
+        setRightRailCollapsed(true);
+        setRightRailMaximized(false);
+      }
+      return next;
+    });
   }
 
   function toggleCenterDocumentSidePanel(panel: Exclude<CenterDocumentSidePanelMode, "hidden">): void {
@@ -640,6 +776,8 @@ function FlowApp() {
   }
 
   function handleDateOpen(date: string): void {
+    setThreadExpanded(false);
+    setRightSidebarWidth((current) => Math.max(current, 300));
     setCalendarFocusDate(date);
     setRightPanelTab("calendar");
     setRightRailCollapsed(false);
@@ -716,9 +854,10 @@ function FlowApp() {
     setCenterDocumentSidePanelMode("hidden");
     applyDocumentThread([{ documentId, graphPath }]);
     setSelectedDocumentId(documentId);
+    setThreadExpanded(true);
+    setRightRailCollapsed(true);
     if (rightPanelTab === "document") {
       setRightPanelTab("search");
-      setRightRailCollapsed(true);
     }
   }
 
@@ -728,6 +867,7 @@ function FlowApp() {
     startTransition(() => {
       setActiveSurface({ kind: "graph", graphPath });
     });
+    setThreadExpanded(false);
     setSelectedCanvasNodeId(documentId);
     setSelectedDocumentOpenMode("right-rail");
     setSelectedDocumentId(documentId);
@@ -760,6 +900,7 @@ function FlowApp() {
     setSelectedDocumentOpenMode("center");
     setSelectedDocumentId(targetDocumentId);
     setSelectedCanvasNodeId(targetDocumentId);
+    setThreadExpanded(false);
     startTransition(() => {
       setActiveSurface({ kind: "graph", graphPath });
     });
@@ -813,6 +954,7 @@ function FlowApp() {
     const nextThread = documentThreadRef.current.slice(0, index);
     clearSurfaceFeedback();
     applyDocumentThread(nextThread);
+    setThreadExpanded(nextThread.length === 1);
 
     if (nextThread.length === 0) {
       setSelectedDocumentId("");
@@ -2113,7 +2255,7 @@ function FlowApp() {
   }
 
   const renderCenterDocumentShell = (isMaximizedRightRail: boolean) => (
-    <div className="center-document-shell">
+    <div className="center-document-shell" data-thread-expanded={threadExpanded ? "true" : "false"}>
       {panelError !== "" ? <p className="status-line status-line-error">{panelError}</p> : null}
       {mutationError !== "" ? <p className="status-line status-line-error">{mutationError}</p> : null}
       {mutationSuccess !== "" ? <p className="status-line status-line-success">{mutationSuccess}</p> : null}
@@ -2123,7 +2265,13 @@ function FlowApp() {
           <p>Loading document content.</p>
         </div>
       ) : (
-        <div className="thread-stack" aria-label="Document thread">
+        <div
+          ref={threadStackRef}
+          className="thread-stack"
+          data-density={threadDensityMode}
+          data-multi-thread={threadPanels.length > 1 ? "true" : "false"}
+          aria-label="Document thread"
+        >
           {threadPanels.map((panel, index) => {
             const panelIsHome = panel.documentId === HOME_THREAD_DOCUMENT_ID;
             const panelDocument = panel.document;
@@ -2147,6 +2295,7 @@ function FlowApp() {
                 className={`thread-panel ${panel.isActive ? "thread-panel-active" : "thread-panel-readonly"}`}
                 aria-label={panel.isActive ? `Active thread document ${panelTitle}` : `Thread document ${panelTitle}`}
                 data-active={panel.isActive ? "true" : "false"}
+                data-thread-panel-key={panelKey}
                 style={threadPanelStyle}
                 onClick={(event) => {
                   if (panel.isActive) {
@@ -2169,11 +2318,52 @@ function FlowApp() {
                     ) : panelDocument !== null ? (
                       <Badge variant="outline" className="center-document-type-badge">{formatDocumentType(panelDocument.type)}</Badge>
                     ) : null}
-                    <span className="thread-panel-step">Thread {index + 1}</span>
                   </div>
                   <div className="thread-panel-header-actions">
                     {panel.isActive ? (
                       <>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Switch to ${nextThreadDensityLabel} thread density`}
+                          title={`Switch to ${nextThreadDensityLabel} thread density`}
+                          onClick={() => setThreadDensityMode(nextThreadDensityMode)}
+                        >
+                          <Rows3 size={16} />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={threadExpanded ? "Restore thread width" : "Expand thread to full width"}
+                          title={threadExpanded ? "Restore thread width" : "Expand thread to full width"}
+                          onClick={() => toggleThreadExpanded()}
+                        >
+                          {threadExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label="Previous thread panel"
+                          title="Previous thread panel (Alt + Left)"
+                          disabled={activeThreadPanelIndex <= 0}
+                          onClick={() => moveThreadFocus(-1)}
+                        >
+                          <ChevronLeft size={16} />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label="Next thread panel"
+                          title="Next thread panel (Alt + Right)"
+                          disabled={activeThreadPanelIndex < 0 || activeThreadPanelIndex >= threadPanels.length - 1}
+                          onClick={() => moveThreadFocus(1)}
+                        >
+                          <ChevronRight size={16} />
+                        </Button>
                         {panelIsHome ? <>{savingHome && <span className="home-save-success">Saving…</span>}</> : (
                           <>
                             {savingDocument && <span className="home-save-success">Saving…</span>}
@@ -2330,7 +2520,6 @@ function FlowApp() {
                         </>
                       ) : null}
                     </div>
-                    {panel.graphPath.trim() !== "" ? <p className="thread-panel-breadcrumb">{panel.graphPath}</p> : null}
                   </div>
                 ) : panelIsHome ? (
                   <div className="thread-panel-shell thread-panel-shell-readonly">
@@ -2423,7 +2612,6 @@ function FlowApp() {
                         dangerouslySetInnerHTML={{ __html: markdownToHTML(panelDocument.body, panelDocument.inlineReferences) }}
                       />
                     </div>
-                    {panel.graphPath.trim() !== "" ? <p className="thread-panel-breadcrumb">{panel.graphPath}</p> : null}
                   </div>
                 )}
 
