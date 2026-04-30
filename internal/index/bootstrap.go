@@ -101,6 +101,16 @@ CREATE TABLE graph_layout_positions (
 );
 
 CREATE INDEX graph_layout_positions_graph_idx ON graph_layout_positions(graph_path, document_id);
+
+CREATE TABLE graph_layout_viewports (
+	graph_path TEXT NOT NULL PRIMARY KEY,
+	x REAL NOT NULL,
+	y REAL NOT NULL,
+	zoom REAL NOT NULL,
+	updated_at TEXT NOT NULL
+);
+
+CREATE INDEX graph_layout_viewports_graph_idx ON graph_layout_viewports(graph_path);
 `
 
 type indexedDocument struct {
@@ -123,6 +133,7 @@ type GraphNode struct {
 // When flowPaths[0] is provided, documents under .flow/data are reindexed into SQLite.
 func Rebuild(indexPath string, flowPaths ...string) error {
 	preservedLayouts, _ := loadExistingGraphLayoutPositions(indexPath)
+	preservedViewports, _ := loadExistingGraphLayoutViewports(indexPath)
 
 	if err := os.MkdirAll(filepath.Dir(indexPath), 0o755); err != nil {
 		return fmt.Errorf("create index directory: %w", err)
@@ -198,6 +209,10 @@ func Rebuild(indexPath string, flowPaths ...string) error {
 		if err := reinsertPreservedGraphLayoutPositions(transaction, documents, preservedLayouts); err != nil {
 			return err
 		}
+
+		if err := reinsertPreservedGraphLayoutViewports(transaction, documents, preservedViewports); err != nil {
+			return err
+		}
 	}
 
 	if err := transaction.Commit(); err != nil {
@@ -229,6 +244,45 @@ func reinsertPreservedGraphLayoutPositions(transaction *sql.Tx, documents []inde
 
 		if err := insertGraphLayoutPosition(transaction, position); err != nil {
 			return err
+		}
+	}
+
+	return nil
+}
+
+func reinsertPreservedGraphLayoutViewports(transaction *sql.Tx, documents []indexedDocument, preserved []GraphLayoutViewport) error {
+	if len(preserved) == 0 {
+		return nil
+	}
+
+	allowedGraphs := make(map[string]struct{}, len(documents))
+	for _, document := range documents {
+		if document.graphPath == "" {
+			continue
+		}
+		allowedGraphs[document.graphPath] = struct{}{}
+	}
+
+	for _, viewport := range preserved {
+		if _, ok := allowedGraphs[viewport.GraphPath]; !ok {
+			continue
+		}
+
+		normalized, err := normalizeGraphLayoutViewport(viewport)
+		if err != nil {
+			return err
+		}
+
+		if _, err := transaction.Exec(
+			`INSERT INTO graph_layout_viewports (graph_path, x, y, zoom, updated_at) VALUES (?, ?, ?, ?, ?)
+			 ON CONFLICT(graph_path) DO UPDATE SET x = excluded.x, y = excluded.y, zoom = excluded.zoom, updated_at = excluded.updated_at`,
+			normalized.GraphPath,
+			normalized.X,
+			normalized.Y,
+			normalized.Zoom,
+			normalized.UpdatedAt,
+		); err != nil {
+			return fmt.Errorf("write preserved graph layout viewport for %q: %w", normalized.GraphPath, err)
 		}
 	}
 

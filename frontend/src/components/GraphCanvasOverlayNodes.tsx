@@ -30,20 +30,26 @@ export function GraphCanvasOverlayNodes({
               .join(" ")}
             onClick={(event) => onNodeClick(event, node.id)}
             onDoubleClick={(event) => onNodeDoubleClick(event, node.id)}
-            onPointerDown={(event) => onNodePointerDown(event, node.id)}
             style={{ transform: `translate(${screenX}px, ${screenY}px) scale(${rfViewport.zoom})`, transformOrigin: "top left" }}
           >
-            {node.data.label}
+            <div
+              className="canvas-node-drag-zone"
+              onPointerDown={(event) => onNodePointerDown(event, node.id)}
+            >
+              {node.data.label}
+            </div>
             {shiftSelectedNodes.includes(node.id) && (
               <div className="canvas-selection-badge">{shiftSelectedNodes.indexOf(node.id) + 1}</div>
             )}
             {(["top", "right", "bottom", "left"] as const).map((pos) => (
               <div
                 key={pos}
-                className={`canvas-connect-handle canvas-connect-handle-${pos}`}
+                className={`canvas-connect-zone canvas-connect-zone-${pos}`}
                 onClick={(event) => event.stopPropagation()}
                 onPointerDown={(event) => onHandlePointerDown(event, node.id)}
-              />
+              >
+                <div className={`canvas-connect-handle canvas-connect-handle-${pos}`} />
+              </div>
             ))}
           </div>
         );

@@ -45,21 +45,47 @@ export function graphDirectoryColorHex(value?: string): string | undefined {
 }
 
 export function resolveGraphDirectoryColor(graphPath: string, graphColorsByPath: Record<string, string>): string | undefined {
+  const trimmedGraphPath = graphPath.trim();
   let bestMatch: string | undefined;
   let bestMatchLength = -1;
 
   for (const [candidatePath, candidateColor] of Object.entries(graphColorsByPath)) {
-    if (candidateColor.trim() === "") {
+    const trimmedCandidatePath = candidatePath.trim();
+    const trimmedCandidateColor = candidateColor.trim();
+    if (trimmedCandidatePath === "" || trimmedCandidateColor === "") {
       continue;
     }
 
-    if (graphPath === candidatePath || graphPath.startsWith(`${candidatePath}/`)) {
-      if (candidatePath.length > bestMatchLength) {
-        bestMatch = candidateColor;
-        bestMatchLength = candidatePath.length;
+    if (trimmedGraphPath === trimmedCandidatePath || trimmedGraphPath.startsWith(`${trimmedCandidatePath}/`)) {
+      if (trimmedCandidatePath.length > bestMatchLength) {
+        bestMatch = trimmedCandidateColor;
+        bestMatchLength = trimmedCandidatePath.length;
       }
     }
   }
 
   return bestMatch;
+}
+
+export function resolveParentGraphDirectoryColor(graphPath: string, graphColorsByPath: Record<string, string>): string | undefined {
+  let current = graphPath.trim();
+
+  for (;;) {
+    const separatorIndex = current.lastIndexOf("/");
+    if (separatorIndex < 0) {
+      break;
+    }
+
+    current = current.slice(0, separatorIndex).trim();
+    if (current === "") {
+      break;
+    }
+
+    const color = resolveGraphDirectoryColor(current, graphColorsByPath);
+    if (color !== undefined) {
+      return color;
+    }
+  }
+
+  return resolveGraphDirectoryColor(graphPath, graphColorsByPath);
 }

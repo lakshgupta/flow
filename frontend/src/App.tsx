@@ -8,6 +8,7 @@ import {
   type Edge,
   type Node,
   type NodeChange,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import { CalendarDays, ChevronLeft, ChevronRight, FileText, Info, Maximize2, Minimize2, PaintbrushVertical, Rows3, Search, Settings, Trash2, TriangleAlert, X } from "lucide-react";
 import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
@@ -59,13 +60,15 @@ import {
   splitList,
 } from "./lib/docUtils";
 import {
-  applyForceLayout,
+  applyElkHorizontalLayout,
   applyGraphCanvasLayerGuidance,
   buildGraphCanvasFlowEdges,
   buildGraphCanvasFlowNodes,
   ContextEdge,
   EdgeEditContext,
   countConnectedGraphCanvasEdges,
+  graphCanvasOverlayPosition,
+  graphCanvasPositionMap,
   graphCanvasTypeLabel,
   normalizeGraphCanvasResponse,
   selectedGraphCanvasNode,
@@ -90,6 +93,7 @@ import type {
   GraphCanvasResponse,
   GraphCanvasResponseWire,
   GraphCreateType,
+  GraphLayoutPositionPayload,
   GraphLayoutResponse,
   GraphTreeFileData,
   GraphTreeResponse,
@@ -241,13 +245,20 @@ function updateGraphCanvasDocumentEntry(graphCanvas: GraphCanvasResponse | null,
 function FlowApp() {
   const { theme, setTheme } = useTheme();
   const rfViewport = useViewport();
+  const graphCanvasFlowRef = useRef<ReactFlowInstance<GraphCanvasFlowNodeData> | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null);
   const [graphTree, setGraphTree] = useState<GraphTreeResponse | null>(null);
   const [graphCanvasData, setGraphCanvasData] = useState<GraphCanvasResponse | null>(null);
   const [graphCanvasLoading, setGraphCanvasLoading] = useState<boolean>(false);
   const [graphCanvasError, setGraphCanvasError] = useState<string>("");
   const [graphCanvasPositions, setGraphCanvasPositions] = useState<Record<string, GraphCanvasPosition>>({});
+  const [graphCanvasUserPositions, setGraphCanvasUserPositions] = useState<Record<string, GraphCanvasPosition>>({});
+  const [graphCanvasHorizontalPositions, setGraphCanvasHorizontalPositions] = useState<Record<string, GraphCanvasPosition>>({});
+  const [graphCanvasLayoutMode, setGraphCanvasLayoutMode] = useState<"user" | "horizontal">("user");
+  const [graphCanvasResettingLayout, setGraphCanvasResettingLayout] = useState<boolean>(false);
   const [graphCanvasReloadToken, setGraphCanvasReloadToken] = useState<number>(0);
+  const [graphCanvasNodeSearchTerm, setGraphCanvasNodeSearchTerm] = useState<string>("");
+  const [graphCanvasNodeSearchIndex, setGraphCanvasNodeSearchIndex] = useState<number>(0);
   const [selectedCanvasNodeId, setSelectedCanvasNodeId] = useState<string>("");
   const [graphCreatePendingType, setGraphCreatePendingType] = useState<GraphCreateType | "">("");
   const [graphCreateError, setGraphCreateError] = useState<string>("");
@@ -362,6 +373,18 @@ function FlowApp() {
   const graphCanvasEdges = selectedEdgeId === ""
     ? graphCanvasEdgesRaw
     : graphCanvasEdgesRaw.map((e) => e.id === selectedEdgeId ? { ...e, selected: true } : e);
+  const normalizedGraphCanvasNodeSearchTerm = graphCanvasNodeSearchTerm.trim().toLowerCase();
+  const graphCanvasNodeSearchMatches = useMemo(() => {
+    if (normalizedGraphCanvasNodeSearchTerm === "") {
+      return [] as Node<GraphCanvasFlowNodeData>[];
+    }
+
+    return graphCanvasNodes.filter((node) =>
+      (node.data.title ?? "").toLowerCase().includes(normalizedGraphCanvasNodeSearchTerm),
+    );
+  }, [graphCanvasNodes, normalizedGraphCanvasNodeSearchTerm]);
+  const graphCanvasNodeSearchHasMatches = graphCanvasNodeSearchMatches.length > 0;
+  const graphCanvasNodeSearchSelectedIndex = graphCanvasNodeSearchMatches.findIndex((node) => node.id === selectedCanvasNodeId);
   const selectedGraphNode = graphTree?.graphs.find((graphNode) => graphNode.graphPath === selectedGraphPath) ?? null;
   const selectedCanvasNode = selectedGraphCanvasNode(graphCanvasData, selectedCanvasNodeId);
   const selectedCanvasNodeEdgeCount = countConnectedGraphCanvasEdges(graphCanvasData, selectedCanvasNodeId);
@@ -1225,19 +1248,73 @@ function FlowApp() {
   }, [deferredSearchQuery]);
 
   useEffect(() => {
-    if (graphCanvasData === null) {
-      setGraphCanvasPositions({});
-      return;
+    let cancelled = false;
+
+    async function syncGraphCanvasLayout(): Promise<void> {
+      if (graphCanvasData === null) {
+        setGraphCanvasPositions({});
+        setGraphCanvasUserPositions({});
+        setGraphCanvasHorizontalPositions({});
+        setGraphCanvasLayoutMode("user");
+        return;
+      }
+
+      if (graphCanvasData.nodes.length === 0) {
+        setGraphCanvasPositions({});
+        setGraphCanvasUserPositions({});
+        setGraphCanvasHorizontalPositions({});
+        setGraphCanvasLayoutMode("user");
+        return;
+      }
+
+      const hasPersistedPositions = graphCanvasData.nodes.some((node) => node.positionPersisted);
+      if (hasPersistedPositions) {
+        const nextPositions = graphCanvasPositionMap(graphCanvasData);
+        setGraphCanvasPositions(nextPositions);
+        setGraphCanvasUserPositions(nextPositions);
+        setGraphCanvasHorizontalPositions({});
+        setGraphCanvasLayoutMode("user");
+        return;
+      }
+
+      try {
+        const nextPositions = await applyElkHorizontalLayout(graphCanvasData.nodes, graphCanvasData.edges);
+        if (!cancelled) {
+          const initialPositions = Object.keys(nextPositions).length > 0 ? nextPositions : graphCanvasPositionMap(graphCanvasData);
+          setGraphCanvasPositions(initialPositions);
+          setGraphCanvasUserPositions(initialPositions);
+          setGraphCanvasHorizontalPositions({});
+          setGraphCanvasLayoutMode("user");
+        }
+      } catch {
+        if (!cancelled) {
+          const initialPositions = graphCanvasPositionMap(graphCanvasData);
+          setGraphCanvasPositions(initialPositions);
+          setGraphCanvasUserPositions(initialPositions);
+          setGraphCanvasHorizontalPositions({});
+          setGraphCanvasLayoutMode("user");
+        }
+      }
     }
-    setGraphCanvasPositions(applyForceLayout(graphCanvasData.nodes, graphCanvasData.edges));
+
+    void syncGraphCanvasLayout();
+    return () => {
+      cancelled = true;
+    };
   }, [graphCanvasData]);
 
   useEffect(() => {
+    setGraphCanvasNodeSearchTerm("");
+    setGraphCanvasNodeSearchIndex(0);
+
     if (selectedGraphPath === "") {
       setGraphCanvasData(null);
       setGraphCanvasLoading(false);
       setGraphCanvasError("");
       setGraphCanvasPositions({});
+      setGraphCanvasUserPositions({});
+      setGraphCanvasHorizontalPositions({});
+      setGraphCanvasLayoutMode("user");
       setGraphCreateError("");
       setGraphCreatePendingType("");
       setSelectedCanvasNodeId("");
@@ -1278,6 +1355,17 @@ function FlowApp() {
       cancelled = true;
     };
   }, [selectedGraphPath, graphCanvasReloadToken]);
+
+  useEffect(() => {
+    if (!graphCanvasNodeSearchHasMatches) {
+      setGraphCanvasNodeSearchIndex(0);
+      return;
+    }
+
+    if (graphCanvasNodeSearchIndex >= graphCanvasNodeSearchMatches.length) {
+      setGraphCanvasNodeSearchIndex(0);
+    }
+  }, [graphCanvasNodeSearchHasMatches, graphCanvasNodeSearchIndex, graphCanvasNodeSearchMatches.length]);
 
   async function refreshShellViews(options?: { nextDocument?: DocumentResponse | null; nextDocumentId?: string; reloadCurrentDocument?: boolean }): Promise<void> {
     const snapshot = await loadWorkspaceSnapshot();
@@ -1468,48 +1556,212 @@ function FlowApp() {
 
   function updateGraphCanvasNodePosition(documentId: string, position: GraphCanvasPosition): void {
     setGraphCanvasPositions((current) => ({ ...current, [documentId]: position }));
+    setGraphCanvasUserPositions((current) => ({ ...current, [documentId]: position }));
+
+    if (graphCanvasLayoutMode === "horizontal") {
+      setGraphCanvasLayoutMode("user");
+    }
+  }
+
+  async function persistGraphCanvasPositions(positions: GraphLayoutPositionPayload[]): Promise<void> {
+    if (selectedGraphPath === "" || positions.length === 0) {
+      return;
+    }
+
+    const response = await requestJSON<GraphLayoutResponse>("/api/graph-layout", {
+      method: "PUT",
+      body: JSON.stringify({
+        graph: selectedGraphPath,
+        positions,
+      }),
+    });
+
+    if (response.positions.length === 0) {
+      return;
+    }
+
+    const persistedById = new Map(response.positions.map((item) => [item.documentId, { x: item.x, y: item.y }]));
+
+    setGraphCanvasPositions((current) => {
+      const next = { ...current };
+      for (const [documentId, position] of persistedById.entries()) {
+        next[documentId] = position;
+      }
+      return next;
+    });
+
+    setGraphCanvasUserPositions((current) => {
+      const next = { ...current };
+      for (const [documentId, position] of persistedById.entries()) {
+        next[documentId] = position;
+      }
+      return next;
+    });
+
+    setGraphCanvasData((current) => {
+      if (current === null) {
+        return current;
+      }
+
+      return {
+        ...current,
+        nodes: current.nodes.map((node) => {
+          const persisted = persistedById.get(node.id);
+          if (persisted === undefined) {
+            return node;
+          }
+
+          return {
+            ...node,
+            position: persisted,
+            positionPersisted: true,
+          };
+        }),
+      };
+    });
+  }
+
+  async function persistGraphCanvasViewport(viewport: { x: number; y: number; zoom: number }): Promise<void> {
+    if (selectedGraphPath === "") {
+      return;
+    }
+
+    const response = await requestJSON<GraphLayoutResponse>("/api/graph-layout", {
+      method: "PUT",
+      body: JSON.stringify({
+        graph: selectedGraphPath,
+        positions: [],
+        viewport,
+      }),
+    });
+
+    if (response.viewport === undefined) {
+      return;
+    }
+
+    setGraphCanvasData((current) => {
+      if (current === null) {
+        return current;
+      }
+
+      return {
+        ...current,
+        viewport: response.viewport ?? null,
+      };
+    });
+  }
+
+  function snapshotGraphCanvasPositions(documentIds?: Set<string>): GraphLayoutPositionPayload[] {
+    const flow = graphCanvasFlowRef.current;
+    if (flow === null) {
+      return [];
+    }
+
+    // Use React Flow's save payload format (toObject) and persist only node coordinates.
+    const snapshot = flow.toObject();
+    return snapshot.nodes
+      .filter((node) => (documentIds === undefined ? true : documentIds.has(node.id)))
+      .map((node) => ({
+        documentId: node.id,
+        x: node.position.x,
+        y: node.position.y,
+      }));
   }
 
   async function persistGraphCanvasPosition(documentId: string, position: GraphCanvasPosition): Promise<void> {
-    if (selectedGraphPath === "") {
+    try {
+      setGraphCanvasError("");
+      const snapshotPositions = snapshotGraphCanvasPositions(new Set([documentId]));
+      const next = snapshotPositions.length > 0 ? snapshotPositions : [{ documentId, x: position.x, y: position.y }];
+      await persistGraphCanvasPositions(next);
+    } catch (saveError) {
+      setGraphCanvasError(toErrorMessage(saveError));
+    }
+  }
+
+  async function handleToggleGraphCanvasLayout(): Promise<void> {
+    if (graphCanvasData === null || graphCanvasData.nodes.length === 0) {
+      return;
+    }
+
+    if (graphCanvasLayoutMode === "horizontal") {
+      const nextUserPositions = Object.keys(graphCanvasUserPositions).length > 0
+        ? graphCanvasUserPositions
+        : graphCanvasPositionMap(graphCanvasData);
+      setGraphCanvasPositions(nextUserPositions);
+      setGraphCanvasLayoutMode("user");
       return;
     }
 
     try {
       setGraphCanvasError("");
-      const response = await requestJSON<GraphLayoutResponse>("/api/graph-layout", {
-        method: "PUT",
-        body: JSON.stringify({
-          graph: selectedGraphPath,
-          positions: [{ documentId, x: position.x, y: position.y }],
-        }),
-      });
-      const persistedPosition = response.positions[0];
-      if (persistedPosition === undefined) {
+      setGraphCanvasResettingLayout(true);
+      const cachedHorizontal = graphCanvasHorizontalPositions;
+      const nextPositions = Object.keys(cachedHorizontal).length > 0
+        ? cachedHorizontal
+        : await applyElkHorizontalLayout(graphCanvasData.nodes, graphCanvasData.edges);
+      if (Object.keys(nextPositions).length === 0) {
         return;
       }
 
-      setGraphCanvasData((current) => {
-        if (current === null) {
-          return current;
-        }
-
-        return {
-          ...current,
-          nodes: current.nodes.map((node) =>
-            node.id === documentId
-              ? {
-                  ...node,
-                  position: { x: persistedPosition.x, y: persistedPosition.y },
-                  positionPersisted: true,
-                }
-              : node,
-          ),
-        };
-      });
-    } catch (saveError) {
-      setGraphCanvasError(toErrorMessage(saveError));
+      setGraphCanvasPositions(nextPositions);
+      setGraphCanvasHorizontalPositions(nextPositions);
+      setGraphCanvasLayoutMode("horizontal");
+    } catch (layoutError) {
+      setGraphCanvasError(toErrorMessage(layoutError));
+    } finally {
+      setGraphCanvasResettingLayout(false);
     }
+  }
+
+  function focusGraphCanvasSearchMatch(nextIndex: number): void {
+    if (!graphCanvasNodeSearchHasMatches) {
+      return;
+    }
+
+    const normalizedIndex = ((nextIndex % graphCanvasNodeSearchMatches.length) + graphCanvasNodeSearchMatches.length)
+      % graphCanvasNodeSearchMatches.length;
+    const targetNode = graphCanvasNodeSearchMatches[normalizedIndex];
+    if (targetNode === undefined) {
+      return;
+    }
+
+    setGraphCanvasNodeSearchIndex(normalizedIndex);
+    setSelectedCanvasNodeId(targetNode.id);
+    setSelectedEdgeId("");
+
+    const centerX = targetNode.position.x + (targetNode.width ?? 0) / 2;
+    const centerY = targetNode.position.y + (targetNode.height ?? 0) / 2;
+    const flow = graphCanvasFlowRef.current as (ReactFlowInstance<GraphCanvasFlowNodeData> & {
+      setCenter?: (x: number, y: number, options?: { zoom?: number; duration?: number }) => void;
+    }) | null;
+    flow?.setCenter?.(centerX, centerY, { zoom: rfViewport.zoom, duration: 220 });
+  }
+
+  function handleGraphCanvasSearchNext(): void {
+    if (!graphCanvasNodeSearchHasMatches) {
+      return;
+    }
+
+    if (graphCanvasNodeSearchSelectedIndex < 0) {
+      focusGraphCanvasSearchMatch(0);
+      return;
+    }
+
+    focusGraphCanvasSearchMatch(graphCanvasNodeSearchSelectedIndex + 1);
+  }
+
+  function handleGraphCanvasSearchPrevious(): void {
+    if (!graphCanvasNodeSearchHasMatches) {
+      return;
+    }
+
+    if (graphCanvasNodeSearchSelectedIndex < 0) {
+      focusGraphCanvasSearchMatch(graphCanvasNodeSearchMatches.length - 1);
+      return;
+    }
+
+    focusGraphCanvasSearchMatch(graphCanvasNodeSearchSelectedIndex - 1);
   }
 
   function handleGraphCanvasNodesChange(changes: NodeChange<Node<GraphCanvasFlowNodeData>>[]): void {
@@ -1930,6 +2182,7 @@ function FlowApp() {
       shellTop: shellBounds.top,
       moved: false,
     };
+    event.stopPropagation();
     event.preventDefault();
 
     const handlePointerMove = (pointerEvent: PointerEvent) => {
@@ -2917,11 +3170,89 @@ function FlowApp() {
                         <p>Graph canvas data is not available yet.</p>
                       </div>
                     ) : (
-                      <div ref={graphCanvasShellRef} className="graph-canvas-shell">
+                      <div
+                        ref={graphCanvasShellRef}
+                        className={`graph-canvas-shell${connectingFrom !== null ? " canvas-connecting-mode" : ""}`}
+                      >
+                        <div className="graph-canvas-toolbar">
+                          <div className="graph-canvas-node-search" role="search" aria-label="Graph canvas node search">
+                            <Search size={14} aria-hidden="true" />
+                            <Input
+                              type="search"
+                              value={graphCanvasNodeSearchTerm}
+                              onChange={(event) => {
+                                setGraphCanvasNodeSearchTerm(event.target.value);
+                                setGraphCanvasNodeSearchIndex(0);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === "ArrowDown") {
+                                  event.preventDefault();
+                                  handleGraphCanvasSearchNext();
+                                  return;
+                                }
+
+                                if (event.key === "ArrowUp") {
+                                  event.preventDefault();
+                                  handleGraphCanvasSearchPrevious();
+                                  return;
+                                }
+
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  if (event.shiftKey) {
+                                    handleGraphCanvasSearchPrevious();
+                                    return;
+                                  }
+                                  handleGraphCanvasSearchNext();
+                                }
+                              }}
+                              placeholder="Search nodes by title"
+                              aria-label="Search graph nodes"
+                              className="graph-canvas-node-search-input"
+                            />
+                            <span className="graph-canvas-node-search-count" aria-live="polite">
+                              {graphCanvasNodeSearchHasMatches
+                                ? `${Math.max(graphCanvasNodeSearchSelectedIndex + 1, 0)}/${graphCanvasNodeSearchMatches.length}`
+                                : normalizedGraphCanvasNodeSearchTerm === "" ? "" : "0"}
+                            </span>
+                            <button
+                              type="button"
+                              className="graph-canvas-node-search-nav"
+                              aria-label="Previous matching node"
+                              onClick={handleGraphCanvasSearchPrevious}
+                              disabled={!graphCanvasNodeSearchHasMatches}
+                            >
+                              <ChevronLeft size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              className="graph-canvas-node-search-nav"
+                              aria-label="Next matching node"
+                              onClick={handleGraphCanvasSearchNext}
+                              disabled={!graphCanvasNodeSearchHasMatches}
+                            >
+                              <ChevronRight size={14} />
+                            </button>
+                          </div>
+                          <button
+                            className="graph-canvas-layout-reset"
+                            type="button"
+                            onClick={() => void handleToggleGraphCanvasLayout()}
+                            disabled={graphCanvasResettingLayout}
+                            aria-label={graphCanvasLayoutMode === "horizontal" ? "Switch to user-adjusted layout" : "Switch to horizontal layout"}
+                            aria-pressed={graphCanvasLayoutMode === "horizontal"}
+                            title={graphCanvasLayoutMode === "horizontal" ? "Switch to user-adjusted layout" : "Switch to horizontal layout"}
+                          >
+                            {graphCanvasLayoutMode === "horizontal" ? <PaintbrushVertical size={14} /> : <Rows3 size={14} />}
+                          </button>
+                        </div>
                         <EdgeEditContext.Provider value={handleEdgeDoubleClickAction}>
                         <ReactFlow
                           key={selectedGraphPath}
-                          defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+                          onInit={(instance) => {
+                            graphCanvasFlowRef.current = instance;
+                          }}
+                          defaultViewport={graphCanvasData.viewport ?? { x: 0, y: 0, zoom: 1 }}
                           minZoom={0.5}
                           maxZoom={1.6}
                           nodes={graphCanvasNodes}
@@ -2951,6 +3282,13 @@ function FlowApp() {
                             setCanvasContextMenu({ x: event.clientX - rect.left, y: event.clientY - rect.top });
                           }}
                           onPaneClick={() => { clearEdgeClickTimer(); setHoveredEdgeTooltip(null); setSelectedCanvasNodeId(""); setSelectedEdgeId(""); setCanvasContextMenu(null); setShiftSelectedNodes([]); }}
+                          onMoveEnd={() => {
+                            void persistGraphCanvasViewport({
+                              x: rfViewport.x,
+                              y: rfViewport.y,
+                              zoom: rfViewport.zoom,
+                            });
+                          }}
                           nodesDraggable={false}
                           panOnDrag
                           zoomOnScroll

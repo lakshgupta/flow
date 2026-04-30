@@ -3840,6 +3840,119 @@ pre {
   box-shadow: inset 0 1px 0 var(--border);
 }
 
+.graph-canvas-toolbar {
+  position: absolute;
+  top: 0.85rem;
+  right: 0.85rem;
+  z-index: 9;
+  display: flex;
+  gap: 0.55rem;
+  justify-content: flex-end;
+  align-items: center;
+  pointer-events: none;
+}
+
+.graph-canvas-node-search {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.32rem 0.42rem;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 64%, transparent 36%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 90%, transparent 10%);
+  backdrop-filter: blur(4px);
+  box-shadow: var(--ds-shadow-soft);
+  color: var(--ink-strong);
+}
+
+.graph-canvas-node-search-input {
+  min-width: 12rem;
+  height: 1.95rem;
+  border-radius: 999px;
+  border-color: color-mix(in srgb, var(--line-strong) 26%, transparent 74%);
+  background: color-mix(in srgb, var(--background) 92%, transparent 8%);
+  box-shadow: none;
+  font-size: 0.76rem;
+  padding: 0.25rem 0.75rem;
+}
+
+.graph-canvas-node-search-count {
+  min-width: 2.15rem;
+  text-align: right;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.graph-canvas-node-search-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-strong);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.graph-canvas-node-search-nav:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent 88%);
+  transform: translateY(-1px);
+}
+
+.graph-canvas-node-search-nav:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.graph-canvas-layout-reset {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 72%, transparent 28%);
+  border-radius: 999px;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-strong);
+  background: color-mix(in srgb, var(--card) 90%, transparent 10%);
+  backdrop-filter: blur(4px);
+  box-shadow: var(--ds-shadow-soft);
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.graph-canvas-layout-reset:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: var(--primary);
+  box-shadow: var(--ds-shadow);
+}
+
+.graph-canvas-layout-reset:disabled {
+  cursor: progress;
+  opacity: 0.72;
+}
+
+@media (max-width: 900px) {
+  .graph-canvas-toolbar {
+    left: 0.75rem;
+    right: 0.75rem;
+    justify-content: space-between;
+  }
+
+  .graph-canvas-node-search-input {
+    min-width: 9.5rem;
+  }
+}
+
 .graph-empty-state {
   min-height: 22rem;
   display: grid;
@@ -3980,9 +4093,23 @@ pre {
   position: absolute;
   top: 0;
   left: 0;
-  cursor: grab;
   user-select: none;
   pointer-events: auto;
+}
+
+.graph-canvas-shell.canvas-connecting-mode,
+.graph-canvas-shell.canvas-connecting-mode .react-flow__pane {
+  cursor: crosshair;
+}
+
+.canvas-node-drag-zone {
+  position: relative;
+  z-index: 1;
+  cursor: grab;
+}
+
+.canvas-node-drag-zone:active {
+  cursor: grabbing;
 }
 
 .canvas-node-shift-selected .graph-canvas-node {
@@ -4010,49 +4137,75 @@ pre {
   border: 1.5px solid var(--background);
 }
 
-.graph-canvas-overlay-node:active {
-  cursor: grabbing;
+/* Connection handles — enlarged edge zones + visible dots on all 4 edges */
+.canvas-connect-zone {
+  position: absolute;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: crosshair;
 }
 
-/* Connection handles — small dots on all 4 edges of each canvas node */
+.canvas-connect-zone-top,
+.canvas-connect-zone-bottom {
+  left: 12%;
+  width: 76%;
+  height: 1rem;
+}
+
+.canvas-connect-zone-top {
+  top: -0.5rem;
+}
+
+.canvas-connect-zone-bottom {
+  bottom: -0.5rem;
+}
+
+.canvas-connect-zone-left,
+.canvas-connect-zone-right {
+  top: 12%;
+  height: 76%;
+  width: 1rem;
+}
+
+.canvas-connect-zone-left {
+  left: -0.5rem;
+}
+
+.canvas-connect-zone-right {
+  right: -0.5rem;
+}
+
 .canvas-connect-handle {
-  position: absolute;
-  width: 0.7rem;
-  height: 0.7rem;
+  width: 0.9rem;
+  height: 0.9rem;
   border-radius: 50%;
   background: var(--primary);
   border: 2px solid var(--background);
   opacity: 0;
-  cursor: crosshair;
-  z-index: 20;
-  transition: opacity 0.15s;
+  pointer-events: none;
+  transition: opacity 0.15s, transform 0.15s;
 }
 
 .canvas-connect-handle-top {
-  top: -0.35rem;
-  left: 50%;
-  transform: translateX(-50%);
+  transform: translateY(-1px);
 }
 
 .canvas-connect-handle-right {
-  right: -0.35rem;
-  top: 50%;
-  transform: translateY(-50%);
+  transform: translateX(1px);
 }
 
 .canvas-connect-handle-bottom {
-  bottom: -0.35rem;
-  left: 50%;
-  transform: translateX(-50%);
+  transform: translateY(1px);
 }
 
 .canvas-connect-handle-left {
-  left: -0.35rem;
-  top: 50%;
-  transform: translateY(-50%);
+  transform: translateX(-1px);
 }
 
-.graph-canvas-overlay-node:hover .canvas-connect-handle {
+.graph-canvas-overlay-node:hover .canvas-connect-handle,
+.canvas-connect-zone:hover .canvas-connect-handle {
   opacity: 1;
 }
 

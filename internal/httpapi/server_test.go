@@ -375,7 +375,8 @@ func TestNewMuxRejectsUnknownOrInvalidAPIRequests(t *testing.T) {
 	assertStatus(t, handler, http.MethodGet, "/api/graph-canvas", http.StatusBadRequest)
 	assertStatus(t, handler, http.MethodGet, "/api/graph-canvas?graph=missing", http.StatusBadRequest)
 	assertStatusWithBody(t, handler, http.MethodPut, "/api/graph-layout", map[string]any{"graph": "", "positions": []map[string]any{{"documentId": "cmd-1", "x": 1, "y": 2}}}, http.StatusBadRequest)
-	assertStatusWithBody(t, handler, http.MethodPut, "/api/graph-layout", map[string]any{"graph": "release", "positions": []map[string]any{}}, http.StatusBadRequest)
+	assertStatusWithBody(t, handler, http.MethodPut, "/api/graph-layout", map[string]any{"graph": "release", "positions": []map[string]any{}, "viewport": nil}, http.StatusBadRequest)
+	assertStatusWithBody(t, handler, http.MethodPut, "/api/graph-layout", map[string]any{"graph": "release", "positions": []map[string]any{}, "viewport": map[string]any{"x": 0, "y": 0, "zoom": 0}}, http.StatusBadRequest)
 	assertStatusWithBody(t, handler, http.MethodPut, "/api/graph-layout", map[string]any{"graph": "release", "positions": []map[string]any{{"documentId": "missing", "x": 1, "y": 2}}}, http.StatusBadRequest)
 	assertStatus(t, handler, http.MethodGet, "/api/search", http.StatusBadRequest)
 	assertStatus(t, handler, http.MethodGet, "/api/search?limit=bad", http.StatusBadRequest)
@@ -641,10 +642,16 @@ func TestNewMuxUsesFrontendJSONFieldNamesForGraphViews(t *testing.T) {
 			"x":          440,
 			"y":          180,
 		}},
+		"viewport": map[string]any{
+			"x":    12,
+			"y":    24,
+			"zoom": 1.1,
+		},
 	})
 	assertJSONHasPath(t, graphLayoutPayload, "graph")
 	assertJSONHasPath(t, graphLayoutPayload, "positions.0.documentId")
 	assertJSONHasPath(t, graphLayoutPayload, "positions.0.x")
+	assertJSONHasPath(t, graphLayoutPayload, "viewport.zoom")
 
 	workspacePayload := performRawRequest(t, handler, http.MethodGet, "/api/workspace")
 	assertJSONHasPath(t, workspacePayload, "panelWidths.leftRatio")
@@ -785,6 +792,40 @@ func TestNewMuxGraphLayoutRebuildsMissingIndexAndPersistsPositions(t *testing.T)
 	note := graphCanvasNodeByID(t, view.Nodes, "note-1")
 	if !note.PositionPersisted || note.Position.X != 702 || note.Position.Y != 206 {
 		t.Fatalf("note = %#v, want rebuilt index plus persisted layout", note)
+	}
+}
+
+func TestNewMuxGraphLayoutPersistsViewportInIndexDatabase(t *testing.T) {
+	t.Parallel()
+
+	root := createGraphCanvasHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	updated := performJSONRequestWithBody[graphLayoutResponse](t, handler, http.MethodPut, "/api/graph-layout", map[string]any{
+		"graph":     "execution",
+		"positions": []map[string]any{},
+		"viewport": map[string]any{
+			"x":    -240,
+			"y":    96,
+			"zoom": 1.25,
+		},
+	})
+	if updated.Viewport == nil {
+		t.Fatalf("updated.Viewport = nil, want viewport payload")
+	}
+	if updated.Viewport.X != -240 || updated.Viewport.Y != 96 || updated.Viewport.Zoom != 1.25 {
+		t.Fatalf("updated.Viewport = %#v, want -240/96/1.25", updated.Viewport)
+	}
+
+	view := performJSONRequest[graphCanvasResponse](t, handler, http.MethodGet, "/api/graph-canvas?graph=execution")
+	if view.Viewport == nil {
+		t.Fatalf("view.Viewport = nil, want persisted viewport")
+	}
+	if view.Viewport.X != -240 || view.Viewport.Y != 96 || view.Viewport.Zoom != 1.25 {
+		t.Fatalf("view.Viewport = %#v, want -240/96/1.25", view.Viewport)
 	}
 }
 

@@ -93,7 +93,20 @@ type graphTreeResponse struct {
 	Graphs []graphTreeNodeResponse `json:"graphs"`
 }
 
-type graphCanvasResponse = graph.GraphCanvasView
+type graphCanvasResponse struct {
+	SelectedGraph   string                         `json:"selectedGraph"`
+	AvailableGraphs []string                       `json:"availableGraphs"`
+	LayerGuidance   graph.GraphCanvasLayerGuidance `json:"layerGuidance"`
+	Nodes           []graph.GraphCanvasNode        `json:"nodes"`
+	Edges           []graph.GraphCanvasEdge        `json:"edges"`
+	Viewport        *graphLayoutViewportRequest    `json:"viewport,omitempty"`
+}
+
+type graphLayoutViewportRequest struct {
+	X    float64 `json:"x"`
+	Y    float64 `json:"y"`
+	Zoom float64 `json:"zoom"`
+}
 
 type graphLayoutPositionRequest struct {
 	DocumentID string  `json:"documentId"`
@@ -104,11 +117,13 @@ type graphLayoutPositionRequest struct {
 type graphLayoutRequest struct {
 	Graph     string                       `json:"graph"`
 	Positions []graphLayoutPositionRequest `json:"positions"`
+	Viewport  *graphLayoutViewportRequest  `json:"viewport,omitempty"`
 }
 
 type graphLayoutResponse struct {
 	Graph     string                       `json:"graph"`
 	Positions []graphLayoutPositionRequest `json:"positions"`
+	Viewport  *graphLayoutViewportRequest  `json:"viewport,omitempty"`
 }
 
 type documentResponse struct {
@@ -638,6 +653,17 @@ func (handler *apiHandler) handleGraphCanvas(writer http.ResponseWriter, request
 		persistedPositions[position.DocumentID] = graph.GraphCanvasPosition{X: position.X, Y: position.Y}
 	}
 
+	viewport, hasViewport, err := index.ReadGraphLayoutViewportWorkspace(handler.options.Root.IndexPath, handler.options.Root.FlowPath, selectedGraph)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "must not be empty") {
+			status = http.StatusBadRequest
+		}
+
+		writeError(writer, status, err.Error())
+		return
+	}
+
 	view, err := graph.BuildGraphCanvasView(documents, selectedGraph, persistedPositions)
 	if err != nil {
 		// If the graph exists as an empty directory (no documents yet), return an empty canvas
@@ -646,12 +672,16 @@ func (handler *apiHandler) handleGraphCanvas(writer http.ResponseWriter, request
 		if nodeErr == nil {
 			for _, node := range nodes {
 				if node.GraphPath == selectedGraph {
-					writeJSON(writer, http.StatusOK, graph.GraphCanvasView{
+					response := graphCanvasResponse{
 						SelectedGraph:   selectedGraph,
 						AvailableGraphs: []string{selectedGraph},
 						Nodes:           []graph.GraphCanvasNode{},
 						Edges:           []graph.GraphCanvasEdge{},
-					})
+					}
+					if hasViewport {
+						response.Viewport = &graphLayoutViewportRequest{X: viewport.X, Y: viewport.Y, Zoom: viewport.Zoom}
+					}
+					writeJSON(writer, http.StatusOK, response)
 					return
 				}
 			}
@@ -660,7 +690,18 @@ func (handler *apiHandler) handleGraphCanvas(writer http.ResponseWriter, request
 		return
 	}
 
-	writeJSON(writer, http.StatusOK, graphCanvasResponse(view))
+	response := graphCanvasResponse{
+		SelectedGraph:   view.SelectedGraph,
+		AvailableGraphs: view.AvailableGraphs,
+		LayerGuidance:   view.LayerGuidance,
+		Nodes:           view.Nodes,
+		Edges:           view.Edges,
+	}
+	if hasViewport {
+		response.Viewport = &graphLayoutViewportRequest{X: viewport.X, Y: viewport.Y, Zoom: viewport.Zoom}
+	}
+
+	writeJSON(writer, http.StatusOK, response)
 }
 
 func (handler *apiHandler) handleGraphLayout(writer http.ResponseWriter, request *http.Request) {
@@ -675,8 +716,8 @@ func (handler *apiHandler) handleGraphLayout(writer http.ResponseWriter, request
 		writeError(writer, http.StatusBadRequest, "graph must not be empty")
 		return
 	}
-	if len(payload.Positions) == 0 {
-		writeError(writer, http.StatusBadRequest, "positions must not be empty")
+	if len(payload.Positions) == 0 && payload.Viewport == nil {
+		writeError(writer, http.StatusBadRequest, "positions and viewport must not both be empty")
 		return
 	}
 
@@ -729,7 +770,27 @@ func (handler *apiHandler) handleGraphLayout(writer http.ResponseWriter, request
 		return
 	}
 
-	writeJSON(writer, http.StatusOK, graphLayoutResponse{Graph: selectedGraph, Positions: responsePositions})
+	var responseViewport *graphLayoutViewportRequest
+	if payload.Viewport != nil {
+		viewport := index.GraphLayoutViewport{
+			GraphPath: selectedGraph,
+			X:         payload.Viewport.X,
+			Y:         payload.Viewport.Y,
+			Zoom:      payload.Viewport.Zoom,
+		}
+		if err := index.WriteGraphLayoutViewportWorkspace(handler.options.Root.IndexPath, handler.options.Root.FlowPath, viewport); err != nil {
+			if strings.Contains(err.Error(), "zoom must be greater than zero") {
+				writeError(writer, http.StatusBadRequest, err.Error())
+				return
+			}
+			writeError(writer, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		responseViewport = &graphLayoutViewportRequest{X: viewport.X, Y: viewport.Y, Zoom: viewport.Zoom}
+	}
+
+	writeJSON(writer, http.StatusOK, graphLayoutResponse{Graph: selectedGraph, Positions: responsePositions, Viewport: responseViewport})
 }
 
 func (handler *apiHandler) handleDocument(writer http.ResponseWriter, request *http.Request) {

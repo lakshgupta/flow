@@ -40,6 +40,14 @@ func TestRebuildCreatesSchemaDatabase(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("graph_layout_positions table count = %d, want 1", count)
 	}
+
+	if err := database.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'graph_layout_viewports'`).Scan(&count); err != nil {
+		t.Fatalf("QueryRow(graph_layout_viewports) error = %v", err)
+	}
+
+	if count != 1 {
+		t.Fatalf("graph_layout_viewports table count = %d, want 1", count)
+	}
 }
 
 func TestRebuildIndexesMarkdownDocuments(t *testing.T) {
@@ -334,6 +342,44 @@ func TestGraphLayoutPositionsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestGraphLayoutViewportRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	flowPath := filepath.Join(rootDir, ".flow")
+	indexPath := filepath.Join(flowPath, "config", "flow.index")
+
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "demo", "alpha.md"), "---\nid: note-1\ntype: note\ngraph: demo\ntitle: Alpha\n---\n\nAlpha\n")
+
+	if err := Rebuild(indexPath, flowPath); err != nil {
+		t.Fatalf("Rebuild() error = %v", err)
+	}
+
+	if err := WriteGraphLayoutViewport(indexPath, GraphLayoutViewport{GraphPath: "demo", X: -220.5, Y: 84.25, Zoom: 1.3}); err != nil {
+		t.Fatalf("WriteGraphLayoutViewport() error = %v", err)
+	}
+
+	viewport, found, err := ReadGraphLayoutViewport(indexPath, "demo")
+	if err != nil {
+		t.Fatalf("ReadGraphLayoutViewport() error = %v", err)
+	}
+	if !found {
+		t.Fatal("found = false, want true")
+	}
+
+	if viewport.GraphPath != "demo" {
+		t.Fatalf("viewport.GraphPath = %q, want demo", viewport.GraphPath)
+	}
+
+	if viewport.X != -220.5 || viewport.Y != 84.25 || viewport.Zoom != 1.3 {
+		t.Fatalf("viewport = %#v, want -220.5/84.25/1.3", viewport)
+	}
+
+	if viewport.UpdatedAt == "" {
+		t.Fatal("viewport.UpdatedAt = empty, want timestamp")
+	}
+}
+
 func TestRebuildPreservesGraphLayoutPositionsForSurvivingDocuments(t *testing.T) {
 	t.Parallel()
 
@@ -380,6 +426,58 @@ func TestRebuildPreservesGraphLayoutPositionsForSurvivingDocuments(t *testing.T)
 
 	if positions[0].UpdatedAt != "2026-03-18T10:00:00Z" {
 		t.Fatalf("positions[0].UpdatedAt = %q, want preserved timestamp", positions[0].UpdatedAt)
+	}
+}
+
+func TestRebuildPreservesGraphLayoutViewportForSurvivingGraph(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	flowPath := filepath.Join(rootDir, ".flow")
+	indexPath := filepath.Join(flowPath, "config", "flow.index")
+	demoAlphaPath := filepath.Join(flowPath, "data", "content", "demo", "alpha.md")
+	releaseBetaPath := filepath.Join(flowPath, "data", "content", "release", "beta.md")
+
+	writeMarkdownDocument(t, demoAlphaPath, "---\nid: note-1\ntype: note\ngraph: demo\ntitle: Alpha\n---\n\nAlpha\n")
+	writeMarkdownDocument(t, releaseBetaPath, "---\nid: note-2\ntype: note\ngraph: release\ntitle: Beta\n---\n\nBeta\n")
+
+	if err := Rebuild(indexPath, flowPath); err != nil {
+		t.Fatalf("Rebuild() first error = %v", err)
+	}
+
+	if err := WriteGraphLayoutViewport(indexPath, GraphLayoutViewport{GraphPath: "demo", X: -50, Y: 12, Zoom: 1.1, UpdatedAt: "2026-03-18T10:00:00Z"}); err != nil {
+		t.Fatalf("WriteGraphLayoutViewport(demo) error = %v", err)
+	}
+	if err := WriteGraphLayoutViewport(indexPath, GraphLayoutViewport{GraphPath: "release", X: 10, Y: -8, Zoom: 0.9, UpdatedAt: "2026-03-18T10:01:00Z"}); err != nil {
+		t.Fatalf("WriteGraphLayoutViewport(release) error = %v", err)
+	}
+
+	if err := os.Remove(releaseBetaPath); err != nil {
+		t.Fatalf("Remove(releaseBetaPath) error = %v", err)
+	}
+
+	if err := Rebuild(indexPath, flowPath); err != nil {
+		t.Fatalf("Rebuild() second error = %v", err)
+	}
+
+	demoViewport, found, err := ReadGraphLayoutViewport(indexPath, "demo")
+	if err != nil {
+		t.Fatalf("ReadGraphLayoutViewport(demo) error = %v", err)
+	}
+	if !found {
+		t.Fatal("demo viewport not found after rebuild")
+	}
+	if demoViewport.X != -50 || demoViewport.Y != 12 || demoViewport.Zoom != 1.1 {
+		t.Fatalf("demoViewport = %#v, want preserved -50/12/1.1", demoViewport)
+	}
+	if demoViewport.UpdatedAt != "2026-03-18T10:00:00Z" {
+		t.Fatalf("demoViewport.UpdatedAt = %q, want preserved timestamp", demoViewport.UpdatedAt)
+	}
+
+	if _, found, err := ReadGraphLayoutViewport(indexPath, "release"); err != nil {
+		t.Fatalf("ReadGraphLayoutViewport(release) error = %v", err)
+	} else if found {
+		t.Fatal("release viewport found after release graph removal, want removed")
 	}
 }
 

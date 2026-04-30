@@ -7,6 +7,7 @@ source "$ROOT_DIR/scripts/lib/checksums.sh"
 source "$ROOT_DIR/scripts/lib/version.sh"
 
 FRONTEND_DIR="$ROOT_DIR/frontend"
+STATIC_DIR="$ROOT_DIR/internal/httpapi/static"
 DIST_DIR="$ROOT_DIR/dist"
 STAGING_DIR="$DIST_DIR/linux-amd64"
 VERSION="$(release_version)"
@@ -19,6 +20,9 @@ mkdir -p "$STAGING_DIR"
 
 pushd "$FRONTEND_DIR" >/dev/null
 npm ci
+# Remove prior emitted frontend bundles so the next binary embeds only fresh assets.
+rm -rf "$STATIC_DIR/assets"
+rm -f "$STATIC_DIR/index.html"
 npm run build
 popd >/dev/null
 

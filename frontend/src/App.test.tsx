@@ -14,7 +14,7 @@ vi.mock("@xyflow/react", async () => {
 
   return {
     ReactFlowProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-    ReactFlow: ({ nodes, onNodeClick, onNodeDoubleClick, onNodeDragStop, onPaneClick }: any) => (
+    ReactFlow: ({ nodes, onNodeClick, onNodeDoubleClick, onNodeDragStop, onPaneClick, onMoveEnd }: any) => (
       <div data-testid="react-flow-mock">
         {nodes.map((node: any) => (
           <div key={node.id} data-testid={`flow-node-${node.id}`}>
@@ -40,6 +40,9 @@ vi.mock("@xyflow/react", async () => {
         ))}
         <button type="button" onClick={() => onPaneClick?.()}>
           Clear selection
+        </button>
+        <button type="button" onClick={() => onMoveEnd?.()}>
+          Move end
         </button>
       </div>
     ),
@@ -324,6 +327,331 @@ describe("App graph canvas flows", () => {
     const documentLayout = await screen.findByLabelText("Document content layout");
     expect(within(documentLayout).getByText("Overview body")).toBeInTheDocument();
     expect(screen.queryByLabelText("Graph node document")).not.toBeInTheDocument();
+  });
+
+  it("toggles between horizontal and user-adjusted canvas layouts", async () => {
+    const graphCanvasResponse = {
+      selectedGraph: "execution",
+      availableGraphs: ["execution"],
+      layerGuidance: {
+        magneticThresholdPx: 18,
+        guides: [
+          { layer: 0, x: 140 },
+          { layer: 1, x: 460 },
+        ],
+      },
+      nodes: [
+        {
+          id: "note-1",
+          type: "note",
+          graph: "execution",
+          title: "Overview",
+          description: "Execution overview",
+          path: "data/graphs/execution/overview.md",
+          featureSlug: "execution",
+          position: { x: 140, y: 120 },
+          positionPersisted: false,
+        },
+        {
+          id: "note-2",
+          type: "note",
+          graph: "execution",
+          title: "Follow-up",
+          description: "Follow-up notes",
+          path: "data/graphs/execution/follow-up.md",
+          featureSlug: "execution",
+          position: { x: 480, y: 220 },
+          positionPersisted: false,
+        },
+      ],
+      edges: [
+        {
+          id: "link:note-1:note-2",
+          source: "note-1",
+          target: "note-2",
+          kind: "link",
+          context: "tracks follow-up",
+        },
+      ],
+    };
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        if ((init?.method ?? "GET") === "PUT") {
+          return workspaceResponse;
+        }
+
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/graphs/note") {
+        return noteGraphs("execution");
+      }
+
+      if (url === "/api/graphs/task") {
+        return emptyGraphLists.tasks;
+      }
+
+      if (url === "/api/graphs/command") {
+        return emptyGraphLists.commands;
+      }
+
+      if (url === "/api/graph-canvas?graph=execution") {
+        return graphCanvasResponse;
+      }
+
+      if (url === "/api/graph-layout" && init?.method === "PUT") {
+        const body = JSON.parse(String(init.body)) as { graph: string; positions: Array<{ documentId: string; x: number; y: number }> };
+        return {
+          graph: body.graph,
+          positions: body.positions,
+        };
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Content");
+
+    const executionButton = (await screen.findByText("Execution")).closest('[data-sidebar="menu-sub-button"]');
+    if (executionButton === null) {
+      throw new Error("missing execution graph button");
+    }
+
+    await user.click(executionButton);
+    await screen.findByTestId("flow-node-note-1");
+
+    const horizontalToggle = screen.getByRole("button", { name: "Switch to horizontal layout" });
+    expect(horizontalToggle).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(horizontalToggle);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Switch to user-adjusted layout" })).toHaveAttribute("aria-pressed", "true");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Switch to user-adjusted layout" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Switch to horizontal layout" })).toHaveAttribute("aria-pressed", "false");
+    });
+
+    const layoutWriteCalls = fetchMock.mock.calls.filter(([url, init]) => {
+      const requestURL = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
+      return requestURL === "/api/graph-layout" && (init?.method ?? "GET") === "PUT";
+    });
+    expect(layoutWriteCalls).toHaveLength(0);
+  });
+
+  it("searches graph canvas nodes by title", async () => {
+    const graphCanvasResponse = {
+      selectedGraph: "execution",
+      availableGraphs: ["execution"],
+      layerGuidance: {
+        magneticThresholdPx: 18,
+        guides: [
+          { layer: 0, x: 140 },
+          { layer: 1, x: 460 },
+        ],
+      },
+      nodes: [
+        {
+          id: "note-1",
+          type: "note",
+          graph: "execution",
+          title: "Overview",
+          description: "Execution overview",
+          path: "data/graphs/execution/overview.md",
+          featureSlug: "execution",
+          position: { x: 140, y: 120 },
+          positionPersisted: false,
+        },
+        {
+          id: "note-2",
+          type: "note",
+          graph: "execution",
+          title: "Follow-up",
+          description: "Follow-up notes",
+          path: "data/graphs/execution/follow-up.md",
+          featureSlug: "execution",
+          position: { x: 480, y: 220 },
+          positionPersisted: false,
+        },
+        {
+          id: "note-3",
+          type: "note",
+          graph: "execution",
+          title: "Follow-on",
+          description: "Follow-on notes",
+          path: "data/graphs/execution/follow-on.md",
+          featureSlug: "execution",
+          position: { x: 720, y: 260 },
+          positionPersisted: false,
+        },
+      ],
+      edges: [],
+    };
+
+    installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        if ((init?.method ?? "GET") === "PUT") {
+          return workspaceResponse;
+        }
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/graphs/note") {
+        return noteGraphs("execution");
+      }
+
+      if (url === "/api/graphs/task") {
+        return emptyGraphLists.tasks;
+      }
+
+      if (url === "/api/graphs/command") {
+        return emptyGraphLists.commands;
+      }
+
+      if (url === "/api/graph-canvas?graph=execution") {
+        return graphCanvasResponse;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Content");
+
+    const executionButton = (await screen.findByText("Execution")).closest('[data-sidebar="menu-sub-button"]');
+    if (executionButton === null) {
+      throw new Error("missing execution graph button");
+    }
+
+    await user.click(executionButton);
+    await screen.findByTestId("flow-node-note-1");
+
+    const searchInput = screen.getByRole("searchbox", { name: "Search graph nodes" });
+    await user.type(searchInput, "follow");
+    await user.click(screen.getByRole("button", { name: "Next matching node" }));
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-nodeid="note-2"] .graph-canvas-node-selected')).not.toBeNull();
+    });
+
+    await user.click(searchInput);
+    await user.keyboard("{ArrowDown}");
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-nodeid="note-3"] .graph-canvas-node-selected')).not.toBeNull();
+    });
+
+    await user.keyboard("{ArrowUp}");
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-nodeid="note-2"] .graph-canvas-node-selected')).not.toBeNull();
+    });
+  });
+
+  it("persists viewport on move end through graph-layout API", async () => {
+    const graphCanvasResponse = {
+      selectedGraph: "execution",
+      availableGraphs: ["execution"],
+      layerGuidance: {
+        magneticThresholdPx: 18,
+        guides: [
+          { layer: 0, x: 140 },
+          { layer: 1, x: 460 },
+        ],
+      },
+      nodes: [
+        {
+          id: "note-1",
+          type: "note",
+          graph: "execution",
+          title: "Overview",
+          description: "Execution overview",
+          path: "data/graphs/execution/overview.md",
+          featureSlug: "execution",
+          position: { x: 140, y: 120 },
+          positionPersisted: false,
+        },
+      ],
+      edges: [],
+    };
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        if ((init?.method ?? "GET") === "PUT") {
+          return workspaceResponse;
+        }
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/graphs/note") {
+        return noteGraphs("execution");
+      }
+
+      if (url === "/api/graphs/task") {
+        return emptyGraphLists.tasks;
+      }
+
+      if (url === "/api/graphs/command") {
+        return emptyGraphLists.commands;
+      }
+
+      if (url === "/api/graph-canvas?graph=execution") {
+        return graphCanvasResponse;
+      }
+
+      if (url === "/api/graph-layout" && init?.method === "PUT") {
+        const body = JSON.parse(String(init.body)) as { graph: string; viewport?: { x: number; y: number; zoom: number }; positions: Array<unknown> };
+        return {
+          graph: body.graph,
+          positions: body.positions,
+          viewport: body.viewport,
+        };
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Content");
+    const executionButton = (await screen.findByText("Execution")).closest('[data-sidebar="menu-sub-button"]');
+    if (executionButton === null) {
+      throw new Error("missing execution graph button");
+    }
+
+    await user.click(executionButton);
+    await screen.findByTestId("flow-node-note-1");
+
+    await user.click(screen.getByRole("button", { name: "Move end" }));
+
+    await waitFor(() => {
+      const body = getRequestBody(fetchMock, "/api/graph-layout", "PUT");
+      expect(body.graph).toBe("execution");
+      expect(body.positions).toEqual([]);
+      expect(body.viewport).toEqual({ x: 0, y: 0, zoom: 1 });
+    });
   });
 
   it("renders dotted reference edges and circular cross-graph reference targets on the canvas", async () => {

@@ -155,6 +155,12 @@ export type GraphCanvasPosition = {
   y: number;
 };
 
+export type GraphCanvasViewport = {
+  x: number;
+  y: number;
+  zoom: number;
+};
+
 export type GraphCanvasLayerGuide = {
   layer: number;
   x: number;
@@ -195,6 +201,7 @@ export type GraphCanvasResponse = {
   layerGuidance: GraphCanvasLayerGuidance;
   nodes: GraphCanvasNodePayload[];
   edges: GraphCanvasEdgePayload[];
+  viewport: GraphCanvasViewport | null;
 };
 
 export type GraphCanvasResponseWire = {
@@ -206,6 +213,7 @@ export type GraphCanvasResponseWire = {
   } | null;
   nodes?: GraphCanvasNodePayload[] | null;
   edges?: GraphCanvasEdgePayload[] | null;
+  viewport?: GraphCanvasViewport | null;
 };
 
 export type GraphLayoutPositionPayload = {
@@ -217,6 +225,7 @@ export type GraphLayoutPositionPayload = {
 export type GraphLayoutResponse = {
   graph: string;
   positions: GraphLayoutPositionPayload[];
+  viewport?: GraphCanvasViewport;
 };
 
 export type CreateDocumentPayload = {

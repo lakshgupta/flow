@@ -67,6 +67,24 @@ func WriteGraphLayoutPositionsWorkspace(indexPath string, flowPath string, posit
 	return WriteGraphLayoutPositions(indexPath, positions)
 }
 
+// ReadGraphLayoutViewportWorkspace returns persisted graph viewport row, rebuilding the index first when needed.
+func ReadGraphLayoutViewportWorkspace(indexPath string, flowPath string, graphPath string) (GraphLayoutViewport, bool, error) {
+	if err := ensureIndexExists(indexPath, flowPath); err != nil {
+		return GraphLayoutViewport{}, false, err
+	}
+
+	return ReadGraphLayoutViewport(indexPath, graphPath)
+}
+
+// WriteGraphLayoutViewportWorkspace writes a persisted graph viewport row, rebuilding the index first when needed.
+func WriteGraphLayoutViewportWorkspace(indexPath string, flowPath string, viewport GraphLayoutViewport) error {
+	if err := ensureIndexExists(indexPath, flowPath); err != nil {
+		return err
+	}
+
+	return WriteGraphLayoutViewport(indexPath, viewport)
+}
+
 // Search queries the derived SQLite index for document metadata and body text matches.
 func Search(indexPath string, query string, limit int) ([]SearchResult, error) {
 	trimmedQuery := strings.TrimSpace(query)

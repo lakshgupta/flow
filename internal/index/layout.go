@@ -2,6 +2,7 @@ package index
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -16,6 +17,15 @@ type GraphLayoutPosition struct {
 	X          float64
 	Y          float64
 	UpdatedAt  string
+}
+
+// GraphLayoutViewport stores a persisted graph canvas viewport for one workspace graph.
+type GraphLayoutViewport struct {
+	GraphPath string
+	X         float64
+	Y         float64
+	Zoom      float64
+	UpdatedAt string
 }
 
 // ReadGraphLayoutPositions returns persisted layout rows for one graph path.
@@ -130,6 +140,102 @@ func loadExistingGraphLayoutPositions(indexPath string) ([]GraphLayoutPosition, 
 	return positions, nil
 }
 
+// ReadGraphLayoutViewport returns a persisted canvas viewport for one graph path.
+func ReadGraphLayoutViewport(indexPath string, graphPath string) (GraphLayoutViewport, bool, error) {
+	trimmedGraphPath := strings.TrimSpace(graphPath)
+	if trimmedGraphPath == "" {
+		return GraphLayoutViewport{}, false, fmt.Errorf("graph path must not be empty")
+	}
+
+	database, err := sql.Open("sqlite", indexPath)
+	if err != nil {
+		return GraphLayoutViewport{}, false, fmt.Errorf("open index database: %w", err)
+	}
+	defer database.Close()
+
+	if err := ensureGraphLayoutSchema(database); err != nil {
+		return GraphLayoutViewport{}, false, err
+	}
+
+	var viewport GraphLayoutViewport
+	err = database.QueryRow(`SELECT graph_path, x, y, zoom, updated_at FROM graph_layout_viewports WHERE graph_path = ?`, trimmedGraphPath).
+		Scan(&viewport.GraphPath, &viewport.X, &viewport.Y, &viewport.Zoom, &viewport.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return GraphLayoutViewport{}, false, nil
+		}
+
+		return GraphLayoutViewport{}, false, fmt.Errorf("query graph layout viewport: %w", err)
+	}
+
+	return viewport, true, nil
+}
+
+// WriteGraphLayoutViewport upserts one persisted canvas viewport for a graph.
+func WriteGraphLayoutViewport(indexPath string, viewport GraphLayoutViewport) error {
+	normalized, err := normalizeGraphLayoutViewport(viewport)
+	if err != nil {
+		return err
+	}
+
+	database, err := sql.Open("sqlite", indexPath)
+	if err != nil {
+		return fmt.Errorf("open index database: %w", err)
+	}
+	defer database.Close()
+
+	if err := ensureGraphLayoutSchema(database); err != nil {
+		return err
+	}
+
+	if _, err := database.Exec(
+		`INSERT INTO graph_layout_viewports (graph_path, x, y, zoom, updated_at) VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT(graph_path) DO UPDATE SET x = excluded.x, y = excluded.y, zoom = excluded.zoom, updated_at = excluded.updated_at`,
+		normalized.GraphPath,
+		normalized.X,
+		normalized.Y,
+		normalized.Zoom,
+		normalized.UpdatedAt,
+	); err != nil {
+		return fmt.Errorf("write graph layout viewport for %q: %w", normalized.GraphPath, err)
+	}
+
+	return nil
+}
+
+func loadExistingGraphLayoutViewports(indexPath string) ([]GraphLayoutViewport, error) {
+	database, err := sql.Open("sqlite", indexPath)
+	if err != nil {
+		return nil, err
+	}
+	defer database.Close()
+
+	if !hasGraphLayoutViewportTable(database) {
+		return nil, nil
+	}
+
+	rows, err := database.Query(`SELECT graph_path, x, y, zoom, updated_at FROM graph_layout_viewports ORDER BY graph_path`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	viewports := []GraphLayoutViewport{}
+	for rows.Next() {
+		var viewport GraphLayoutViewport
+		if err := rows.Scan(&viewport.GraphPath, &viewport.X, &viewport.Y, &viewport.Zoom, &viewport.UpdatedAt); err != nil {
+			return nil, err
+		}
+		viewports = append(viewports, viewport)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return viewports, nil
+}
+
 func ensureGraphLayoutSchema(database *sql.DB) error {
 	if _, err := database.Exec(`
 		CREATE TABLE IF NOT EXISTS graph_layout_positions (
@@ -148,12 +254,37 @@ func ensureGraphLayoutSchema(database *sql.DB) error {
 		return fmt.Errorf("ensure graph layout index: %w", err)
 	}
 
+	if _, err := database.Exec(`
+		CREATE TABLE IF NOT EXISTS graph_layout_viewports (
+			graph_path TEXT NOT NULL PRIMARY KEY,
+			x REAL NOT NULL,
+			y REAL NOT NULL,
+			zoom REAL NOT NULL,
+			updated_at TEXT NOT NULL
+		);
+	`); err != nil {
+		return fmt.Errorf("ensure graph layout viewport table: %w", err)
+	}
+
+	if _, err := database.Exec(`CREATE INDEX IF NOT EXISTS graph_layout_viewports_graph_idx ON graph_layout_viewports(graph_path)`); err != nil {
+		return fmt.Errorf("ensure graph layout viewport index: %w", err)
+	}
+
 	return nil
 }
 
 func hasGraphLayoutTable(database *sql.DB) bool {
 	var count int
 	if err := database.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'graph_layout_positions'`).Scan(&count); err != nil {
+		return false
+	}
+
+	return count == 1
+}
+
+func hasGraphLayoutViewportTable(database *sql.DB) bool {
+	var count int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'graph_layout_viewports'`).Scan(&count); err != nil {
 		return false
 	}
 
@@ -178,6 +309,25 @@ func normalizeGraphLayoutPosition(position GraphLayoutPosition) (GraphLayoutPosi
 	}
 
 	return position, nil
+}
+
+func normalizeGraphLayoutViewport(viewport GraphLayoutViewport) (GraphLayoutViewport, error) {
+	viewport.GraphPath = strings.TrimSpace(viewport.GraphPath)
+	viewport.UpdatedAt = strings.TrimSpace(viewport.UpdatedAt)
+
+	if viewport.GraphPath == "" {
+		return GraphLayoutViewport{}, fmt.Errorf("graph path must not be empty")
+	}
+
+	if viewport.Zoom <= 0 {
+		return GraphLayoutViewport{}, fmt.Errorf("zoom must be greater than zero")
+	}
+
+	if viewport.UpdatedAt == "" {
+		viewport.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	}
+
+	return viewport, nil
 }
 
 func insertGraphLayoutPosition(transaction *sql.Tx, position GraphLayoutPosition) error {

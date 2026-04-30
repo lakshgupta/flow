@@ -1,5 +1,6 @@
 import { EdgeLabelRenderer, MarkerType, Position, BaseEdge, getSmoothStepPath } from "@xyflow/react";
 import type { Edge, EdgeProps, Node } from "@xyflow/react";
+import ELK from "elkjs/lib/elk.bundled.js";
 import type { CSSProperties } from "react";
 import { createContext, useContext } from "react";
 
@@ -337,6 +338,51 @@ export function graphCanvasPositionMap(
   return Object.fromEntries(graphCanvasData.nodes.map((node) => [node.id, node.position]));
 }
 
+const elk = new ELK();
+
+export async function applyElkHorizontalLayout(
+  nodes: GraphCanvasNodePayload[],
+  edges: GraphCanvasEdgePayload[],
+): Promise<Record<string, GraphCanvasPosition>> {
+  if (nodes.length === 0) {
+    return {};
+  }
+
+  const layout = await elk.layout({
+    id: "graph-canvas",
+    layoutOptions: {
+      "elk.algorithm": "layered",
+      "elk.direction": "RIGHT",
+      "elk.edgeRouting": "ORTHOGONAL",
+      "elk.spacing.nodeNode": "96",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "180",
+      "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+    },
+    children: nodes.map((node) => {
+      const dimensions = graphCanvasNodeDimensions(node.shape);
+      return {
+        id: node.id,
+        width: dimensions.width,
+        height: dimensions.height,
+      };
+    }),
+    edges: edges.map((edge) => ({
+      id: edge.id,
+      sources: [edge.source],
+      targets: [edge.target],
+    })),
+  });
+
+  const positioned = layout.children ?? [];
+  return Object.fromEntries(
+    positioned
+      .filter((node): node is { id: string; x: number; y: number } =>
+        typeof node.id === "string" && typeof node.x === "number" && typeof node.y === "number",
+      )
+      .map((node) => [node.id, { x: Math.round(node.x), y: Math.round(node.y) }]),
+  );
+}
+
 // NODE_W / NODE_H are the exact rendered dimensions of a canvas node card set in buildGraphCanvasFlowNodes.
 export const CANVAS_NODE_W = 288;
 export const CANVAS_NODE_H = 130;
@@ -534,6 +580,7 @@ export function normalizeGraphCanvasResponse(response: GraphCanvasResponseWire):
     },
     nodes: response.nodes ?? [],
     edges: response.edges ?? [],
+    viewport: response.viewport ?? null,
   };
 }
 
