@@ -565,6 +565,167 @@ describe("App graph canvas flows", () => {
     });
   });
 
+  it("opens an inline edge toolbar and saves relationship tags/context metadata", async () => {
+    let edgeContext = "tracks follow-up";
+    let edgeRelationships = ["depends_on"];
+
+    const graphCanvasResponse = {
+      selectedGraph: "execution",
+      availableGraphs: ["execution"],
+      layerGuidance: {
+        magneticThresholdPx: 18,
+        guides: [
+          { layer: 0, x: 140 },
+          { layer: 1, x: 460 },
+        ],
+      },
+      nodes: [
+        {
+          id: "note-1",
+          type: "note",
+          graph: "execution",
+          title: "Overview",
+          description: "Execution overview",
+          path: "data/graphs/execution/overview.md",
+          featureSlug: "execution",
+          position: { x: 140, y: 120 },
+          positionPersisted: false,
+        },
+        {
+          id: "note-2",
+          type: "note",
+          graph: "execution",
+          title: "Follow-up",
+          description: "Follow-up notes",
+          path: "data/graphs/execution/follow-up.md",
+          featureSlug: "execution",
+          position: { x: 480, y: 220 },
+          positionPersisted: false,
+        },
+      ],
+      edges: [
+        {
+          id: "link:note-1:note-2",
+          source: "note-1",
+          target: "note-2",
+          kind: "link",
+          context: edgeContext,
+          relationships: edgeRelationships,
+        },
+      ],
+    };
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        if ((init?.method ?? "GET") === "PUT") {
+          return workspaceResponse;
+        }
+
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/graphs/note") {
+        return noteGraphs("execution");
+      }
+
+      if (url === "/api/graphs/task") {
+        return emptyGraphLists.tasks;
+      }
+
+      if (url === "/api/graphs/command") {
+        return emptyGraphLists.commands;
+      }
+
+      if (url === "/api/graph-canvas?graph=execution") {
+        return {
+          ...graphCanvasResponse,
+          edges: [
+            {
+              ...graphCanvasResponse.edges[0],
+              context: edgeContext,
+              relationships: edgeRelationships,
+            },
+          ],
+        };
+      }
+
+      if (url === "/api/links" && init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body)) as { context: string; relationships: string[] };
+        edgeContext = body.context;
+        edgeRelationships = body.relationships;
+
+        return {
+          id: "note-1",
+          type: "note",
+          featureSlug: "execution",
+          graph: "execution",
+          title: "Overview",
+          description: "Execution overview",
+          path: "data/graphs/execution/overview.md",
+          body: "Overview body\n",
+          links: [{ node: "note-2", context: edgeContext, relationships: edgeRelationships }],
+          relatedNoteIds: [],
+        };
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Content");
+
+    const executionButton = (await screen.findByText("Execution")).closest('[data-sidebar="menu-sub-button"]');
+    if (executionButton === null) {
+      throw new Error("missing execution graph button");
+    }
+
+    await user.click(executionButton);
+    await screen.findByTestId("flow-node-note-1");
+
+    const edgeHitArea = document.querySelector('path[pointer-events="stroke"]');
+    if (edgeHitArea === null) {
+      throw new Error("missing edge hit area");
+    }
+
+    fireEvent.click(edgeHitArea);
+
+    await screen.findByLabelText("Add relationship tag");
+    const addRelationshipTagInput = screen.getByLabelText("Add relationship tag");
+    const contextInput = screen.getByLabelText("Edge context");
+    await user.clear(addRelationshipTagInput);
+    await user.type(addRelationshipTagInput, "blocks");
+    await user.click(screen.getByRole("button", { name: "Add" }));
+    await user.clear(contextInput);
+    await user.type(contextInput, "runtime dependency");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/links",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({
+            fromId: "note-1",
+            toId: "note-2",
+            context: "runtime dependency",
+            relationships: ["depends_on", "blocks"],
+          }),
+        }),
+      );
+    });
+
+    await user.click(screen.getByRole("button", { name: "Clear selection" }));
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Add relationship tag")).toBeNull();
+    });
+  });
+
   it("persists viewport on move end through graph-layout API", async () => {
     const graphCanvasResponse = {
       selectedGraph: "execution",
@@ -3100,7 +3261,7 @@ describe("App graph canvas flows", () => {
     expect(screen.getByLabelText("Home body editor")).toBeInTheDocument();
   });
 
-  it("accepts legacy graph tree payloads that omit files", async () => {
+  it("handles graph tree payloads where files is null or absent", async () => {
     installFetchMock((url) => {
       if (url === "/api/workspace") return workspaceResponse;
       if (url === "/api/graphs") {

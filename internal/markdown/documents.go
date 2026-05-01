@@ -27,8 +27,9 @@ const (
 
 // NodeLink is a stored link from one document to another, with optional context.
 type NodeLink struct {
-	Node    string `yaml:"node"`
-	Context string `yaml:"context,omitempty"`
+	Node          string   `yaml:"node"`
+	Context       string   `yaml:"context,omitempty"`
+	Relationships []string `yaml:"relationships,omitempty"`
 }
 
 // UnmarshalYAML implements custom decoding so that a plain scalar string (legacy format) is
@@ -37,6 +38,7 @@ func (r *NodeLink) UnmarshalYAML(value *yaml.Node) error {
 	if value.Kind == yaml.ScalarNode {
 		r.Node = value.Value
 		r.Context = ""
+		r.Relationships = nil
 		return nil
 	}
 	type plain NodeLink
@@ -45,7 +47,36 @@ func (r *NodeLink) UnmarshalYAML(value *yaml.Node) error {
 		return err
 	}
 	*r = NodeLink(p)
+	r.Relationships = normalizeNodeLinkRelationships(r.Relationships)
 	return nil
+}
+
+func normalizeNodeLinkRelationships(values []string) []string {
+	seen := map[string]struct{}{}
+	result := make([]string, 0, len(values))
+
+	appendUnique := func(value string) {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			return
+		}
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		result = append(result, trimmed)
+	}
+
+	for _, value := range values {
+		appendUnique(value)
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+
+	return result
 }
 
 // CommonFields contains the frontmatter shared by all document kinds.

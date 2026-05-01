@@ -30,7 +30,7 @@ describe('richText conversion', () => {
     expect(markdown).toBe('[[graph2 > Task1]] test\n')
   })
 
-  it('renders legacy escaped inline reference tokens as links when resolved', () => {
+  it('renders escaped inline reference tokens as links when resolved', () => {
     const html = markdownToHTML('\\[\\[graph2 > Task1\\]\\] test', [
       {
         token: '[[graph2 > Task1]]',

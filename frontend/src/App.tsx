@@ -14,7 +14,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, FileText, Info, Maximize2, Min
 import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppSidebar } from "./components/AppSidebar";
-import type { GraphCanvasOverlayController } from "./components/graphCanvasOverlayController";
+import type { EdgeToolbarState, GraphCanvasOverlayController } from "./components/graphCanvasOverlayController";
 import { GraphCanvasOverlayInteraction } from "./components/GraphCanvasOverlayInteraction";
 import { GraphCanvasOverlayNodes } from "./components/GraphCanvasOverlayNodes";
 import { GraphTree } from "./components/GraphTree";
@@ -140,6 +140,14 @@ const MIN_THREAD_PANEL_WIDTH_PX = 420;
 const THREAD_PANEL_VIEWPORT_MARGIN_PX = 112;
 const DOCUMENT_FILE_NAME_PATTERN = /^[a-z0-9][a-z0-9._/-]*$/;
 
+type SearchFilters = {
+  q: string;
+  tag: string;
+  title: string;
+  description: string;
+  content: string;
+};
+
 function clampDocumentTOCRatio(value: number): number {
   return Math.min(Math.max(value, MIN_DOCUMENT_TOC_RATIO), MAX_DOCUMENT_TOC_RATIO);
 }
@@ -166,6 +174,34 @@ function remapGraphPath(path: string, currentPath: string, nextPath: string): st
     return `${nextPath}${path.slice(currentPath.length)}`;
   }
   return path;
+}
+
+function buildSearchRequestPath(filters: SearchFilters, limit: number): string {
+  const params = new URLSearchParams();
+  const q = filters.q.trim();
+  const tag = filters.tag.trim();
+  const title = filters.title.trim();
+  const description = filters.description.trim();
+  const content = filters.content.trim();
+
+  if (q !== "") {
+    params.set("q", q);
+  }
+  if (tag !== "") {
+    params.set("tag", tag);
+  }
+  if (title !== "") {
+    params.set("title", title);
+  }
+  if (description !== "") {
+    params.set("description", description);
+  }
+  if (content !== "") {
+    params.set("content", content);
+  }
+
+  params.set("limit", String(limit));
+  return `/api/search?${params.toString()}`;
 }
 
 function buildGraphTreeFile(document: DocumentResponse): GraphTreeFileData {
@@ -269,7 +305,20 @@ function FlowApp() {
   const [documentThread, setDocumentThread] = useState<ThreadDocumentEntry[]>([]);
   const [threadDocumentsById, setThreadDocumentsById] = useState<Record<string, DocumentResponse>>({});
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [searchTagQuery, setSearchTagQuery] = useState<string>("");
+  const [searchTitleQuery, setSearchTitleQuery] = useState<string>("");
+  const [searchDescriptionQuery, setSearchDescriptionQuery] = useState<string>("");
+  const [searchContentQuery, setSearchContentQuery] = useState<string>("");
   const deferredSearchQuery = useDeferredValue(searchQuery.trim());
+  const deferredSearchTagQuery = useDeferredValue(searchTagQuery.trim());
+  const deferredSearchTitleQuery = useDeferredValue(searchTitleQuery.trim());
+  const deferredSearchDescriptionQuery = useDeferredValue(searchDescriptionQuery.trim());
+  const deferredSearchContentQuery = useDeferredValue(searchContentQuery.trim());
+  const hasDeferredSearchFilter = deferredSearchQuery !== ""
+    || deferredSearchTagQuery !== ""
+    || deferredSearchTitleQuery !== ""
+    || deferredSearchDescriptionQuery !== ""
+    || deferredSearchContentQuery !== "";
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>("");
@@ -289,7 +338,7 @@ function FlowApp() {
   const [renameValue, setRenameValue] = useState<string>("");
   const [renameError, setRenameError] = useState<string>("");
   const [renamePending, setRenamePending] = useState<boolean>(false);
-  const [editingEdge, setEditingEdge] = useState<{ sourceId: string; targetId: string; context: string } | null>(null);
+  const [edgeToolbar, setEdgeToolbar] = useState<EdgeToolbarState | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string>("");
   const [hoveredEdgeTooltip, setHoveredEdgeTooltip] = useState<{ edgeId: string; context: string; x: number; y: number } | null>(null);
   const [homeFormState, setHomeFormState] = useState<HomeFormState>(emptyHomeFormState);
@@ -420,6 +469,24 @@ function FlowApp() {
     : nextThreadDensityMode === "dense"
       ? "dense"
       : "ultra";
+  const relationshipTagCatalog = useMemo(() => {
+    const tagSet = new Set<string>();
+
+    for (const edge of graphCanvasData?.edges ?? []) {
+      if (edge.kind !== "link") {
+        continue;
+      }
+
+      for (const tag of edge.relationships ?? []) {
+        const trimmed = tag.trim();
+        if (trimmed !== "") {
+          tagSet.add(trimmed);
+        }
+      }
+    }
+
+    return Array.from(tagSet).sort((left, right) => left.localeCompare(right));
+  }, [graphCanvasData?.edges]);
   const graphCanvasOverlayController: GraphCanvasOverlayController = {
     state: {
       edges: graphCanvasData?.edges ?? [],
@@ -428,6 +495,8 @@ function FlowApp() {
       selectedCanvasNodeId,
       selectedEdgeId,
       hoveredEdgeTooltip,
+      edgeToolbar,
+      relationshipTagCatalog,
       shiftSelectedNodes,
       connectingTarget,
       canvasContextMenu,
@@ -444,11 +513,16 @@ function FlowApp() {
         setHoveredEdgeTooltip((current) => current?.edgeId === edgeId ? null : current);
       },
       handleGraphCanvasEdgeDoubleClick,
+      setEdgeToolbarState: setEdgeToolbar,
+      persistEdgeToolbar: handlePersistEdgeToolbar,
       handleDeleteEdge,
       onNodeClick: handleGraphCanvasOverlayNodeClick,
       onNodeDoubleClick: handleGraphCanvasOverlayNodeDoubleClick,
       onNodePointerDown: handleGraphCanvasOverlayPointerDown,
       onHandlePointerDown: handleConnectionHandlePointerDown,
+      onNodeDescriptionSave: (nodeId, description) => {
+        void handleGraphCanvasNodeDescriptionSave(nodeId, description);
+      },
       onMerge: () => {
         void handleMergeDocuments();
       },
@@ -1043,6 +1117,7 @@ function FlowApp() {
   function handleGraphCanvasOverlayNodeClick(event: React.MouseEvent<HTMLDivElement>, nodeId: string): void {
     event.stopPropagation();
     setHoveredEdgeTooltip(null);
+    setEdgeToolbar(null);
     if (isAdditiveNodeSelection(event)) {
       setShiftSelectedNodes((prev) => {
         if (prev.includes(nodeId)) {
@@ -1066,6 +1141,61 @@ function FlowApp() {
   function handleGraphCanvasOverlayNodeDoubleClick(event: React.MouseEvent<HTMLDivElement>, nodeId: string): void {
     event.stopPropagation();
     handleOpenCanvasDocument(nodeId);
+  }
+
+  async function handleGraphCanvasNodeDescriptionSave(nodeId: string, description: string): Promise<void> {
+    const currentNode = graphCanvasData?.nodes.find((node) => node.id === nodeId) ?? null;
+    if (currentNode === null) {
+      return;
+    }
+
+    const nextDescription = description.trim();
+    if ((currentNode.description ?? "").trim() === nextDescription) {
+      return;
+    }
+
+    try {
+      const updatedDocument = await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(nodeId)}`, {
+        method: "PUT",
+        body: JSON.stringify({ description: nextDescription }),
+      });
+
+      setGraphCanvasData((current) => {
+        if (current === null) {
+          return current;
+        }
+        return {
+          ...current,
+          nodes: current.nodes.map((node) => {
+            if (node.id !== updatedDocument.id) {
+              return node;
+            }
+            return {
+              ...node,
+              type: updatedDocument.type,
+              graph: updatedDocument.graph,
+              title: updatedDocument.title,
+              description: updatedDocument.description,
+              path: updatedDocument.path,
+              featureSlug: updatedDocument.featureSlug,
+              tags: updatedDocument.tags,
+              createdAt: updatedDocument.createdAt,
+              updatedAt: updatedDocument.updatedAt,
+            };
+          }),
+        };
+      });
+
+      if (selectedDocumentRef.current?.id === updatedDocument.id) {
+        syncSelectedDocumentState(updatedDocument, { preserveFormState: false });
+      }
+
+      if (documentThreadRef.current.some((entry) => entry.documentId === updatedDocument.id)) {
+        setThreadDocumentsById((current) => ({ ...current, [updatedDocument.id]: updatedDocument }));
+      }
+    } catch (mutationFailure) {
+      setMutationError(toErrorMessage(mutationFailure));
+    }
   }
 
   function startSidebarResize(
@@ -1110,7 +1240,7 @@ function FlowApp() {
 
   async function mutateEdge(
     method: "POST" | "DELETE" | "PATCH",
-    payload: { fromId: string; toId: string; context?: string },
+    payload: { fromId: string; toId: string; context?: string; relationships?: string[] },
   ): Promise<void> {
     try {
       setMutationError("");
@@ -1123,14 +1253,6 @@ function FlowApp() {
     } catch (err) {
       setMutationError(toErrorMessage(err));
     }
-  }
-
-  function openEdgeEditor(sourceId: string, targetId: string, context: string, edgeId?: string): void {
-    clearEdgeClickTimer();
-    if (edgeId !== undefined) {
-      setSelectedEdgeId(edgeId);
-    }
-    setEditingEdge({ sourceId, targetId, context });
   }
 
   useEffect(() => {
@@ -1220,7 +1342,7 @@ function FlowApp() {
     let cancelled = false;
 
     async function loadSearch(): Promise<void> {
-      if (deferredSearchQuery === "") {
+      if (!hasDeferredSearchFilter) {
         setSearchResults([]);
         setSearchError("");
         return;
@@ -1228,7 +1350,13 @@ function FlowApp() {
 
       try {
         setSearchError("");
-        const response = await requestJSON<SearchResult[]>(`/api/search?q=${encodeURIComponent(deferredSearchQuery)}&limit=8`);
+        const response = await requestJSON<SearchResult[]>(buildSearchRequestPath({
+          q: deferredSearchQuery,
+          tag: deferredSearchTagQuery,
+          title: deferredSearchTitleQuery,
+          description: deferredSearchDescriptionQuery,
+          content: deferredSearchContentQuery,
+        }, 8));
         if (!cancelled) {
           setSearchResults(response);
         }
@@ -1245,7 +1373,14 @@ function FlowApp() {
     return () => {
       cancelled = true;
     };
-  }, [deferredSearchQuery]);
+  }, [
+    deferredSearchContentQuery,
+    deferredSearchDescriptionQuery,
+    deferredSearchQuery,
+    deferredSearchTagQuery,
+    deferredSearchTitleQuery,
+    hasDeferredSearchFilter,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1306,6 +1441,7 @@ function FlowApp() {
   useEffect(() => {
     setGraphCanvasNodeSearchTerm("");
     setGraphCanvasNodeSearchIndex(0);
+    setEdgeToolbar(null);
 
     if (selectedGraphPath === "") {
       setGraphCanvasData(null);
@@ -1367,6 +1503,31 @@ function FlowApp() {
     }
   }, [graphCanvasNodeSearchHasMatches, graphCanvasNodeSearchIndex, graphCanvasNodeSearchMatches.length]);
 
+  useEffect(() => {
+    const shell = graphCanvasShellRef.current;
+    if (shell === null) {
+      return;
+    }
+
+    function handleCanvasPointerDown(event: PointerEvent): void {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+
+      if (target.closest("[data-edge-toolbar='true']") !== null) {
+        return;
+      }
+
+      setEdgeToolbar(null);
+    }
+
+    shell.addEventListener("pointerdown", handleCanvasPointerDown);
+    return () => {
+      shell.removeEventListener("pointerdown", handleCanvasPointerDown);
+    };
+  }, [selectedGraphPath]);
+
   async function refreshShellViews(options?: { nextDocument?: DocumentResponse | null; nextDocumentId?: string; reloadCurrentDocument?: boolean }): Promise<void> {
     const snapshot = await loadWorkspaceSnapshot();
     setWorkspace(snapshot.workspaceData);
@@ -1409,8 +1570,14 @@ function FlowApp() {
       }
     }
 
-    if (deferredSearchQuery !== "") {
-      const response = await requestJSON<SearchResult[]>(`/api/search?q=${encodeURIComponent(deferredSearchQuery)}&limit=8`);
+    if (hasDeferredSearchFilter) {
+      const response = await requestJSON<SearchResult[]>(buildSearchRequestPath({
+        q: deferredSearchQuery,
+        tag: deferredSearchTagQuery,
+        title: deferredSearchTitleQuery,
+        description: deferredSearchDescriptionQuery,
+        content: deferredSearchContentQuery,
+      }, 8));
       setSearchResults(response);
       setSearchError("");
     }
@@ -2275,13 +2442,21 @@ function FlowApp() {
       setMutationError("");
 
       try {
+        const existingLinksByNode = new Map((selectedDocumentRef.current?.links ?? []).map((link) => [link.node, link]));
         const payload: Record<string, unknown> = {
           title: state.title,
           description: state.description,
           graph: state.graph,
           tags: splitList(state.tags),
           body: state.body,
-          links: splitList(state.links).map((id): NodeLink => ({ node: id })),
+          links: splitList(state.links).map((id): NodeLink => {
+            const existing = existingLinksByNode.get(id);
+            return {
+              node: id,
+              context: existing?.context ?? "",
+              relationships: existing?.relationships ?? [],
+            };
+          }),
         };
 
         if (doc.type === "task") {
@@ -2414,8 +2589,14 @@ function FlowApp() {
     await mutateEdge("DELETE", { fromId: sourceId, toId: targetId });
   }
 
-  async function handleUpdateEdgeContext(sourceId: string, targetId: string, context: string): Promise<void> {
-    await mutateEdge("PATCH", { fromId: sourceId, toId: targetId, context });
+  async function handlePersistEdgeToolbar(state: EdgeToolbarState): Promise<void> {
+    await mutateEdge("PATCH", {
+      fromId: state.sourceId,
+      toId: state.targetId,
+      context: state.context,
+      relationships: state.relationships,
+    });
+    setEdgeToolbar((current) => current?.edgeId === state.edgeId ? { ...current, context: state.context, relationships: state.relationships } : current);
   }
 
   function clearEdgeClickTimer(): void {
@@ -2425,17 +2606,31 @@ function FlowApp() {
     }
   }
 
-  function handleGraphCanvasEdgeClick(edgeId: string, sourceId: string): void {
+  function handleGraphCanvasEdgeClick(edge: {
+    edgeId: string;
+    sourceId: string;
+    targetId: string;
+    context: string;
+    relationships: string[];
+    x: number;
+    y: number;
+  }): void {
     clearEdgeClickTimer();
-    setSelectedEdgeId(edgeId);
-    edgeClickTimerRef.current = window.setTimeout(() => {
-      edgeClickTimerRef.current = null;
-      handleOpenCanvasDocument(sourceId);
-    }, 220);
+    setSelectedEdgeId(edge.edgeId);
+    setEdgeToolbar({
+      edgeId: edge.edgeId,
+      sourceId: edge.sourceId,
+      targetId: edge.targetId,
+      context: edge.context,
+      relationships: edge.relationships,
+      x: edge.x,
+      y: edge.y,
+    });
   }
 
   function handleGraphCanvasEdgeDoubleClick(sourceId: string, targetId: string, context: string, edgeId: string): void {
-    openEdgeEditor(sourceId, targetId, context, edgeId);
+    setSelectedEdgeId(edgeId);
+    void handleOpenCanvasDocument(sourceId);
   }
 
   function handleGraphCanvasEdgeHover(edgeId: string, context: string, x: number, y: number): void {
@@ -2446,9 +2641,17 @@ function FlowApp() {
     setHoveredEdgeTooltip({ edgeId, context, x, y });
   }
 
-  // Stable callback passed via context into ContextEdge for the "edit context" button.
+  // Stable callback retained for ContextEdge compatibility.
   const handleEdgeDoubleClickAction = useCallback((sourceId: string, targetId: string, context: string) => {
-    openEdgeEditor(sourceId, targetId, context);
+    setEdgeToolbar({
+      edgeId: `link:${sourceId}:${targetId}`,
+      sourceId,
+      targetId,
+      context,
+      relationships: [],
+      x: 0,
+      y: 0,
+    });
   }, []);
 
   async function handleMergeDocuments(): Promise<void> {
@@ -3262,6 +3465,7 @@ function FlowApp() {
                             clearEdgeClickTimer();
                             setSelectedCanvasNodeId(node.id);
                             setSelectedEdgeId("");
+                            setEdgeToolbar(null);
                           }}
                           onNodeDoubleClick={(_, node) => {
                             handleOpenCanvasDocument(node.id);
@@ -3281,7 +3485,15 @@ function FlowApp() {
                             const rect = shell.getBoundingClientRect();
                             setCanvasContextMenu({ x: event.clientX - rect.left, y: event.clientY - rect.top });
                           }}
-                          onPaneClick={() => { clearEdgeClickTimer(); setHoveredEdgeTooltip(null); setSelectedCanvasNodeId(""); setSelectedEdgeId(""); setCanvasContextMenu(null); setShiftSelectedNodes([]); }}
+                          onPaneClick={() => {
+                            clearEdgeClickTimer();
+                            setHoveredEdgeTooltip(null);
+                            setSelectedCanvasNodeId("");
+                            setSelectedEdgeId("");
+                            setEdgeToolbar(null);
+                            setCanvasContextMenu(null);
+                            setShiftSelectedNodes([]);
+                          }}
                           onMoveEnd={() => {
                             void persistGraphCanvasViewport({
                               x: rfViewport.x,
@@ -3298,13 +3510,6 @@ function FlowApp() {
                           elementsSelectable
                           proOptions={{ hideAttribution: true }}
                           edgeTypes={EDGE_TYPES}
-                          onEdgeClick={(_, edge) => {
-                            const parts = edge.id.split(":");
-                            if (parts.length >= 3 && parts[0] === "link") {
-                              setSelectedEdgeId(edge.id);
-                              handleOpenCanvasDocument(parts[1]);
-                            }
-                          }}
                           onEdgeContextMenu={(event, edge: Edge) => {
                             event.preventDefault();
                             const parts = edge.id.split(":");
@@ -3532,16 +3737,42 @@ function FlowApp() {
                   <div className="right-search-field">
                     <Search aria-hidden="true" className="right-search-icon" size={16} />
                     <Input
-                      aria-label="Search"
+                      aria-label="Search all fields"
                       autoFocus
                       className="shell-search-input shell-search-input-with-icon"
-                      placeholder="Search documents…"
+                      placeholder="Any field"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
                   </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Input
+                      aria-label="Search by tag"
+                      placeholder="Tag"
+                      value={searchTagQuery}
+                      onChange={(e) => setSearchTagQuery(e.target.value)}
+                    />
+                    <Input
+                      aria-label="Search by title"
+                      placeholder="Title"
+                      value={searchTitleQuery}
+                      onChange={(e) => setSearchTitleQuery(e.target.value)}
+                    />
+                    <Input
+                      aria-label="Search by description"
+                      placeholder="Description"
+                      value={searchDescriptionQuery}
+                      onChange={(e) => setSearchDescriptionQuery(e.target.value)}
+                    />
+                    <Input
+                      aria-label="Search by content"
+                      placeholder="Content"
+                      value={searchContentQuery}
+                      onChange={(e) => setSearchContentQuery(e.target.value)}
+                    />
+                  </div>
                   {searchError !== "" && <p className="status-line status-line-error">{searchError}</p>}
-                  {deferredSearchQuery !== "" && (
+                  {hasDeferredSearchFilter && (
                     <div className="search-results">
                       {searchResults.length === 0 ? (
                         <p className="empty-state-inline">No indexed matches.</p>
@@ -3814,46 +4045,6 @@ function FlowApp() {
               <Button onClick={() => setRenameDialog(null)} type="button" variant="secondary">Cancel</Button>
               <Button onClick={() => void handleConfirmRename()} type="button" disabled={renamePending}>
                 {renamePending ? "Renaming..." : "Rename"}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={editingEdge !== null} onOpenChange={(open) => { if (!open) setEditingEdge(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit link context</DialogTitle>
-            <DialogDescription>
-              Add a short annotation describing why this link exists.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="shell-dialog-actions" style={{ flexDirection: "column", alignItems: "stretch", gap: "0.5rem" }}>
-            <Label htmlFor="edge-context-input">Context</Label>
-            <Input
-              id="edge-context-input"
-              value={editingEdge?.context ?? ""}
-              onChange={(e) => setEditingEdge((prev) => prev ? { ...prev, context: e.target.value } : prev)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && editingEdge !== null) {
-                  void handleUpdateEdgeContext(editingEdge.sourceId, editingEdge.targetId, editingEdge.context);
-                  setEditingEdge(null);
-                }
-              }}
-              placeholder="e.g. depends on, relates to…"
-              autoFocus
-            />
-            <div className="shell-dialog-actions">
-              <Button onClick={() => setEditingEdge(null)} type="button" variant="secondary">Cancel</Button>
-              <Button
-                onClick={() => {
-                  if (editingEdge !== null) {
-                    void handleUpdateEdgeContext(editingEdge.sourceId, editingEdge.targetId, editingEdge.context);
-                    setEditingEdge(null);
-                  }
-                }}
-                type="button"
-              >
-                Save
               </Button>
             </div>
           </div>

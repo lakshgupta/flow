@@ -52,6 +52,13 @@ export function GraphCanvasOverlayEdges({
             <marker id="graph-canvas-arrow-dim" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
               <path d="M 0 0 L 10 3.5 L 0 7 Z" fill="var(--graph-edge-dim)" />
             </marker>
+            <filter id="graph-canvas-edge-glow" x="-40%" y="-40%" width="180%" height="180%">
+              <feGaussianBlur stdDeviation="2.4" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
           </defs>
           <g transform={`translate(${rfViewport.x} ${rfViewport.y}) scale(${rfViewport.zoom})`}>
             {edges.map((edge) => {
@@ -66,6 +73,19 @@ export function GraphCanvasOverlayEdges({
 
               return (
                 <g key={edge.id}>
+                  {visual.isGlowVisible && (
+                    <path
+                      d={edgePath}
+                      stroke={visual.stroke}
+                      strokeWidth={visual.glowStrokeWidth}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      fill="none"
+                      opacity={visual.glowOpacity}
+                      filter="url(#graph-canvas-edge-glow)"
+                      pointerEvents="none"
+                    />
+                  )}
                   <path
                     d={edgePath}
                     stroke="transparent"
@@ -80,7 +100,15 @@ export function GraphCanvasOverlayEdges({
                         selectEdge(edge.id);
                         return;
                       }
-                      handleGraphCanvasEdgeClick(edge.id, edge.source);
+                      handleGraphCanvasEdgeClick({
+                        edgeId: edge.id,
+                        sourceId: edge.source,
+                        targetId: edge.target,
+                        context: edge.context ?? "",
+                        relationships: edge.relationships ?? [],
+                        x: labelX * rfViewport.zoom + rfViewport.x,
+                        y: labelY * rfViewport.zoom + rfViewport.y,
+                      });
                     }}
                     onMouseEnter={() => {
                       handleGraphCanvasEdgeHover(

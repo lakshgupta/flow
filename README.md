@@ -73,9 +73,64 @@ flow init
 Create a few documents:
 
 ```bash
-flow create note --file architecture --id note-1 --graph notes --title "Architecture"
-flow create task --file parser --id task-1 --graph execution/parser --title "Build parser"
-flow create command --file build --id cmd-1 --graph release --title "Build binary" --name build --run "go build ./cmd/flow"
+flow create note --file architecture --graph design/system --title "Architecture"
+flow create task --file parser --graph development/parser --title "Build parser"
+flow create command --file build --graph development/release --title "Build binary" --name build --run "go build ./cmd/flow"
+```
+
+### What the flags mean
+
+| Flag | What it does | Example value | Result |
+|------|-------------|---------------|--------|
+| `--graph` | The graph path where the document lives. Slashes create a sub-directory hierarchy. | `development/parser` | Stored under `.flow/data/content/development/parser/` |
+| `--file` | The filename on disk, without the `.md` extension. | `parser` | Creates `parser.md` in the graph directory |
+| `--title` | Human-readable display name shown in the GUI and search results. | `"Build parser"` | Stored as `title: Build parser` in frontmatter |
+
+ID is auto-derived by Flow for `flow create` as `<graph>/<file>` (without `.md`).
+
+- `--graph development/parser --file tokenize` creates `id: development/parser/tokenize`
+- `--graph development/release --file build` creates `id: development/release/build`
+
+Record-keeping convention:
+
+- The parent graph directory is `.flow/data/content`.
+- Use only two top-level graphs under it: `design/` and `development/`.
+- Sub-graph naming is mandatory: `<type>-YYYYMMDD-NNN-<title>`.
+- Store all design records under `design/<type>-YYYYMMDD-NNN-<title>`.
+- Store all planning/implementation records under `development/<type>-YYYYMMDD-NNN-<title>`.
+- `NNN` is the zero-padded incremental count of directories created on `YYYYMMDD`.
+
+**Concrete example — a feature with two tasks and a design note:**
+
+```bash
+# Create design and development sub-graphs for the same work key
+flow create note --file design \
+	--graph design/FEAT-20260501-001-parser --title "Parser design notes"
+
+flow create task --file tokenize \
+	--graph development/FEAT-20260501-001-parser --title "Implement tokenizer" --status todo
+
+flow create task --file integrate \
+	--graph development/FEAT-20260501-001-parser --title "Integrate parser into CLI" --status todo
+
+# Link the design note to the first task
+flow node connect --from design/FEAT-20260501-001-parser/design --to development/FEAT-20260501-001-parser/tokenize \
+	--graph development/FEAT-20260501-001-parser --relationship records
+
+# Mark the second task as depending on the first
+flow node connect --from development/FEAT-20260501-001-parser/tokenize --to development/FEAT-20260501-001-parser/integrate \
+	--graph development/FEAT-20260501-001-parser --relationship depends-on
+```
+
+This creates on disk:
+
+```text
+.flow/data/content/design/FEAT-20260501-001-parser/
+	design.md       ← id: design/FEAT-20260501-001-parser/design
+
+.flow/data/content/development/FEAT-20260501-001-parser/
+	tokenize.md     ← id: development/FEAT-20260501-001-parser/tokenize
+	integrate.md    ← id: development/FEAT-20260501-001-parser/integrate
 ```
 
 Then open the GUI or keep working in the CLI.
@@ -108,22 +163,85 @@ Common commands:
 
 ```bash
 flow version
+flow init
+flow configure --gui-port 4317
 flow search parser
-flow node read --id task-1
+flow search --tag planning --type task --compact
+flow skill content --graph development
+flow node read --id development/parser/parser
+flow node content --id development/parser/parser --line-start 20 --line-end 40
+flow node list --feature development --status todo --compact
 flow run build
 ```
 
-Useful entry points:
+Current command surface (implemented in the Go CLI):
 
-- `flow init` creates a workspace.
-- `flow create` adds notes, tasks, and commands.
-- `flow update` changes document fields.
-- `flow delete` removes documents.
-- `flow search` finds matching content.
-- `flow run <name>` executes a command document by name.
-- `flow tui` opens the terminal interface.
+- `flow init`
+	- Initializes local workspace files and folders.
+- `flow configure --gui-port <port>`
+	- Sets the local GUI port.
+- `flow -g configure --workspace <absolute-path> [--gui-port <port>]`
+	- Configures global workspace location and optionally GUI port.
+- `flow gui`
+	- Starts the GUI server and opens the browser.
+- `flow gui stop`
+	- Stops a running GUI server.
+- `flow create <note|task|command> ...`
+	- Creates documents (requires `--file --graph`; command also requires `--name --run`). IDs are auto-derived as `<graph>/<file>`.
+- `flow update --path <relative-path> ...`
+	- Updates document fields by path.
+- `flow delete --path <relative-path>`
+	- Deletes a document by path.
+- `flow skill content [--graph <graph>]`
+	- Prints a Skill.md template for Flow-centric delivery using `design/<type>-YYYYMMDD-NNN-<title>` and `development/<type>-YYYYMMDD-NNN-<title>` record keeping conventions.
+- `flow search [--limit <n>] [--graph <graph>] [--feature <feature>] [--type <note|task|command>] [--tag <tag>] [--title <text>] [--description <text>] [--content <text>] [--compact] [query]`
+	- Indexed search with field filters and optional compact ID-only output.
+- `flow run <command-id-or-short-name>`
+	- Executes a command document.
+- `flow tui [--command-graph <graph>] [--search <query>] [--search-limit <n>]`
+	- Renders the terminal interface output.
+- `flow node read --id <node-id> [--graph <graph>] [--format json|markdown]`
+	- Reads one node view (includes body and linked edge info).
+- `flow node content --id <node-id> [--graph <graph>] [--line-start <n>] [--line-end <n>] [--format text|json]`
+	- Reads full body content or a specific line range.
+- `flow node list [--graph <graph>] [--feature <feature>] [--tag <tag>]... [--status <todo|doing|done>] [--limit <n>] [--compact] [--format json|markdown]`
+	- Lists nodes using graph/feature/tag/status filters; requires `--graph` or at least one filter.
+- `flow node edges --id <node-id> [--graph <graph>] [--format json|markdown]`
+	- Lists edges touching a node.
+- `flow node neighbors --id <node-id> [--graph <graph>] [--format json|markdown]`
+	- Lists neighbor nodes around a node.
+- `flow node update --id <node-id> ...`
+	- Updates one node by ID (supports `--title --description --body --status --tag --reference --name --env --run`).
+- `flow node connect --from <node-id> --to <node-id> --graph <graph> [--context <text>] [--relationship <tag>]...`
+	- Creates a directed node link with optional context and relationship tags.
+- `flow node disconnect --from <node-id> --to <node-id> --graph <graph>`
+	- Removes a directed node link.
 
-Global workspaces are also supported with `-g` where applicable.
+Global mode is supported by prefixing commands with `-g`, for example `flow -g init` and `flow -g gui`.
+
+### Agent-Oriented CLI Workflows
+
+Flow now includes agent-friendly retrieval and filtering primitives designed for low-token usage.
+
+Recommended patterns:
+
+1. Pull only the lines needed for editing context.
+	- `flow node content --id development/parser/tokenize --line-start 80 --line-end 120`
+
+2. Use compact output for planning loops and ID collection.
+	- `flow node list --feature development --status todo --compact`
+	- `flow search --tag planning --type task --compact`
+
+3. Narrow search by semantic field before opening full node views.
+	- `flow search --title parser --graph development/parser`
+	- `flow search --description migration --feature development`
+	- `flow search --content "retry budget" --type note`
+
+4. Read structured JSON only when a downstream tool needs machine-readable metadata.
+	- `flow node content --id development/parser/tokenize --line-start 1 --line-end 20 --format json`
+	- `flow node list --feature development --tag backend --format json`
+
+These commands align with the current architecture: workspace Markdown is the source of truth, and the derived index is used for fast query and graph traversal.
 
 ## Release Procedure
 

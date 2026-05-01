@@ -22,9 +22,21 @@ Follow this workflow:
 5. Remove duplicate logic when it can be consolidated safely.
 6. Simplify overly complex code when readability and maintainability improve without hiding important logic.
 7. Ask the user before removing code that appears to be legacy, compatibility-related, or intentionally retained unless the conversation already makes removal safe.
-8. Do not update [docs/backlog.md](../../docs/backlog.md) as part of this workflow.
+8. Keep record keeping in Flow nodes for this workflow.
 9. After the refactor is complete, run the most relevant available tests, lint checks, or targeted verification.
 10. If the refactor changes documented responsibilities, boundaries, interfaces, or architectural structure compared with [docs/architecture.md](../../docs/architecture.md), update the relevant architecture section after validation.
+
+Flow record-keeping requirements (required, see [.github/SKILL.md](../SKILL.md) for full protocol):
+
+- Use Flow as the refactor run log.
+- Use one shared Flow graph for all record keeping in the project. Do not switch graphs by operation type.
+- For each new feature or refactor stream, create or reuse a feature sub-directory under the shared graph, for example `flow/development/<feature-slug>`.
+- Keep at least one task node and one note node in the feature sub-directory:
+	- Task node tracks the refactor objective and status transitions.
+	- Note node records preserved behavior guarantees, structural changes, and validation results.
+- Link refactor notes and tasks to related implementation or design nodes when relevant.
+- Define dependency links between refactor task nodes so order and prerequisites remain explicit.
+- Treat Flow nodes as the canonical operational history for the refactor run.
 
 Refactoring rules:
 
@@ -106,3 +118,10 @@ Implementation rules:
 - Focus on structure, readability, duplication, and maintainability.
 - Preserve behavior unless the user approves a behavior change.
 - Leave clear notes if the refactor is blocked by unclear requirements or hidden legacy constraints.
+
+Before finishing the run, ensure Flow records include:
+
+- what was refactored,
+- what behavior was explicitly preserved,
+- any follow-up cleanup tasks,
+- and the home.md update needed to keep architecture/manual guidance aligned with refactor outcomes.

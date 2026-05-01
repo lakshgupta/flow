@@ -91,6 +91,44 @@ func TestParseTaskDocument(t *testing.T) {
 	}
 }
 
+func TestParseNoteDocumentLinkRelationships(t *testing.T) {
+	t.Parallel()
+
+	input := strings.Join([]string{
+		"---",
+		"id: note-1",
+		"type: note",
+		"graph: notes",
+		"title: Architecture Note",
+		"links:",
+		"  - node: task-1",
+		"    context: informs",
+		"    relationships:",
+		"      - depends_on",
+		"      - blocks",
+		"---",
+		"",
+		"Body text.",
+	}, "\n")
+
+	document, err := ParseNoteDocument([]byte(input))
+	if err != nil {
+		t.Fatalf("ParseNoteDocument() error = %v", err)
+	}
+
+	if len(document.Metadata.Links) != 1 {
+		t.Fatalf("len(document.Metadata.Links) = %d, want 1", len(document.Metadata.Links))
+	}
+
+	if len(document.Metadata.Links[0].Relationships) != 2 {
+		t.Fatalf("len(document.Metadata.Links[0].Relationships) = %d, want 2", len(document.Metadata.Links[0].Relationships))
+	}
+
+	if document.Metadata.Links[0].Relationships[0] != "depends_on" || document.Metadata.Links[0].Relationships[1] != "blocks" {
+		t.Fatalf("document.Metadata.Links[0].Relationships = %#v, want [depends_on blocks]", document.Metadata.Links[0].Relationships)
+	}
+}
+
 func TestParseCommandDocument(t *testing.T) {
 	t.Parallel()
 

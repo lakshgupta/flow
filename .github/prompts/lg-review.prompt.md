@@ -25,6 +25,19 @@ Follow this workflow:
 8. If you identify issues, prioritize findings by severity and user impact.
 9. If no issues are found, state that explicitly and mention any residual risk or testing gaps.
 
+Flow record-keeping requirements (required, see [.github/SKILL.md](../SKILL.md) for full protocol):
+
+- Use Flow as the review ledger.
+- Use one shared Flow graph for all record keeping in the project. Do not switch graphs by operation type.
+- For each new feature or review stream, create or reuse a feature sub-directory under the shared graph, for example `flow/development/<feature-slug>`.
+- Keep at least one task node and one note node in the feature sub-directory:
+   - Task node tracks review progress and current status.
+   - Note node captures findings, severities, residual risks, and recommended actions.
+- Prefer one linked note per major finding when that improves traceability.
+- Link review findings to related implementation, fix, or refactor nodes whenever possible.
+- Define dependency links between review follow-up task nodes so remediation order is clear.
+- Treat Flow nodes as the primary record of review outcomes and follow-ups.
+
 Review rules:
 
 - Prefer identifying root problems over surface-level style commentary.
@@ -60,6 +73,13 @@ Call out any uncertainty, untested paths, missing context, or assumptions that l
 ## Summary
 
 Give a short overall assessment of code quality and the most important next step.
+
+Before finishing the run, ensure Flow records include:
+
+- final finding set (or explicit no-findings outcome),
+- prioritized follow-up tasks,
+- unresolved review risks,
+- and the home.md update needed so reviewed outcomes are reflected in the architecture/manual document.
 
 Example response:
 

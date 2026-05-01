@@ -62,6 +62,7 @@ export type GraphTreeResponse = {
 export type NodeLink = {
   node: string;
   context?: string;
+  relationships?: string[];
 };
 
 export type InlineReference = {
@@ -193,6 +194,7 @@ export type GraphCanvasEdgePayload = {
   target: string;
   kind: string;
   context?: string;
+  relationships?: string[];
 };
 
 export type GraphCanvasResponse = {

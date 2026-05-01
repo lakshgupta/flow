@@ -259,14 +259,16 @@ type mergeDocumentsRequest struct {
 }
 
 type nodeReferenceResponse struct {
-	Node    string `json:"node"`
-	Context string `json:"context,omitempty"`
+	Node          string   `json:"node"`
+	Context       string   `json:"context,omitempty"`
+	Relationships []string `json:"relationships,omitempty"`
 }
 
 type addReferenceRequest struct {
-	FromID  string `json:"fromId"`
-	ToID    string `json:"toId"`
-	Context string `json:"context"`
+	FromID        string   `json:"fromId"`
+	ToID          string   `json:"toId"`
+	Context       string   `json:"context"`
+	Relationships []string `json:"relationships,omitempty"`
 }
 
 type removeReferenceRequest struct {
@@ -275,9 +277,10 @@ type removeReferenceRequest struct {
 }
 
 type updateReferenceContextRequest struct {
-	FromID  string `json:"fromId"`
-	ToID    string `json:"toId"`
-	Context string `json:"context"`
+	FromID        string   `json:"fromId"`
+	ToID          string   `json:"toId"`
+	Context       string   `json:"context"`
+	Relationships []string `json:"relationships,omitempty"`
 }
 
 // NewMux returns an HTTP handler backed by embedded frontend assets and read/query APIs.
@@ -1024,7 +1027,7 @@ func (handler *apiHandler) handleAddReference(writer http.ResponseWriter, reques
 		return
 	}
 
-	if err := workspace.AddLink(handler.options.Root, payload.FromID, payload.ToID, payload.Context); err != nil {
+	if err := workspace.AddLink(handler.options.Root, payload.FromID, payload.ToID, payload.Context, normalizeRelationshipPayload(payload.Relationships)); err != nil {
 		writeMutationError(writer, err)
 		return
 	}
@@ -1066,7 +1069,7 @@ func (handler *apiHandler) handleUpdateReferenceContext(writer http.ResponseWrit
 		return
 	}
 
-	if err := workspace.UpdateLinkContext(handler.options.Root, payload.FromID, payload.ToID, payload.Context); err != nil {
+	if err := workspace.UpdateLinkContext(handler.options.Root, payload.FromID, payload.ToID, payload.Context, normalizeRelationshipPayload(payload.Relationships)); err != nil {
 		writeMutationError(writer, err)
 		return
 	}
@@ -1081,9 +1084,17 @@ func (handler *apiHandler) handleUpdateReferenceContext(writer http.ResponseWrit
 }
 
 func (handler *apiHandler) handleSearch(writer http.ResponseWriter, request *http.Request) {
-	query := strings.TrimSpace(request.URL.Query().Get("q"))
-	if query == "" {
-		query = strings.TrimSpace(request.URL.Query().Get("query"))
+	anyQuery := strings.TrimSpace(request.URL.Query().Get("q"))
+	if anyQuery == "" {
+		anyQuery = strings.TrimSpace(request.URL.Query().Get("query"))
+	}
+
+	filters := index.SearchFilters{
+		Any:         anyQuery,
+		Tag:         strings.TrimSpace(request.URL.Query().Get("tag")),
+		Title:       strings.TrimSpace(request.URL.Query().Get("title")),
+		Description: strings.TrimSpace(request.URL.Query().Get("description")),
+		Content:     strings.TrimSpace(request.URL.Query().Get("content")),
 	}
 
 	limit := 10
@@ -1097,7 +1108,7 @@ func (handler *apiHandler) handleSearch(writer http.ResponseWriter, request *htt
 		limit = parsedLimit
 	}
 
-	results, err := index.SearchWorkspace(handler.options.Root.IndexPath, handler.options.Root.FlowPath, query, limit)
+	results, err := index.SearchWorkspaceWithFilters(handler.options.Root.IndexPath, handler.options.Root.FlowPath, filters, limit)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "must not be empty") {
@@ -1400,7 +1411,11 @@ func convertLinks(links []markdown.NodeLink) []nodeReferenceResponse {
 
 	result := make([]nodeReferenceResponse, len(links))
 	for i, link := range links {
-		result[i] = nodeReferenceResponse{Node: link.Node, Context: link.Context}
+		result[i] = nodeReferenceResponse{
+			Node:          link.Node,
+			Context:       link.Context,
+			Relationships: cloneStrings(link.Relationships),
+		}
 	}
 
 	return result
@@ -1413,7 +1428,45 @@ func nodeLinksFromPayload(links []nodeReferenceResponse) []markdown.NodeLink {
 
 	result := make([]markdown.NodeLink, len(links))
 	for i, link := range links {
-		result[i] = markdown.NodeLink{Node: link.Node, Context: link.Context}
+		result[i] = markdown.NodeLink{
+			Node:          link.Node,
+			Context:       link.Context,
+			Relationships: normalizeRelationshipPayload(link.Relationships),
+		}
+	}
+
+	return result
+}
+
+func normalizeRelationshipPayload(relationships []string) []string {
+	if len(relationships) == 0 {
+		return nil
+	}
+
+	seen := map[string]struct{}{}
+	result := make([]string, 0, len(relationships))
+
+	appendUnique := func(value string) {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			return
+		}
+
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
+			return
+		}
+
+		seen[key] = struct{}{}
+		result = append(result, trimmed)
+	}
+
+	for _, relationship := range relationships {
+		appendUnique(relationship)
+	}
+
+	if len(result) == 0 {
+		return nil
 	}
 
 	return result

@@ -430,9 +430,9 @@ func documentLinks(doc markdown.Document) []markdown.NodeLink {
 	}
 }
 
-// AddLink appends a NodeLink{Node: toID, Context: context} to the source
+// AddLink appends a NodeLink{Node: toID, Context: context, Relationships: relationships} to the source
 // document's links list. It is a no-op when the link already exists.
-func AddLink(root Root, fromID, toID, context string) error {
+func AddLink(root Root, fromID, toID, context string, relationships []string) error {
 	fromID = strings.TrimSpace(fromID)
 	toID = strings.TrimSpace(toID)
 	if fromID == "" || toID == "" {
@@ -458,7 +458,11 @@ func AddLink(root Root, fromID, toID, context string) error {
 		}
 	}
 
-	newLinks := append(currentLinks, markdown.NodeLink{Node: toID, Context: strings.TrimSpace(context)})
+	newLinks := append(currentLinks, markdown.NodeLink{
+		Node:          toID,
+		Context:       strings.TrimSpace(context),
+		Relationships: cloneStrings(relationships),
+	})
 	_, err = UpdateDocumentByPath(root, sourceDoc.Path, DocumentPatch{Links: &newLinks})
 	return err
 }
@@ -487,9 +491,9 @@ func RemoveLink(root Root, fromID, toID string) error {
 	return err
 }
 
-// UpdateLinkContext sets the context annotation on an existing link
+// UpdateLinkContext sets the context and relationship tags on an existing link
 // from fromID to toID. An error is returned when the link does not exist.
-func UpdateLinkContext(root Root, fromID, toID, context string) error {
+func UpdateLinkContext(root Root, fromID, toID, context string, relationships []string) error {
 	fromID = strings.TrimSpace(fromID)
 	toID = strings.TrimSpace(toID)
 	if fromID == "" || toID == "" {
@@ -506,7 +510,11 @@ func UpdateLinkContext(root Root, fromID, toID, context string) error {
 	newLinks := make([]markdown.NodeLink, len(currentLinks))
 	for i, link := range currentLinks {
 		if link.Node == toID {
-			newLinks[i] = markdown.NodeLink{Node: link.Node, Context: strings.TrimSpace(context)}
+			newLinks[i] = markdown.NodeLink{
+				Node:          link.Node,
+				Context:       strings.TrimSpace(context),
+				Relationships: cloneStrings(relationships),
+			}
 			found = true
 		} else {
 			newLinks[i] = link

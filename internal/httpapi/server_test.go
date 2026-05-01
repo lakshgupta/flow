@@ -407,6 +407,66 @@ func TestNewMuxSearchRebuildsMissingIndex(t *testing.T) {
 	}
 }
 
+func TestNewMuxSearchSupportsFieldFilters(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	root, err := workspace.ResolveLocal(rootDir)
+	if err != nil {
+		t.Fatalf("ResolveLocal() error = %v", err)
+	}
+
+	if err := config.Write(root.ConfigPath, config.Workspace{GUI: config.GUI{Port: 4812, PanelWidths: config.PanelWidths{LeftRatio: 0.31, RightRatio: 0.22}}}); err != nil {
+		t.Fatalf("config.Write() error = %v", err)
+	}
+
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "notes", "parser-architecture.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{
+				ID:          "note-1",
+				Type:        markdown.NoteType,
+				Graph:       "notes",
+				Title:       "Parser Architecture",
+				Description: "Backend parsing design",
+				Tags:        []string{"infra", "parser"},
+			},
+		},
+		Body: "Tokenizer internals and parsing details.\n",
+	})
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "notes", "parser-ui.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{
+				ID:          "note-2",
+				Type:        markdown.NoteType,
+				Graph:       "notes",
+				Title:       "Parser UI",
+				Description: "Frontend parsing hints",
+				Tags:        []string{"frontend", "parser"},
+			},
+		},
+		Body: "Rendering details and toolbar notes.\n",
+	})
+
+	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {
+		t.Fatalf("index.Rebuild() error = %v", err)
+	}
+
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	results := performJSONRequest[[]index.SearchResult](t, handler, http.MethodGet, "/api/search?title=parser&tag=infra&content=tokenizer")
+	if len(results) != 1 || results[0].ID != "note-1" {
+		t.Fatalf("results = %#v, want note-1", results)
+	}
+
+	results = performJSONRequest[[]index.SearchResult](t, handler, http.MethodGet, "/api/search?title=parser&tag=frontend")
+	if len(results) != 1 || results[0].ID != "note-2" {
+		t.Fatalf("results = %#v, want note-2", results)
+	}
+}
+
 func TestNewMuxMutatesDocumentsAndReindexes(t *testing.T) {
 	t.Parallel()
 
@@ -1393,20 +1453,38 @@ func TestNewMuxLinksAPIAddsAndRemovesInlineLink(t *testing.T) {
 		t.Fatalf("NewMux() error = %v", err)
 	}
 
-	// Add a link from note-1 to note-2 with context "informs".
+	// Add a link from note-1 to note-2 with context and relationship tag metadata.
 	resp := performJSONRequestWithBody[documentResponse](t, handler, http.MethodPost, "/api/links", map[string]any{
-		"fromId":  "note-1",
-		"toId":    "note-2",
-		"context": "informs",
+		"fromId":        "note-1",
+		"toId":          "note-2",
+		"context":       "informs",
+		"relationships": []string{"depends_on", "blocks"},
 	})
 	found := false
 	for _, link := range resp.Links {
-		if link.Node == "note-2" && link.Context == "informs" {
+		if link.Node == "note-2" && link.Context == "informs" && len(link.Relationships) == 2 && link.Relationships[0] == "depends_on" && link.Relationships[1] == "blocks" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("link to note-2 with context 'informs' not found in note-1: %#v", resp.Links)
+		t.Fatalf("link to note-2 with metadata not found in note-1: %#v", resp.Links)
+	}
+
+	// Update the link metadata via PATCH.
+	respPatch := performJSONRequestWithBody[documentResponse](t, handler, http.MethodPatch, "/api/links", map[string]any{
+		"fromId":        "note-1",
+		"toId":          "note-2",
+		"context":       "runtime dependency",
+		"relationships": []string{"depends_on", "references"},
+	})
+	found = false
+	for _, link := range respPatch.Links {
+		if link.Node == "note-2" && link.Context == "runtime dependency" && len(link.Relationships) == 2 && link.Relationships[0] == "depends_on" && link.Relationships[1] == "references" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("patched link metadata not found in note-1: %#v", respPatch.Links)
 	}
 
 	// Remove the link.
@@ -1427,7 +1505,7 @@ func TestNewMuxLinksAPIAddsAndRemovesInlineLink(t *testing.T) {
 	})
 	found = false
 	for _, link := range resp3.Links {
-		if link.Node == "note-2" && link.Context == "" {
+		if link.Node == "note-2" && link.Context == "" && len(link.Relationships) == 0 {
 			found = true
 		}
 	}

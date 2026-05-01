@@ -16,6 +16,19 @@ Follow this workflow:
 4. Ask for explicit approval at the end. Use clear approval language such as: "Approve this design and update architecture.md."
 5. Only after explicit approval in the same conversation, update [docs/architecture.md](../../docs/architecture.md).
 
+Flow record-keeping requirements (required, see [.github/SKILL.md](../SKILL.md) for full protocol):
+
+- Use the Flow workspace as the execution log for this design run.
+- Use one shared Flow graph for all record keeping in the project. Do not switch graphs by operation type.
+- For each new feature, create or reuse a feature sub-directory under the shared graph, for example `flow/development/<feature-slug>`.
+- Keep at least one task node and one note node in the feature sub-directory:
+	- Task node tracks the current design task and status (`todo`, `doing`, `done`).
+	- Note node captures design summary, assumptions, decisions, open questions, and approval state.
+- Prefer updating existing nodes over creating duplicates when rerunning the same design thread.
+- Keep relationships explicit with node links (for example, note links to task, and task links to related docs).
+- Define task dependencies explicitly with task-to-task links so downstream runs can resolve execution order from the graph.
+- Treat Flow nodes as the primary run log; architecture.md remains the approved design artifact.
+
 The proposal should cover the items that matter for the feature.
 
 Use the same section names as the approved feature template in [docs/architecture.md](../../docs/architecture.md) whenever they apply so the content can be moved into the document with minimal rewriting.
@@ -89,3 +102,10 @@ List unresolved issues that affect the design or implementation.
 ## Approval
 
 Ask for explicit approval to update [docs/architecture.md](../../docs/architecture.md). If information is still missing, ask the minimum follow-up questions instead of pretending the design is complete.
+
+Before finishing the run, ensure Flow records are updated to reflect:
+
+- final proposal status,
+- outstanding open questions,
+- whether architecture.md was updated after approval,
+- and the corresponding Home update needed so home.md continues evolving toward architecture/manual quality.

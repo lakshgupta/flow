@@ -117,3 +117,36 @@ func TestSearchWorkspaceRebuildsMissingIndex(t *testing.T) {
 		t.Fatalf("Stat(indexPath) error = %v", err)
 	}
 }
+
+func TestSearchWithFiltersMatchesCombinedFields(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	flowPath := filepath.Join(rootDir, ".flow")
+	indexPath := filepath.Join(flowPath, "config", "flow.index")
+
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "notes", "parser-architecture.md"), "---\nid: note-1\ntype: note\ngraph: notes\ntitle: Parser Architecture\ndescription: Backend parsing design\ntags:\n  - infra\n  - parser\n---\n\nTokenizer internals and parsing details.\n")
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "notes", "ui-notes.md"), "---\nid: note-2\ntype: note\ngraph: notes\ntitle: UI Notes\ndescription: Frontend rendering details\ntags:\n  - frontend\n---\n\nLayout and spacing notes.\n")
+
+	if err := Rebuild(indexPath, flowPath); err != nil {
+		t.Fatalf("Rebuild() error = %v", err)
+	}
+
+	results, err := SearchWithFilters(indexPath, SearchFilters{Tag: "infra", Title: "parser"}, 10)
+	if err != nil {
+		t.Fatalf("SearchWithFilters() error = %v", err)
+	}
+
+	if len(results) != 1 || results[0].ID != "note-1" {
+		t.Fatalf("results = %#v, want note-1", results)
+	}
+
+	contentResults, err := SearchWithFilters(indexPath, SearchFilters{Content: "tokenizer"}, 10)
+	if err != nil {
+		t.Fatalf("SearchWithFilters(content) error = %v", err)
+	}
+
+	if len(contentResults) != 1 || contentResults[0].ID != "note-1" {
+		t.Fatalf("contentResults = %#v, want note-1", contentResults)
+	}
+}

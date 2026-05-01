@@ -62,11 +62,12 @@ type graphCanvasReference struct {
 
 // GraphCanvasEdge stores one projected relationship between two visible canvas nodes.
 type GraphCanvasEdge struct {
-	ID      string `json:"id"`
-	Source  string `json:"source"`
-	Target  string `json:"target"`
-	Kind    string `json:"kind"`
-	Context string `json:"context,omitempty"`
+	ID            string   `json:"id"`
+	Source        string   `json:"source"`
+	Target        string   `json:"target"`
+	Kind          string   `json:"kind"`
+	Context       string   `json:"context,omitempty"`
+	Relationships []string `json:"relationships,omitempty"`
 }
 
 // GraphCanvasView is the unified graph payload consumed by the canvas surface.
@@ -511,11 +512,12 @@ func buildGraphCanvasEdges(nodesByID map[string]GraphCanvasNode) []GraphCanvasEd
 			}
 
 			edge := GraphCanvasEdge{
-				ID:      graphCanvasEdgeID("link", node.ID, link.Node),
-				Source:  node.ID,
-				Target:  link.Node,
-				Kind:    "link",
-				Context: link.Context,
+				ID:            graphCanvasEdgeID("link", node.ID, link.Node),
+				Source:        node.ID,
+				Target:        link.Node,
+				Kind:          "link",
+				Context:       link.Context,
+				Relationships: slices.Clone(link.Relationships),
 			}
 			edgeByID[edge.ID] = edge
 		}

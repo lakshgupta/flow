@@ -22,18 +22,49 @@ type SearchResult struct {
 	Snippet     string `json:"snippet"`
 }
 
+// SearchFilters constrains search matches to one or more fields.
+// Non-empty fields are combined with logical AND.
+type SearchFilters struct {
+	Any         string
+	Tag         string
+	Title       string
+	Description string
+	Content     string
+}
+
+func (filters SearchFilters) normalized() SearchFilters {
+	return SearchFilters{
+		Any:         strings.TrimSpace(filters.Any),
+		Tag:         strings.TrimSpace(filters.Tag),
+		Title:       strings.TrimSpace(filters.Title),
+		Description: strings.TrimSpace(filters.Description),
+		Content:     strings.TrimSpace(filters.Content),
+	}
+}
+
+func (filters SearchFilters) hasAny() bool {
+	normalized := filters.normalized()
+	return normalized.Any != "" || normalized.Tag != "" || normalized.Title != "" || normalized.Description != "" || normalized.Content != ""
+}
+
 // SearchWorkspace queries the workspace index and rebuilds it first when the derived
 // index file is missing.
 func SearchWorkspace(indexPath string, flowPath string, query string, limit int) ([]SearchResult, error) {
-	if strings.TrimSpace(query) == "" {
-		return Search(indexPath, query, limit)
+	return SearchWorkspaceWithFilters(indexPath, flowPath, SearchFilters{Any: query}, limit)
+}
+
+// SearchWorkspaceWithFilters queries the workspace index with field-specific filters,
+// rebuilding the index first when the derived index file is missing.
+func SearchWorkspaceWithFilters(indexPath string, flowPath string, filters SearchFilters, limit int) ([]SearchResult, error) {
+	if !filters.hasAny() {
+		return SearchWithFilters(indexPath, filters, limit)
 	}
 
 	if err := ensureIndexExists(indexPath, flowPath); err != nil {
 		return nil, err
 	}
 
-	return Search(indexPath, query, limit)
+	return SearchWithFilters(indexPath, filters, limit)
 }
 
 // ReadGraphNodesWorkspace returns graph projection nodes, rebuilding the index first when needed.
@@ -87,8 +118,13 @@ func WriteGraphLayoutViewportWorkspace(indexPath string, flowPath string, viewpo
 
 // Search queries the derived SQLite index for document metadata and body text matches.
 func Search(indexPath string, query string, limit int) ([]SearchResult, error) {
-	trimmedQuery := strings.TrimSpace(query)
-	if trimmedQuery == "" {
+	return SearchWithFilters(indexPath, SearchFilters{Any: query}, limit)
+}
+
+// SearchWithFilters queries the derived SQLite index for document metadata and body text matches.
+func SearchWithFilters(indexPath string, filters SearchFilters, limit int) ([]SearchResult, error) {
+	normalizedFilters := filters.normalized()
+	if !normalizedFilters.hasAny() {
 		return nil, fmt.Errorf("search query must not be empty")
 	}
 
@@ -102,53 +138,97 @@ func Search(indexPath string, query string, limit int) ([]SearchResult, error) {
 	}
 	defer database.Close()
 
-	normalizedQuery := strings.ToLower(trimmedQuery)
-	likeQuery := "%" + normalizedQuery + "%"
+	whereParts := make([]string, 0, 5)
+	whereArgs := make([]any, 0, 16)
 
-	rows, err := database.Query(`
-		SELECT id, type, feature_slug, graph, title, description_text, path, body_text
-		FROM documents
-		WHERE lower(id) LIKE ?
+	if normalizedFilters.Any != "" {
+		normalizedAny := strings.ToLower(normalizedFilters.Any)
+		likeAny := "%" + normalizedAny + "%"
+
+		whereParts = append(whereParts, `(lower(id) LIKE ?
 			OR lower(type) LIKE ?
 			OR lower(feature_slug) LIKE ?
 			OR lower(graph) LIKE ?
 			OR lower(title) LIKE ?
 			OR lower(description_text) LIKE ?
 			OR lower(path) LIKE ?
-			OR lower(body_text) LIKE ?
-		ORDER BY
-			CASE WHEN lower(title) = ? THEN 0 ELSE 1 END,
-			CASE WHEN lower(id) = ? THEN 0 ELSE 1 END,
-			CASE WHEN lower(title) LIKE ? THEN 0 ELSE 1 END,
-			CASE WHEN lower(description_text) LIKE ? THEN 0 ELSE 1 END,
-			CASE WHEN lower(id) LIKE ? THEN 0 ELSE 1 END,
-			CASE WHEN lower(path) LIKE ? THEN 0 ELSE 1 END,
-			CASE WHEN lower(body_text) LIKE ? THEN 1 ELSE 0 END,
-			title,
-			path
+			OR lower(body_text) LIKE ?)`)
+		for i := 0; i < 8; i++ {
+			whereArgs = append(whereArgs, likeAny)
+		}
+	}
+
+	if normalizedFilters.Tag != "" {
+		tagLike := "%" + strings.ToLower(normalizedFilters.Tag) + "%"
+		whereParts = append(whereParts, "lower(tags_json) LIKE ?")
+		whereArgs = append(whereArgs, tagLike)
+	}
+
+	if normalizedFilters.Title != "" {
+		titleLike := "%" + strings.ToLower(normalizedFilters.Title) + "%"
+		whereParts = append(whereParts, "lower(title) LIKE ?")
+		whereArgs = append(whereArgs, titleLike)
+	}
+
+	if normalizedFilters.Description != "" {
+		descriptionLike := "%" + strings.ToLower(normalizedFilters.Description) + "%"
+		whereParts = append(whereParts, "lower(description_text) LIKE ?")
+		whereArgs = append(whereArgs, descriptionLike)
+	}
+
+	if normalizedFilters.Content != "" {
+		contentLike := "%" + strings.ToLower(normalizedFilters.Content) + "%"
+		whereParts = append(whereParts, "lower(body_text) LIKE ?")
+		whereArgs = append(whereArgs, contentLike)
+	}
+
+	orderParts := []string{"title", "path"}
+	orderArgs := make([]any, 0, 7)
+
+	if normalizedFilters.Any != "" {
+		normalizedAny := strings.ToLower(normalizedFilters.Any)
+		likeAny := "%" + normalizedAny + "%"
+		orderParts = append([]string{
+			"CASE WHEN lower(title) = ? THEN 0 ELSE 1 END",
+			"CASE WHEN lower(id) = ? THEN 0 ELSE 1 END",
+			"CASE WHEN lower(title) LIKE ? THEN 0 ELSE 1 END",
+			"CASE WHEN lower(description_text) LIKE ? THEN 0 ELSE 1 END",
+			"CASE WHEN lower(id) LIKE ? THEN 0 ELSE 1 END",
+			"CASE WHEN lower(path) LIKE ? THEN 0 ELSE 1 END",
+			"CASE WHEN lower(body_text) LIKE ? THEN 1 ELSE 0 END",
+		}, orderParts...)
+
+		orderArgs = append(orderArgs,
+			normalizedAny,
+			normalizedAny,
+			likeAny,
+			likeAny,
+			likeAny,
+			likeAny,
+			likeAny,
+		)
+	}
+
+	statement := fmt.Sprintf(`
+		SELECT id, type, feature_slug, graph, title, description_text, path, body_text
+		FROM documents
+		WHERE %s
+		ORDER BY %s
 		LIMIT ?`,
-		likeQuery,
-		likeQuery,
-		likeQuery,
-		likeQuery,
-		likeQuery,
-		likeQuery,
-		likeQuery,
-		likeQuery,
-		normalizedQuery,
-		normalizedQuery,
-		likeQuery,
-		likeQuery,
-		likeQuery,
-		likeQuery,
-		likeQuery,
-		limit,
+		strings.Join(whereParts, " AND\n\t\t\t"),
+		strings.Join(orderParts, ",\n\t\t\t"),
 	)
+
+	queryArgs := append(whereArgs, orderArgs...)
+	queryArgs = append(queryArgs, limit)
+
+	rows, err := database.Query(statement, queryArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("query search index: %w", err)
 	}
 	defer rows.Close()
 
+	snippetQuery := snippetQueryForFilters(normalizedFilters)
 	results := []SearchResult{}
 	for rows.Next() {
 		var result SearchResult
@@ -166,7 +246,7 @@ func Search(indexPath string, query string, limit int) ([]SearchResult, error) {
 			return nil, fmt.Errorf("scan search result: %w", err)
 		}
 
-		result.Snippet = searchSnippet(bodyText, trimmedQuery)
+		result.Snippet = searchSnippet(bodyText, snippetQuery)
 		results = append(results, result)
 	}
 
@@ -175,6 +255,26 @@ func Search(indexPath string, query string, limit int) ([]SearchResult, error) {
 	}
 
 	return results, nil
+}
+
+func snippetQueryForFilters(filters SearchFilters) string {
+	if filters.Content != "" {
+		return filters.Content
+	}
+	if filters.Any != "" {
+		return filters.Any
+	}
+	if filters.Title != "" {
+		return filters.Title
+	}
+	if filters.Description != "" {
+		return filters.Description
+	}
+	if filters.Tag != "" {
+		return filters.Tag
+	}
+
+	return ""
 }
 
 func ensureIndexExists(indexPath string, flowPath string) error {

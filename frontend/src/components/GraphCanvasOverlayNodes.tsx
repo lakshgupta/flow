@@ -1,3 +1,8 @@
+import type { CSSProperties, KeyboardEvent } from "react";
+import { useEffect, useState } from "react";
+
+import { graphDirectoryColorHex } from "../lib/graphColors";
+import { graphCanvasTypeClassName, graphCanvasTypeLabel } from "../lib/graphCanvasUtils";
 import { graphCanvasOverlayPosition } from "../lib/graphCanvasUtils";
 import type { GraphCanvasOverlayController } from "./graphCanvasOverlayController";
 
@@ -9,7 +14,55 @@ export function GraphCanvasOverlayNodes({
   controller,
 }: GraphCanvasOverlayNodesProps) {
   const { graphCanvasNodes, rfViewport, shiftSelectedNodes, connectingTarget } = controller.state;
-  const { onNodeClick, onNodeDoubleClick, onNodePointerDown, onHandlePointerDown, onMerge } = controller.actions;
+  const { onNodeClick, onNodeDoubleClick, onNodePointerDown, onHandlePointerDown, onNodeDescriptionSave, onMerge } = controller.actions;
+  const [draftDescriptions, setDraftDescriptions] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setDraftDescriptions((current) => {
+      const next: Record<string, string> = {};
+      let changed = false;
+      for (const node of graphCanvasNodes) {
+        if (Object.prototype.hasOwnProperty.call(current, node.id)) {
+          next[node.id] = current[node.id] ?? "";
+          continue;
+        }
+        next[node.id] = node.data.description ?? "";
+        changed = true;
+      }
+
+      if (!changed && Object.keys(current).length === Object.keys(next).length) {
+        return current;
+      }
+      return next;
+    });
+  }, [graphCanvasNodes]);
+
+  function handleDescriptionCommit(nodeId: string, fallbackDescription: string): void {
+    const draft = draftDescriptions[nodeId] ?? fallbackDescription;
+    const nextDescription = draft.trim();
+    const currentDescription = (fallbackDescription ?? "").trim();
+    if (nextDescription === currentDescription) {
+      return;
+    }
+    setDraftDescriptions((current) => ({ ...current, [nodeId]: nextDescription }));
+    onNodeDescriptionSave(nodeId, nextDescription);
+  }
+
+  function handleDescriptionKeyDown(event: KeyboardEvent<HTMLInputElement>, nodeId: string, fallbackDescription: string): void {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      (event.currentTarget as HTMLInputElement).blur();
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      setDraftDescriptions((current) => ({ ...current, [nodeId]: fallbackDescription ?? "" }));
+      (event.currentTarget as HTMLInputElement).blur();
+    }
+  }
 
   return (
     <>
@@ -17,6 +70,8 @@ export function GraphCanvasOverlayNodes({
         const position = graphCanvasOverlayPosition(node);
         const screenX = position.x * rfViewport.zoom + rfViewport.x;
         const screenY = position.y * rfViewport.zoom + rfViewport.y;
+        const graphColor = graphDirectoryColorHex(node.data.graphColor);
+        const draftDescription = draftDescriptions[node.id] ?? node.data.description ?? "";
         return (
           <div
             key={node.id}
@@ -36,7 +91,51 @@ export function GraphCanvasOverlayNodes({
               className="canvas-node-drag-zone"
               onPointerDown={(event) => onNodePointerDown(event, node.id)}
             >
-              {node.data.label}
+              <article
+                className={[
+                  "graph-canvas-node",
+                  `graph-canvas-node-${graphCanvasTypeClassName(node.data.type)}`,
+                  graphColor ? "graph-canvas-node-tinted" : "",
+                  node.data.shape === "circle" ? "graph-canvas-node-circle" : "",
+                  node.data.isCanvasSelected ? "graph-canvas-node-selected" : "",
+                  node.data.isPanelDocument ? "graph-canvas-node-panel" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                style={graphColor ? ({ "--graph-node-color": graphColor } as CSSProperties) : undefined}
+              >
+                {node.data.shape === "circle" ? (
+                  <>
+                    <span className="graph-canvas-node-badge">{graphCanvasTypeLabel(node.data.type)}</span>
+                    <strong className="graph-canvas-node-title">{node.data.title}</strong>
+                    <span className="graph-canvas-node-graph">{node.data.graph}</span>
+                  </>
+                ) : (
+                  <>
+                    <div className="graph-canvas-node-topline">
+                      <span className="graph-canvas-node-badge">{graphCanvasTypeLabel(node.data.type)}</span>
+                      <span className="graph-canvas-node-graph">{node.data.graph}</span>
+                    </div>
+                    <strong className="graph-canvas-node-title">{node.data.title}</strong>
+                    <input
+                      type="text"
+                      className="graph-canvas-node-description-input"
+                      value={draftDescription}
+                      placeholder="Add a short description"
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        setDraftDescriptions((current) => ({ ...current, [node.id]: nextValue }));
+                      }}
+                      onBlur={() => handleDescriptionCommit(node.id, node.data.description ?? "")}
+                      onKeyDown={(event) => handleDescriptionKeyDown(event, node.id, node.data.description ?? "")}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => event.stopPropagation()}
+                      onDoubleClick={(event) => event.stopPropagation()}
+                      aria-label={`Description for ${node.data.title}`}
+                    />
+                  </>
+                )}
+              </article>
             </div>
             {shiftSelectedNodes.includes(node.id) && (
               <div className="canvas-selection-badge">{shiftSelectedNodes.indexOf(node.id) + 1}</div>

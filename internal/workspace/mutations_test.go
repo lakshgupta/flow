@@ -546,7 +546,7 @@ func TestAddReferenceAppendsInlineReference(t *testing.T) {
 		t.Fatalf("index.Rebuild() error = %v", err)
 	}
 
-	if err := AddLink(root, "note-a", "note-b", "informs"); err != nil {
+	if err := AddLink(root, "note-a", "note-b", "informs", []string{"depends_on", "blocks"}); err != nil {
 		t.Fatalf("AddLink() error = %v", err)
 	}
 
@@ -558,8 +558,11 @@ func TestAddReferenceAppendsInlineReference(t *testing.T) {
 	if !ok {
 		t.Fatalf("note-a document is not a NoteDocument")
 	}
-	if len(note.Metadata.Links) != 1 || note.Metadata.Links[0].Node != "note-b" || note.Metadata.Links[0].Context != "informs" {
-		t.Fatalf("note-a.links = %+v, want [{Node:note-b Context:informs}]", note.Metadata.Links)
+	if len(note.Metadata.Links) != 1 || note.Metadata.Links[0].Node != "note-b" || note.Metadata.Links[0].Context != "informs" || len(note.Metadata.Links[0].Relationships) != 2 {
+		t.Fatalf("note-a.links = %+v, want relationships [depends_on blocks]", note.Metadata.Links)
+	}
+	if note.Metadata.Links[0].Relationships[0] != "depends_on" || note.Metadata.Links[0].Relationships[1] != "blocks" {
+		t.Fatalf("note-a.links[0].Relationships = %#v, want [depends_on blocks]", note.Metadata.Links[0].Relationships)
 	}
 }
 

@@ -39,32 +39,8 @@
   --chart-3: #391c57;
   --chart-4: #dd5b00;
   --chart-5: #ff64c8;
-
-  /* Legacy variables for backward compatibility - map to new tokens */
-  --ds-background: var(--background);
-  --ds-foreground: var(--foreground);
-  --ds-card: var(--card);
-  --ds-card-foreground: var(--card-foreground);
-  --ds-popover: var(--popover);
-  --ds-popover-foreground: var(--popover-foreground);
-  --ds-primary: var(--primary);
-  --ds-primary-foreground: var(--primary-foreground);
-  --ds-secondary: var(--secondary);
-  --ds-secondary-foreground: var(--secondary-foreground);
-  --ds-muted: var(--muted);
-  --ds-muted-foreground: var(--muted-foreground);
-  --ds-accent: var(--accent);
-  --ds-accent-foreground: var(--accent-foreground);
-  --ds-danger: var(--destructive);
-  --ds-border: var(--border);
-  --ds-input: var(--input);
-  --ds-ring: var(--ring);
   --shadow-card: rgba(0, 0, 0, 0.04) 0px 4px 18px, rgba(0, 0, 0, 0.027) 0px 2.025px 7.84688px, rgba(0, 0, 0, 0.02) 0px 0.8px 2.925px, rgba(0, 0, 0, 0.01) 0px 0.175px 1.04062px;
   --shadow-deep: rgba(0, 0, 0, 0.01) 0px 1px 3px, rgba(0, 0, 0, 0.02) 0px 3px 7px, rgba(0, 0, 0, 0.02) 0px 7px 15px, rgba(0, 0, 0, 0.04) 0px 14px 28px, rgba(0, 0, 0, 0.05) 0px 23px 52px;
-  --ds-shadow: var(--shadow-card);
-  --ds-shadow-soft: rgba(0, 0, 0, 0.02) 0px 2px 8px, rgba(0, 0, 0, 0.01) 0px 1px 3px;
-  --ds-shadow-deep: var(--shadow-deep);
-  --ds-radius: var(--radius);
 
   /* Semantic aliases */
   --bg-paper: #ffffff;
@@ -95,10 +71,10 @@
   --neutral-soft-border: rgba(128, 135, 144, 0.24);
   --neutral-soft-foreground: #737b84;
   --graph-edge: #0075de;
-  --graph-edge-dim: rgba(0, 117, 222, 0.3);
+  --graph-edge-dim: rgba(0, 117, 222, 0.46);
   --graph-edge-hover: rgba(0, 117, 222, 0.45);
   --graph-reference-edge: #8a5a3a;
-  --graph-reference-edge-dim: rgba(138, 90, 58, 0.28);
+  --graph-reference-edge-dim: rgba(138, 90, 58, 0.42);
   --sidebar: 30 20% 97%;
   --sidebar-foreground: 30 8% 16%;
   --sidebar-primary: 208 100% 44%;
@@ -144,9 +120,8 @@
   --chart-3: #c59eff;
   --chart-4: #ff8a3d;
   --chart-5: #ff7bd2;
-  --ds-shadow: 0 14px 28px rgba(0, 0, 0, 0.24), 0 3px 10px rgba(0, 0, 0, 0.18);
-  --ds-shadow-soft: 0 2px 10px rgba(0, 0, 0, 0.18), 0 1px 3px rgba(0, 0, 0, 0.12);
-  --ds-shadow-deep: 0 24px 52px rgba(0, 0, 0, 0.32), 0 10px 24px rgba(0, 0, 0, 0.2);
+  --shadow-card: 0 14px 28px rgba(0, 0, 0, 0.24), 0 3px 10px rgba(0, 0, 0, 0.18);
+  --shadow-deep: 0 24px 52px rgba(0, 0, 0, 0.32), 0 10px 24px rgba(0, 0, 0, 0.2);
   --bg-paper: #23211f;
   --bg-panel: #2b2927;
   --bg-rail: #272523;
@@ -172,10 +147,10 @@
   --neutral-soft-border: rgba(183, 175, 167, 0.24);
   --neutral-soft-foreground: #b7afa7;
   --graph-edge: #62aef0;
-  --graph-edge-dim: rgba(98, 174, 240, 0.3);
+  --graph-edge-dim: rgba(98, 174, 240, 0.5);
   --graph-edge-hover: rgba(98, 174, 240, 0.45);
   --graph-reference-edge: #d0a67f;
-  --graph-reference-edge-dim: rgba(208, 166, 127, 0.28);
+  --graph-reference-edge-dim: rgba(208, 166, 127, 0.44);
   --sidebar: 24 8% 18%;
   --sidebar-foreground: 35 33% 94%;
   --sidebar-primary: 204 82% 66%;
@@ -223,7 +198,7 @@ button {
 
 button:hover {
   transform: scale(1.02);
-  box-shadow: var(--ds-shadow);
+  box-shadow: var(--shadow-card);
   transition: color 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out, transform 0.1s ease-out;
 }
 
@@ -278,8 +253,8 @@ pre {
 .hero-panel,
 .loading-card {
   border: 1px solid var(--border);
-  border-radius: var(--ds-radius);
-  box-shadow: var(--ds-shadow-soft);
+  border-radius: var(--radius);
+  box-shadow: rgba(0, 0, 0, 0.02) 0px 2px 8px, rgba(0, 0, 0, 0.01) 0px 1px 3px;
 }
 
 .brand-block {
@@ -362,18 +337,18 @@ pre {
   right: -0.35rem;
   width: 0.7rem;
   height: 2.75rem;
-  border: 1px solid var(--ds-border);
+  border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface-warm);
   color: var(--muted-foreground);
   display: block;
-  box-shadow: var(--ds-shadow-soft);
+  box-shadow: rgba(0, 0, 0, 0.02) 0px 2px 8px, rgba(0, 0, 0, 0.01) 0px 1px 3px;
   z-index: 4;
   pointer-events: none;
 }
   border: 1px solid var(--border);
-  border-radius: var(--ds-radius);
-  box-shadow: var(--ds-shadow-soft);
+  border-radius: var(--radius);
+  box-shadow: rgba(0, 0, 0, 0.02) 0px 2px 8px, rgba(0, 0, 0, 0.01) 0px 1px 3px;
 }
 
 .loading-card {
@@ -465,7 +440,7 @@ pre {
   padding: 0.5rem 0.75rem;
   background: transparent;
   border: none;
-  border-radius: var(--ds-radius);
+  border-radius: var(--radius);
   text-align: left;
   cursor: pointer;
   transition: color 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out;
@@ -551,7 +526,7 @@ pre {
   padding: 0.75rem 1rem;
   background: transparent;
   border: none;
-  border-radius: var(--ds-radius);
+  border-radius: var(--radius);
   text-align: left;
   cursor: pointer;
   transition: color 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out;
@@ -1016,7 +991,7 @@ pre {
 }
 
 .ds-showcase {
-  color: var(--ds-foreground);
+  color: var(--foreground);
 }
 
 .ds-showcase-frame,
@@ -1025,11 +1000,11 @@ pre {
 .ds-sheet-content,
 .ds-menu-content,
 .ds-command {
-  border: 1px solid var(--ds-border);
-  border-radius: var(--ds-radius);
-  background: var(--ds-card);
-  color: var(--ds-card-foreground);
-  box-shadow: var(--ds-shadow-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: rgba(0, 0, 0, 0.02) 0px 2px 8px, rgba(0, 0, 0, 0.01) 0px 1px 3px;
 }
 
 .ds-card {
@@ -1059,7 +1034,7 @@ pre {
 .ds-card-description,
 .ds-dialog-description {
   margin: 0;
-  color: var(--ds-muted-foreground);
+  color: var(--muted-foreground);
 }
 
 .ds-showcase-frame {
@@ -1067,7 +1042,7 @@ pre {
   background:
     radial-gradient(circle at top right, var(--surface-warm-glow-strong), transparent 30%),
     linear-gradient(180deg, var(--surface-warm), var(--surface-warm-soft));
-  box-shadow: var(--ds-shadow);
+  box-shadow: var(--shadow-card);
 }
 
 .ds-showcase-header-row,
@@ -1120,7 +1095,7 @@ pre {
   margin: 0;
   padding: 0;
   list-style: none;
-  color: var(--ds-muted-foreground);
+  color: var(--muted-foreground);
 }
 
 .ds-breadcrumb-item,
@@ -1131,7 +1106,7 @@ pre {
 }
 
 .ds-breadcrumb-page {
-  color: var(--ds-foreground);
+  color: var(--foreground);
   font-weight: 600;
 }
 
@@ -1150,7 +1125,7 @@ pre {
 
 .ds-button:hover {
   transform: translateY(-1px);
-  box-shadow: var(--ds-shadow);
+  box-shadow: var(--shadow-card);
 }
 
 .ds-button:focus-visible,
@@ -1159,29 +1134,29 @@ pre {
 .ds-menu-item:focus-visible,
 .ds-command-input:focus-visible,
 .ds-command-item:focus-visible {
-  outline: 2px solid var(--ds-ring);
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
 
 .ds-button-primary {
-  background: var(--ds-primary);
-  color: var(--ds-primary-foreground);
+  background: var(--primary);
+  color: var(--primary-foreground);
 }
 
 .ds-button-secondary {
   background: var(--bg-muted-soft);
-  color: var(--ds-secondary-foreground);
-  border-color: var(--ds-border);
+  color: var(--secondary-foreground);
+  border-color: var(--border);
 }
 
 .ds-button-ghost {
   background: transparent;
-  color: var(--ds-secondary-foreground);
-  border-color: var(--ds-border);
+  color: var(--secondary-foreground);
+  border-color: var(--border);
 }
 
 .ds-button-danger {
-  background: var(--ds-danger);
+  background: var(--destructive);
   color: var(--destructive-foreground);
 }
 
@@ -1202,16 +1177,16 @@ pre {
   width: 100%;
   min-height: 2.75rem;
   padding: 0.75rem 0.9rem;
-  border: 1px solid var(--ds-input);
+  border: 1px solid var(--input);
   border-radius: 0.95rem;
   background: var(--bg-muted-soft);
-  color: var(--ds-foreground);
+  color: var(--foreground);
 }
 
 .ds-label {
   font-size: 0.82rem;
   font-weight: 600;
-  color: var(--ds-muted-foreground);
+  color: var(--muted-foreground);
 }
 
 .ds-tabs-list {
@@ -1220,7 +1195,7 @@ pre {
   gap: 0.35rem;
   width: fit-content;
   padding: 0.35rem;
-  border: 1px solid var(--ds-border);
+  border: 1px solid var(--border);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.78);
 }
@@ -1231,13 +1206,13 @@ pre {
   border: none;
   border-radius: 999px;
   background: transparent;
-  color: var(--ds-muted-foreground);
+  color: var(--muted-foreground);
   font-weight: 600;
 }
 
 .ds-tabs-trigger[data-state="active"] {
   background: linear-gradient(135deg, rgba(32, 72, 68, 0.12), rgba(234, 212, 173, 0.62));
-  color: var(--ds-foreground);
+  color: var(--foreground);
 }
 
 .ds-tabs-content {
@@ -1255,8 +1230,8 @@ pre {
 .ds-dialog-content,
 .ds-sheet-content,
 .ds-menu-content {
-  background: var(--ds-popover);
-  color: var(--ds-popover-foreground);
+  background: var(--popover);
+  color: var(--popover-foreground);
 }
 
 .ds-dialog-content {
@@ -1289,7 +1264,7 @@ pre {
 }
 
 .ds-menu-label {
-  color: var(--ds-muted-foreground);
+  color: var(--muted-foreground);
   font-size: 0.76rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -1308,12 +1283,12 @@ pre {
 .ds-command-separator {
   height: 1px;
   margin: 0.35rem 0;
-  background: var(--ds-border);
+  background: var(--border);
 }
 
 .ds-separator {
   flex-shrink: 0;
-  background: var(--ds-border);
+  background: var(--border);
 }
 
 .ds-separator-horizontal {
@@ -1335,7 +1310,7 @@ pre {
   min-height: 2.85rem;
   padding: 0.75rem 0.95rem;
   border: none;
-  border-bottom: 1px solid var(--ds-border);
+  border-bottom: 1px solid var(--border);
   background: transparent;
 }
 
@@ -1347,7 +1322,7 @@ pre {
 
 .ds-command-empty {
   padding: 0.9rem;
-  color: var(--ds-muted-foreground);
+  color: var(--muted-foreground);
 }
 
 .ds-command-group {
@@ -1356,7 +1331,7 @@ pre {
 
 .ds-command-group [cmdk-group-heading] {
   padding: 0.45rem 0.55rem;
-  color: var(--ds-muted-foreground);
+  color: var(--muted-foreground);
   font-size: 0.76rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -1385,7 +1360,7 @@ pre {
   align-items: center;
   gap: 0.45rem;
   padding: 0.55rem 0.8rem;
-  border: 1px solid var(--ds-border);
+  border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--bg-muted-soft);
 }
@@ -1418,7 +1393,7 @@ pre {
   background:
     radial-gradient(circle at top left, var(--surface-warm-glow), transparent 24%),
     linear-gradient(135deg, var(--surface-warm), var(--surface-warm-alt));
-  box-shadow: var(--ds-shadow);
+  box-shadow: var(--shadow-card);
 }
 
 .shell-status-card-header {
@@ -1662,7 +1637,7 @@ pre {
 .ui-sidebar-menu-button-active {
   background: linear-gradient(180deg, var(--bg-muted-soft), var(--surface-warm-soft));
   border-color: var(--warm-border-strong);
-  box-shadow: var(--ds-shadow-soft);
+  box-shadow: rgba(0, 0, 0, 0.02) 0px 2px 8px, rgba(0, 0, 0, 0.01) 0px 1px 3px;
 }
 
 .ui-sidebar-menu-sub {
@@ -1683,7 +1658,7 @@ pre {
 .ui-sidebar-menu-sub-button-active {
   background: var(--bg-muted-soft);
   border-color: var(--warm-border-strong);
-  box-shadow: var(--ds-shadow-soft);
+  box-shadow: rgba(0, 0, 0, 0.02) 0px 2px 8px, rgba(0, 0, 0, 0.01) 0px 1px 3px;
 }
 
 .shell-status-meta {
@@ -1693,10 +1668,10 @@ pre {
 .shell-rail-card,
 .shell-surface-card,
 .shell-context-card {
-  border: 1px solid var(--ds-border);
+  border: 1px solid var(--border);
   background:
     linear-gradient(180deg, var(--surface-warm), var(--surface-warm-soft));
-  box-shadow: var(--ds-shadow-soft);
+  box-shadow: rgba(0, 0, 0, 0.02) 0px 2px 8px, rgba(0, 0, 0, 0.01) 0px 1px 3px;
 }
 
 .shell-rail-card,
@@ -1750,7 +1725,7 @@ pre {
 
 .shell-rail-section-copy {
   margin: 0;
-  color: var(--ds-muted-foreground);
+  color: var(--muted-foreground);
 }
 
 .shell-card-header-tight {
@@ -1791,7 +1766,7 @@ pre {
   border: 1px solid var(--warm-border);
   border-radius: 1rem;
   background: linear-gradient(180deg, var(--bg-muted-soft), var(--surface-warm-soft));
-  box-shadow: var(--ds-shadow-soft);
+  box-shadow: rgba(0, 0, 0, 0.02) 0px 2px 8px, rgba(0, 0, 0, 0.01) 0px 1px 3px;
 }
 
 .shell-inner-card {
@@ -2572,7 +2547,7 @@ pre {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--ds-shadow-soft);
+  box-shadow: rgba(0, 0, 0, 0.02) 0px 2px 8px, rgba(0, 0, 0, 0.01) 0px 1px 3px;
 }
 
 .workspace-shell-header .ui-sidebar-trigger:hover {
@@ -3834,7 +3809,7 @@ pre {
   height: 100%;
   min-height: 34rem;
   overflow: hidden;
-  border-radius: var(--ds-radius);
+  border-radius: var(--radius);
   border: none;
   background: var(--background);
   box-shadow: inset 0 1px 0 var(--border);
@@ -3862,7 +3837,7 @@ pre {
   border-radius: 999px;
   background: color-mix(in srgb, var(--card) 90%, transparent 10%);
   backdrop-filter: blur(4px);
-  box-shadow: var(--ds-shadow-soft);
+  box-shadow: rgba(0, 0, 0, 0.02) 0px 2px 8px, rgba(0, 0, 0, 0.01) 0px 1px 3px;
   color: var(--ink-strong);
 }
 
@@ -3926,14 +3901,14 @@ pre {
   color: var(--ink-strong);
   background: color-mix(in srgb, var(--card) 90%, transparent 10%);
   backdrop-filter: blur(4px);
-  box-shadow: var(--ds-shadow-soft);
+  box-shadow: rgba(0, 0, 0, 0.02) 0px 2px 8px, rgba(0, 0, 0, 0.01) 0px 1px 3px;
   transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
 .graph-canvas-layout-reset:hover:not(:disabled) {
   transform: translateY(-1px);
   border-color: var(--primary);
-  box-shadow: var(--ds-shadow);
+  box-shadow: var(--shadow-card);
 }
 
 .graph-canvas-layout-reset:disabled {
@@ -4001,14 +3976,14 @@ pre {
   border: 1px solid var(--warm-border);
   color: var(--ink-strong);
   background: var(--bg-muted-soft);
-  box-shadow: var(--ds-shadow-soft);
+  box-shadow: rgba(0, 0, 0, 0.02) 0px 2px 8px, rgba(0, 0, 0, 0.01) 0px 1px 3px;
   transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
 .graph-create-action:hover:not(:disabled) {
   transform: translateY(-2px);
   border-color: var(--primary);
-  box-shadow: var(--ds-shadow);
+  box-shadow: var(--shadow-card);
 }
 
 .graph-create-action:disabled {
@@ -4234,7 +4209,7 @@ pre {
   border: 1px solid var(--border);
   border-radius: 0.5rem;
   padding: 0.5rem 0.75rem;
-  box-shadow: var(--ds-shadow-soft);
+  box-shadow: rgba(0, 0, 0, 0.02) 0px 2px 8px, rgba(0, 0, 0, 0.01) 0px 1px 3px;
 }
 
 .canvas-action-bar-count {
@@ -4267,11 +4242,11 @@ pre {
   display: grid;
   gap: 0.75rem;
   padding: 1rem;
-  border-radius: var(--ds-radius);
+  border-radius: var(--radius);
   border: 1px solid var(--border);
   color: var(--foreground);
   background: var(--card);
-  box-shadow: var(--ds-shadow-soft);
+  box-shadow: rgba(0, 0, 0, 0.02) 0px 2px 8px, rgba(0, 0, 0, 0.01) 0px 1px 3px;
   transition: color 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out, transform 0.15s ease-out;
 }
 
@@ -4285,7 +4260,7 @@ pre {
 }
 
 .graph-canvas-node:hover {
-  box-shadow: var(--ds-shadow);
+  box-shadow: var(--shadow-card);
   transform: translateY(-2px);
 }
 
@@ -4315,7 +4290,7 @@ pre {
 
 .graph-canvas-node-selected {
   border-color: var(--primary);
-  box-shadow: 0 0 0 2px var(--ring), var(--ds-shadow);
+  box-shadow: 0 0 0 2px var(--ring), var(--shadow-card);
 }
 
 .graph-canvas-node-panel {
@@ -4383,6 +4358,34 @@ pre {
   line-height: 1.4;
 }
 
+.graph-canvas-node-description-input {
+  width: 100%;
+  margin: 0;
+  padding: 0.28rem 0.4rem;
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.graph-canvas-node-description-input::placeholder {
+  color: color-mix(in srgb, var(--muted-foreground) 78%, transparent);
+}
+
+.graph-canvas-node-description-input:hover {
+  border-color: color-mix(in srgb, var(--border) 80%, var(--muted-foreground));
+  background: color-mix(in srgb, var(--muted) 52%, transparent);
+}
+
+.graph-canvas-node-description-input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+  background: color-mix(in srgb, var(--card) 75%, var(--muted));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 36%, transparent);
+}
+
 
 
 .shell-divider {
@@ -4396,9 +4399,9 @@ pre {
 /* ReactFlow Controls Styling */
 .graph-canvas-shell .react-flow__controls {
   border: 1px solid var(--border);
-  border-radius: var(--ds-radius);
+  border-radius: var(--radius);
   background: var(--card);
-  box-shadow: var(--ds-shadow-soft);
+  box-shadow: rgba(0, 0, 0, 0.02) 0px 2px 8px, rgba(0, 0, 0, 0.01) 0px 1px 3px;
 }
 
 .graph-canvas-shell .react-flow__controls-button {
@@ -4541,7 +4544,7 @@ pre {
   width: 100%;
   padding: 0.75rem 1rem;
   border: 1px solid var(--border);
-  border-radius: var(--ds-radius);
+  border-radius: var(--radius);
   background: var(--card);
   color: var(--foreground);
   font-size: 0.875rem;
@@ -4573,7 +4576,7 @@ pre {
   min-height: 16rem;
   padding: 1.5rem;
   border: 1px solid var(--border);
-  border-radius: var(--ds-radius);
+  border-radius: var(--radius);
   background: var(--card);
   color: var(--foreground);
   font-size: 0.875rem;
@@ -4627,7 +4630,7 @@ pre {
 
 .rich-editor-content pre {
   padding: 2.5rem 1rem 1rem;
-  border-radius: var(--ds-radius);
+  border-radius: var(--radius);
   background: #1e1e1e;
   color: #d4d4d4;
   overflow-x: auto;
@@ -4641,7 +4644,7 @@ pre {
   gap: 1rem;
   padding: 1.5rem;
   border: 1px solid var(--border);
-  border-radius: var(--ds-radius);
+  border-radius: var(--radius);
   background: var(--card);
 }
 
@@ -4671,7 +4674,7 @@ pre {
   gap: 0.75rem;
   padding: 1.5rem;
   border: 1px solid var(--border);
-  border-radius: var(--ds-radius);
+  border-radius: var(--radius);
   background: var(--card);
 }
 
@@ -4714,7 +4717,7 @@ pre {
   min-height: 12rem;
   padding: 2rem;
   border: 1px dashed var(--border);
-  border-radius: var(--ds-radius);
+  border-radius: var(--radius);
   background: var(--muted);
   text-align: center;
 }
@@ -5294,4 +5297,115 @@ pre {
   color: var(--popover-foreground);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.08);
   padding: 0.25rem;
+}
+
+.graph-edge-toolbar {
+  position: absolute;
+  z-index: 10000;
+  min-width: 240px;
+  max-width: 300px;
+  border-radius: 0.6rem;
+  border: 1px solid var(--border);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  padding: 0.55rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.graph-edge-toolbar-meta {
+  font-size: 0.68rem;
+  color: var(--muted-foreground);
+  letter-spacing: 0.01em;
+}
+
+.graph-edge-toolbar-field {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.74rem;
+  color: var(--muted-foreground);
+}
+
+.graph-edge-toolbar-field select,
+.graph-edge-toolbar-field input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 0.8rem;
+  line-height: 1.2;
+  padding: 0.4rem 0.5rem;
+}
+
+.graph-edge-tag-editor {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.graph-edge-tag-empty {
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
+}
+
+.graph-edge-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.graph-edge-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 0.7rem;
+  line-height: 1;
+  padding: 0.2rem 0.45rem;
+}
+
+.graph-edge-tag-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.graph-edge-tag-input-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.graph-edge-tag-input-row .flow-dropdown-item {
+  border-radius: 0.4rem;
+  border: 1px solid var(--border);
+  height: 1.9rem;
+  padding: 0 0.5rem;
+  font-size: 0.72rem;
+}
+
+.graph-edge-toolbar-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+.graph-edge-toolbar-actions .flow-dropdown-item {
+  border-radius: 0.4rem;
+  border: 1px solid var(--border);
+  height: 1.8rem;
+  font-size: 0.75rem;
+  padding: 0 0.55rem;
 }

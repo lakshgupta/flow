@@ -19,9 +19,21 @@ Follow this workflow:
 2. Use [docs/architecture.md](../../docs/architecture.md) to confirm the intended behavior, interfaces, constraints, and design assumptions.
 3. Implement the smallest credible fix that addresses the root cause without introducing unrelated refactors.
 4. After the fix is in place, run the most relevant available tests, lint checks, or targeted verification for the changed behavior.
-5. Do not update [docs/backlog.md](../../docs/backlog.md) as part of this workflow.
+5. Keep record keeping in Flow nodes for this workflow.
 6. If the completed fix changes the intended architecture, documented behavior, interfaces, or constraints compared with [docs/architecture.md](../../docs/architecture.md), update the relevant architecture section after the fix is validated.
 7. If the issue cannot be fixed safely because the expected behavior is unclear or the current architecture is contradictory, ask the minimum follow-up questions needed to continue.
+
+Flow record-keeping requirements (required, see [.github/SKILL.md](../SKILL.md) for full protocol):
+
+- Use Flow as the issue-fix run log.
+- Use one shared Flow graph for all record keeping in the project. Do not switch graphs by operation type.
+- For each new feature or fix stream, create or reuse a feature sub-directory under the shared graph, for example `flow/development/<feature-slug>`.
+- Keep at least one task node and one note node in the feature sub-directory:
+	- Task node tracks the fix lifecycle and status (`todo`, `doing`, `done`).
+	- Note node records root cause, fix decision, risk notes, and validation outcomes.
+- Link fix notes, tasks, and related nodes so context remains traceable.
+- Define dependency links between fix-related task nodes so prerequisite order is explicit.
+- Treat Flow nodes as the primary operational record for debugging and resolution history.
 
 Architecture update rules:
 
@@ -94,3 +106,10 @@ Implementation rules:
 - Focus on the reported issue and avoid unrelated cleanup.
 - Prefer root-cause fixes over defensive patches that hide the problem.
 - Leave clear notes if the issue remains partially unresolved or blocked by missing requirements.
+
+Before finishing the run, ensure Flow records clearly show:
+
+- whether the issue is resolved, partially resolved, or blocked,
+- what validation was executed,
+- what follow-up fix task is next,
+- and the home.md update needed to reflect completed fix behavior in the architecture/manual narrative.

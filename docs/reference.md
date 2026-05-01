@@ -15,14 +15,23 @@ This document keeps the detailed workspace, storage, and development reference m
   data/
     home.md
     content/
-      <graph-path>/
-        <document>.md
+      design/
+        <type>-YYYYMMDD-NNN-<title>/
+          <document>.md
+      development/
+        <type>-YYYYMMDD-NNN-<title>/
+          <document>.md
 ```
 
 Layout rules:
 
 - Home is always stored at `.flow/data/home.md` and is not part of the graph tree.
 - Graph documents live directly inside their graph directory under `.flow/data/content/`.
+- Record keeping should use only two top-level graph directories under `.flow/data/content/`: `design/` and `development/`.
+- Sub-graph naming is mandatory: `<type>-YYYYMMDD-NNN-<title>`.
+- Design records live under `design/<type>-YYYYMMDD-NNN-<title>/...`.
+- Planning and implementation records live under `development/<type>-YYYYMMDD-NNN-<title>/...`.
+- `NNN` is the zero-padded incremental count of directories created on that `YYYYMMDD` date.
 - Frontmatter `type` determines whether a document is a note, a task, or a command.
 - Filesystem location is authoritative for graph membership when it disagrees with frontmatter `graph`.
 - `flow init` creates `.flow/data/home.md` and writes default GUI panel width ratios when those files or settings are missing.
@@ -123,7 +132,7 @@ updatedAt: 2026-03-17T11:00:00Z
 ---
 id: task-1
 type: task
-graph: execution/parser
+graph: development/parser
 title: Build parser
 description: Implement the first parsing pass and wire it into the CLI flow
 status: todo
@@ -162,10 +171,72 @@ description: Workspace home document
 
 The graph tree is derived from canonical files under `.flow/data/content` rather than from a separate graph registry.
 
-- A document stored at `.flow/data/content/execution/parser/build.md` belongs to the `execution/parser` graph even if its frontmatter says otherwise.
-- Parent graph nodes such as `execution` remain visible when descendants contain content, even if the parent directory has no direct Markdown files.
+- A document stored at `.flow/data/content/development/parser/build.md` belongs to the `development/parser` graph even if its frontmatter says otherwise.
+- Parent graph nodes such as `design` and `development` remain visible when descendants contain content, even if the parent directory has no direct Markdown files.
 - Empty graphs are omitted from visible graph trees in the CLI, TUI, and GUI.
 - Home is a separate top-level surface and is excluded from graph counts.
+
+## CLI Command Reference
+
+Core commands:
+
+- `flow init`
+  - Initializes local workspace files and folders.
+- `flow configure --gui-port <port>`
+  - Sets the local GUI port.
+- `flow -g configure --workspace <absolute-path> [--gui-port <port>]`
+  - Configures global workspace location and optionally GUI port.
+- `flow gui`
+  - Starts the GUI server and opens the browser.
+- `flow gui stop`
+  - Stops a running GUI server.
+- `flow create <note|task|command> ...`
+  - Creates documents (requires `--file --graph`; command also requires `--name --run`). IDs are auto-derived as `<graph>/<file>`.
+- `flow update --path <relative-path> ...`
+  - Updates document fields by path.
+- `flow delete --path <relative-path>`
+  - Deletes a document by path.
+- `flow skill content [--graph <graph>]`
+  - Prints a Skill.md template for Flow-centric delivery using `design/<type>-YYYYMMDD-NNN-<title>` and `development/<type>-YYYYMMDD-NNN-<title>` record keeping conventions.
+- `flow search [--limit <n>] [--graph <graph>] [--feature <feature>] [--type <note|task|command>] [--tag <tag>] [--title <text>] [--description <text>] [--content <text>] [--compact] [query]`
+  - Indexed search with field filters and optional compact ID-only output.
+- `flow run <command-id-or-short-name>`
+  - Executes a command document.
+- `flow tui [--command-graph <graph>] [--search <query>] [--search-limit <n>]`
+  - Renders terminal interface output.
+
+Node subcommands:
+
+- `flow node read --id <node-id> [--graph <graph>] [--format json|markdown]`
+  - Reads one node view (includes body and linked edge info).
+- `flow node content --id <node-id> [--graph <graph>] [--line-start <n>] [--line-end <n>] [--format text|json]`
+  - Reads full body content or a specific line range.
+- `flow node list [--graph <graph>] [--feature <feature>] [--tag <tag>]... [--status <todo|doing|done>] [--limit <n>] [--compact] [--format json|markdown]`
+  - Lists nodes using graph/feature/tag/status filters; requires `--graph` or at least one filter.
+- `flow node edges --id <node-id> [--graph <graph>] [--format json|markdown]`
+  - Lists edges touching a node.
+- `flow node neighbors --id <node-id> [--graph <graph>] [--format json|markdown]`
+  - Lists neighbor nodes around a node.
+- `flow node update --id <node-id> ...`
+  - Updates one node by ID (supports `--title --description --body --status --tag --reference --name --env --run`).
+- `flow node connect --from <node-id> --to <node-id> --graph <graph> [--context <text>] [--relationship <tag>]...`
+  - Creates a directed node link with optional context and relationship tags.
+- `flow node disconnect --from <node-id> --to <node-id> --graph <graph>`
+  - Removes a directed node link.
+
+Global mode is supported by prefixing commands with `-g`, for example `flow -g init` and `flow -g gui`.
+
+Agent-oriented usage patterns:
+
+- Use compact output for planning loops and ID collection:
+  - `flow node list --feature development --status todo --compact`
+  - `flow search --tag planning --type task --compact`
+- Pull only the lines needed for edit context:
+  - `flow node content --id task-1 --line-start 80 --line-end 120`
+- Use field filters before opening full node views:
+  - `flow search --title parser --graph development/parser`
+  - `flow search --description migration --feature development`
+  - `flow search --content "retry budget" --type note`
 
 ## Local Development
 

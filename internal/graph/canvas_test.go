@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/lex/flow/internal/markdown"
@@ -199,7 +200,7 @@ func assertGraphCanvasEdges(t *testing.T, got []GraphCanvasEdge, want []GraphCan
 	}
 
 	for index := range want {
-		if got[index] != want[index] {
+		if !reflect.DeepEqual(got[index], want[index]) {
 			t.Fatalf("edges[%d] = %#v, want %#v", index, got[index], want[index])
 		}
 	}

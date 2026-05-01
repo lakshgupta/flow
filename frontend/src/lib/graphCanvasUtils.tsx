@@ -1,8 +1,8 @@
-import { EdgeLabelRenderer, MarkerType, Position, BaseEdge, getSmoothStepPath } from "@xyflow/react";
+import { MarkerType, Position, BaseEdge, getSmoothStepPath } from "@xyflow/react";
 import type { Edge, EdgeProps, Node } from "@xyflow/react";
 import ELK from "elkjs/lib/elk.bundled.js";
 import type { CSSProperties } from "react";
-import { createContext, useContext } from "react";
+import { createContext } from "react";
 
 import { fileNameFromPath } from "./docUtils";
 import { graphDirectoryColorHex, resolveGraphDirectoryColor } from "./graphColors";
@@ -29,8 +29,11 @@ export type GraphCanvasEdgeVisualState = {
   hasSelection: boolean;
   isConnected: boolean;
   isSelected: boolean;
+  isGlowVisible: boolean;
   stroke: string;
   strokeWidth: number;
+  glowStrokeWidth: number;
+  glowOpacity: number;
   opacity: number;
   strokeDasharray?: string;
   markerId: "graph-canvas-arrow" | "graph-canvas-arrow-dim" | null;
@@ -38,10 +41,6 @@ export type GraphCanvasEdgeVisualState = {
 
 export type EdgeEditHandler = (sourceId: string, targetId: string, context: string) => void;
 export const EdgeEditContext = createContext<EdgeEditHandler>(() => {});
-
-/** @deprecated use EdgeEditContext */
-export const EdgeDoubleClickContext = EdgeEditContext;
-export type EdgeDoubleClickHandler = EdgeEditHandler;
 
 /**
  * ContextEdge renders a smoothstep edge.
@@ -61,43 +60,16 @@ export function ContextEdge({
   data,
   selected,
 }: EdgeProps<Edge<GraphCanvasFlowEdgeData>>) {
-  const onEditContext = useContext(EdgeEditContext);
-  const [edgePath, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
-  const context = data?.context ?? "";
+  const [edgePath] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
 
   return (
-    <>
-      <BaseEdge
-        id={id}
-        path={edgePath}
-        style={{ ...style, cursor: "pointer" }}
-        markerEnd={markerEnd}
-        interactionWidth={32}
-      />
-      {selected && (
-        <EdgeLabelRenderer>
-          <div
-            className="graph-edge-label-anchor nodrag nopan"
-            style={{
-              position: "absolute",
-              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-              pointerEvents: "all",
-            }}
-          >
-            <button
-              className="graph-edge-edit-btn"
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onEditContext(data?.sourceId ?? "", data?.targetId ?? "", context);
-              }}
-            >
-              {context !== "" ? context : "Add context..."}
-            </button>
-          </div>
-        </EdgeLabelRenderer>
-      )}
-    </>
+    <BaseEdge
+      id={id}
+      path={edgePath}
+      style={{ ...style, cursor: "pointer" }}
+      markerEnd={markerEnd}
+      interactionWidth={32}
+    />
   );
 }
 
@@ -261,9 +233,12 @@ export function graphCanvasEdgeVisualState(
     hasSelection,
     isConnected,
     isSelected,
+    isGlowVisible: hasSelection && isConnected,
     stroke,
-    strokeWidth: isSelected ? 3.4 : hasSelection ? (isConnected ? 2.6 : 1.25) : 2,
-    opacity: hasSelection ? (isConnected ? 1 : 0.25) : 0.85,
+    strokeWidth: isSelected ? 3.5 : hasSelection ? (isConnected ? 2.7 : 1.7) : 2.1,
+    glowStrokeWidth: isSelected ? 11 : hasSelection ? (isConnected ? 9 : 0) : 0,
+    glowOpacity: isSelected ? 0.45 : hasSelection ? (isConnected ? 0.36 : 0) : 0,
+    opacity: hasSelection ? (isConnected ? 1 : 0.56) : 0.92,
     strokeDasharray: isReferenceEdge ? "6 4" : undefined,
     markerId: isReferenceEdge ? null : (isConnected || !hasSelection) ? "graph-canvas-arrow" : "graph-canvas-arrow-dim",
   };
