@@ -8,7 +8,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -1109,18 +1108,8 @@ func TestFlowGUICleansUpWhenBrowserOpenFails(t *testing.T) {
 func assertBrowserLaunchURL(t *testing.T, openedURL string, wantBaseURL string) {
 	t.Helper()
 
-	parsed, err := url.Parse(openedURL)
-	if err != nil {
-		t.Fatalf("url.Parse(%q) error = %v", openedURL, err)
-	}
-
-	baseURL := parsed.Scheme + "://" + parsed.Host + parsed.Path
-	if baseURL != wantBaseURL {
-		t.Fatalf("openedURL base = %q, want %q", baseURL, wantBaseURL)
-	}
-
-	if parsed.Query().Get("flow-launch") == "" {
-		t.Fatalf("openedURL = %q, want flow-launch query parameter", openedURL)
+	if openedURL != wantBaseURL {
+		t.Fatalf("openedURL = %q, want %q", openedURL, wantBaseURL)
 	}
 }
 

@@ -7,14 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
 	goruntime "runtime"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -664,7 +662,7 @@ func runGUIStart(global bool, env commandEnv) error {
 		return fmt.Errorf("wait for gui startup: %w", err)
 	}
 
-	if err := env.openBrowser(browserLaunchURL(url)); err != nil {
+	if err := env.openBrowser(url); err != nil {
 		_, stopErr := stopRunningGUI(root, env)
 		if stopErr != nil && !errors.Is(stopErr, execution.ErrGUIServerNotRunning) {
 			return fmt.Errorf("open browser: %w (cleanup failed: %v)", err, stopErr)
@@ -682,18 +680,6 @@ func runGUIStart(global bool, env commandEnv) error {
 
 	fmt.Fprintf(env.stdout, "%s %s GUI server for %s at %s\n", action, scopeLabel, root.WorkspacePath, url)
 	return nil
-}
-
-func browserLaunchURL(base string) string {
-	parsed, err := url.Parse(base)
-	if err != nil {
-		return base
-	}
-
-	query := parsed.Query()
-	query.Set("flow-launch", strconv.FormatInt(time.Now().UnixNano(), 10))
-	parsed.RawQuery = query.Encode()
-	return parsed.String()
 }
 
 func runGUIServe(global bool, env commandEnv) error {

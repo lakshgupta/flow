@@ -34,17 +34,17 @@ type workspaceChoiceResponse struct {
 }
 
 type workspaceResponse struct {
-	Scope         workspace.Scope `json:"scope"`
-	WorkspacePath string          `json:"workspacePath"`
-	FlowPath      string          `json:"flowPath"`
-	ConfigPath    string          `json:"configPath"`
-	IndexPath     string          `json:"indexPath"`
-	HomePath      string          `json:"homePath"`
-	GUIPort       int             `json:"guiPort"`
-	Appearance    string          `json:"appearance"`
-	PanelWidths   panelWidths     `json:"panelWidths"`
-	Workspaces    []workspaceChoiceResponse `json:"workspaces,omitempty"`
-	WorkspaceSelectionEnabled bool `json:"workspaceSelectionEnabled"`
+	Scope                     workspace.Scope           `json:"scope"`
+	WorkspacePath             string                    `json:"workspacePath"`
+	FlowPath                  string                    `json:"flowPath"`
+	ConfigPath                string                    `json:"configPath"`
+	IndexPath                 string                    `json:"indexPath"`
+	HomePath                  string                    `json:"homePath"`
+	GUIPort                   int                       `json:"guiPort"`
+	Appearance                string                    `json:"appearance"`
+	PanelWidths               panelWidths               `json:"panelWidths"`
+	Workspaces                []workspaceChoiceResponse `json:"workspaces,omitempty"`
+	WorkspaceSelectionEnabled bool                      `json:"workspaceSelectionEnabled"`
 }
 
 type panelWidths struct {
@@ -444,7 +444,7 @@ func (handler *apiHandler) handleWorkspace(writer http.ResponseWriter, _ *http.R
 			RightRatio:       workspaceConfig.GUI.PanelWidths.RightRatio,
 			DocumentTOCRatio: workspaceConfig.GUI.PanelWidths.DocumentTOCRatio,
 		},
-		Workspaces: workspaceChoicesForResponse(handler.options.Root, handler.options.GlobalLocatorPath),
+		Workspaces:                workspaceChoicesForResponse(handler.options.Root, handler.options.GlobalLocatorPath),
 		WorkspaceSelectionEnabled: workspaceSelectionEnabled(handler.options),
 	})
 }
