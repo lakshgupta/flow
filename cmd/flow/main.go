@@ -117,6 +117,11 @@ func run(args []string, env commandEnv) int {
 }
 
 func runCommand(args []string, env commandEnv) error {
+	if len(args) > 0 && isHelpOption(args[0]) {
+		writeRootHelp(env.stdout)
+		return nil
+	}
+
 	if len(args) > 0 && args[0] == "version" {
 		fmt.Fprintf(env.stdout, "flow %s\n", version)
 		return nil
@@ -126,6 +131,10 @@ func runCommand(args []string, env commandEnv) error {
 	if len(args) > 0 && args[0] == "-g" {
 		global = true
 		args = args[1:]
+		if len(args) > 0 && isHelpOption(args[0]) {
+			writeRootHelp(env.stdout)
+			return nil
+		}
 	}
 
 	if len(args) == 0 {
@@ -139,7 +148,7 @@ func runCommand(args []string, env commandEnv) error {
 
 	switch args[0] {
 	case "init":
-		return runInit(global, env)
+		return runInit(global, args[1:], env)
 	case "configure":
 		return runConfigure(global, args[1:], env)
 	case "skill":
@@ -159,8 +168,145 @@ func runCommand(args []string, env commandEnv) error {
 	case "node":
 		return runNode(global, args[1:], env)
 	default:
-		return fmt.Errorf("unknown command %q", args[0])
+		return fmt.Errorf("unknown command %q; use `flow --help`", args[0])
 	}
+}
+
+func isHelpOption(value string) bool {
+	return value == "-h" || value == "--help"
+}
+
+func parseFlagSetWithHelp(flagSet *flag.FlagSet, args []string, env commandEnv, writeHelp func(io.Writer)) (bool, error) {
+	if err := flagSet.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			writeHelp(env.stdout)
+			return true, nil
+		}
+
+		return false, err
+	}
+
+	return false, nil
+}
+
+func writeRootHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow [-g] <command> [options]")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Commands:")
+	fmt.Fprintln(w, "  version        Print Flow version")
+	fmt.Fprintln(w, "  init           Initialize workspace files")
+	fmt.Fprintln(w, "  configure      Configure workspace settings")
+	fmt.Fprintln(w, "  gui            Start/stop GUI server")
+	fmt.Fprintln(w, "  create         Create note/task/command documents")
+	fmt.Fprintln(w, "  update         Update a document by path")
+	fmt.Fprintln(w, "  delete         Delete a document by path")
+	fmt.Fprintln(w, "  search         Search indexed content")
+	fmt.Fprintln(w, "  run            Execute a command document")
+	fmt.Fprintln(w, "  skill          Print Flow skill content")
+	fmt.Fprintln(w, "  node           Node-oriented read/update/connect operations")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Global option:")
+	fmt.Fprintln(w, "  -g             Use globally configured workspace")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Use `flow <command> --help` for command-specific help.")
+}
+
+func writeInitHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow [-g] init")
+	fmt.Fprintln(w, "Initialize local or global workspace files.")
+}
+
+func writeConfigureHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow configure --gui-port <port>")
+	fmt.Fprintln(w, "       flow -g configure [--workspace <absolute-path>] [--gui-port <port>]")
+}
+
+func writeSkillHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow skill <subcommand> [options]")
+	fmt.Fprintln(w, "Subcommands:")
+	fmt.Fprintln(w, "  content        Print embedded Flow skill content")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Use `flow skill content --help` for options.")
+}
+
+func writeSkillContentHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow skill content [--graph <graph>]")
+	fmt.Fprintln(w, "Options:")
+	fmt.Fprintln(w, "  --graph <graph>   Development graph root label (default: development)")
+}
+
+func writeGUIHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow [-g] gui [stop] [--serve-internal]")
+	fmt.Fprintln(w, "Start the GUI server, stop it, or run internal serve mode.")
+}
+
+func writeCreateHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow create <note|task|command> --file <name> --graph <graph> [options]")
+	fmt.Fprintln(w, "For command documents, also require: --name <short-name> --run <command>")
+}
+
+func writeUpdateHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow update --path <relative-path> [field options]")
+	fmt.Fprintln(w, "Updates one existing document by workspace-relative path.")
+}
+
+func writeDeleteHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow delete --path <relative-path>")
+}
+
+func writeNodeHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow node <subcommand> [options]")
+	fmt.Fprintln(w, "Subcommands:")
+	fmt.Fprintln(w, "  read         Read one node view")
+	fmt.Fprintln(w, "  content      Read node body content")
+	fmt.Fprintln(w, "  list         List nodes by filters")
+	fmt.Fprintln(w, "  edges        List edges for a node")
+	fmt.Fprintln(w, "  neighbors    List neighboring nodes")
+	fmt.Fprintln(w, "  update       Update a node by ID")
+	fmt.Fprintln(w, "  connect      Connect two nodes")
+	fmt.Fprintln(w, "  disconnect   Disconnect two nodes")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Use `flow node <subcommand> --help` for options.")
+}
+
+func writeNodeReadHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow node read --id <node-id> [--graph <graph>] [--format <json|markdown>]")
+}
+
+func writeNodeListHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow node list [--graph <graph>] [--feature <slug>] [--status <status>] [--tag <tag>] [--limit <n>] [--compact] [--format <json|markdown>]")
+}
+
+func writeNodeContentHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow node content --id <node-id> [--graph <graph>] [--line-start <n>] [--line-end <n>] [--format <text|json>]")
+}
+
+func writeNodeEdgesHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow node edges --id <node-id> [--graph <graph>] [--format <json|markdown>]")
+}
+
+func writeNodeNeighborsHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow node neighbors --id <node-id> [--graph <graph>] [--format <json|markdown>]")
+}
+
+func writeNodeUpdateHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow node update --id <node-id> [field options]")
+}
+
+func writeNodeConnectHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow node connect --from <node-id> --to <node-id> --graph <graph> [--context <text>] [--relationship <tag>]")
+}
+
+func writeNodeDisconnectHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow node disconnect --from <node-id> --to <node-id> --graph <graph>")
+}
+
+func writeSearchHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow search [query] [--limit <n>] [--graph <graph>] [--feature <feature>] [--type <type>] [--tag <tag>] [--title <text>] [--description <text>] [--content <text>] [--compact]")
+}
+
+func writeRunHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow run <command-id-or-short-name>")
 }
 
 func withDefaultCommandEnv(env commandEnv) commandEnv {
@@ -204,25 +350,37 @@ func withDefaultCommandEnv(env commandEnv) commandEnv {
 }
 
 func runSkill(_ bool, args []string, env commandEnv) error {
+	if len(args) > 0 && isHelpOption(args[0]) {
+		writeSkillHelp(env.stdout)
+		return nil
+	}
+
 	if len(args) == 0 {
-		return fmt.Errorf("flow skill requires subcommand")
+		return fmt.Errorf("flow skill requires subcommand; use `flow skill --help`")
 	}
 
 	switch args[0] {
 	case "content":
 		return runSkillContent(args[1:], env)
 	default:
-		return fmt.Errorf("unknown skill subcommand %q", args[0])
+		return fmt.Errorf("unknown skill subcommand %q; use `flow skill --help`", args[0])
 	}
 }
 
 func runSkillContent(args []string, env commandEnv) error {
 	flagSet := flag.NewFlagSet("skill content", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
+	flagSet.Usage = func() {
+		writeSkillContentHelp(env.stdout)
+	}
 
 	graph := flagSet.String("graph", "development", "development graph root for planning and implementation")
-	if err := flagSet.Parse(args); err != nil {
+	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeSkillContentHelp)
+	if err != nil {
 		return err
+	}
+	if helpShown {
+		return nil
 	}
 
 	if strings.TrimSpace(*graph) == "" {
@@ -236,7 +394,12 @@ func runSkillContent(args []string, env commandEnv) error {
 	return nil
 }
 
-func runInit(global bool, env commandEnv) error {
+func runInit(global bool, args []string, env commandEnv) error {
+	if len(args) > 0 && isHelpOption(args[0]) {
+		writeInitHelp(env.stdout)
+		return nil
+	}
+
 	root, err := resolveRoot(global, env)
 	if err != nil {
 		return err
@@ -258,12 +421,19 @@ func runInit(global bool, env commandEnv) error {
 func runConfigure(global bool, args []string, env commandEnv) error {
 	flagSet := flag.NewFlagSet("configure", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
+	flagSet.Usage = func() {
+		writeConfigureHelp(env.stdout)
+	}
 
 	guiPort := flagSet.Int("gui-port", 0, "GUI server port")
 	workspacePath := flagSet.String("workspace", "", "global workspace path")
 
-	if err := flagSet.Parse(args); err != nil {
+	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeConfigureHelp)
+	if err != nil {
 		return err
+	}
+	if helpShown {
+		return nil
 	}
 
 	if !global {
@@ -337,10 +507,17 @@ func runConfigure(global bool, args []string, env commandEnv) error {
 func runGUI(global bool, args []string, env commandEnv) error {
 	flagSet := flag.NewFlagSet("gui", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
+	flagSet.Usage = func() {
+		writeGUIHelp(env.stdout)
+	}
 
 	serveInternal := flagSet.Bool("serve-internal", false, "internal GUI server mode")
-	if err := flagSet.Parse(args); err != nil {
+	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeGUIHelp)
+	if err != nil {
 		return err
+	}
+	if helpShown {
+		return nil
 	}
 
 	if *serveInternal {
@@ -360,7 +537,7 @@ func runGUI(global bool, args []string, env commandEnv) error {
 			return runGUIStop(global, env)
 		}
 
-		return fmt.Errorf("unknown gui subcommand %q", flagSet.Arg(0))
+		return fmt.Errorf("unknown gui subcommand %q; use `flow gui --help`", flagSet.Arg(0))
 	}
 
 	return runGUIStart(global, env)
@@ -507,6 +684,11 @@ func runGUIStop(global bool, env commandEnv) error {
 }
 
 func runCreate(global bool, args []string, env commandEnv) error {
+	if len(args) > 0 && isHelpOption(args[0]) {
+		writeCreateHelp(env.stdout)
+		return nil
+	}
+
 	if len(args) == 0 {
 		return fmt.Errorf("flow create requires a document type: note, task, or command")
 	}
@@ -518,6 +700,9 @@ func runCreate(global bool, args []string, env commandEnv) error {
 
 	flagSet := flag.NewFlagSet("create", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
+	flagSet.Usage = func() {
+		writeCreateHelp(env.stdout)
+	}
 
 	featureSlug := flagSet.String("feature", "", "legacy feature slug")
 	fileName := flagSet.String("file", "", "document file name")
@@ -538,8 +723,12 @@ func runCreate(global bool, args []string, env commandEnv) error {
 	flagSet.Var(&references, "reference", "repeatable reference id")
 	flagSet.Var(&envValues, "env", "repeatable KEY=VALUE pair")
 
-	if err := flagSet.Parse(args[1:]); err != nil {
+	helpShown, err := parseFlagSetWithHelp(flagSet, args[1:], env, writeCreateHelp)
+	if err != nil {
 		return err
+	}
+	if helpShown {
+		return nil
 	}
 
 	if *fileName == "" || *graph == "" {
@@ -590,6 +779,9 @@ func runCreate(global bool, args []string, env commandEnv) error {
 func runUpdate(global bool, args []string, env commandEnv) error {
 	flagSet := flag.NewFlagSet("update", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
+	flagSet.Usage = func() {
+		writeUpdateHelp(env.stdout)
+	}
 
 	pathValue := flagSet.String("path", "", "document path relative to .flow")
 	id := flagSet.String("id", "", "document id")
@@ -610,8 +802,12 @@ func runUpdate(global bool, args []string, env commandEnv) error {
 	flagSet.Var(&references, "reference", "repeatable reference id")
 	flagSet.Var(&envValues, "env", "repeatable KEY=VALUE pair")
 
-	if err := flagSet.Parse(args); err != nil {
+	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeUpdateHelp)
+	if err != nil {
 		return err
+	}
+	if helpShown {
+		return nil
 	}
 
 	if *pathValue == "" {
@@ -659,10 +855,17 @@ func runUpdate(global bool, args []string, env commandEnv) error {
 func runDelete(global bool, args []string, env commandEnv) error {
 	flagSet := flag.NewFlagSet("delete", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
+	flagSet.Usage = func() {
+		writeDeleteHelp(env.stdout)
+	}
 
 	pathValue := flagSet.String("path", "", "document path relative to .flow")
-	if err := flagSet.Parse(args); err != nil {
+	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeDeleteHelp)
+	if err != nil {
 		return err
+	}
+	if helpShown {
+		return nil
 	}
 
 	if *pathValue == "" {
@@ -684,8 +887,13 @@ func runDelete(global bool, args []string, env commandEnv) error {
 }
 
 func runNode(global bool, args []string, env commandEnv) error {
+	if len(args) > 0 && isHelpOption(args[0]) {
+		writeNodeHelp(env.stdout)
+		return nil
+	}
+
 	if len(args) == 0 {
-		return fmt.Errorf("flow node requires a subcommand: read, list, edges, neighbors, update, connect, or disconnect")
+		return fmt.Errorf("flow node requires a subcommand: read, list, edges, neighbors, update, connect, or disconnect; use `flow node --help`")
 	}
 
 	switch args[0] {
@@ -706,20 +914,27 @@ func runNode(global bool, args []string, env commandEnv) error {
 	case "disconnect":
 		return runNodeDisconnect(global, args[1:], env)
 	default:
-		return fmt.Errorf("unknown node subcommand %q", args[0])
+		return fmt.Errorf("unknown node subcommand %q; use `flow node --help`", args[0])
 	}
 }
 
 func runNodeRead(global bool, args []string, env commandEnv) error {
 	flagSet := flag.NewFlagSet("node read", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
+	flagSet.Usage = func() {
+		writeNodeReadHelp(env.stdout)
+	}
 
 	id := flagSet.String("id", "", "node id")
 	graph := flagSet.String("graph", "", "graph path (optional filter)")
 	format := flagSet.String("format", "markdown", "output format: json or markdown")
 
-	if err := flagSet.Parse(args); err != nil {
+	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeNodeReadHelp)
+	if err != nil {
 		return err
+	}
+	if helpShown {
+		return nil
 	}
 
 	if *id == "" {
@@ -742,6 +957,9 @@ func runNodeRead(global bool, args []string, env commandEnv) error {
 func runNodeList(global bool, args []string, env commandEnv) error {
 	flagSet := flag.NewFlagSet("node list", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
+	flagSet.Usage = func() {
+		writeNodeListHelp(env.stdout)
+	}
 
 	graph := flagSet.String("graph", "", "graph path")
 	feature := flagSet.String("feature", "", "feature slug (first graph segment)")
@@ -752,8 +970,12 @@ func runNodeList(global bool, args []string, env commandEnv) error {
 	flagSet.Var(&tags, "tag", "repeatable tag filter")
 	format := flagSet.String("format", "markdown", "output format: json or markdown")
 
-	if err := flagSet.Parse(args); err != nil {
+	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeNodeListHelp)
+	if err != nil {
 		return err
+	}
+	if helpShown {
+		return nil
 	}
 
 	if *limit <= 0 {
@@ -824,6 +1046,9 @@ func runNodeList(global bool, args []string, env commandEnv) error {
 func runNodeContent(global bool, args []string, env commandEnv) error {
 	flagSet := flag.NewFlagSet("node content", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
+	flagSet.Usage = func() {
+		writeNodeContentHelp(env.stdout)
+	}
 
 	id := flagSet.String("id", "", "node id")
 	graph := flagSet.String("graph", "", "graph path (optional filter)")
@@ -831,8 +1056,12 @@ func runNodeContent(global bool, args []string, env commandEnv) error {
 	lineEnd := flagSet.Int("line-end", 0, "1-based content line end")
 	format := flagSet.String("format", "text", "output format: text or json")
 
-	if err := flagSet.Parse(args); err != nil {
+	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeNodeContentHelp)
+	if err != nil {
 		return err
+	}
+	if helpShown {
+		return nil
 	}
 
 	if *id == "" {
@@ -913,13 +1142,20 @@ func runNodeContent(global bool, args []string, env commandEnv) error {
 func runNodeEdges(global bool, args []string, env commandEnv) error {
 	flagSet := flag.NewFlagSet("node edges", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
+	flagSet.Usage = func() {
+		writeNodeEdgesHelp(env.stdout)
+	}
 
 	id := flagSet.String("id", "", "node id")
 	graph := flagSet.String("graph", "", "graph path (optional filter)")
 	format := flagSet.String("format", "markdown", "output format: json or markdown")
 
-	if err := flagSet.Parse(args); err != nil {
+	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeNodeEdgesHelp)
+	if err != nil {
 		return err
+	}
+	if helpShown {
+		return nil
 	}
 
 	if *id == "" {
@@ -982,13 +1218,20 @@ func runNodeEdges(global bool, args []string, env commandEnv) error {
 func runNodeNeighbors(global bool, args []string, env commandEnv) error {
 	flagSet := flag.NewFlagSet("node neighbors", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
+	flagSet.Usage = func() {
+		writeNodeNeighborsHelp(env.stdout)
+	}
 
 	id := flagSet.String("id", "", "node id")
 	graph := flagSet.String("graph", "", "graph path (optional filter)")
 	format := flagSet.String("format", "markdown", "output format: json or markdown")
 
-	if err := flagSet.Parse(args); err != nil {
+	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeNodeNeighborsHelp)
+	if err != nil {
 		return err
+	}
+	if helpShown {
+		return nil
 	}
 
 	if *id == "" {
@@ -1060,6 +1303,9 @@ func runNodeNeighbors(global bool, args []string, env commandEnv) error {
 func runNodeUpdate(global bool, args []string, env commandEnv) error {
 	flagSet := flag.NewFlagSet("node update", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
+	flagSet.Usage = func() {
+		writeNodeUpdateHelp(env.stdout)
+	}
 
 	id := flagSet.String("id", "", "node id")
 	title := flagSet.String("title", "", "document title")
@@ -1078,8 +1324,12 @@ func runNodeUpdate(global bool, args []string, env commandEnv) error {
 	flagSet.Var(&references, "reference", "repeatable reference id")
 	flagSet.Var(&envValues, "env", "repeatable KEY=VALUE pair")
 
-	if err := flagSet.Parse(args); err != nil {
+	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeNodeUpdateHelp)
+	if err != nil {
 		return err
+	}
+	if helpShown {
+		return nil
 	}
 
 	if *id == "" {
@@ -1125,14 +1375,21 @@ func runNodeUpdate(global bool, args []string, env commandEnv) error {
 func runNodeConnect(global bool, args []string, env commandEnv) error {
 	flagSet := flag.NewFlagSet("node connect", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
+	flagSet.Usage = func() {
+		writeNodeConnectHelp(env.stdout)
+	}
 	from := flagSet.String("from", "", "ID of the source node")
 	to := flagSet.String("to", "", "ID of the target node")
 	graph := flagSet.String("graph", "", "graph the nodes belong to")
 	context := flagSet.String("context", "", "optional context describing the relationship")
 	var relationships stringListFlag
 	flagSet.Var(&relationships, "relationship", "repeatable relationship tag")
-	if err := flagSet.Parse(args); err != nil {
+	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeNodeConnectHelp)
+	if err != nil {
 		return fmt.Errorf("flow node connect: %w", err)
+	}
+	if helpShown {
+		return nil
 	}
 	if *from == "" {
 		return fmt.Errorf("flow node connect requires --from")
@@ -1159,11 +1416,18 @@ func runNodeConnect(global bool, args []string, env commandEnv) error {
 func runNodeDisconnect(global bool, args []string, env commandEnv) error {
 	flagSet := flag.NewFlagSet("node disconnect", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
+	flagSet.Usage = func() {
+		writeNodeDisconnectHelp(env.stdout)
+	}
 	from := flagSet.String("from", "", "ID of the source node")
 	to := flagSet.String("to", "", "ID of the target node")
 	graph := flagSet.String("graph", "", "graph the edge belongs to")
-	if err := flagSet.Parse(args); err != nil {
+	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeNodeDisconnectHelp)
+	if err != nil {
 		return fmt.Errorf("flow node disconnect: %w", err)
+	}
+	if helpShown {
+		return nil
 	}
 	if *from == "" {
 		return fmt.Errorf("flow node disconnect requires --from")
@@ -1252,6 +1516,9 @@ func renderNodeView(w io.Writer, view index.NodeView, format string) error {
 func runSearch(global bool, args []string, env commandEnv) error {
 	flagSet := flag.NewFlagSet("search", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
+	flagSet.Usage = func() {
+		writeSearchHelp(env.stdout)
+	}
 
 	limit := flagSet.Int("limit", 10, "maximum indexed search results")
 	graph := flagSet.String("graph", "", "graph path filter")
@@ -1262,8 +1529,12 @@ func runSearch(global bool, args []string, env commandEnv) error {
 	description := flagSet.String("description", "", "description filter")
 	content := flagSet.String("content", "", "content filter")
 	compact := flagSet.Bool("compact", false, "compact output for agent usage")
-	if err := flagSet.Parse(args); err != nil {
+	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeSearchHelp)
+	if err != nil {
 		return err
+	}
+	if helpShown {
+		return nil
 	}
 
 	if *limit <= 0 {
@@ -1510,8 +1781,16 @@ func deriveRole(documentType string) string {
 func runRun(global bool, args []string, env commandEnv) error {
 	flagSet := flag.NewFlagSet("run", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
-	if err := flagSet.Parse(args); err != nil {
+	flagSet.Usage = func() {
+		writeRunHelp(env.stdout)
+	}
+
+	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeRunHelp)
+	if err != nil {
 		return err
+	}
+	if helpShown {
+		return nil
 	}
 
 	if flagSet.NArg() != 1 {

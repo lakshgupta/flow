@@ -172,6 +172,55 @@ func TestFlowVersionPrintsBuildVersion(t *testing.T) {
 	}
 }
 
+func TestFlowRootHelpOption(t *testing.T) {
+	stdout, stderr := runForTest(t, []string{"--help"}, t.TempDir())
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+
+	if !strings.Contains(stdout, "Usage: flow [-g] <command> [options]") {
+		t.Fatalf("stdout = %q, want root usage", stdout)
+	}
+
+	if !strings.Contains(stdout, "Use `flow <command> --help` for command-specific help.") {
+		t.Fatalf("stdout = %q, want command-help guidance", stdout)
+	}
+}
+
+func TestFlowSubcommandHelpOptions(t *testing.T) {
+	testCases := []struct {
+		name        string
+		args        []string
+		wantSnippet string
+	}{
+		{name: "init", args: []string{"init", "--help"}, wantSnippet: "Usage: flow [-g] init"},
+		{name: "configure", args: []string{"configure", "--help"}, wantSnippet: "Usage: flow configure --gui-port <port>"},
+		{name: "gui", args: []string{"gui", "--help"}, wantSnippet: "Usage: flow [-g] gui [stop] [--serve-internal]"},
+		{name: "create", args: []string{"create", "--help"}, wantSnippet: "Usage: flow create <note|task|command> --file <name> --graph <graph> [options]"},
+		{name: "update", args: []string{"update", "--help"}, wantSnippet: "Usage: flow update --path <relative-path> [field options]"},
+		{name: "delete", args: []string{"delete", "--help"}, wantSnippet: "Usage: flow delete --path <relative-path>"},
+		{name: "skill", args: []string{"skill", "--help"}, wantSnippet: "Usage: flow skill <subcommand> [options]"},
+		{name: "skill-content", args: []string{"skill", "content", "--help"}, wantSnippet: "Usage: flow skill content [--graph <graph>]"},
+		{name: "node", args: []string{"node", "--help"}, wantSnippet: "Usage: flow node <subcommand> [options]"},
+		{name: "node-read", args: []string{"node", "read", "--help"}, wantSnippet: "Usage: flow node read --id <node-id> [--graph <graph>] [--format <json|markdown>]"},
+		{name: "search", args: []string{"search", "--help"}, wantSnippet: "Usage: flow search [query] [--limit <n>]"},
+		{name: "run", args: []string{"run", "--help"}, wantSnippet: "Usage: flow run <command-id-or-short-name>"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			stdout, stderr := runForTest(t, testCase.args, t.TempDir())
+			if stderr != "" {
+				t.Fatalf("stderr = %q, want empty", stderr)
+			}
+
+			if !strings.Contains(stdout, testCase.wantSnippet) {
+				t.Fatalf("stdout = %q, want snippet %q", stdout, testCase.wantSnippet)
+			}
+		})
+	}
+}
+
 func TestFlowGlobalConfigureAndInit(t *testing.T) {
 	configHome := t.TempDir()
 	workspacePath := filepath.Join(t.TempDir(), "global-workspace")
@@ -659,6 +708,29 @@ func TestFlowSkillUnknownSubcommandReturnsError(t *testing.T) {
 	stderr := runExpectErrorForTest(t, []string{"skill", "bogus"}, t.TempDir())
 	if !strings.Contains(stderr, "unknown skill subcommand") {
 		t.Fatalf("stderr = %q, want unknown-skill-subcommand message", stderr)
+	}
+	if !strings.Contains(stderr, "flow skill --help") {
+		t.Fatalf("stderr = %q, want help guidance", stderr)
+	}
+}
+
+func TestFlowUnknownCommandReturnsErrorWithHelp(t *testing.T) {
+	stderr := runExpectErrorForTest(t, []string{"bogus"}, t.TempDir())
+	if !strings.Contains(stderr, "unknown command") {
+		t.Fatalf("stderr = %q, want unknown-command message", stderr)
+	}
+	if !strings.Contains(stderr, "flow --help") {
+		t.Fatalf("stderr = %q, want root help guidance", stderr)
+	}
+}
+
+func TestFlowNodeUnknownSubcommandReturnsErrorWithHelp(t *testing.T) {
+	stderr := runExpectErrorForTest(t, []string{"node", "bogus"}, t.TempDir())
+	if !strings.Contains(stderr, "unknown node subcommand") {
+		t.Fatalf("stderr = %q, want unknown-node-subcommand message", stderr)
+	}
+	if !strings.Contains(stderr, "flow node --help") {
+		t.Fatalf("stderr = %q, want node help guidance", stderr)
 	}
 }
 
