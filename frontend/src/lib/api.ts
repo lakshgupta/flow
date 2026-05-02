@@ -50,6 +50,13 @@ export async function loadCalendarDocuments(): Promise<CalendarDocumentResponse[
   return requestJSON<CalendarDocumentResponse[]>("/api/calendar-documents");
 }
 
+export async function selectWorkspace(workspacePath: string): Promise<WorkspaceResponse> {
+  return requestJSON<WorkspaceResponse>("/api/workspace/select", {
+    method: "PUT",
+    body: JSON.stringify({ workspacePath }),
+  });
+}
+
 export async function loadReferenceTargets(query: string, graphPath?: string, limit = 8): Promise<ReferenceTargetResponse[]> {
   const params = new URLSearchParams();
   params.set("q", query);

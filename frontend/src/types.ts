@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 export type WorkspaceResponse = {
   scope: string;
   workspacePath: string;
+  workspaces?: { scope: string; workspacePath: string }[];
+  workspaceSelectionEnabled?: boolean;
   flowPath: string;
   configPath: string;
   indexPath: string;

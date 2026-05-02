@@ -106,3 +106,74 @@ func TestWriteGlobalLocatorRejectsRelativeWorkspacePath(t *testing.T) {
 		t.Fatalf("WriteGlobalLocator() error = %v, want workspacePath validation", err)
 	}
 }
+
+func TestResolveNearestLocalFindsWorkspaceInParentDirectory(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(rootDir, DirName), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+
+	nestedDir := filepath.Join(rootDir, "a", "b", "c")
+	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+
+	resolved, err := ResolveNearestLocal(nestedDir)
+	if err != nil {
+		t.Fatalf("ResolveNearestLocal() error = %v", err)
+	}
+
+	if resolved.WorkspacePath != rootDir {
+		t.Fatalf("resolved.WorkspacePath = %q, want %q", resolved.WorkspacePath, rootDir)
+	}
+}
+
+func TestResolveNearestLocalReturnsErrorWhenNoWorkspaceExists(t *testing.T) {
+	t.Parallel()
+
+	_, err := ResolveNearestLocal(t.TempDir())
+	if err == nil {
+		t.Fatal("ResolveNearestLocal() error = nil, want error")
+	}
+}
+
+func TestRegisterLocalWorkspaceAddsTrackedLocalWorkspace(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	globalPath := filepath.Join(tempDir, "global", "workspace")
+	localPath := filepath.Join(tempDir, "repo", "workspace")
+	locatorPath := filepath.Join(tempDir, "config", GlobalLocatorFileName)
+
+	if err := WriteGlobalLocator(locatorPath, GlobalLocator{WorkspacePath: globalPath}); err != nil {
+		t.Fatalf("WriteGlobalLocator() error = %v", err)
+	}
+
+	if err := RegisterLocalWorkspace(locatorPath, localPath); err != nil {
+		t.Fatalf("RegisterLocalWorkspace() error = %v", err)
+	}
+
+	locator, err := ReadGlobalLocator(locatorPath)
+	if err != nil {
+		t.Fatalf("ReadGlobalLocator() error = %v", err)
+	}
+
+	if len(locator.LocalWorkspaces) != 1 || locator.LocalWorkspaces[0] != localPath {
+		t.Fatalf("locator.LocalWorkspaces = %#v, want [%q]", locator.LocalWorkspaces, localPath)
+	}
+
+	if err := RegisterLocalWorkspace(locatorPath, localPath); err != nil {
+		t.Fatalf("RegisterLocalWorkspace(second) error = %v", err)
+	}
+
+	locator, err = ReadGlobalLocator(locatorPath)
+	if err != nil {
+		t.Fatalf("ReadGlobalLocator(second) error = %v", err)
+	}
+
+	if len(locator.LocalWorkspaces) != 1 {
+		t.Fatalf("locator.LocalWorkspaces = %#v, want one deduplicated path", locator.LocalWorkspaces)
+	}
+}

@@ -1023,6 +1023,33 @@ func TestNewMuxCreateDocumentAddsCanvasNodeForNewGraph(t *testing.T) {
 	}
 }
 
+func TestNewMuxGraphTreeDegradesGracefullyWhenIndexIsUnavailable(t *testing.T) {
+	t.Parallel()
+
+	root := createGraphTreeHTTPAPITestWorkspace(t)
+	if err := os.Remove(root.IndexPath); err != nil {
+		t.Fatalf("Remove(index) error = %v", err)
+	}
+
+	badPath := filepath.Join(root.FlowPath, "data", "content", "execution", "broken.md")
+	if err := os.WriteFile(badPath, []byte("---\nid: broken\ntype: note\ngraph: execution\nthis-is-not-valid"), 0o644); err != nil {
+		t.Fatalf("WriteFile(broken.md) error = %v", err)
+	}
+
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	graphTree := performJSONRequest[graphTreeResponse](t, handler, http.MethodGet, "/api/graphs")
+	if graphTree.Home.ID != "home" {
+		t.Fatalf("graphTree.Home = %#v, want fallback home response", graphTree.Home)
+	}
+	if len(graphTree.Graphs) != 0 {
+		t.Fatalf("len(graphTree.Graphs) = %d, want 0 when documents are unreadable", len(graphTree.Graphs))
+	}
+}
+
 func createHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 	t.Helper()
 

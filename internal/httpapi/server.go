@@ -22,8 +22,15 @@ import (
 
 // Options configures the embedded GUI HTTP handler.
 type Options struct {
-	Root workspace.Root
-	Stop func() error
+	Root              workspace.Root
+	LaunchScope       workspace.Scope
+	GlobalLocatorPath string
+	Stop              func() error
+}
+
+type workspaceChoiceResponse struct {
+	Scope         workspace.Scope `json:"scope"`
+	WorkspacePath string          `json:"workspacePath"`
 }
 
 type workspaceResponse struct {
@@ -36,6 +43,8 @@ type workspaceResponse struct {
 	GUIPort       int             `json:"guiPort"`
 	Appearance    string          `json:"appearance"`
 	PanelWidths   panelWidths     `json:"panelWidths"`
+	Workspaces    []workspaceChoiceResponse `json:"workspaces,omitempty"`
+	WorkspaceSelectionEnabled bool `json:"workspaceSelectionEnabled"`
 }
 
 type panelWidths struct {
@@ -218,6 +227,10 @@ type updateWorkspaceRequest struct {
 	PanelWidths *updatePanelWidthsRequest `json:"panelWidths"`
 }
 
+type selectWorkspaceRequest struct {
+	WorkspacePath string `json:"workspacePath"`
+}
+
 type createGraphRequest struct {
 	Name string `json:"name"`
 }
@@ -327,6 +340,8 @@ func (handler *apiHandler) ServeHTTP(writer http.ResponseWriter, request *http.R
 		handler.handleCalendarDocuments(writer, request)
 	case request.URL.Path == "/api/workspace" && request.Method == http.MethodPut:
 		handler.handleUpdateWorkspace(writer, request)
+	case request.URL.Path == "/api/workspace/select" && request.Method == http.MethodPut:
+		handler.handleSelectWorkspace(writer, request)
 	case request.URL.Path == "/api/graphs" && request.Method == http.MethodGet:
 		handler.handleGraphTree(writer, request)
 	case request.URL.Path == "/api/graphs" && request.Method == http.MethodPost:
@@ -429,7 +444,100 @@ func (handler *apiHandler) handleWorkspace(writer http.ResponseWriter, _ *http.R
 			RightRatio:       workspaceConfig.GUI.PanelWidths.RightRatio,
 			DocumentTOCRatio: workspaceConfig.GUI.PanelWidths.DocumentTOCRatio,
 		},
+		Workspaces: workspaceChoicesForResponse(handler.options.Root, handler.options.GlobalLocatorPath),
+		WorkspaceSelectionEnabled: workspaceSelectionEnabled(handler.options),
 	})
+}
+
+func (handler *apiHandler) handleSelectWorkspace(writer http.ResponseWriter, request *http.Request) {
+	if !workspaceSelectionEnabled(handler.options) {
+		writeError(writer, http.StatusForbidden, "workspace selection is disabled for this GUI session")
+		return
+	}
+
+	var payload selectWorkspaceRequest
+	if err := decodeJSONRequest(request, &payload); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	selectedPath := strings.TrimSpace(payload.WorkspacePath)
+	if selectedPath == "" {
+		writeError(writer, http.StatusBadRequest, "workspacePath must not be empty")
+		return
+	}
+
+	choices := workspaceChoicesForResponse(handler.options.Root, handler.options.GlobalLocatorPath)
+	selectedScope := workspace.LocalScope
+	matched := false
+	for _, choice := range choices {
+		if choice.WorkspacePath == selectedPath {
+			selectedScope = choice.Scope
+			matched = true
+			break
+		}
+	}
+
+	if !matched {
+		writeError(writer, http.StatusBadRequest, "workspace is not tracked")
+		return
+	}
+
+	resolved, err := workspace.ResolveLocal(selectedPath)
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	resolved.Scope = selectedScope
+
+	if info, statErr := os.Stat(resolved.FlowPath); statErr != nil || !info.IsDir() {
+		writeError(writer, http.StatusBadRequest, "selected workspace is not initialized")
+		return
+	}
+
+	handler.options.Root = resolved
+	handler.handleWorkspace(writer, request)
+}
+
+func workspaceSelectionEnabled(options Options) bool {
+	launchScope := options.LaunchScope
+	if launchScope == "" {
+		launchScope = options.Root.Scope
+	}
+
+	return launchScope == workspace.GlobalScope
+}
+
+func workspaceChoicesForResponse(current workspace.Root, locatorPath string) []workspaceChoiceResponse {
+	choices := []workspaceChoiceResponse{{Scope: current.Scope, WorkspacePath: current.WorkspacePath}}
+
+	if strings.TrimSpace(locatorPath) == "" {
+		return choices
+	}
+
+	locator, err := workspace.ReadGlobalLocator(locatorPath)
+	if err != nil {
+		return choices
+	}
+
+	seen := map[string]struct{}{current.WorkspacePath: {}}
+	appendChoice := func(scope workspace.Scope, pathValue string) {
+		if strings.TrimSpace(pathValue) == "" {
+			return
+		}
+		if _, exists := seen[pathValue]; exists {
+			return
+		}
+		seen[pathValue] = struct{}{}
+		choices = append(choices, workspaceChoiceResponse{Scope: scope, WorkspacePath: pathValue})
+	}
+
+	appendChoice(workspace.GlobalScope, locator.WorkspacePath)
+	for _, localPath := range locator.LocalWorkspaces {
+		appendChoice(workspace.LocalScope, localPath)
+	}
+
+	return choices
 }
 
 func (handler *apiHandler) handleUpdateWorkspace(writer http.ResponseWriter, request *http.Request) {
@@ -541,20 +649,19 @@ func (handler *apiHandler) handleCreateGraph(writer http.ResponseWriter, request
 func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.Request) {
 	nodes, err := index.ReadGraphNodesWorkspace(handler.options.Root.IndexPath, handler.options.Root.FlowPath)
 	if err != nil {
-		writeError(writer, http.StatusInternalServerError, err.Error())
-		return
+		// Keep the GUI tree route responsive even when index projection data is unavailable.
+		nodes = nil
 	}
 
 	documents, err := workspace.LoadDocuments(handler.options.Root.FlowPath)
 	if err != nil {
-		writeError(writer, http.StatusInternalServerError, err.Error())
-		return
+		// Best-effort: a single malformed document should not blank the entire GUI shell.
+		documents = nil
 	}
 
 	home, err := loadHomeResponse(handler.options.Root)
 	if err != nil {
-		writeError(writer, http.StatusInternalServerError, err.Error())
-		return
+		home = homeResponse{ID: "home", Type: "home", Title: "Home", Path: filepath.ToSlash(filepath.Join(workspace.DataDirName, workspace.HomeFileName))}
 	}
 
 	filesByGraph := make(map[string][]graphTreeFileResponse)
@@ -583,22 +690,42 @@ func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.R
 	}
 
 	response := graphTreeResponse{Home: home, Graphs: make([]graphTreeNodeResponse, 0, len(nodes))}
-	graphDirectoryColors, err := pruneWorkspaceGraphDirectoryColors(handler.options.Root, nodes)
-	if err != nil {
-		writeError(writer, http.StatusInternalServerError, err.Error())
-		return
+	graphDirectoryColors := map[string]string{}
+	if colors, colorErr := pruneWorkspaceGraphDirectoryColors(handler.options.Root, nodes); colorErr == nil {
+		graphDirectoryColors = colors
 	}
-	for _, node := range nodes {
-		response.Graphs = append(response.Graphs, graphTreeNodeResponse{
-			GraphPath:   node.GraphPath,
-			DisplayName: node.DisplayName,
-			DirectCount: node.DirectCount,
-			TotalCount:  node.TotalCount,
-			HasChildren: node.HasChildren,
-			CountLabel:  fmt.Sprintf("%d direct / %d total", node.DirectCount, node.TotalCount),
-			Color:       graphDirectoryColors[node.GraphPath],
-			Files:       filesByGraph[node.GraphPath],
-		})
+	if len(nodes) > 0 {
+		for _, node := range nodes {
+			response.Graphs = append(response.Graphs, graphTreeNodeResponse{
+				GraphPath:   node.GraphPath,
+				DisplayName: node.DisplayName,
+				DirectCount: node.DirectCount,
+				TotalCount:  node.TotalCount,
+				HasChildren: node.HasChildren,
+				CountLabel:  fmt.Sprintf("%d direct / %d total", node.DirectCount, node.TotalCount),
+				Color:       graphDirectoryColors[node.GraphPath],
+				Files:       filesByGraph[node.GraphPath],
+			})
+		}
+	} else if len(filesByGraph) > 0 {
+		graphPaths := make([]string, 0, len(filesByGraph))
+		for graphPath := range filesByGraph {
+			graphPaths = append(graphPaths, graphPath)
+		}
+		slices.Sort(graphPaths)
+
+		for _, graphPath := range graphPaths {
+			directCount := len(filesByGraph[graphPath])
+			response.Graphs = append(response.Graphs, graphTreeNodeResponse{
+				GraphPath:   graphPath,
+				DisplayName: graphPath,
+				DirectCount: directCount,
+				TotalCount:  directCount,
+				HasChildren: false,
+				CountLabel:  fmt.Sprintf("%d direct / %d total", directCount, directCount),
+				Files:       filesByGraph[graphPath],
+			})
+		}
 	}
 
 	writeJSON(writer, http.StatusOK, response)

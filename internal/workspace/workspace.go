@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"gopkg.in/yaml.v3"
 )
@@ -52,12 +53,42 @@ type Root struct {
 
 // GlobalLocator stores the configured global workspace root path.
 type GlobalLocator struct {
-	WorkspacePath string `yaml:"workspacePath"`
+	WorkspacePath   string   `yaml:"workspacePath"`
+	LocalWorkspaces []string `yaml:"localWorkspaces,omitempty"`
 }
 
 // ResolveLocal returns the Flow paths for a local workspace rooted at workDir.
 func ResolveLocal(workDir string) (Root, error) {
 	return newRoot(LocalScope, workDir)
+}
+
+// ResolveNearestLocal returns the nearest parent directory that contains a .flow directory.
+func ResolveNearestLocal(workDir string) (Root, error) {
+	absPath, err := filepath.Abs(workDir)
+	if err != nil {
+		return Root{}, fmt.Errorf("resolve workspace path: %w", err)
+	}
+
+	current := absPath
+	for {
+		flowPath := filepath.Join(current, DirName)
+		info, statErr := os.Stat(flowPath)
+		if statErr == nil && info.IsDir() {
+			return newRoot(LocalScope, current)
+		}
+		if statErr != nil && !os.IsNotExist(statErr) {
+			return Root{}, fmt.Errorf("check local workspace: %w", statErr)
+		}
+
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+
+		current = parent
+	}
+
+	return Root{}, fmt.Errorf("no local Flow workspace found from %s", workDir)
 }
 
 // ResolveGlobal returns the Flow paths for the configured global workspace.
@@ -116,6 +147,8 @@ func WriteGlobalLocator(path string, locator GlobalLocator) error {
 		return err
 	}
 
+	locator.LocalWorkspaces = normalizeWorkspacePaths(locator.LocalWorkspaces)
+
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create locator directory: %w", err)
 	}
@@ -146,7 +179,56 @@ func (locator GlobalLocator) Validate() error {
 		return fmt.Errorf("workspacePath must be absolute")
 	}
 
+	for _, workspacePath := range locator.LocalWorkspaces {
+		if workspacePath == "" {
+			return fmt.Errorf("localWorkspaces entries must not be empty")
+		}
+
+		if !filepath.IsAbs(workspacePath) {
+			return fmt.Errorf("localWorkspaces entries must be absolute")
+		}
+	}
+
 	return nil
+}
+
+// RegisterLocalWorkspace ensures a local workspace path is tracked in the global locator.
+func RegisterLocalWorkspace(path string, workspacePath string) error {
+	absPath, err := filepath.Abs(workspacePath)
+	if err != nil {
+		return fmt.Errorf("resolve local workspace path: %w", err)
+	}
+
+	locator, err := ReadGlobalLocator(path)
+	if err != nil {
+		return err
+	}
+
+	if absPath == locator.WorkspacePath {
+		return nil
+	}
+
+	locator.LocalWorkspaces = append(locator.LocalWorkspaces, absPath)
+	locator.LocalWorkspaces = normalizeWorkspacePaths(locator.LocalWorkspaces)
+	return WriteGlobalLocator(path, locator)
+}
+
+func normalizeWorkspacePaths(paths []string) []string {
+	set := map[string]struct{}{}
+	result := make([]string, 0, len(paths))
+	for _, pathValue := range paths {
+		trimmed := filepath.Clean(pathValue)
+		if trimmed == "." || trimmed == "" {
+			continue
+		}
+		if _, exists := set[trimmed]; exists {
+			continue
+		}
+		set[trimmed] = struct{}{}
+		result = append(result, trimmed)
+	}
+	sort.Strings(result)
+	return result
 }
 
 func newRoot(scope Scope, workspacePath string) (Root, error) {

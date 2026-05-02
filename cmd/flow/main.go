@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -34,6 +33,7 @@ import (
 var version = buildinfo.ProjectVersion()
 
 const defaultGUIPort = 4317
+const guiLogRetentionWindow = 7 * 24 * time.Hour
 
 type commandEnv struct {
 	stdout           io.Writer
@@ -149,6 +149,8 @@ func runCommand(args []string, env commandEnv) error {
 	switch args[0] {
 	case "init":
 		return runInit(global, args[1:], env)
+	case "workspace":
+		return runWorkspace(global, args[1:], env)
 	case "configure":
 		return runConfigure(global, args[1:], env)
 	case "skill":
@@ -204,6 +206,7 @@ func writeRootHelp(w io.Writer) {
 	fmt.Fprintln(w, "  run            Execute a command document")
 	fmt.Fprintln(w, "  skill          Print Flow skill content")
 	fmt.Fprintln(w, "  node           Node-oriented read/update/connect operations")
+	fmt.Fprintln(w, "  workspace      Workspace management commands")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Global option:")
 	fmt.Fprintln(w, "  -g             Use globally configured workspace")
@@ -309,6 +312,11 @@ func writeRunHelp(w io.Writer) {
 	fmt.Fprintln(w, "Usage: flow run <command-id-or-short-name>")
 }
 
+func writeWorkspaceHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow -g workspace list")
+	fmt.Fprintln(w, "List global workspace and tracked local workspaces.")
+}
+
 func withDefaultCommandEnv(env commandEnv) commandEnv {
 	if env.guiRuntime == nil {
 		env.guiRuntime = processGUIRuntime
@@ -400,13 +408,47 @@ func runInit(global bool, args []string, env commandEnv) error {
 		return nil
 	}
 
-	root, err := resolveRoot(global, env)
-	if err != nil {
-		return err
+	var root workspace.Root
+	if global {
+		resolvedRoot, err := resolveRoot(true, env)
+		if err != nil {
+			return err
+		}
+		root = resolvedRoot
+	} else {
+		locatorPath, err := globalLocatorPath(env)
+		if err != nil {
+			return err
+		}
+		if _, err := workspace.ReadGlobalLocator(locatorPath); err != nil {
+			return fmt.Errorf("global workspace is not configured; run `flow -g configure --workspace /absolute/path`")
+		}
+
+		workingDirectory, err := env.getwd()
+		if err != nil {
+			return fmt.Errorf("resolve working directory: %w", err)
+		}
+
+		resolvedRoot, err := workspace.ResolveLocal(workingDirectory)
+		if err != nil {
+			return err
+		}
+		root = resolvedRoot
 	}
 
 	if err := initializeWorkspace(root); err != nil {
 		return err
+	}
+
+	if !global {
+		locatorPath, err := globalLocatorPath(env)
+		if err != nil {
+			return err
+		}
+
+		if err := workspace.RegisterLocalWorkspace(locatorPath, root.WorkspacePath); err != nil {
+			return fmt.Errorf("register local workspace: %w", err)
+		}
 	}
 
 	label := "local"
@@ -415,6 +457,42 @@ func runInit(global bool, args []string, env commandEnv) error {
 	}
 
 	fmt.Fprintf(env.stdout, "Initialized %s workspace at %s\n", label, root.WorkspacePath)
+	return nil
+}
+
+func runWorkspace(global bool, args []string, env commandEnv) error {
+	if len(args) > 0 && isHelpOption(args[0]) {
+		writeWorkspaceHelp(env.stdout)
+		return nil
+	}
+
+	if len(args) == 0 {
+		return fmt.Errorf("flow workspace requires a subcommand; use `flow workspace --help`")
+	}
+
+	if args[0] != "list" {
+		return fmt.Errorf("unknown workspace subcommand %q; use `flow workspace --help`", args[0])
+	}
+
+	if !global {
+		return fmt.Errorf("flow workspace list requires -g")
+	}
+
+	locatorPath, err := globalLocatorPath(env)
+	if err != nil {
+		return err
+	}
+
+	locator, err := workspace.ReadGlobalLocator(locatorPath)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(env.stdout, "global %s\n", locator.WorkspacePath)
+	for _, pathValue := range locator.LocalWorkspaces {
+		fmt.Fprintf(env.stdout, "local %s\n", pathValue)
+	}
+
 	return nil
 }
 
@@ -544,7 +622,7 @@ func runGUI(global bool, args []string, env commandEnv) error {
 }
 
 func runGUIStart(global bool, env commandEnv) error {
-	root, err := resolveRoot(global, env)
+	root, err := resolveGUIRoot(global, env)
 	if err != nil {
 		return err
 	}
@@ -560,7 +638,7 @@ func runGUIStart(global bool, env commandEnv) error {
 		return err
 	}
 
-	if err := env.launchGUIProcess(global, root); err != nil {
+	if err := env.launchGUIProcess(root.Scope == workspace.GlobalScope, root); err != nil {
 		return err
 	}
 
@@ -600,10 +678,7 @@ func runGUIStart(global bool, env commandEnv) error {
 		action = "Restarted"
 	}
 
-	scopeLabel := "local"
-	if global {
-		scopeLabel = "global"
-	}
+	scopeLabel := string(root.Scope)
 
 	fmt.Fprintf(env.stdout, "%s %s GUI server for %s at %s\n", action, scopeLabel, root.WorkspacePath, url)
 	return nil
@@ -622,7 +697,7 @@ func browserLaunchURL(base string) string {
 }
 
 func runGUIServe(global bool, env commandEnv) error {
-	root, err := resolveRoot(global, env)
+	root, err := resolveGUIRoot(global, env)
 	if err != nil {
 		return err
 	}
@@ -634,9 +709,15 @@ func runGUIServe(global bool, env commandEnv) error {
 
 	stopRequested := make(chan struct{})
 	var stopOnce sync.Once
+	locatorPath, locatorErr := globalLocatorPath(env)
+	if locatorErr != nil {
+		locatorPath = ""
+	}
 
 	handler, err := httpapi.NewMux(httpapi.Options{
-		Root: root,
+		Root:              root,
+		LaunchScope:       root.Scope,
+		GlobalLocatorPath: locatorPath,
 		Stop: func() error {
 			stopOnce.Do(func() {
 				close(stopRequested)
@@ -664,7 +745,7 @@ func runGUIServe(global bool, env commandEnv) error {
 }
 
 func runGUIStop(global bool, env commandEnv) error {
-	root, err := resolveRoot(global, env)
+	root, err := resolveGUIRoot(global, env)
 	if err != nil {
 		return err
 	}
@@ -674,10 +755,7 @@ func runGUIStop(global bool, env commandEnv) error {
 		return err
 	}
 
-	scopeLabel := "local"
-	if global {
-		scopeLabel = "global"
-	}
+	scopeLabel := string(root.Scope)
 
 	fmt.Fprintf(env.stdout, "Stopped %s GUI server for %s\n", scopeLabel, root.WorkspacePath)
 	return nil
@@ -1840,7 +1918,29 @@ func resolveRoot(global bool, env commandEnv) (workspace.Root, error) {
 		return workspace.Root{}, fmt.Errorf("resolve working directory: %w", err)
 	}
 
-	return workspace.ResolveLocal(workingDirectory)
+	root, err := workspace.ResolveNearestLocal(workingDirectory)
+	if err != nil {
+		return workspace.Root{}, fmt.Errorf("no local workspace found from %s; run `flow init` or use `flow -g ...`", workingDirectory)
+	}
+
+	return root, nil
+}
+
+func resolveGUIRoot(global bool, env commandEnv) (workspace.Root, error) {
+	if global {
+		return resolveRoot(true, env)
+	}
+
+	workingDirectory, err := env.getwd()
+	if err != nil {
+		return workspace.Root{}, fmt.Errorf("resolve working directory: %w", err)
+	}
+
+	if info, statErr := os.Stat(filepath.Join(workingDirectory, workspace.DirName)); statErr == nil && info.IsDir() {
+		return workspace.ResolveLocal(workingDirectory)
+	}
+
+	return resolveRoot(true, env)
 }
 
 type createDocumentOptions struct {
@@ -2290,6 +2390,7 @@ func ensureWorkspaceGitignore(root workspace.Root) error {
 	requiredEntries := []string{
 		filepath.ToSlash(filepath.Join(workspace.ConfigDirName, workspace.IndexFileName)),
 		filepath.ToSlash(filepath.Join(workspace.ConfigDirName, execution.GUIStateFileName)),
+		"logs/",
 	}
 
 	existingContent, err := os.ReadFile(ignorePath)
@@ -2398,6 +2499,15 @@ func launchGUIProcess(global bool, root workspace.Root) error {
 	command := exec.Command(executable, args...)
 	command.Dir = root.WorkspacePath
 
+	logDir := guiLogsPath(root)
+	if err := os.MkdirAll(logDir, 0o755); err != nil {
+		return fmt.Errorf("create gui logs directory: %w", err)
+	}
+
+	if err := pruneFlowLogs(logDir, time.Now().Add(-guiLogRetentionWindow)); err != nil {
+		return fmt.Errorf("prune gui logs: %w", err)
+	}
+
 	logPath := guiStartupLogPath(root)
 	if err := os.Remove(logPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("clear gui startup log: %w", err)
@@ -2407,13 +2517,22 @@ func launchGUIProcess(global bool, root workspace.Root) error {
 	if err != nil {
 		return fmt.Errorf("create gui startup log: %w", err)
 	}
+	if _, err := fmt.Fprintf(logFile, "%s starting GUI process in %s\n", logTimestamp(), root.WorkspacePath); err != nil {
+		_ = logFile.Close()
+		return fmt.Errorf("write gui startup log: %w", err)
+	}
 
 	command.Stdout = logFile
 	command.Stderr = logFile
 
 	if err := command.Start(); err != nil {
+		_, _ = fmt.Fprintf(logFile, "%s error: failed to start gui server process: %v\n", logTimestamp(), err)
 		_ = logFile.Close()
 		return fmt.Errorf("start gui server process: %w", err)
+	}
+	if _, err := fmt.Fprintf(logFile, "%s started GUI child process pid=%d\n", logTimestamp(), command.Process.Pid); err != nil {
+		_ = logFile.Close()
+		return fmt.Errorf("write gui startup log: %w", err)
 	}
 
 	if err := logFile.Close(); err != nil {
@@ -2424,8 +2543,41 @@ func launchGUIProcess(global bool, root workspace.Root) error {
 }
 
 func guiStartupLogPath(root workspace.Root) string {
-	hash := sha256.Sum256([]byte(root.WorkspacePath))
-	return filepath.Join(os.TempDir(), fmt.Sprintf("flow-gui-startup-%x.log", hash[:6]))
+	return filepath.Join(guiLogsPath(root), fmt.Sprintf("gui-startup-%s.log", time.Now().Format("20060102")))
+}
+
+func guiLogsPath(root workspace.Root) string {
+	return filepath.Join(root.FlowPath, "logs")
+}
+
+func pruneFlowLogs(path string, cutoff time.Time) error {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+
+		return err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".log" {
+			continue
+		}
+
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+
+		if info.ModTime().Before(cutoff) {
+			if err := os.Remove(filepath.Join(path, entry.Name())); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 func readGUIStartupLog(root workspace.Root) (string, error) {
@@ -2438,10 +2590,23 @@ func readGUIStartupLog(root workspace.Root) (string, error) {
 		return "", fmt.Errorf("read gui startup log: %w", err)
 	}
 
-	message := strings.TrimSpace(string(data))
-	message = strings.TrimPrefix(message, "error:")
-	message = strings.TrimSpace(message)
-	return message, nil
+	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+
+		if index := strings.Index(line, "error:"); index >= 0 {
+			return strings.TrimSpace(line[index+len("error:"):]), nil
+		}
+	}
+
+	return "", nil
+}
+
+func logTimestamp() string {
+	return time.Now().Format(time.RFC3339)
 }
 
 func signalProcess(pid int, signal syscall.Signal) error {

@@ -27,6 +27,12 @@ import (
 
 func TestFlowInitCreatesWorkspaceFilesWithoutChangingMarkdown(t *testing.T) {
 	rootDir := t.TempDir()
+	configHome := t.TempDir()
+	globalWorkspacePath := filepath.Join(t.TempDir(), "global-workspace")
+	if _, stderr := runForTest(t, []string{"-g", "configure", "--workspace", globalWorkspacePath}, t.TempDir(), withConfigHome(configHome)); stderr != "" {
+		t.Fatalf("global configure stderr = %q, want empty", stderr)
+	}
+
 	markdownPath := filepath.Join(rootDir, ".flow", "features", "demo", "notes", "note.md")
 	gitignorePath := filepath.Join(rootDir, ".flow", ".gitignore")
 	homePath := filepath.Join(rootDir, ".flow", workspace.DataDirName, workspace.HomeFileName)
@@ -54,7 +60,7 @@ func TestFlowInitCreatesWorkspaceFilesWithoutChangingMarkdown(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	stdout, stderr := runForTest(t, []string{"init"}, rootDir)
+	stdout, stderr := runForTest(t, []string{"init"}, rootDir, withConfigHome(configHome))
 	if stderr != "" {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
@@ -90,8 +96,8 @@ func TestFlowInitCreatesWorkspaceFilesWithoutChangingMarkdown(t *testing.T) {
 		t.Fatalf("ReadFile(.gitignore) error = %v", err)
 	}
 
-	if string(gitignoreData) != "config/flow.index\nconfig/gui-server.json\n" {
-		t.Fatalf(".gitignore = %q, want config/flow.index and config/gui-server.json entries", string(gitignoreData))
+	if string(gitignoreData) != "config/flow.index\nconfig/gui-server.json\nlogs/\n" {
+		t.Fatalf(".gitignore = %q, want config/flow.index, config/gui-server.json, and logs/ entries", string(gitignoreData))
 	}
 
 	if _, err := os.Stat(filepath.Join(rootDir, ".flow", workspace.ConfigDirName)); err != nil {
@@ -124,7 +130,7 @@ func TestFlowInitCreatesWorkspaceFilesWithoutChangingMarkdown(t *testing.T) {
 		t.Fatalf("markdown changed to %q", string(markdownAfter))
 	}
 
-	if _, stderr := runForTest(t, []string{"init"}, rootDir); stderr != "" {
+	if _, stderr := runForTest(t, []string{"init"}, rootDir, withConfigHome(configHome)); stderr != "" {
 		t.Fatalf("second init stderr = %q, want empty", stderr)
 	}
 
@@ -140,6 +146,7 @@ func TestFlowInitCreatesWorkspaceFilesWithoutChangingMarkdown(t *testing.T) {
 
 func TestFlowConfigureUpdatesLocalGUIPort(t *testing.T) {
 	rootDir := t.TempDir()
+	mustInitializeLocalWorkspaceForTest(t, rootDir)
 	_, stderr := runForTest(t, []string{"configure", "--gui-port", "5521"}, rootDir)
 	if stderr != "" {
 		t.Fatalf("stderr = %q, want empty", stderr)
@@ -205,6 +212,7 @@ func TestFlowSubcommandHelpOptions(t *testing.T) {
 		{name: "node-read", args: []string{"node", "read", "--help"}, wantSnippet: "Usage: flow node read --id <node-id> [--graph <graph>] [--format <json|markdown>]"},
 		{name: "search", args: []string{"search", "--help"}, wantSnippet: "Usage: flow search [query] [--limit <n>]"},
 		{name: "run", args: []string{"run", "--help"}, wantSnippet: "Usage: flow run <command-id-or-short-name>"},
+		{name: "workspace", args: []string{"workspace", "--help"}, wantSnippet: "Usage: flow -g workspace list"},
 	}
 
 	for _, testCase := range testCases {
@@ -254,6 +262,43 @@ func TestFlowGlobalConfigureAndInit(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(workspacePath, ".flow", workspace.ConfigDirName, workspace.IndexFileName)); err != nil {
 		t.Fatalf("Stat(index) error = %v", err)
+	}
+}
+
+func TestFlowInitRequiresConfiguredGlobalWorkspace(t *testing.T) {
+	rootDir := t.TempDir()
+	configHome := t.TempDir()
+
+	stderr := runExpectErrorForTest(t, []string{"init"}, rootDir, withConfigHome(configHome))
+	if !strings.Contains(stderr, "global workspace is not configured") {
+		t.Fatalf("stderr = %q, want global-workspace-configured guidance", stderr)
+	}
+}
+
+func TestFlowGlobalWorkspaceListIncludesTrackedLocals(t *testing.T) {
+	configHome := t.TempDir()
+	globalWorkspacePath := filepath.Join(t.TempDir(), "global-workspace")
+	localWorkspacePath := filepath.Join(t.TempDir(), "local-workspace")
+
+	if _, stderr := runForTest(t, []string{"-g", "configure", "--workspace", globalWorkspacePath}, t.TempDir(), withConfigHome(configHome)); stderr != "" {
+		t.Fatalf("global configure stderr = %q, want empty", stderr)
+	}
+
+	if _, stderr := runForTest(t, []string{"init"}, localWorkspacePath, withConfigHome(configHome)); stderr != "" {
+		t.Fatalf("local init stderr = %q, want empty", stderr)
+	}
+
+	stdout, stderr := runForTest(t, []string{"-g", "workspace", "list"}, t.TempDir(), withConfigHome(configHome))
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+
+	if !strings.Contains(stdout, "global "+globalWorkspacePath) {
+		t.Fatalf("stdout = %q, want global workspace entry", stdout)
+	}
+
+	if !strings.Contains(stdout, "local "+localWorkspacePath) {
+		t.Fatalf("stdout = %q, want local workspace entry", stdout)
 	}
 }
 
@@ -342,6 +387,11 @@ func TestFlowCreateTaskWritesMarkdownAndReindexes(t *testing.T) {
 
 func TestFlowUpdateCommandWritesMarkdownAndReindexes(t *testing.T) {
 	rootDir := t.TempDir()
+	configHome := t.TempDir()
+	globalWorkspacePath := filepath.Join(t.TempDir(), "global-workspace")
+	if _, stderr := runForTest(t, []string{"-g", "configure", "--workspace", globalWorkspacePath}, t.TempDir(), withConfigHome(configHome)); stderr != "" {
+		t.Fatalf("global configure stderr = %q, want empty", stderr)
+	}
 	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "demo", "notes", "architecture.md"), markdown.NoteDocument{
 		Metadata: markdown.NoteMetadata{
 			CommonFields: markdown.CommonFields{
@@ -383,7 +433,7 @@ func TestFlowUpdateCommandWritesMarkdownAndReindexes(t *testing.T) {
 		Body: "Original body",
 	})
 
-	if _, stderr := runForTest(t, []string{"init"}, rootDir); stderr != "" {
+	if _, stderr := runForTest(t, []string{"init"}, rootDir, withConfigHome(configHome)); stderr != "" {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
 
@@ -458,6 +508,11 @@ func TestFlowUpdateCommandWritesMarkdownAndReindexes(t *testing.T) {
 
 func TestFlowDeleteNoteRemovesMarkdownAndReindexes(t *testing.T) {
 	rootDir := t.TempDir()
+	configHome := t.TempDir()
+	globalWorkspacePath := filepath.Join(t.TempDir(), "global-workspace")
+	if _, stderr := runForTest(t, []string{"-g", "configure", "--workspace", globalWorkspacePath}, t.TempDir(), withConfigHome(configHome)); stderr != "" {
+		t.Fatalf("global configure stderr = %q, want empty", stderr)
+	}
 	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "demo", "execution", "parser.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{
@@ -482,7 +537,7 @@ func TestFlowDeleteNoteRemovesMarkdownAndReindexes(t *testing.T) {
 		Body: "Note body",
 	})
 
-	if _, stderr := runForTest(t, []string{"init"}, rootDir); stderr != "" {
+	if _, stderr := runForTest(t, []string{"init"}, rootDir, withConfigHome(configHome)); stderr != "" {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
 
@@ -817,6 +872,7 @@ func TestFlowRunSurfacesCommandFailure(t *testing.T) {
 
 func TestFlowGUIStartsLocalServerAndOpensBrowser(t *testing.T) {
 	rootDir := t.TempDir()
+	mustInitializeLocalWorkspaceForTest(t, rootDir)
 	runtime := execution.NewGUIRuntime()
 	port := availablePortForTest(t)
 
@@ -938,8 +994,62 @@ func TestFlowGlobalGUIStartsServerAndOpensBrowser(t *testing.T) {
 	}
 }
 
+func TestFlowGUINonLocalCWDDefaultsToGlobalWorkspace(t *testing.T) {
+	configHome := t.TempDir()
+	workspacePath := filepath.Join(t.TempDir(), "global-workspace")
+	runtime := execution.NewGUIRuntime()
+	port := availablePortForTest(t)
+	nonWorkspaceDir := t.TempDir()
+
+	if _, stderr := runForTest(
+		t,
+		[]string{"-g", "configure", "--workspace", workspacePath, "--gui-port", strconv.Itoa(port)},
+		t.TempDir(),
+		withConfigHome(configHome),
+	); stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+
+	root, err := workspace.ResolveGlobal(workspace.DefaultGlobalLocatorPath(configHome))
+	if err != nil {
+		t.Fatalf("ResolveGlobal() error = %v", err)
+	}
+
+	stdout, stderr := runForTest(
+		t,
+		[]string{"gui"},
+		nonWorkspaceDir,
+		withConfigHome(configHome),
+		withLaunchGUIProcess(func(global bool, launchedRoot workspace.Root) error {
+			if !global {
+				t.Fatal("launchGUIProcess() global = false, want true")
+			}
+
+			if launchedRoot.WorkspacePath != root.WorkspacePath {
+				t.Fatalf("launchedRoot.WorkspacePath = %q, want %q", launchedRoot.WorkspacePath, root.WorkspacePath)
+			}
+
+			return startSimulatedGUIProcess(t, runtime, launchedRoot, port, 2255)
+		}),
+		withBrowserOpener(func(string) error { return nil }),
+		withWaitForGUI(func(url string) error { return assertGUIResponse(url) }),
+	)
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+
+	if !strings.Contains(stdout, "Started global GUI server") {
+		t.Fatalf("stdout = %q, want global GUI startup", stdout)
+	}
+
+	if err := stopSimulatedGUIProcess(runtime, root); err != nil {
+		t.Fatalf("stopSimulatedGUIProcess() error = %v", err)
+	}
+}
+
 func TestFlowGUICleansUpWhenBrowserOpenFails(t *testing.T) {
 	rootDir := t.TempDir()
+	mustInitializeLocalWorkspaceForTest(t, rootDir)
 	runtime := execution.NewGUIRuntime()
 	port := availablePortForTest(t)
 
@@ -1016,6 +1126,7 @@ func assertBrowserLaunchURL(t *testing.T, openedURL string, wantBaseURL string) 
 
 func TestFlowGUIReportsChildStartupErrorWhenStateFileIsMissing(t *testing.T) {
 	rootDir := t.TempDir()
+	mustInitializeLocalWorkspaceForTest(t, rootDir)
 	root := mustResolveLocalRootForTest(t, rootDir)
 
 	stderr := runExpectErrorForTest(
@@ -1029,6 +1140,10 @@ func TestFlowGUIReportsChildStartupErrorWhenStateFileIsMissing(t *testing.T) {
 
 			if launchedRoot.WorkspacePath != root.WorkspacePath {
 				t.Fatalf("launchedRoot.WorkspacePath = %q, want %q", launchedRoot.WorkspacePath, root.WorkspacePath)
+			}
+
+			if err := os.MkdirAll(filepath.Dir(guiStartupLogPath(launchedRoot)), 0o755); err != nil {
+				return err
 			}
 
 			return os.WriteFile(
@@ -1059,8 +1174,93 @@ func TestFlowGUIReportsChildStartupErrorWhenStateFileIsMissing(t *testing.T) {
 	}
 }
 
+func TestReadGUIStartupLogIgnoresNonErrorEntries(t *testing.T) {
+	root := mustResolveLocalRootForTest(t, t.TempDir())
+	if err := os.MkdirAll(filepath.Dir(guiStartupLogPath(root)), 0o755); err != nil {
+		t.Fatalf("MkdirAll(logs) error = %v", err)
+	}
+
+	content := "2026-05-02T18:33:00Z starting GUI process in /tmp/workspace\n2026-05-02T18:33:00Z started GUI child process pid=1234\n"
+	if err := os.WriteFile(guiStartupLogPath(root), []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile(startup log) error = %v", err)
+	}
+
+	message, err := readGUIStartupLog(root)
+	if err != nil {
+		t.Fatalf("readGUIStartupLog() error = %v", err)
+	}
+
+	if message != "" {
+		t.Fatalf("readGUIStartupLog() = %q, want empty when no error entries exist", message)
+	}
+}
+
+func TestGUIStartupLogPathUsesWorkspaceFlowLogsDirectory(t *testing.T) {
+	localRoot := mustResolveLocalRootForTest(t, t.TempDir())
+	localLogPath := guiStartupLogPath(localRoot)
+	if !strings.HasPrefix(localLogPath, filepath.Join(localRoot.FlowPath, "logs")+string(os.PathSeparator)) {
+		t.Fatalf("local log path = %q, want under %q", localLogPath, filepath.Join(localRoot.FlowPath, "logs"))
+	}
+
+	globalRootDir := t.TempDir()
+	globalRoot, err := workspace.ResolveLocal(globalRootDir)
+	if err != nil {
+		t.Fatalf("ResolveLocal(globalRootDir) error = %v", err)
+	}
+	globalRoot.Scope = workspace.GlobalScope
+
+	globalLogPath := guiStartupLogPath(globalRoot)
+	if !strings.HasPrefix(globalLogPath, filepath.Join(globalRoot.FlowPath, "logs")+string(os.PathSeparator)) {
+		t.Fatalf("global log path = %q, want under %q", globalLogPath, filepath.Join(globalRoot.FlowPath, "logs"))
+	}
+}
+
+func TestPruneFlowLogsRemovesOnlyEntriesOlderThanCutoff(t *testing.T) {
+	logsDir := filepath.Join(t.TempDir(), "logs")
+	if err := os.MkdirAll(logsDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(logs) error = %v", err)
+	}
+
+	oldLogPath := filepath.Join(logsDir, "old.log")
+	newLogPath := filepath.Join(logsDir, "new.log")
+	otherPath := filepath.Join(logsDir, "notes.txt")
+
+	if err := os.WriteFile(oldLogPath, []byte("old"), 0o644); err != nil {
+		t.Fatalf("WriteFile(old.log) error = %v", err)
+	}
+	if err := os.WriteFile(newLogPath, []byte("new"), 0o644); err != nil {
+		t.Fatalf("WriteFile(new.log) error = %v", err)
+	}
+	if err := os.WriteFile(otherPath, []byte("keep"), 0o644); err != nil {
+		t.Fatalf("WriteFile(notes.txt) error = %v", err)
+	}
+
+	now := time.Now()
+	if err := os.Chtimes(oldLogPath, now.Add(-8*24*time.Hour), now.Add(-8*24*time.Hour)); err != nil {
+		t.Fatalf("Chtimes(old.log) error = %v", err)
+	}
+	if err := os.Chtimes(newLogPath, now.Add(-24*time.Hour), now.Add(-24*time.Hour)); err != nil {
+		t.Fatalf("Chtimes(new.log) error = %v", err)
+	}
+
+	if err := pruneFlowLogs(logsDir, now.Add(-7*24*time.Hour)); err != nil {
+		t.Fatalf("pruneFlowLogs() error = %v", err)
+	}
+
+	if _, err := os.Stat(oldLogPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Stat(old.log) error = %v, want not exists", err)
+	}
+	if _, err := os.Stat(newLogPath); err != nil {
+		t.Fatalf("Stat(new.log) error = %v", err)
+	}
+	if _, err := os.Stat(otherPath); err != nil {
+		t.Fatalf("Stat(notes.txt) error = %v", err)
+	}
+}
+
 func TestFlowGUIStopStopsLocalServer(t *testing.T) {
 	rootDir := t.TempDir()
+	mustInitializeLocalWorkspaceForTest(t, rootDir)
 	runtime := execution.NewGUIRuntime()
 	port := availablePortForTest(t)
 	root := mustResolveLocalRootForTest(t, rootDir)
@@ -1378,6 +1578,7 @@ func TestFlowNodeListReturnsJSONFormat(t *testing.T) {
 
 func TestFlowNodeListEmptyGraphReturnsNoNodesMessage(t *testing.T) {
 	rootDir := t.TempDir()
+	mustInitializeLocalWorkspaceForTest(t, rootDir)
 
 	stdout, stderr := runForTest(t, []string{"node", "list", "--graph", "empty"}, rootDir)
 	if stderr != "" {
@@ -1849,6 +2050,17 @@ func mustResolveLocalRootForTest(t *testing.T, rootDir string) workspace.Root {
 	root, err := workspace.ResolveLocal(rootDir)
 	if err != nil {
 		t.Fatalf("ResolveLocal() error = %v", err)
+	}
+
+	return root
+}
+
+func mustInitializeLocalWorkspaceForTest(t *testing.T, rootDir string) workspace.Root {
+	t.Helper()
+
+	root := mustResolveLocalRootForTest(t, rootDir)
+	if err := initializeWorkspace(root); err != nil {
+		t.Fatalf("initializeWorkspace() error = %v", err)
 	}
 
 	return root

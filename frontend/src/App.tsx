@@ -46,7 +46,7 @@ import { Separator } from "./components/ui/separator";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger } from "./components/ui/sidebar";
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./components/ui/tooltip";
-import { requestJSON, loadCalendarDocuments, loadWorkspaceSnapshot } from "./lib/api";
+import { requestJSON, loadCalendarDocuments, loadWorkspaceSnapshot, selectWorkspace } from "./lib/api";
 import {
   createDocumentFormState,
   createGraphDocumentPayload,
@@ -333,6 +333,7 @@ function FlowApp() {
   const [panelError, setPanelError] = useState<string>("");
   const [stoppingGUI, setStoppingGUI] = useState<boolean>(false);
   const [rebuildingIndex, setRebuildingIndex] = useState<boolean>(false);
+  const [switchingWorkspace, setSwitchingWorkspace] = useState<boolean>(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState<boolean>(false);
   const [settingsTab, setSettingsTab] = useState<"general" | "theme" | "stop">("general");
   const [formState, setFormState] = useState<DocumentFormState>(emptyDocumentFormState);
@@ -2207,6 +2208,32 @@ function FlowApp() {
     }
   }
 
+  async function handleWorkspaceSelection(nextWorkspacePath: string): Promise<void> {
+    const currentWorkspacePath = workspace?.workspacePath ?? "";
+    const normalizedNextPath = nextWorkspacePath.trim();
+    if (normalizedNextPath === "" || normalizedNextPath === currentWorkspacePath) {
+      return;
+    }
+
+    try {
+      setMutationError("");
+      setSwitchingWorkspace(true);
+      await selectWorkspace(normalizedNextPath);
+      const snapshot = await loadWorkspaceSnapshot();
+      setWorkspace(snapshot.workspaceData);
+      setGraphTree(snapshot.graphTreeData);
+      setSelectedDocumentId("");
+      setActiveSurface({ kind: "home" });
+      setGraphCanvasData(null);
+      setGraphCanvasReloadToken((current) => current + 1);
+      void refreshCalendarDocumentList();
+    } catch (err) {
+      setMutationError(toErrorMessage(err));
+    } finally {
+      setSwitchingWorkspace(false);
+    }
+  }
+
   function beginDocumentTOCResize(event: React.MouseEvent<HTMLDivElement>, layout: HTMLDivElement | null): void {
     if (!isPrimaryMouseButton(event.button) || layout === null) {
       return;
@@ -3308,6 +3335,26 @@ function FlowApp() {
       {error !== "" ? <p className="status-line status-line-error">{error}</p> : null}
       <AppSidebar
         onResizeMouseDown={handleLeftSidebarMouseDown}
+        topContent={workspace?.workspaceSelectionEnabled ? (
+          <div className="flex flex-col gap-2 px-2 pb-2">
+            <Label htmlFor="sidebar-workspace-select">Workspace</Label>
+            <select
+              id="sidebar-workspace-select"
+              className="h-9 rounded-md border bg-background px-3 text-sm"
+              value={workspace.workspacePath}
+              onChange={(event) => {
+                void handleWorkspaceSelection(event.target.value);
+              }}
+              disabled={switchingWorkspace}
+            >
+              {(workspace.workspaces ?? [{ scope: workspace.scope, workspacePath: workspace.workspacePath }]).map((item) => (
+                <option key={`${item.scope}:${item.workspacePath}`} value={item.workspacePath}>
+                  {item.scope === "global" ? `* ${item.workspacePath}` : item.workspacePath}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         navigationContent={(
           <GraphTree
             graphTree={graphTree}

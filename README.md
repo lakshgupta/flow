@@ -2,24 +2,164 @@
 
 Capture. Connect. Complete.
 
-Flow is a local planning tool for software projects.
+Flow is a local Markdown-first workspace for notes, tasks, and execution commands.
 
-It helps you capture notes, tasks, and commands in one workspace, browse them as a graph in the browser, and keep everything in plain Markdown files on disk.
+You can use Flow as:
 
-## What Flow Does
+- a personal or team note-taking application for engineering context,
+- a project planning board backed by plain files,
+- a command runner linked to your work graph,
+- a browser UI over local Markdown documents.
 
-- keeps your project planning data in local Markdown files,
-- gives you a browser GUI for exploring graphs and editing documents,
-- gives you CLI commands for creating, updating, searching, and running work,
-- rebuilds its search and graph index from disk instead of treating the database as the source of truth.
+Flow keeps your records in `.flow/data/content` and rebuilds search/graph indexes from disk.
+
+## Why Flow
+
+Most planning tools split your work across docs, issue trackers, and scripts.
+Flow keeps these in one local system:
+
+- notes for context and decisions,
+- tasks for execution state,
+- commands for repeatable operations,
+- links between nodes for traceability.
+
+Everything stays in your repository as Markdown.
+
+## 60-Second Start
+
+```bash
+# 1) In your project root
+flow init
+
+# 2) Add one note and one task
+flow create note --file overview --graph design/20260502-001-FEAT-example --title "Feature overview"
+flow create task --file implement --graph development/20260502-001-FEAT-example --title "Implement feature" --status todo
+
+# 3) Open the GUI
+flow gui
+```
+
+## Core Concepts
+
+- Graph: A directory path under `.flow/data/content`.
+  Example: `development/20260502-001-FEAT-example`
+- Node: A Markdown document (`note`, `task`, or `command`).
+- ID: Derived as `<graph>/<file>` (without `.md`).
+- Edge: A link between two nodes (`flow node connect ...`).
+
+Recommended convention:
+
+- Keep design notes in `design/YYYYMMDD-NNN-<type>-<title>`.
+- Keep plan/implementation tasks in `development/YYYYMMDD-NNN-<type>-<title>`.
+
+## Use Flow As A Notes App
+
+For note-taking only, you can ignore tasks and commands and just capture structured notes.
+
+```bash
+flow create note --file api-notes --graph design/20260502-001-NOTE-api --title "API notes"
+flow create note --file decisions --graph design/20260502-001-NOTE-api --title "Decisions"
+flow node connect --from design/20260502-001-NOTE-api/api-notes --to design/20260502-001-NOTE-api/decisions --graph design/20260502-001-NOTE-api --relationship related
+```
+
+This gives you linked notes that are easy to browse in the GUI or query from CLI.
+
+## Use Flow In A Git Project
+
+Use Flow inside the same repository as your code.
+
+```bash
+cd /path/to/your-repo
+flow init
+git add .flow/data/content .flow/home.md .flow/.gitignore
+git commit -m "Initialize Flow workspace"
+```
+
+Commit these:
+
+- `.flow/data/content/**`
+- `.flow/home.md`
+- `.flow/.gitignore`
+
+Do not commit these generated files:
+
+- `.flow/config/flow.index`
+- `.flow/config/gui-server.json`
+
+Typical workflow:
+
+1. Create/update notes and tasks for the feature.
+2. Implement code and update task status (`todo` -> `doing` -> `done`).
+3. Record validation outcomes in notes.
+4. Commit code plus Flow updates together for traceable history.
+
+## Use flow skill In Project Work
+
+`flow skill content` prints the Flow execution protocol used by agents and maintainers.
+
+```bash
+flow skill content
+```
+
+Recommended pattern:
+
+1. Run `flow skill content` when starting a new feature branch.
+2. Follow the protocol for design/planning/implementation/test/review/commit stages.
+3. When tasks are implemented and committed, record commit IDs on those task nodes.
+
+## GUI
+
+Start GUI:
+
+```bash
+flow gui
+```
+
+Stop GUI:
+
+```bash
+flow gui stop
+```
+
+In the GUI you can:
+
+- browse graph trees,
+- open and edit node content,
+- inspect links and neighbors,
+- arrange graph visuals.
+
+## CLI Quick Reference
+
+```bash
+flow --help
+flow version
+flow init
+flow configure --gui-port 4317
+flow search parser
+flow node list --feature development --status todo --compact
+flow node read --id development/20260502-001-FEAT-example/implement
+flow run build
+```
+
+All commands and subcommands support help:
+
+```bash
+flow <command> --help
+flow node --help
+flow node read --help
+```
 
 ## Install
 
-### From GitHub Releases
+### From Release Assets
 
-Flow ships release artifacts for `linux/amd64`, `darwin/amd64`, and `darwin/arm64`.
+Flow provides release assets for:
 
-Download the `install.sh` asset from the release page and run it:
+- `linux/amd64`
+- `darwin/amd64`
+- `darwin/arm64`
+
+Install from downloaded asset:
 
 ```bash
 bash ./install.sh
@@ -27,31 +167,13 @@ bash ./install.sh 0.1.0
 bash ./install.sh v0.1.0
 ```
 
-By default the installer puts `flow` in `$HOME/.local/bin`.
-
-You can override the install location with:
-
-```bash
-FLOW_INSTALL_DIR="$HOME/bin" bash ./install.sh v0.1.0
-```
-
-If you are running the installer from a repository checkout instead of a downloaded release asset, use:
+If running installer from a repository checkout:
 
 ```bash
 bash ./scripts/install.sh v0.1.0
 ```
 
-### From A Local Release Build
-
-If you built the release artifact locally, install it with:
-
-```bash
-bash ./scripts/install-local-release.sh
-```
-
-### From Source
-
-If you want to build Flow directly from this repository:
+### From Local Source
 
 ```bash
 cd frontend
@@ -62,189 +184,8 @@ cd ..
 go build ./cmd/flow
 ```
 
-## Quick Start
-
-Initialize a workspace:
-
-```bash
-flow init
-```
-
-Create a few documents:
-
-```bash
-flow create note --file architecture --graph design/system --title "Architecture"
-flow create task --file parser --graph development/parser --title "Build parser"
-flow create command --file build --graph development/release --title "Build binary" --name build --run "go build ./cmd/flow"
-```
-
-### What the flags mean
-
-| Flag | What it does | Example value | Result |
-|------|-------------|---------------|--------|
-| `--graph` | The graph path where the document lives. Slashes create a sub-directory hierarchy. | `development/parser` | Stored under `.flow/data/content/development/parser/` |
-| `--file` | The filename on disk, without the `.md` extension. | `parser` | Creates `parser.md` in the graph directory |
-| `--title` | Human-readable display name shown in the GUI and search results. | `"Build parser"` | Stored as `title: Build parser` in frontmatter |
-
-ID is auto-derived by Flow for `flow create` as `<graph>/<file>` (without `.md`).
-
-- `--graph development/parser --file tokenize` creates `id: development/parser/tokenize`
-- `--graph development/release --file build` creates `id: development/release/build`
-
-Record-keeping convention:
-
-- The parent graph directory is `.flow/data/content`.
-- Use only two top-level graphs under it: `design/` and `development/`.
-- Sub-graph naming is mandatory: `YYYYMMDD-NNN-<type>-<title>`.
-- Store all design records under `design/YYYYMMDD-NNN-<type>-<title>`.
-- Store all planning/implementation records under `development/YYYYMMDD-NNN-<type>-<title>`.
-- `NNN` is the zero-padded incremental count of directories created on `YYYYMMDD`.
-
-**Concrete example — a feature with two tasks and a design note:**
-
-```bash
-# Create design and development sub-graphs for the same work key
-flow create note --file design \
-	--graph design/20260501-001-FEAT-parser --title "Parser design notes"
-
-flow create task --file tokenize \
-	--graph development/20260501-001-FEAT-parser --title "Implement tokenizer" --status todo
-
-flow create task --file integrate \
-	--graph development/20260501-001-FEAT-parser --title "Integrate parser into CLI" --status todo
-
-# Link the design note to the first task
-flow node connect --from design/20260501-001-FEAT-parser/design --to development/20260501-001-FEAT-parser/tokenize \
-	--graph development/20260501-001-FEAT-parser --relationship records
-
-# Mark the second task as depending on the first
-flow node connect --from development/20260501-001-FEAT-parser/tokenize --to development/20260501-001-FEAT-parser/integrate \
-	--graph development/20260501-001-FEAT-parser --relationship depends-on
-```
-
-This creates on disk:
-
-```text
-.flow/data/content/design/20260501-001-FEAT-parser/
-	design.md       ← id: design/20260501-001-FEAT-parser/design
-
-.flow/data/content/development/20260501-001-FEAT-parser/
-	tokenize.md     ← id: development/20260501-001-FEAT-parser/tokenize
-	integrate.md    ← id: development/20260501-001-FEAT-parser/integrate
-```
-
-Then open the GUI or keep working in the CLI.
-
-## Use The GUI
-
-Start the browser workspace with:
-
-```bash
-flow gui
-```
-
-In the GUI you can:
-
-- browse the graph tree from the left rail,
-- open Home or a graph in the center panel,
-- select a node to inspect and edit it,
-- drag graph nodes to arrange the canvas,
-- edit document content in the browser.
-
-Stop the GUI server with:
-
-```bash
-flow gui stop
-```
-
-## Use The CLI
-
-Common commands:
-
-```bash
-flow version
-flow init
-flow configure --gui-port 4317
-flow search parser
-flow search --tag planning --type task --compact
-flow skill content --graph development
-flow node read --id development/parser/parser
-flow node content --id development/parser/parser --line-start 20 --line-end 40
-flow node list --feature development --status todo --compact
-flow run build
-```
-
-Current command surface (implemented in the Go CLI):
-
-- `flow init`
-	- Initializes local workspace files and folders.
-- `flow configure --gui-port <port>`
-	- Sets the local GUI port.
-- `flow -g configure --workspace <absolute-path> [--gui-port <port>]`
-	- Configures global workspace location and optionally GUI port.
-- `flow gui`
-	- Starts the GUI server and opens the browser.
-- `flow gui stop`
-	- Stops a running GUI server.
-- `flow create <note|task|command> ...`
-	- Creates documents (requires `--file --graph`; command also requires `--name --run`). IDs are auto-derived as `<graph>/<file>`.
-- `flow update --path <relative-path> ...`
-	- Updates document fields by path.
-- `flow delete --path <relative-path>`
-	- Deletes a document by path.
-- `flow skill content [--graph <graph>]`
-	- Prints a Skill.md template for Flow-centric delivery using `design/YYYYMMDD-NNN-<type>-<title>` and `development/YYYYMMDD-NNN-<type>-<title>` record keeping conventions.
-- `flow search [--limit <n>] [--graph <graph>] [--feature <feature>] [--type <note|task|command>] [--tag <tag>] [--title <text>] [--description <text>] [--content <text>] [--compact] [query]`
-	- Indexed search with field filters and optional compact ID-only output.
-- `flow run <command-id-or-short-name>`
-	- Executes a command document.
-- `flow node read --id <node-id> [--graph <graph>] [--format json|markdown]`
-	- Reads one node view (includes body and linked edge info).
-- `flow node content --id <node-id> [--graph <graph>] [--line-start <n>] [--line-end <n>] [--format text|json]`
-	- Reads full body content or a specific line range.
-- `flow node list [--graph <graph>] [--feature <feature>] [--tag <tag>]... [--status <todo|doing|done>] [--limit <n>] [--compact] [--format json|markdown]`
-	- Lists nodes using graph/feature/tag/status filters; requires `--graph` or at least one filter.
-- `flow node edges --id <node-id> [--graph <graph>] [--format json|markdown]`
-	- Lists edges touching a node.
-- `flow node neighbors --id <node-id> [--graph <graph>] [--format json|markdown]`
-	- Lists neighbor nodes around a node.
-- `flow node update --id <node-id> ...`
-	- Updates one node by ID (supports `--title --description --body --status --tag --reference --name --env --run`).
-- `flow node connect --from <node-id> --to <node-id> --graph <graph> [--context <text>] [--relationship <tag>]...`
-	- Creates a directed node link with optional context and relationship tags.
-- `flow node disconnect --from <node-id> --to <node-id> --graph <graph>`
-	- Removes a directed node link.
-
-Global mode is supported by prefixing commands with `-g`, for example `flow -g init` and `flow -g gui`.
-
-### Agent-Oriented CLI Workflows
-
-Flow now includes agent-friendly retrieval and filtering primitives designed for low-token usage.
-
-Recommended patterns:
-
-1. Pull only the lines needed for editing context.
-	- `flow node content --id development/parser/tokenize --line-start 80 --line-end 120`
-
-2. Use compact output for planning loops and ID collection.
-	- `flow node list --feature development --status todo --compact`
-	- `flow search --tag planning --type task --compact`
-
-3. Narrow search by semantic field before opening full node views.
-	- `flow search --title parser --graph development/parser`
-	- `flow search --description migration --feature development`
-	- `flow search --content "retry budget" --type note`
-
-4. Read structured JSON only when a downstream tool needs machine-readable metadata.
-	- `flow node content --id development/parser/tokenize --line-start 1 --line-end 20 --format json`
-	- `flow node list --feature development --tag backend --format json`
-
-These commands align with the current architecture: workspace Markdown is the source of truth, and the derived index is used for fast query and graph traversal.
-
 ## Learn More
 
-- [docs/architecture.md](docs/architecture.md) for system architecture
-- [docs/reference.md](docs/reference.md) for workspace layout, frontmatter, GUI details, and local development notes
-- [docs/release.md](docs/release.md) for the maintainer release procedure and exact release commands
-
-
+- [docs/architecture.md](docs/architecture.md)
+- [docs/reference.md](docs/reference.md)
+- [docs/release.md](docs/release.md)

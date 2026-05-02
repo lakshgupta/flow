@@ -1,14 +1,16 @@
 import { GalleryVerticalEnd } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { Sidebar, SidebarContent, SidebarGroup, SidebarHeader, useSidebar } from "./ui/sidebar";
+import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHeader, useSidebar } from "./ui/sidebar";
 
 type AppSidebarProps = {
+  topContent?: ReactNode;
   navigationContent: ReactNode;
   onResizeMouseDown?: (e: React.MouseEvent<HTMLDivElement>) => void;
 };
 
 export function AppSidebar({
+  topContent,
   navigationContent,
   onResizeMouseDown,
 }: AppSidebarProps) {
@@ -25,7 +27,6 @@ export function AppSidebar({
             {open ? (
               <div className="shell-sidebar-brand-copy">
                 <h2 className="shell-sidebar-brand">Flow</h2>
-                <span className="shell-sidebar-brand-meta">Local graph workspace</span>
               </div>
             ) : (
               <span className="sr-only">Flow</span>
@@ -34,6 +35,11 @@ export function AppSidebar({
         </div>
       </SidebarHeader>
       <SidebarContent className="shell-rail-tabs-content">
+        {topContent ? (
+          <SidebarGroup>
+            <SidebarGroupContent>{topContent}</SidebarGroupContent>
+          </SidebarGroup>
+        ) : null}
         <SidebarGroup>
           {navigationContent}
         </SidebarGroup>
