@@ -1,6 +1,6 @@
 import type { CSSProperties, KeyboardEvent } from "react";
 import { useEffect, useState } from "react";
-import { File as FileIcon, FileImage } from "lucide-react";
+import { File as FileIcon, Download, ExternalLink } from "lucide-react";
 
 import { graphDirectoryColorHex } from "../lib/graphColors";
 import { graphCanvasTypeClassName, graphCanvasTypeLabel } from "../lib/graphCanvasUtils";
@@ -119,7 +119,7 @@ export function GraphCanvasOverlayNodes({
                     </div>
                     <strong className="graph-canvas-node-title">{node.data.title}</strong>
                     {node.data.previewKind === "image" && node.data.previewURL ? (
-                      <div className="graph-canvas-node-preview graph-canvas-node-preview-image">
+                      <div className="graph-canvas-node-preview graph-canvas-node-preview-image graph-canvas-node-preview-resizable">
                         <img src={node.data.previewURL} alt={node.data.previewName ?? node.data.title} loading="lazy" />
                       </div>
                     ) : null}
@@ -156,18 +156,31 @@ export function GraphCanvasOverlayNodes({
                       onDoubleClick={(event) => event.stopPropagation()}
                       aria-label={`Description for ${node.data.title}`}
                     />
-                    {node.data.previewKind === "image" && node.data.previewURL ? (
-                      <button
-                        type="button"
-                        className="graph-canvas-node-preview-open"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          window.open(node.data.previewURL, "_blank", "noopener,noreferrer");
-                        }}
-                        aria-label={`Open image ${node.data.previewName ?? node.data.title}`}
-                      >
-                        <FileImage size={12} /> Open asset
-                      </button>
+                    {(node.data.previewKind === "image" || node.data.previewKind === "pdf" || node.data.previewKind === "file") && node.data.previewURL ? (
+                      <div className="graph-canvas-node-preview-actions" onClick={(e) => e.stopPropagation()}>
+                        {node.data.previewKind === "pdf" && (
+                          <button
+                            type="button"
+                            className="graph-canvas-node-preview-open"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              window.open(node.data.previewURL, "_blank", "noopener,noreferrer");
+                            }}
+                            aria-label={`Open PDF ${node.data.previewName ?? node.data.title}`}
+                          >
+                            <ExternalLink size={12} /> Open PDF
+                          </button>
+                        )}
+                        <a
+                          className="graph-canvas-node-preview-open"
+                          href={node.data.previewURL}
+                          download={node.data.previewName ?? true}
+                          onClick={(event) => event.stopPropagation()}
+                          aria-label={`Download ${node.data.previewName ?? node.data.title}`}
+                        >
+                          <Download size={12} /> Download
+                        </a>
+                      </div>
                     ) : null}
                   </>
                 )}

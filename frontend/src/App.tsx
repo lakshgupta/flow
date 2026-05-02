@@ -3922,6 +3922,14 @@ function FlowApp() {
                     className="sidebar-document-layout"
                     aria-label="Graph node document"
                     style={{ "--document-toc-ratio": documentTOCRatio.toString() } as React.CSSProperties}
+                    onDragEnter={(event) => { event.preventDefault(); }}
+                    onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      const files = event.dataTransfer.files;
+                      if (!files || files.length === 0 || !selectedDocument) return;
+                      void handleGraphCanvasFilesDrop(files);
+                    }}
                   >
                     <div className="home-document">
                       <div className="home-document-header">
