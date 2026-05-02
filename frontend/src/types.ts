@@ -182,6 +182,9 @@ export type GraphCanvasNodePayload = {
   title: string;
   description: string;
   path: string;
+  previewKind?: "image" | "pdf" | "file";
+  previewURL?: string;
+  previewName?: string;
   featureSlug: string;
   tags?: string[];
   createdAt?: string;
@@ -253,6 +256,16 @@ export type CreateDocumentPayload = {
 
 export type GraphCreateType = "note" | "task" | "command";
 
+export type GraphFileUploadFailure = {
+  file: string;
+  error: string;
+};
+
+export type GraphFileUploadResponse = {
+  created: DocumentResponse[];
+  failed?: GraphFileUploadFailure[];
+};
+
 export type GraphCanvasFlowNodeData = {
   label: ReactNode;
   id: string;
@@ -262,6 +275,9 @@ export type GraphCanvasFlowNodeData = {
   description: string;
   graph: string;
   graphColor?: string;
+  previewKind?: "image" | "pdf" | "file";
+  previewURL?: string;
+  previewName?: string;
   featureSlug: string;
   fileName: string;
   positionPersisted: boolean;

@@ -2,6 +2,9 @@ package graph
 
 import (
 	"fmt"
+	"net/url"
+	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -48,12 +51,18 @@ type GraphCanvasNode struct {
 	Tags              []string            `json:"tags,omitempty"`
 	CreatedAt         string              `json:"createdAt,omitempty"`
 	UpdatedAt         string              `json:"updatedAt,omitempty"`
+	PreviewKind       string              `json:"previewKind,omitempty"`
+	PreviewURL        string              `json:"previewURL,omitempty"`
+	PreviewName       string              `json:"previewName,omitempty"`
 	Position          GraphCanvasPosition `json:"position"`
 	PositionPersisted bool                `json:"positionPersisted"`
 	links             []markdown.NodeLink
 	references        []graphCanvasReference
 	orderIndex        int
 }
+
+var markdownImageTargetPattern = regexp.MustCompile(`!\[[^\]]*\]\(([^)]+)\)`)
+var markdownLinkTargetPattern = regexp.MustCompile(`\[[^\]]+\]\(([^)]+)\)`)
 
 type graphCanvasReference struct {
 	TargetID string
@@ -247,6 +256,7 @@ func buildGraphCanvasNode(item markdown.WorkspaceDocument) (GraphCanvasNode, str
 
 	switch document := item.Document.(type) {
 	case markdown.NoteDocument:
+		previewKind, previewURL, previewName := extractCanvasPreview(document.Body)
 		return GraphCanvasNode{
 			ID:          document.Metadata.ID,
 			Type:        string(document.Metadata.Type),
@@ -258,6 +268,9 @@ func buildGraphCanvasNode(item markdown.WorkspaceDocument) (GraphCanvasNode, str
 			Tags:        cloneStrings(document.Metadata.Tags),
 			CreatedAt:   document.Metadata.CreatedAt,
 			UpdatedAt:   document.Metadata.UpdatedAt,
+			PreviewKind: previewKind,
+			PreviewURL:  previewURL,
+			PreviewName: previewName,
 			links:       cloneNodeLinks(document.Metadata.Links),
 		}, graphPath, true, nil
 	case markdown.TaskDocument:
@@ -290,6 +303,73 @@ func buildGraphCanvasNode(item markdown.WorkspaceDocument) (GraphCanvasNode, str
 		}, graphPath, true, nil
 	default:
 		return GraphCanvasNode{}, "", false, nil
+	}
+}
+
+func extractCanvasPreview(body string) (string, string, string) {
+	for _, match := range markdownImageTargetPattern.FindAllStringSubmatch(body, -1) {
+		target := strings.TrimSpace(match[1])
+		assetPath := canvasAssetPathFromTarget(target)
+		if assetPath == "" {
+			continue
+		}
+
+		name := filepath.Base(assetPath)
+		if isImageFileExtension(filepath.Ext(name)) {
+			return "image", target, name
+		}
+	}
+
+	for _, match := range markdownLinkTargetPattern.FindAllStringSubmatch(body, -1) {
+		target := strings.TrimSpace(match[1])
+		assetPath := canvasAssetPathFromTarget(target)
+		if assetPath == "" {
+			continue
+		}
+
+		name := filepath.Base(assetPath)
+		extension := strings.ToLower(filepath.Ext(name))
+		if isImageFileExtension(extension) {
+			return "image", target, name
+		}
+		if extension == ".pdf" {
+			return "pdf", target, name
+		}
+		return "file", target, name
+	}
+
+	return "", "", ""
+}
+
+func canvasAssetPathFromTarget(target string) string {
+	if !strings.HasPrefix(target, "/api/files?") {
+		return ""
+	}
+
+	parsed, err := url.Parse(target)
+	if err != nil {
+		return ""
+	}
+
+	pathValue := strings.TrimSpace(parsed.Query().Get("path"))
+	if pathValue == "" {
+		return ""
+	}
+
+	decoded, err := url.QueryUnescape(pathValue)
+	if err != nil {
+		return ""
+	}
+
+	return decoded
+}
+
+func isImageFileExtension(ext string) bool {
+	switch strings.ToLower(ext) {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp":
+		return true
+	default:
+		return false
 	}
 }
 

@@ -46,7 +46,7 @@ import { Separator } from "./components/ui/separator";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger } from "./components/ui/sidebar";
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./components/ui/tooltip";
-import { requestJSON, loadCalendarDocuments, loadWorkspaceSnapshot, selectWorkspace } from "./lib/api";
+import { requestJSON, loadCalendarDocuments, loadWorkspaceSnapshot, selectWorkspace, uploadGraphFiles } from "./lib/api";
 import {
   createDocumentFormState,
   createGraphDocumentPayload,
@@ -305,6 +305,7 @@ function FlowApp() {
   const [selectedCanvasNodeId, setSelectedCanvasNodeId] = useState<string>("");
   const [graphCreatePendingType, setGraphCreatePendingType] = useState<GraphCreateType | "">("");
   const [graphCreateError, setGraphCreateError] = useState<string>("");
+  const [graphCanvasDragActive, setGraphCanvasDragActive] = useState<boolean>(false);
   const [activeSurface, setActiveSurface] = useState<SurfaceState>({ kind: "home" });
   const [selectedDocumentId, setSelectedDocumentId] = useState<string>("");
   const [selectedDocumentOpenMode, setSelectedDocumentOpenMode] = useState<DocumentOpenMode>("right-rail");
@@ -2321,6 +2322,38 @@ function FlowApp() {
     setCreateNodeFileNameError("");
   }
 
+  async function handleGraphCanvasFilesDrop(files: FileList | File[]): Promise<void> {
+    if (selectedGraphPath === "") {
+      return;
+    }
+
+    try {
+      clearMutationFeedback();
+      const result = await uploadGraphFiles(selectedGraphPath, files);
+      if (result.created.length > 0) {
+        const firstCreated = result.created[0];
+        setSelectedDocumentOpenMode("right-rail");
+        setRightPanelTab("document");
+        setRightRailCollapsed(false);
+        await refreshShellViews({ nextDocument: firstCreated, nextDocumentId: firstCreated.id });
+        setSelectedCanvasNodeId(firstCreated.id);
+
+        const failureCount = result.failed?.length ?? 0;
+        if (failureCount > 0) {
+          setMutationSuccess(`Imported ${result.created.length} files with ${failureCount} skipped.`);
+        } else {
+          setMutationSuccess(`Imported ${result.created.length} files into ${selectedGraphPath}.`);
+        }
+      }
+
+      if ((result.failed?.length ?? 0) > 0 && result.created.length === 0) {
+        setMutationError(result.failed?.[0]?.error ?? "File import failed.");
+      }
+    } catch (dropError) {
+      setMutationError(toErrorMessage(dropError));
+    }
+  }
+
   async function handleSidebarCreateGraph(name: string): Promise<void> {
     try {
       await requestJSON<{ name: string }>("/api/graphs", {
@@ -3544,7 +3577,42 @@ function FlowApp() {
                         <p>Loading graph canvas nodes and projected edges.</p>
                       </div>
                     ) : graphCanvasData !== null && graphCanvasData.nodes.length === 0 ? (
-                      <section className="graph-empty-state shell-inner-card">
+                      <section
+                        className={`graph-empty-state shell-inner-card${graphCanvasDragActive ? " graph-canvas-shell-dragover" : ""}`}
+                        onDragEnter={(event) => {
+                          event.preventDefault();
+                          if (selectedGraphPath !== "") {
+                            setGraphCanvasDragActive(true);
+                          }
+                        }}
+                        onDragOver={(event) => {
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = "copy";
+                          if (selectedGraphPath !== "") {
+                            setGraphCanvasDragActive(true);
+                          }
+                        }}
+                        onDragLeave={(event) => {
+                          event.preventDefault();
+                          const related = event.relatedTarget;
+                          if (related instanceof HTMLElement && event.currentTarget.contains(related)) {
+                            return;
+                          }
+                          setGraphCanvasDragActive(false);
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          setGraphCanvasDragActive(false);
+                          if (selectedGraphPath === "") {
+                            return;
+                          }
+                          const files = event.dataTransfer.files;
+                          if (!files || files.length === 0) {
+                            return;
+                          }
+                          void handleGraphCanvasFilesDrop(files);
+                        }}
+                      >
                         <div className="graph-empty-state-copy">
                           <p className="section-kicker">Empty Graph</p>
                           <h3>Start this canvas with the first document.</h3>
@@ -3598,7 +3666,40 @@ function FlowApp() {
                     ) : (
                       <div
                         ref={graphCanvasShellRef}
-                        className={`graph-canvas-shell${connectingFrom !== null ? " canvas-connecting-mode" : ""}`}
+                        className={`graph-canvas-shell${connectingFrom !== null ? " canvas-connecting-mode" : ""}${graphCanvasDragActive ? " graph-canvas-shell-dragover" : ""}`}
+                        onDragEnter={(event) => {
+                          event.preventDefault();
+                          if (selectedGraphPath !== "") {
+                            setGraphCanvasDragActive(true);
+                          }
+                        }}
+                        onDragOver={(event) => {
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = "copy";
+                          if (selectedGraphPath !== "") {
+                            setGraphCanvasDragActive(true);
+                          }
+                        }}
+                        onDragLeave={(event) => {
+                          event.preventDefault();
+                          const related = event.relatedTarget;
+                          if (related instanceof HTMLElement && event.currentTarget.contains(related)) {
+                            return;
+                          }
+                          setGraphCanvasDragActive(false);
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          setGraphCanvasDragActive(false);
+                          if (selectedGraphPath === "") {
+                            return;
+                          }
+                          const files = event.dataTransfer.files;
+                          if (!files || files.length === 0) {
+                            return;
+                          }
+                          void handleGraphCanvasFilesDrop(files);
+                        }}
                       >
                         <div className="graph-canvas-toolbar">
                           <div className="graph-canvas-node-search" role="search" aria-label="Graph canvas node search">

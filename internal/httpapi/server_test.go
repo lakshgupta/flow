@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1020,6 +1022,93 @@ func TestNewMuxCreateDocumentAddsCanvasNodeForNewGraph(t *testing.T) {
 		return node.GraphPath == "execution/empty" && node.TotalCount == 1
 	}) {
 		t.Fatalf("graphTree.Graphs = %#v, want execution/empty with one document", graphTree.Graphs)
+	}
+}
+
+func TestNewMuxUploadsGraphFilesAsNotesAndServesAssets(t *testing.T) {
+	t.Parallel()
+
+	root := createGraphCanvasHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	imagePart, err := writer.CreateFormFile("files", "Architecture Diagram.png")
+	if err != nil {
+		t.Fatalf("CreateFormFile(image) error = %v", err)
+	}
+	if _, err := imagePart.Write([]byte("fake-image-bytes")); err != nil {
+		t.Fatalf("Write(image) error = %v", err)
+	}
+
+	pdfPart, err := writer.CreateFormFile("files", "Build Plan.pdf")
+	if err != nil {
+		t.Fatalf("CreateFormFile(pdf) error = %v", err)
+	}
+	if _, err := pdfPart.Write([]byte("%PDF-1.4\n1 0 obj\n")); err != nil {
+		t.Fatalf("Write(pdf) error = %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close(multipart writer) error = %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/graphs/execution/files", &body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusCreated {
+		responseBody, _ := io.ReadAll(recorder.Body)
+		t.Fatalf("status = %d, want 201, body = %s", recorder.Code, string(responseBody))
+	}
+
+	var created createGraphFilesResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&created); err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if len(created.Created) != 2 {
+		t.Fatalf("len(created.Created) = %d, want 2", len(created.Created))
+	}
+
+	canvas := performJSONRequest[graphCanvasResponse](t, handler, http.MethodGet, "/api/graph-canvas?graph=execution")
+	if !slices.ContainsFunc(canvas.Nodes, func(node graph.GraphCanvasNode) bool {
+		return node.PreviewKind == "image" && strings.HasPrefix(node.PreviewURL, "/api/files?path=")
+	}) {
+		t.Fatalf("canvas.Nodes = %#v, want image preview node", canvas.Nodes)
+	}
+	if !slices.ContainsFunc(canvas.Nodes, func(node graph.GraphCanvasNode) bool {
+		return node.PreviewKind == "pdf" && strings.HasPrefix(node.PreviewURL, "/api/files?path=")
+	}) {
+		t.Fatalf("canvas.Nodes = %#v, want pdf preview node", canvas.Nodes)
+	}
+
+	var imagePreviewPath string
+	for _, node := range canvas.Nodes {
+		if node.PreviewKind == "image" {
+			parsed, parseErr := url.Parse(node.PreviewURL)
+			if parseErr != nil {
+				t.Fatalf("url.Parse(%q) error = %v", node.PreviewURL, parseErr)
+			}
+			imagePreviewPath = parsed.Query().Get("path")
+			break
+		}
+	}
+	if strings.TrimSpace(imagePreviewPath) == "" {
+		t.Fatal("image preview path = empty, want workspace file path")
+	}
+
+	fileRecorder := httptest.NewRecorder()
+	fileRequest := httptest.NewRequest(http.MethodGet, "/api/files?path="+url.QueryEscape(imagePreviewPath), nil)
+	handler.ServeHTTP(fileRecorder, fileRequest)
+	if fileRecorder.Code != http.StatusOK {
+		responseBody, _ := io.ReadAll(fileRecorder.Body)
+		t.Fatalf("file status = %d, want 200, body = %s", fileRecorder.Code, string(responseBody))
+	}
+	if fileRecorder.Body.Len() == 0 {
+		t.Fatal("file body length = 0, want uploaded bytes")
 	}
 }
 

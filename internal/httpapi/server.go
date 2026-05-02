@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -235,6 +237,16 @@ type createGraphRequest struct {
 	Name string `json:"name"`
 }
 
+type createGraphFilesResponse struct {
+	Created []documentResponse       `json:"created"`
+	Failed  []createGraphFileFailure `json:"failed,omitempty"`
+}
+
+type createGraphFileFailure struct {
+	File  string `json:"file"`
+	Error string `json:"error"`
+}
+
 type renameGraphRequest struct {
 	Name string `json:"name"`
 }
@@ -346,6 +358,8 @@ func (handler *apiHandler) ServeHTTP(writer http.ResponseWriter, request *http.R
 		handler.handleGraphTree(writer, request)
 	case request.URL.Path == "/api/graphs" && request.Method == http.MethodPost:
 		handler.handleCreateGraph(writer, request)
+	case strings.HasPrefix(request.URL.Path, "/api/graphs/") && strings.HasSuffix(request.URL.Path, "/files") && request.Method == http.MethodPost:
+		handler.handleCreateGraphFiles(writer, request)
 	case strings.HasPrefix(request.URL.Path, "/api/graphs/") && strings.HasSuffix(request.URL.Path, "/color") && request.Method == http.MethodPut:
 		handler.handleUpdateGraphColor(writer, request)
 	case strings.HasPrefix(request.URL.Path, "/api/graphs/") && request.Method == http.MethodPatch:
@@ -364,6 +378,8 @@ func (handler *apiHandler) ServeHTTP(writer http.ResponseWriter, request *http.R
 		handler.handleSearch(writer, request)
 	case request.URL.Path == "/api/reference-targets" && request.Method == http.MethodGet:
 		handler.handleReferenceTargets(writer, request)
+	case request.URL.Path == "/api/files" && request.Method == http.MethodGet:
+		handler.handleWorkspaceFile(writer, request)
 	case request.URL.Path == "/api/gui/stop" && request.Method == http.MethodPost:
 		handler.handleGUIStop(writer, request)
 	case request.URL.Path == "/api/node-view" && request.Method == http.MethodGet:
@@ -644,6 +660,144 @@ func (handler *apiHandler) handleCreateGraph(writer http.ResponseWriter, request
 	}
 
 	writeJSON(writer, http.StatusCreated, createGraphResponse{Name: payload.Name})
+}
+
+func (handler *apiHandler) handleCreateGraphFiles(writer http.ResponseWriter, request *http.Request) {
+	graphName, ok := graphNameFromGraphFilesRequestPath(request.URL.Path)
+	if !ok {
+		writeError(writer, http.StatusBadRequest, "graph name must not be empty")
+		return
+	}
+
+	graphDir := filepath.Join(handler.options.Root.GraphsPath, filepath.FromSlash(graphName))
+	if info, err := os.Stat(graphDir); err != nil || !info.IsDir() {
+		writeError(writer, http.StatusNotFound, fmt.Sprintf("graph %q not found", graphName))
+		return
+	}
+
+	if err := request.ParseMultipartForm(128 << 20); err != nil {
+		writeError(writer, http.StatusBadRequest, fmt.Sprintf("parse multipart form: %v", err))
+		return
+	}
+
+	fileHeaders := request.MultipartForm.File["files"]
+	if len(fileHeaders) == 0 {
+		for _, entries := range request.MultipartForm.File {
+			fileHeaders = append(fileHeaders, entries...)
+		}
+	}
+
+	if len(fileHeaders) == 0 {
+		writeError(writer, http.StatusBadRequest, "no files were provided")
+		return
+	}
+
+	response := createGraphFilesResponse{Created: make([]documentResponse, 0, len(fileHeaders))}
+	for _, header := range fileHeaders {
+		created, err := handler.createGraphFileNote(graphName, header)
+		if err != nil {
+			response.Failed = append(response.Failed, createGraphFileFailure{File: header.Filename, Error: err.Error()})
+			continue
+		}
+
+		response.Created = append(response.Created, created)
+	}
+
+	if len(response.Created) == 0 {
+		writeJSON(writer, http.StatusBadRequest, response)
+		return
+	}
+
+	writeJSON(writer, http.StatusCreated, response)
+}
+
+func (handler *apiHandler) createGraphFileNote(graphName string, header *multipart.FileHeader) (documentResponse, error) {
+	originalFileName := filepath.Base(strings.TrimSpace(header.Filename))
+	if originalFileName == "" || originalFileName == "." {
+		return documentResponse{}, fmt.Errorf("invalid file name")
+	}
+
+	assetFileName := makeUniqueFileName(handler.options.Root, graphName, sanitizeAssetFileName(originalFileName))
+	assetRelativePath := filepath.ToSlash(filepath.Join(workspace.DataDirName, workspace.GraphsDirName, filepath.FromSlash(graphName), assetFileName))
+	assetAbsolutePath := filepath.Join(handler.options.Root.FlowPath, filepath.FromSlash(assetRelativePath))
+
+	if err := os.MkdirAll(filepath.Dir(assetAbsolutePath), 0o755); err != nil {
+		return documentResponse{}, fmt.Errorf("create file directory: %w", err)
+	}
+
+	source, err := header.Open()
+	if err != nil {
+		return documentResponse{}, fmt.Errorf("open uploaded file: %w", err)
+	}
+	defer source.Close()
+
+	target, err := os.Create(assetAbsolutePath)
+	if err != nil {
+		return documentResponse{}, fmt.Errorf("create workspace file: %w", err)
+	}
+	if _, err := io.Copy(target, source); err != nil {
+		_ = target.Close()
+		return documentResponse{}, fmt.Errorf("write workspace file: %w", err)
+	}
+	if err := target.Close(); err != nil {
+		return documentResponse{}, fmt.Errorf("close workspace file: %w", err)
+	}
+
+	noteSlug := makeUniqueNoteSlug(handler.options.Root, graphName, strings.TrimSuffix(assetFileName, filepath.Ext(assetFileName)))
+	title := titleFromFileName(originalFileName)
+	assetURL := "/api/files?path=" + url.QueryEscape(assetRelativePath)
+	body := noteBodyForAsset(assetURL, title, filepath.Ext(assetFileName))
+
+	createdDocument, err := workspace.CreateDocument(handler.options.Root, workspace.CreateDocumentInput{
+		Type:        markdown.NoteType,
+		FeatureSlug: graphName,
+		FileName:    noteSlug,
+		ID:          filepath.ToSlash(filepath.Join(graphName, noteSlug)),
+		Graph:       graphName,
+		Title:       title,
+		Description: "",
+		Body:        body,
+	})
+	if err != nil {
+		return documentResponse{}, err
+	}
+
+	return loadDocumentResponse(handler.options.Root, documentIDForResponse(createdDocument.Document))
+}
+
+func (handler *apiHandler) handleWorkspaceFile(writer http.ResponseWriter, request *http.Request) {
+	pathValue := strings.TrimSpace(request.URL.Query().Get("path"))
+	if pathValue == "" {
+		writeError(writer, http.StatusBadRequest, "path must not be empty")
+		return
+	}
+
+	cleaned := filepath.Clean(filepath.FromSlash(pathValue))
+	if cleaned == "." || strings.HasPrefix(cleaned, "..") {
+		writeError(writer, http.StatusBadRequest, "path is invalid")
+		return
+	}
+
+	absolutePath := filepath.Join(handler.options.Root.FlowPath, cleaned)
+	relativeToFlow, err := filepath.Rel(handler.options.Root.FlowPath, absolutePath)
+	if err != nil || strings.HasPrefix(relativeToFlow, "..") {
+		writeError(writer, http.StatusBadRequest, "path is invalid")
+		return
+	}
+
+	if _, err := os.Stat(absolutePath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			writeError(writer, http.StatusNotFound, "file not found")
+			return
+		}
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if contentType := mime.TypeByExtension(strings.ToLower(filepath.Ext(absolutePath))); contentType != "" {
+		writer.Header().Set("Content-Type", contentType)
+	}
+	http.ServeFile(writer, request, absolutePath)
 }
 
 func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.Request) {
@@ -1430,6 +1584,137 @@ func graphNameFromGraphColorRequestPath(path string) (string, bool) {
 
 	trimmed := strings.TrimSuffix(path, "/color")
 	return graphNameFromGraphRequestPath(trimmed)
+}
+
+func graphNameFromGraphFilesRequestPath(path string) (string, bool) {
+	if !strings.HasSuffix(path, "/files") {
+		return "", false
+	}
+
+	trimmed := strings.TrimSuffix(path, "/files")
+	return graphNameFromGraphRequestPath(trimmed)
+}
+
+func sanitizeAssetFileName(name string) string {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return "file.bin"
+	}
+
+	base := filepath.Base(trimmed)
+	extension := strings.ToLower(filepath.Ext(base))
+	stem := strings.TrimSuffix(base, filepath.Ext(base))
+	stem = strings.ToLower(stem)
+	builder := strings.Builder{}
+	for _, r := range stem {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			builder.WriteRune(r)
+		case r == '-' || r == '_':
+			builder.WriteRune(r)
+		case r == ' ' || r == '.':
+			builder.WriteRune('-')
+		}
+	}
+
+	cleanStem := strings.Trim(builder.String(), "-_")
+	if cleanStem == "" {
+		cleanStem = "file"
+	}
+
+	if extension == "" {
+		extension = ".bin"
+	}
+	return cleanStem + extension
+}
+
+func titleFromFileName(name string) string {
+	base := strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
+	base = strings.ReplaceAll(base, "_", " ")
+	base = strings.ReplaceAll(base, "-", " ")
+	base = strings.TrimSpace(base)
+	if base == "" {
+		return "Untitled File"
+	}
+
+	words := strings.Fields(strings.ToLower(base))
+	for index, word := range words {
+		if word == "" {
+			continue
+		}
+		words[index] = strings.ToUpper(word[:1]) + word[1:]
+	}
+
+	return strings.Join(words, " ")
+}
+
+func noteBodyForAsset(assetURL string, title string, extension string) string {
+	lowerExt := strings.ToLower(extension)
+	if isImageExtension(lowerExt) {
+		return fmt.Sprintf("![%s](%s)\n", title, assetURL)
+	}
+
+	if lowerExt == ".pdf" {
+		return fmt.Sprintf("[%s](%s)\n", title, assetURL)
+	}
+
+	return fmt.Sprintf("[%s](%s)\n", title, assetURL)
+}
+
+func isImageExtension(extension string) bool {
+	switch strings.ToLower(extension) {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp":
+		return true
+	default:
+		return false
+	}
+}
+
+func makeUniqueFileName(root workspace.Root, graphPath string, candidate string) string {
+	base := strings.TrimSuffix(candidate, filepath.Ext(candidate))
+	ext := strings.ToLower(filepath.Ext(candidate))
+	if base == "" {
+		base = "file"
+	}
+	if ext == "" {
+		ext = ".bin"
+	}
+
+	for index := 0; ; index++ {
+		name := base + ext
+		if index > 0 {
+			name = fmt.Sprintf("%s-%d%s", base, index+1, ext)
+		}
+
+		relativePath := filepath.Join(workspace.DataDirName, workspace.GraphsDirName, filepath.FromSlash(graphPath), name)
+		absolutePath := filepath.Join(root.FlowPath, relativePath)
+		if _, err := os.Stat(absolutePath); errors.Is(err, os.ErrNotExist) {
+			return name
+		}
+	}
+}
+
+func makeUniqueNoteSlug(root workspace.Root, graphPath string, candidate string) string {
+	base := strings.TrimSpace(candidate)
+	if base == "" {
+		base = "file-note"
+	}
+
+	for index := 0; ; index++ {
+		slug := base
+		if index > 0 {
+			slug = fmt.Sprintf("%s-%d", base, index+1)
+		}
+
+		relativePath, err := markdown.RelativeGraphDocumentPath(graphPath, slug+".md")
+		if err != nil {
+			return "file-note"
+		}
+		absolutePath := filepath.Join(root.FlowPath, filepath.FromSlash(relativePath))
+		if _, err := os.Stat(absolutePath); errors.Is(err, os.ErrNotExist) {
+			return slug
+		}
+	}
 }
 
 func remapGraphDirectoryColors(root workspace.Root, currentGraph string, nextGraph string) error {

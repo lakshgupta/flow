@@ -88,9 +88,13 @@ function graphCanvasNodeShape(value?: string): string {
   return value === "circle" ? "circle" : "card";
 }
 
-function graphCanvasNodeDimensions(shape?: string): { width: number; height: number } {
+function graphCanvasNodeDimensions(shape?: string, previewKind?: string): { width: number; height: number } {
   if (graphCanvasNodeShape(shape) === "circle") {
     return { width: 132, height: 132 };
+  }
+
+  if (previewKind === "image" || previewKind === "pdf" || previewKind === "file") {
+    return { width: CANVAS_NODE_W, height: CANVAS_NODE_PREVIEW_H };
   }
 
   return { width: CANVAS_NODE_W, height: CANVAS_NODE_H };
@@ -145,7 +149,7 @@ export function buildGraphCanvasFlowNodes(
 
   return graphCanvasData.nodes.map((item) => {
     const shape = graphCanvasNodeShape(item.shape);
-    const dimensions = graphCanvasNodeDimensions(shape);
+    const dimensions = graphCanvasNodeDimensions(shape, item.previewKind);
     const graphColor = resolveGraphDirectoryColor(item.graph, graphDirectoryColorsByPath);
     const data: GraphCanvasFlowNodeData = {
       label: renderGraphCanvasNodeLabel({
@@ -156,6 +160,9 @@ export function buildGraphCanvasFlowNodes(
         description: item.description,
         graph: item.graph,
         graphColor,
+        previewKind: item.previewKind,
+        previewURL: item.previewURL,
+        previewName: item.previewName,
         featureSlug: item.featureSlug,
         fileName: fileNameFromPath(item.path),
         positionPersisted: item.positionPersisted,
@@ -169,6 +176,9 @@ export function buildGraphCanvasFlowNodes(
       description: item.description,
       graph: item.graph,
       graphColor,
+      previewKind: item.previewKind,
+      previewURL: item.previewURL,
+      previewName: item.previewName,
       featureSlug: item.featureSlug,
       fileName: fileNameFromPath(item.path),
       positionPersisted: item.positionPersisted,
@@ -334,7 +344,7 @@ export async function applyElkHorizontalLayout(
       "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
     },
     children: nodes.map((node) => {
-      const dimensions = graphCanvasNodeDimensions(node.shape);
+      const dimensions = graphCanvasNodeDimensions(node.shape, node.previewKind);
       return {
         id: node.id,
         width: dimensions.width,
@@ -361,15 +371,16 @@ export async function applyElkHorizontalLayout(
 // NODE_W / NODE_H are the exact rendered dimensions of a canvas node card set in buildGraphCanvasFlowNodes.
 export const CANVAS_NODE_W = 288;
 export const CANVAS_NODE_H = 130;
+export const CANVAS_NODE_PREVIEW_H = 232;
 // NODE_W used by the force-layout collision radius (slightly wider for padding).
 const NODE_W = 290;
-const NODE_H = CANVAS_NODE_H;
+const NODE_H = CANVAS_NODE_PREVIEW_H;
 const COLLIDE_R = Math.sqrt(NODE_W * NODE_W + NODE_H * NODE_H) / 2 + 28;
 
 type PortSpec = { x: number; y: number; position: Position };
 
-function getNodePortsForShape(pos: GraphCanvasPosition, shape?: string): PortSpec[] {
-  const dimensions = graphCanvasNodeDimensions(shape);
+function getNodePortsForShape(pos: GraphCanvasPosition, shape?: string, previewKind?: string): PortSpec[] {
+  const dimensions = graphCanvasNodeDimensions(shape, previewKind);
   return [
     { x: pos.x + dimensions.width / 2, y: pos.y, position: Position.Top },
     { x: pos.x + dimensions.width, y: pos.y + dimensions.height / 2, position: Position.Right },
@@ -387,8 +398,8 @@ export function pickBestEdgePorts(
   sourceNode: Node<GraphCanvasFlowNodeData>,
   targetNode: Node<GraphCanvasFlowNodeData>,
 ): { sourceX: number; sourceY: number; sourcePosition: Position; targetX: number; targetY: number; targetPosition: Position } {
-  const sourcePorts = getNodePortsForShape(graphCanvasOverlayPosition(sourceNode), sourceNode.data.shape);
-  const targetPorts = getNodePortsForShape(graphCanvasOverlayPosition(targetNode), targetNode.data.shape);
+  const sourcePorts = getNodePortsForShape(graphCanvasOverlayPosition(sourceNode), sourceNode.data.shape, sourceNode.data.previewKind);
+  const targetPorts = getNodePortsForShape(graphCanvasOverlayPosition(targetNode), targetNode.data.shape, targetNode.data.previewKind);
 
   let bestDistSq = Infinity;
   let bestSrc = sourcePorts[2]; // default: bottom

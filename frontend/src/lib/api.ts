@@ -1,4 +1,4 @@
-import type { CalendarDocumentResponse, GraphTreeResponse, ReferenceTargetResponse, WorkspaceResponse, WorkspaceSnapshot } from "../types";
+import type { CalendarDocumentResponse, GraphFileUploadResponse, GraphTreeResponse, ReferenceTargetResponse, WorkspaceResponse, WorkspaceSnapshot } from "../types";
 
 function normalizeGraphTreeResponse(response: GraphTreeResponse): GraphTreeResponse {
   return {
@@ -66,4 +66,24 @@ export async function loadReferenceTargets(query: string, graphPath?: string, li
   }
 
   return requestJSON<ReferenceTargetResponse[]>(`/api/reference-targets?${params.toString()}`);
+}
+
+export async function uploadGraphFiles(graphPath: string, files: FileList | File[]): Promise<GraphFileUploadResponse> {
+  const form = new FormData();
+  for (const file of Array.from(files)) {
+    form.append("files", file);
+  }
+
+  const response = await fetch(`/api/graphs/${encodeURIComponent(graphPath)}/files`, {
+    method: "POST",
+    body: form,
+    headers: { Accept: "application/json" },
+  });
+
+  const payload = (await response.json()) as GraphFileUploadResponse & { error?: string };
+  if (!response.ok) {
+    throw new Error(payload.error ?? `${response.status} ${response.statusText}`);
+  }
+
+  return payload;
 }
