@@ -24,6 +24,7 @@ Flow record-keeping requirements (required, see [.github/SKILL.md](../SKILL.md) 
 - Keep at least one task node and one note node in the feature sub-directory:
 	- Task node tracks the current design task and status (`todo`, `doing`, `done`).
 	- Note node captures design summary, assumptions, decisions, open questions, and approval state.
+- If a task from this feature is later implemented and committed, update that task node description or body with the commit id.
 - Prefer updating existing nodes over creating duplicates when rerunning the same design thread.
 - Keep relationships explicit with node links (for example, note links to task, and task links to related docs).
 - Define task dependencies explicitly with task-to-task links so downstream runs can resolve execution order from the graph.
@@ -108,4 +109,5 @@ Before finishing the run, ensure Flow records are updated to reflect:
 - final proposal status,
 - outstanding open questions,
 - whether architecture.md was updated after approval,
+- and any commit ids already recorded on related completed task nodes,
 - and the corresponding Home update needed so home.md continues evolving toward architecture/manual quality.

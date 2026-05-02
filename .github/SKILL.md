@@ -8,7 +8,7 @@ Use the Flow CLI for every record-keeping action in design, planning, and implem
 - Design graph root is fixed as `design`.
 - Development graph root is fixed as `development`.
 - Sub-graph names are required to follow: `YYYYMMDD-NNN-<type>-<title>`.
-- Valid type prefixes include `FEAT`, `FIX`, `REFACTOR`, `TEST`, `REVIEW`, `DOC`.
+- Valid type prefixes include `FEAT`, `BUG`, `FIX`, `REFACTOR`, `TEST`, `REVIEW`, `DOC`.
 - `NNN` is a zero-padded incremental counter for directories created on that `YYYYMMDD` date.
 - For each new design, create or reuse `design/YYYYMMDD-NNN-<type>-<title>`.
 - Planning and implementation use the same suffix under `development/YYYYMMDD-NNN-<type>-<title>`.
@@ -35,6 +35,7 @@ Use the Flow CLI for every record-keeping action in design, planning, and implem
 3. After each completed task, show the next ready task set based on dependency edges.
 4. If requirements change, update both `design/YYYYMMDD-NNN-<type>-<title>` and `development/YYYYMMDD-NNN-<type>-<title>` before continuing.
 5. Keep dependency links up to date so execution order stays explicit.
+6. Once a completed task is included in a git commit, update that task node description or body with the commit id.
 
 ## CLI Workflow Example
 ```bash
@@ -56,6 +57,7 @@ flow node connect --from development/20260501-001-FEAT-parser-retry-budget/revie
 # Implementation
 flow node update --id development/20260501-001-FEAT-parser-retry-budget/implement-queue --status doing
 flow node update --id development/20260501-001-FEAT-parser-retry-budget/implement-queue --status done
+flow node update --id development/20260501-001-FEAT-parser-retry-budget/implement-queue --description "Core queue implementation (commit: abc1234)"
 flow node edges --id development/20260501-001-FEAT-parser-retry-budget/implement-queue --graph development/20260501-001-FEAT-parser-retry-budget
 flow node list --graph development/20260501-001-FEAT-parser-retry-budget --status todo --compact
 ```
@@ -64,3 +66,4 @@ flow node list --graph development/20260501-001-FEAT-parser-retry-budget --statu
 - Design decisions are captured as notes and connected with contextual edges under `design/YYYYMMDD-NNN-<type>-<title>`.
 - Planning tasks, including review and test tasks, have explicit dependency links.
 - Implementation status and next-ready tasks are derivable from task status plus dependency edges.
+- Task nodes that were implemented and committed include the corresponding git commit id in node content.

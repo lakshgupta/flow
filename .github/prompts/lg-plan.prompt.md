@@ -31,6 +31,7 @@ Flow record-keeping requirements (required, see [.github/SKILL.md](../SKILL.md) 
 - Maintain at least one note node with planning rationale, sequencing, risks, and dependency notes.
 - Link planning notes and tasks so downstream implementation can traverse context from the graph.
 - Define task dependencies explicitly with task-to-task links (for example, foundational tasks link to dependent tasks).
+- Once a planned task is implemented and committed, update that task node description or body with the commit id.
 - Treat Flow nodes as the operational run log and planning source of truth.
 
 When creating or updating Flow planning records:
@@ -118,4 +119,5 @@ Before finishing the run, ensure Flow records include:
 - the final planned task set,
 - dependencies and sequencing notes,
 - any blockers that prevented full planning,
+- and any commit ids already recorded on completed planned tasks,
 - and the Home update needed so home.md reflects approved plan context and architecture/manual intent.

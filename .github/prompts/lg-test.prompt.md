@@ -30,6 +30,7 @@ Flow record-keeping requirements (required, see [.github/SKILL.md](../SKILL.md) 
 - Keep at least one task node and one note node in the feature sub-directory:
   - Task node tracks testing execution status (`todo`, `doing`, `done`).
   - Note node captures executed commands, test outputs, pass/fail summary, and failure diagnostics.
+- If a tested task is implemented and committed, update that task node description or body with the commit id.
 - Link test notes to related implementation/fix/refactor nodes whenever possible.
 - For failed checks, add linked remediation task nodes with explicit acceptance criteria.
 - Define dependency links between remediation tasks when one failure must be resolved before another.
@@ -72,4 +73,5 @@ Implementation rules:
 - Run tests and report actual outcomes; do not fabricate results.
 - Keep testing scoped to the requested area unless broader validation is necessary.
 - Record all meaningful testing decisions and outcomes in Flow before ending the run.
+- Record any commit ids added to completed task nodes when tests are part of a commit-ready workflow.
 - Record the home.md update needed so validated behavior is reflected in the evolving architecture/manual document.

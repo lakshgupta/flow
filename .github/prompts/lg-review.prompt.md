@@ -33,6 +33,7 @@ Flow record-keeping requirements (required, see [.github/SKILL.md](../SKILL.md) 
 - Keep at least one task node and one note node in the feature sub-directory:
    - Task node tracks review progress and current status.
    - Note node captures findings, severities, residual risks, and recommended actions.
+- If a reviewed task has been implemented and committed, ensure that task node description or body includes the commit id.
 - Prefer one linked note per major finding when that improves traceability.
 - Link review findings to related implementation, fix, or refactor nodes whenever possible.
 - Define dependency links between review follow-up task nodes so remediation order is clear.
@@ -79,6 +80,7 @@ Before finishing the run, ensure Flow records include:
 - final finding set (or explicit no-findings outcome),
 - prioritized follow-up tasks,
 - unresolved review risks,
+- and any commit ids recorded on related completed task nodes,
 - and the home.md update needed so reviewed outcomes are reflected in the architecture/manual document.
 
 Example response:

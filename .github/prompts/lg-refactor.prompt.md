@@ -34,6 +34,7 @@ Flow record-keeping requirements (required, see [.github/SKILL.md](../SKILL.md) 
 - Keep at least one task node and one note node in the feature sub-directory:
 	- Task node tracks the refactor objective and status transitions.
 	- Note node records preserved behavior guarantees, structural changes, and validation results.
+- If a completed refactor task is committed in git, update that task node description or body with the commit id.
 - Link refactor notes and tasks to related implementation or design nodes when relevant.
 - Define dependency links between refactor task nodes so order and prerequisites remain explicit.
 - Treat Flow nodes as the canonical operational history for the refactor run.
@@ -124,4 +125,5 @@ Before finishing the run, ensure Flow records include:
 - what was refactored,
 - what behavior was explicitly preserved,
 - any follow-up cleanup tasks,
+- and any commit id recorded on task nodes for completed refactor tasks,
 - and the home.md update needed to keep architecture/manual guidance aligned with refactor outcomes.

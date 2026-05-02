@@ -34,6 +34,7 @@ Flow record-keeping requirements (required, see [.github/SKILL.md](../SKILL.md) 
 - Keep at least one task node and one note node updated during the run:
 	- Task node must reflect the single selected Flow task and move through `todo` -> `doing` -> `done`.
 	- Note node must capture implementation decisions, touched files, validation commands, and outcomes.
+- If the completed task is committed in git during or after this run, update that task node description or body with the commit id.
 - Link task, note, and related command nodes to preserve execution context.
 - Define and maintain dependency links between task nodes so blocked/ready state is visible from graph structure.
 - If command documents exist for verification, prefer running them via `flow run <name>` when practical.
@@ -130,4 +131,5 @@ Run-completion record rules:
 
 - Before ending the run, update Flow notes with what was shipped and what remains.
 - Ensure remaining `todo`/`doing` task nodes are represented in Flow with accurate status and links.
+- If a commit was created for a completed task, ensure that task node includes the commit id.
 - When any task is completed, update home.md with the newly completed capability so home.md incrementally evolves into the architecture/manual document.

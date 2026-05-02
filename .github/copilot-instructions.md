@@ -33,7 +33,7 @@
 ## Persistent Rules
 
 - Keep [docs/architecture.md](../docs/architecture.md) as the approved design source for feature work, including the arrangement and structure of UI components.
-- For UI look and feel, refer to [DESIGN.md](../DESIGN.md) for visual language, component styling, and design guidelines.
+- For UI look and feel, refer to [docs/DESIGN.md](../docs/DESIGN.md) for visual language, component styling, and design guidelines.
 - Keep Flow `design/YYYYMMDD-NNN-<type>-<title>` and `development/YYYYMMDD-NNN-<type>-<title>` sub-graphs and task/note nodes as the execution source of truth for planned feature work.
 - Run relevant validation after code changes whenever feasible.
 - Keep changes focused and prefer root-cause fixes over superficial patches.

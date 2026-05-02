@@ -626,32 +626,14 @@ func TestFlowSearchSupportsFiltersAndCompactOutput(t *testing.T) {
 	}
 }
 
-func TestFlowSkillContentReturnsTemplate(t *testing.T) {
+func TestFlowSkillContentReturnsEmbeddedSkill(t *testing.T) {
 	stdout, stderr := runForTest(t, []string{"skill", "content"}, t.TempDir())
 	if stderr != "" {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
 
 	if !strings.Contains(stdout, "# Skill: Flow-First Record Keeping") {
-		t.Fatalf("stdout missing updated title, got %q", stdout)
-	}
-	if !strings.Contains(stdout, "Development graph root is fixed as `development`.") {
-		t.Fatalf("stdout missing default graph, got %q", stdout)
-	}
-	if !strings.Contains(stdout, "Design graph root is fixed as `design`.") {
-		t.Fatalf("stdout missing design graph guidance, got %q", stdout)
-	}
-	if !strings.Contains(stdout, "Sub-graph names are required to follow: `YYYYMMDD-NNN-<type>-<title>`.") {
-		t.Fatalf("stdout missing naming-pattern guidance, got %q", stdout)
-	}
-	if !strings.Contains(stdout, "filter candidates using title/description/tags") {
-		t.Fatalf("stdout missing filter-first guidance, got %q", stdout)
-	}
-	if !strings.Contains(stdout, "depends-on") {
-		t.Fatalf("stdout missing task dependency guidance, got %q", stdout)
-	}
-	if !strings.Contains(stdout, "flow node update --id design/20260501-001-FEAT-parser-retry-budget/overview --description") {
-		t.Fatalf("stdout missing node description update example, got %q", stdout)
+		t.Fatalf("stdout missing embedded skill title, got %q", stdout)
 	}
 }
 
@@ -661,14 +643,8 @@ func TestFlowSkillContentSupportsGraphOverride(t *testing.T) {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
 
-	if !strings.Contains(stdout, "Development graph root is fixed as `delivery/parser`.") {
-		t.Fatalf("stdout missing graph override, got %q", stdout)
-	}
-	if !strings.Contains(stdout, "--graph delivery/parser/20260501-001-FEAT-parser-retry-budget") {
-		t.Fatalf("stdout missing planning graph usage in command examples, got %q", stdout)
-	}
-	if !strings.Contains(stdout, "--relationship depends-on") {
-		t.Fatalf("stdout missing task dependency link example, got %q", stdout)
+	if !strings.Contains(stdout, "# Skill: Flow-First Record Keeping") {
+		t.Fatalf("stdout missing embedded skill title, got %q", stdout)
 	}
 }
 

@@ -2,6 +2,11 @@
 
 This document keeps the detailed workspace, storage, and development reference material that does not need to live in the top-level README.
 
+## Design Documentation
+
+- UI design and styling guidance is documented in [docs/DESIGN.md](DESIGN.md).
+- Use [docs/DESIGN.md](DESIGN.md) as the canonical reference when designing or updating UI.
+
 ## Workspace Layout
 
 `flow init` creates this baseline workspace structure:

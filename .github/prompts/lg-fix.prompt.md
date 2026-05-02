@@ -31,6 +31,7 @@ Flow record-keeping requirements (required, see [.github/SKILL.md](../SKILL.md) 
 - Keep at least one task node and one note node in the feature sub-directory:
 	- Task node tracks the fix lifecycle and status (`todo`, `doing`, `done`).
 	- Note node records root cause, fix decision, risk notes, and validation outcomes.
+- If a completed fix task is committed in git, update that task node description or body with the commit id.
 - Link fix notes, tasks, and related nodes so context remains traceable.
 - Define dependency links between fix-related task nodes so prerequisite order is explicit.
 - Treat Flow nodes as the primary operational record for debugging and resolution history.
@@ -112,4 +113,5 @@ Before finishing the run, ensure Flow records clearly show:
 - whether the issue is resolved, partially resolved, or blocked,
 - what validation was executed,
 - what follow-up fix task is next,
+- and any commit id recorded on task nodes for completed fix tasks,
 - and the home.md update needed to reflect completed fix behavior in the architecture/manual narrative.

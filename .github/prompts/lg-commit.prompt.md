@@ -23,6 +23,7 @@ Follow this workflow:
 6. If the changes represent only part of a task, or if the mapping from changes to done task nodes is ambiguous, do not create the commit. Explain the mismatch and ask the user to finish the task or clarify scope first.
 7. Before creating the commit, update Flow notes to record the exact task-node-to-commit mapping.
 8. Do not delete Flow task nodes; preserve them as execution history and mark any commit-tracking node as done.
+9. After creating the commit, update each committed task node with the final git commit id in the task node description or body.
 10. Create a strong commit message with a concise subject line and a body.
 11. In the commit body, summarize the Flow task nodes implemented by the commit and the key implementation decisions.
 12. If there is nothing meaningful to commit, explain why and do not create an empty or misleading commit.
@@ -37,7 +38,8 @@ Flow record-keeping requirements (required, see [.github/SKILL.md](../SKILL.md) 
 	- Note node captures commit scope, included task mapping, validation status, and any excluded changes.
 - Link commit records to related implementation/review nodes so traceability is preserved.
 - Preserve and update dependency links between committed and remaining task nodes to keep execution order explicit.
-- When possible, record the final commit identifier in the note node after commit creation.
+- Record the final commit id on every task node fully covered by the commit.
+- Keep note-node commit mapping synchronized with the task-node commit ids.
 
 Commit message rules:
 
@@ -72,7 +74,7 @@ Show the proposed commit subject and body.
 
 ## Flow Record Sync
 
-State which Flow task/note nodes were updated with commit mapping and commit identifier.
+State which Flow task/note nodes were updated with commit mapping and the commit id recorded on each committed task node.
 
 ## Result
 
@@ -114,10 +116,12 @@ Implementation rules:
 - Ensure the commit body reflects the actual implemented work rather than generic summaries.
 - Use Flow task text as source material, but produce a human-readable commit body.
 - Keep the commit and Flow record sync synchronized.
+- Do not finish the commit run until committed task nodes include the commit id.
 
 Before finishing the run, ensure Flow records include:
 
 - what was committed,
 - what Flow record updates occurred,
+- which committed task nodes were updated with commit ids,
 - what work remains uncommitted,
 - and the home.md update needed so committed capabilities are reflected in the architecture/manual document.
