@@ -48,6 +48,22 @@ func TestRebuildCreatesSchemaDatabase(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("graph_layout_viewports table count = %d, want 1", count)
 	}
+
+	if err := database.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'workspace_gui_settings'`).Scan(&count); err != nil {
+		t.Fatalf("QueryRow(workspace_gui_settings) error = %v", err)
+	}
+
+	if count != 1 {
+		t.Fatalf("workspace_gui_settings table count = %d, want 1", count)
+	}
+
+	if err := database.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'workspace_graph_directory_colors'`).Scan(&count); err != nil {
+		t.Fatalf("QueryRow(workspace_graph_directory_colors) error = %v", err)
+	}
+
+	if count != 1 {
+		t.Fatalf("workspace_graph_directory_colors table count = %d, want 1", count)
+	}
 }
 
 func TestRebuildIndexesMarkdownDocuments(t *testing.T) {

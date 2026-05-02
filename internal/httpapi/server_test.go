@@ -298,6 +298,17 @@ func TestNewMuxUpdatesWorkspacePanelWidths(t *testing.T) {
 	if storedConfig.GUI.Appearance != "dark" {
 		t.Fatalf("storedConfig.GUI.Appearance = %q, want dark", storedConfig.GUI.Appearance)
 	}
+
+	indexedSettings, ok, err := index.ReadWorkspaceGUISettingsWorkspace(root.IndexPath, root.FlowPath)
+	if err != nil {
+		t.Fatalf("index.ReadWorkspaceGUISettingsWorkspace() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("index.ReadWorkspaceGUISettingsWorkspace() ok = false, want true")
+	}
+	if indexedSettings.Appearance != "dark" || indexedSettings.PanelLeftRatio != 0.27 || indexedSettings.PanelRightRatio != 0.21 || indexedSettings.PanelTOCRatio != 0.24 {
+		t.Fatalf("indexedSettings = %#v, want dark + 0.27/0.21/0.24", indexedSettings)
+	}
 }
 
 func TestNewMuxRebuildsIndexAfterExternalFileChange(t *testing.T) {
@@ -596,6 +607,14 @@ func TestNewMuxUpdatesGraphDirectoryColorAndPersistsAcrossRenameAndDelete(t *tes
 		t.Fatalf("workspaceConfig.GUI.GraphDirectoryColors = %#v, want execution=mint", workspaceConfig.GUI.GraphDirectoryColors)
 	}
 
+	indexedColors, err := index.ReadWorkspaceGraphDirectoryColorsWorkspace(root.IndexPath, root.FlowPath)
+	if err != nil {
+		t.Fatalf("index.ReadWorkspaceGraphDirectoryColorsWorkspace() error = %v", err)
+	}
+	if indexedColors["execution"] != config.GraphDirectoryColorMint {
+		t.Fatalf("indexedColors = %#v, want execution=mint", indexedColors)
+	}
+
 	performJSONRequestWithBody[createGraphResponse](t, handler, http.MethodPatch, "/api/graphs/execution", map[string]any{
 		"name": "delivery/execution",
 	})
@@ -611,6 +630,17 @@ func TestNewMuxUpdatesGraphDirectoryColorAndPersistsAcrossRenameAndDelete(t *tes
 		t.Fatalf("workspaceConfig.GUI.GraphDirectoryColors = %#v, did not expect execution key", workspaceConfig.GUI.GraphDirectoryColors)
 	}
 
+	indexedColors, err = index.ReadWorkspaceGraphDirectoryColorsWorkspace(root.IndexPath, root.FlowPath)
+	if err != nil {
+		t.Fatalf("index.ReadWorkspaceGraphDirectoryColorsWorkspace() after rename error = %v", err)
+	}
+	if indexedColors["delivery/execution"] != config.GraphDirectoryColorMint {
+		t.Fatalf("indexedColors = %#v, want delivery/execution=mint", indexedColors)
+	}
+	if _, exists := indexedColors["execution"]; exists {
+		t.Fatalf("indexedColors = %#v, did not expect execution key", indexedColors)
+	}
+
 	performJSONRequest[deleteGraphResponse](t, handler, http.MethodDelete, "/api/graphs/delivery%2Fexecution")
 	workspaceConfig, err = config.Read(root.ConfigPath)
 	if err != nil {
@@ -618,6 +648,60 @@ func TestNewMuxUpdatesGraphDirectoryColorAndPersistsAcrossRenameAndDelete(t *tes
 	}
 	if len(workspaceConfig.GUI.GraphDirectoryColors) != 0 {
 		t.Fatalf("workspaceConfig.GUI.GraphDirectoryColors = %#v, want empty after delete", workspaceConfig.GUI.GraphDirectoryColors)
+	}
+
+	indexedColors, err = index.ReadWorkspaceGraphDirectoryColorsWorkspace(root.IndexPath, root.FlowPath)
+	if err != nil {
+		t.Fatalf("index.ReadWorkspaceGraphDirectoryColorsWorkspace() after delete error = %v", err)
+	}
+	if len(indexedColors) != 0 {
+		t.Fatalf("indexedColors = %#v, want empty after delete", indexedColors)
+	}
+}
+
+func TestNewMuxGraphTreePrunesStaleGraphDirectoryColorsAfterDiskSync(t *testing.T) {
+	t.Parallel()
+
+	root := createGraphTreeHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	performJSONRequestWithBody[updateGraphColorResponse](t, handler, http.MethodPut, "/api/graphs/execution/color", map[string]any{
+		"color": config.GraphDirectoryColorMint,
+	})
+	performJSONRequestWithBody[updateGraphColorResponse](t, handler, http.MethodPut, "/api/graphs/execution%2Fparser/color", map[string]any{
+		"color": config.GraphDirectoryColorPeach,
+	})
+
+	if err := os.RemoveAll(filepath.Join(root.FlowPath, "data", "content", "execution", "parser")); err != nil {
+		t.Fatalf("RemoveAll(parser graph dir) error = %v", err)
+	}
+
+	performJSONRequest[rebuildIndexResponse](t, handler, http.MethodPost, "/api/index/rebuild")
+	performJSONRequest[graphTreeResponse](t, handler, http.MethodGet, "/api/graphs")
+
+	workspaceConfig, err := config.Read(root.ConfigPath)
+	if err != nil {
+		t.Fatalf("config.Read() error = %v", err)
+	}
+	if workspaceConfig.GUI.GraphDirectoryColors["execution"] != config.GraphDirectoryColorMint {
+		t.Fatalf("workspaceConfig.GUI.GraphDirectoryColors = %#v, want execution=mint", workspaceConfig.GUI.GraphDirectoryColors)
+	}
+	if _, exists := workspaceConfig.GUI.GraphDirectoryColors["execution/parser"]; exists {
+		t.Fatalf("workspaceConfig.GUI.GraphDirectoryColors = %#v, did not expect stale execution/parser key", workspaceConfig.GUI.GraphDirectoryColors)
+	}
+
+	indexedColors, err := index.ReadWorkspaceGraphDirectoryColorsWorkspace(root.IndexPath, root.FlowPath)
+	if err != nil {
+		t.Fatalf("index.ReadWorkspaceGraphDirectoryColorsWorkspace() error = %v", err)
+	}
+	if indexedColors["execution"] != config.GraphDirectoryColorMint {
+		t.Fatalf("indexedColors = %#v, want execution=mint", indexedColors)
+	}
+	if _, exists := indexedColors["execution/parser"]; exists {
+		t.Fatalf("indexedColors = %#v, did not expect stale execution/parser key", indexedColors)
 	}
 }
 

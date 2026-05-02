@@ -1,5 +1,7 @@
 # Flow
 
+Capture. Connect. Complete.
+
 Flow is a local planning tool for software projects.
 
 It helps you capture notes, tasks, and commands in one workspace, browse them as a graph in the browser, and keep everything in plain Markdown files on disk.
@@ -95,9 +97,9 @@ Record-keeping convention:
 
 - The parent graph directory is `.flow/data/content`.
 - Use only two top-level graphs under it: `design/` and `development/`.
-- Sub-graph naming is mandatory: `<type>-YYYYMMDD-NNN-<title>`.
-- Store all design records under `design/<type>-YYYYMMDD-NNN-<title>`.
-- Store all planning/implementation records under `development/<type>-YYYYMMDD-NNN-<title>`.
+- Sub-graph naming is mandatory: `YYYYMMDD-NNN-<type>-<title>`.
+- Store all design records under `design/YYYYMMDD-NNN-<type>-<title>`.
+- Store all planning/implementation records under `development/YYYYMMDD-NNN-<type>-<title>`.
 - `NNN` is the zero-padded incremental count of directories created on `YYYYMMDD`.
 
 **Concrete example — a feature with two tasks and a design note:**
@@ -105,32 +107,32 @@ Record-keeping convention:
 ```bash
 # Create design and development sub-graphs for the same work key
 flow create note --file design \
-	--graph design/FEAT-20260501-001-parser --title "Parser design notes"
+	--graph design/20260501-001-FEAT-parser --title "Parser design notes"
 
 flow create task --file tokenize \
-	--graph development/FEAT-20260501-001-parser --title "Implement tokenizer" --status todo
+	--graph development/20260501-001-FEAT-parser --title "Implement tokenizer" --status todo
 
 flow create task --file integrate \
-	--graph development/FEAT-20260501-001-parser --title "Integrate parser into CLI" --status todo
+	--graph development/20260501-001-FEAT-parser --title "Integrate parser into CLI" --status todo
 
 # Link the design note to the first task
-flow node connect --from design/FEAT-20260501-001-parser/design --to development/FEAT-20260501-001-parser/tokenize \
-	--graph development/FEAT-20260501-001-parser --relationship records
+flow node connect --from design/20260501-001-FEAT-parser/design --to development/20260501-001-FEAT-parser/tokenize \
+	--graph development/20260501-001-FEAT-parser --relationship records
 
 # Mark the second task as depending on the first
-flow node connect --from development/FEAT-20260501-001-parser/tokenize --to development/FEAT-20260501-001-parser/integrate \
-	--graph development/FEAT-20260501-001-parser --relationship depends-on
+flow node connect --from development/20260501-001-FEAT-parser/tokenize --to development/20260501-001-FEAT-parser/integrate \
+	--graph development/20260501-001-FEAT-parser --relationship depends-on
 ```
 
 This creates on disk:
 
 ```text
-.flow/data/content/design/FEAT-20260501-001-parser/
-	design.md       ← id: design/FEAT-20260501-001-parser/design
+.flow/data/content/design/20260501-001-FEAT-parser/
+	design.md       ← id: design/20260501-001-FEAT-parser/design
 
-.flow/data/content/development/FEAT-20260501-001-parser/
-	tokenize.md     ← id: development/FEAT-20260501-001-parser/tokenize
-	integrate.md    ← id: development/FEAT-20260501-001-parser/integrate
+.flow/data/content/development/20260501-001-FEAT-parser/
+	tokenize.md     ← id: development/20260501-001-FEAT-parser/tokenize
+	integrate.md    ← id: development/20260501-001-FEAT-parser/integrate
 ```
 
 Then open the GUI or keep working in the CLI.
@@ -193,13 +195,11 @@ Current command surface (implemented in the Go CLI):
 - `flow delete --path <relative-path>`
 	- Deletes a document by path.
 - `flow skill content [--graph <graph>]`
-	- Prints a Skill.md template for Flow-centric delivery using `design/<type>-YYYYMMDD-NNN-<title>` and `development/<type>-YYYYMMDD-NNN-<title>` record keeping conventions.
+	- Prints a Skill.md template for Flow-centric delivery using `design/YYYYMMDD-NNN-<type>-<title>` and `development/YYYYMMDD-NNN-<type>-<title>` record keeping conventions.
 - `flow search [--limit <n>] [--graph <graph>] [--feature <feature>] [--type <note|task|command>] [--tag <tag>] [--title <text>] [--description <text>] [--content <text>] [--compact] [query]`
 	- Indexed search with field filters and optional compact ID-only output.
 - `flow run <command-id-or-short-name>`
 	- Executes a command document.
-- `flow tui [--command-graph <graph>] [--search <query>] [--search-limit <n>]`
-	- Renders the terminal interface output.
 - `flow node read --id <node-id> [--graph <graph>] [--format json|markdown]`
 	- Reads one node view (includes body and linked edge info).
 - `flow node content --id <node-id> [--graph <graph>] [--line-start <n>] [--line-end <n>] [--format text|json]`
@@ -262,7 +262,7 @@ npm ci
 npm run build
 
 cd ..
-go test ./internal/config ./internal/workspace ./internal/markdown ./internal/graph ./internal/execution ./internal/index ./internal/tui ./internal/httpapi ./cmd/flow
+go test ./internal/config ./internal/workspace ./internal/markdown ./internal/graph ./internal/execution ./internal/index ./internal/httpapi ./cmd/flow
 bash ./scripts/build-release-linux-amd64.sh
 ```
 
@@ -279,4 +279,4 @@ Release tags may be either `<version>` or `v<version>`, but they must match `int
 - [docs/architecture.md](docs/architecture.md) for system architecture
 - [docs/reference.md](docs/reference.md) for workspace layout, frontmatter, GUI details, and local development notes
 
-Capture. Connect. Complete.
+

@@ -411,6 +411,10 @@ func (handler *apiHandler) handleWorkspace(writer http.ResponseWriter, _ *http.R
 		return
 	}
 
+	if err := syncWorkspaceGUIStateToIndex(handler.options.Root, workspaceConfig); err != nil {
+		// Keep workspace reads available even when index synchronization fails.
+	}
+
 	writeJSON(writer, http.StatusOK, workspaceResponse{
 		Scope:         handler.options.Root.Scope,
 		WorkspacePath: handler.options.Root.WorkspacePath,
@@ -579,7 +583,11 @@ func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.R
 	}
 
 	response := graphTreeResponse{Home: home, Graphs: make([]graphTreeNodeResponse, 0, len(nodes))}
-	graphDirectoryColors := workspaceConfigGraphColors(handler.options.Root)
+	graphDirectoryColors, err := pruneWorkspaceGraphDirectoryColors(handler.options.Root, nodes)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
 	for _, node := range nodes {
 		response.Graphs = append(response.Graphs, graphTreeNodeResponse{
 			GraphPath:   node.GraphPath,
@@ -594,6 +602,47 @@ func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.R
 	}
 
 	writeJSON(writer, http.StatusOK, response)
+}
+
+func pruneWorkspaceGraphDirectoryColors(root workspace.Root, nodes []index.GraphNode) (map[string]string, error) {
+	workspaceConfig, err := readWorkspaceConfig(root)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(workspaceConfig.GUI.GraphDirectoryColors) == 0 {
+		return map[string]string{}, nil
+	}
+
+	validGraphPaths := make(map[string]struct{}, len(nodes))
+	for _, node := range nodes {
+		validGraphPaths[node.GraphPath] = struct{}{}
+	}
+
+	nextColors := make(map[string]string, len(workspaceConfig.GUI.GraphDirectoryColors))
+	changed := false
+	for graphPath, color := range workspaceConfig.GUI.GraphDirectoryColors {
+		if _, ok := validGraphPaths[graphPath]; !ok {
+			changed = true
+			continue
+		}
+		nextColors[graphPath] = color
+	}
+
+	if !changed {
+		return workspaceConfig.GUI.GraphDirectoryColors, nil
+	}
+
+	workspaceConfig.GUI.GraphDirectoryColors = nextColors
+	if err := config.Write(root.ConfigPath, workspaceConfig); err != nil {
+		return nil, err
+	}
+
+	if err := syncWorkspaceGUIStateToIndex(root, workspaceConfig); err != nil {
+		return nil, err
+	}
+
+	return nextColors, nil
 }
 
 func graphTreeFileFromWorkspaceDocument(item markdown.WorkspaceDocument) (graphTreeFileResponse, bool) {
@@ -977,6 +1026,11 @@ func (handler *apiHandler) handleUpdateGraphColor(writer http.ResponseWriter, re
 		return
 	}
 
+	if err := syncWorkspaceGUIStateToIndex(handler.options.Root, workspaceConfig); err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
 	writeJSON(writer, http.StatusOK, updateGraphColorResponse{Name: graphName, Color: workspaceConfig.GUI.GraphDirectoryColors[graphName]})
 }
 
@@ -1277,6 +1331,10 @@ func remapGraphDirectoryColors(root workspace.Root, currentGraph string, nextGra
 		return err
 	}
 
+	if err := syncWorkspaceGUIStateToIndex(root, workspaceConfig); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -1303,7 +1361,28 @@ func deleteGraphDirectoryColors(root workspace.Root, graphName string) error {
 		return err
 	}
 
+	if err := syncWorkspaceGUIStateToIndex(root, workspaceConfig); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+func syncWorkspaceGUIStateToIndex(root workspace.Root, workspaceConfig config.Workspace) error {
+	if strings.TrimSpace(root.IndexPath) == "" || strings.TrimSpace(root.FlowPath) == "" {
+		return nil
+	}
+
+	if err := index.WriteWorkspaceGUISettingsWorkspace(root.IndexPath, root.FlowPath, index.WorkspaceGUISettings{
+		Appearance:      workspaceConfig.GUI.Appearance,
+		PanelLeftRatio:  workspaceConfig.GUI.PanelWidths.LeftRatio,
+		PanelRightRatio: workspaceConfig.GUI.PanelWidths.RightRatio,
+		PanelTOCRatio:   workspaceConfig.GUI.PanelWidths.DocumentTOCRatio,
+	}); err != nil {
+		return err
+	}
+
+	return index.ReplaceWorkspaceGraphDirectoryColorsWorkspace(root.IndexPath, root.FlowPath, workspaceConfig.GUI.GraphDirectoryColors)
 }
 
 func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteGraphView, documents []markdown.WorkspaceDocument) (documentResponse, bool, error) {

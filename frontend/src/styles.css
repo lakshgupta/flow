@@ -3451,6 +3451,64 @@ pre {
   padding-top: 0.15rem;
 }
 
+.center-document-properties-links {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.center-document-properties-links h6 {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.center-document-properties-links-empty {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted-foreground);
+}
+
+.center-document-properties-link-row {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.55rem;
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent 18%);
+  background: color-mix(in srgb, var(--card) 88%, var(--muted) 12%);
+}
+
+.center-document-properties-link-add-row {
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.center-document-properties-link-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.center-document-properties-link-node {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--foreground);
+  word-break: break-word;
+}
+
+.center-document-properties-link-meta {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted-foreground);
+  word-break: break-word;
+}
+
 .home-document {
   display: flex;
   flex-direction: column;

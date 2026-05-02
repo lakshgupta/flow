@@ -16,10 +16,10 @@ This document keeps the detailed workspace, storage, and development reference m
     home.md
     content/
       design/
-        <type>-YYYYMMDD-NNN-<title>/
+        YYYYMMDD-NNN-<type>-<title>/
           <document>.md
       development/
-        <type>-YYYYMMDD-NNN-<title>/
+        YYYYMMDD-NNN-<type>-<title>/
           <document>.md
 ```
 
@@ -28,15 +28,15 @@ Layout rules:
 - Home is always stored at `.flow/data/home.md` and is not part of the graph tree.
 - Graph documents live directly inside their graph directory under `.flow/data/content/`.
 - Record keeping should use only two top-level graph directories under `.flow/data/content/`: `design/` and `development/`.
-- Sub-graph naming is mandatory: `<type>-YYYYMMDD-NNN-<title>`.
-- Design records live under `design/<type>-YYYYMMDD-NNN-<title>/...`.
-- Planning and implementation records live under `development/<type>-YYYYMMDD-NNN-<title>/...`.
+- Sub-graph naming is mandatory: `YYYYMMDD-NNN-<type>-<title>`.
+- Design records live under `design/YYYYMMDD-NNN-<type>-<title>/...`.
+- Planning and implementation records live under `development/YYYYMMDD-NNN-<type>-<title>/...`.
 - `NNN` is the zero-padded incremental count of directories created on that `YYYYMMDD` date.
 - Frontmatter `type` determines whether a document is a note, a task, or a command.
 - Filesystem location is authoritative for graph membership when it disagrees with frontmatter `graph`.
 - `flow init` creates `.flow/data/home.md` and writes default GUI panel width ratios when those files or settings are missing.
 - Creating a graph path silently creates missing parent directories, but graphs appear in the visible tree only after their subtree contains canonical Markdown content.
-- Graph counts shown by the TUI and GUI are derived counts in the format `3 direct / 11 total`.
+- Graph counts shown by the GUI are derived counts in the format `3 direct / 11 total`.
 
 ## Browser GUI Details
 
@@ -77,7 +77,7 @@ Common fields used by all document types:
 
 - `id`: required unique document identifier inside the workspace
 - `type`: document kind, one of `home`, `note`, `task`, or `command`
-- `title`: human-readable label shown in CLI, TUI, and GUI views
+- `title`: human-readable label shown in CLI and GUI views
 - `description`: optional short summary shown in GUI panels and search results
 - `tags`: optional list of labels for classification
 - `createdAt`: optional creation timestamp string
@@ -173,7 +173,7 @@ The graph tree is derived from canonical files under `.flow/data/content` rather
 
 - A document stored at `.flow/data/content/development/parser/build.md` belongs to the `development/parser` graph even if its frontmatter says otherwise.
 - Parent graph nodes such as `design` and `development` remain visible when descendants contain content, even if the parent directory has no direct Markdown files.
-- Empty graphs are omitted from visible graph trees in the CLI, TUI, and GUI.
+- Empty graphs are omitted from visible graph trees in the CLI and GUI.
 - Home is a separate top-level surface and is excluded from graph counts.
 
 ## CLI Command Reference
@@ -197,13 +197,11 @@ Core commands:
 - `flow delete --path <relative-path>`
   - Deletes a document by path.
 - `flow skill content [--graph <graph>]`
-  - Prints a Skill.md template for Flow-centric delivery using `design/<type>-YYYYMMDD-NNN-<title>` and `development/<type>-YYYYMMDD-NNN-<title>` record keeping conventions.
+  - Prints a Skill.md template for Flow-centric delivery using `design/YYYYMMDD-NNN-<type>-<title>` and `development/YYYYMMDD-NNN-<type>-<title>` record keeping conventions.
 - `flow search [--limit <n>] [--graph <graph>] [--feature <feature>] [--type <note|task|command>] [--tag <tag>] [--title <text>] [--description <text>] [--content <text>] [--compact] [query]`
   - Indexed search with field filters and optional compact ID-only output.
 - `flow run <command-id-or-short-name>`
   - Executes a command document.
-- `flow tui [--command-graph <graph>] [--search <query>] [--search-limit <n>]`
-  - Renders terminal interface output.
 
 Node subcommands:
 
@@ -252,9 +250,11 @@ Repository layout:
 - `internal/buildinfo/VERSION`: canonical project version used by the CLI and release scripts
 - `internal/*`: Go application packages
 - `frontend/`: React and TypeScript browser source
-- `internal/httpapi/static/`: generated embedded frontend assets
-- `scripts/build-release-linux-amd64.sh`: release packaging script
-- `scripts/install-linux-amd64.sh`: local installer for the Linux release artifact
+- `internal/httpapi/static/`: generated embedded frontend assets (git-ignored except `.gitkeep`)
+- `scripts/build-release.sh`: release packaging script for a specific OS and architecture
+- `scripts/build-release-linux-amd64.sh`: compatibility wrapper for the Linux amd64 release build
+- `scripts/install-local-release.sh`: local installer for the release archive matching the current machine
+- `scripts/install-linux-amd64.sh`: compatibility wrapper for the Linux amd64 local installer
 - `scripts/install.sh`: standalone GitHub release installer artifact
 
 Common development workflow:
@@ -267,8 +267,9 @@ npm run build
 cd ..
 go build ./cmd/flow
 ./flow version
-go test ./internal/config ./internal/workspace ./internal/markdown ./internal/graph ./internal/execution ./internal/index ./internal/tui ./internal/httpapi ./cmd/flow
+go test ./internal/config ./internal/workspace ./internal/markdown ./internal/graph ./internal/execution ./internal/index ./internal/httpapi ./cmd/flow
 ```
 
 The frontend build emits bundled assets into `internal/httpapi/static/`, and the Go binary embeds those assets for `flow gui`.
+These emitted files are generated each build and are not meant to be committed.
 Plain `go build` uses the project version from `internal/buildinfo/VERSION` and appends `-dev`; release builds inject the exact release version without the suffix.

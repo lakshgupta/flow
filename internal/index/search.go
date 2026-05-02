@@ -116,6 +116,42 @@ func WriteGraphLayoutViewportWorkspace(indexPath string, flowPath string, viewpo
 	return WriteGraphLayoutViewport(indexPath, viewport)
 }
 
+// ReadWorkspaceGUISettingsWorkspace returns persisted GUI settings, rebuilding the index first when needed.
+func ReadWorkspaceGUISettingsWorkspace(indexPath string, flowPath string) (WorkspaceGUISettings, bool, error) {
+	if err := ensureIndexExists(indexPath, flowPath); err != nil {
+		return WorkspaceGUISettings{}, false, err
+	}
+
+	return ReadWorkspaceGUISettings(indexPath)
+}
+
+// WriteWorkspaceGUISettingsWorkspace writes persisted GUI settings, rebuilding the index first when needed.
+func WriteWorkspaceGUISettingsWorkspace(indexPath string, flowPath string, settings WorkspaceGUISettings) error {
+	if err := ensureIndexExists(indexPath, flowPath); err != nil {
+		return err
+	}
+
+	return WriteWorkspaceGUISettings(indexPath, settings)
+}
+
+// ReadWorkspaceGraphDirectoryColorsWorkspace returns persisted graph directory colors, rebuilding first when needed.
+func ReadWorkspaceGraphDirectoryColorsWorkspace(indexPath string, flowPath string) (map[string]string, error) {
+	if err := ensureIndexExists(indexPath, flowPath); err != nil {
+		return nil, err
+	}
+
+	return ReadWorkspaceGraphDirectoryColors(indexPath)
+}
+
+// ReplaceWorkspaceGraphDirectoryColorsWorkspace replaces persisted graph directory colors, rebuilding first when needed.
+func ReplaceWorkspaceGraphDirectoryColorsWorkspace(indexPath string, flowPath string, colors map[string]string) error {
+	if err := ensureIndexExists(indexPath, flowPath); err != nil {
+		return err
+	}
+
+	return ReplaceWorkspaceGraphDirectoryColors(indexPath, colors)
+}
+
 // Search queries the derived SQLite index for document metadata and body text matches.
 func Search(indexPath string, query string, limit int) ([]SearchResult, error) {
 	return SearchWithFilters(indexPath, SearchFilters{Any: query}, limit)

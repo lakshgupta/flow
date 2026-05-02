@@ -20,7 +20,6 @@ import (
 	"github.com/lex/flow/internal/config"
 	"github.com/lex/flow/internal/execution"
 	"github.com/lex/flow/internal/httpapi"
-	"github.com/lex/flow/internal/index"
 	"github.com/lex/flow/internal/markdown"
 	"github.com/lex/flow/internal/workspace"
 	_ "modernc.org/sqlite"
@@ -551,69 +550,6 @@ func TestFlowCreateTaskRejectsMissingReference(t *testing.T) {
 	}
 }
 
-func TestFlowTUIRendersWorkspaceSections(t *testing.T) {
-	rootDir := t.TempDir()
-
-	if _, stderr := runForTest(t, []string{"init"}, rootDir); stderr != "" {
-		t.Fatalf("stderr = %q", stderr)
-	}
-
-	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "notes", "architecture.md"), markdown.NoteDocument{
-		Metadata: markdown.NoteMetadata{
-			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "notes", Title: "Architecture"},
-		},
-		Body: "Build architecture notes.\n",
-	})
-	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "execution", "foundation.md"), markdown.TaskDocument{
-		Metadata: markdown.TaskMetadata{
-			CommonFields: markdown.CommonFields{ID: "task-0", Type: markdown.TaskType, Graph: "planning", Title: "Foundation"},
-			Status:       "todo",
-		},
-		Body: "Foundation body.\n",
-	})
-	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "execution", "parser", "parser.md"), markdown.TaskDocument{
-		Metadata: markdown.TaskMetadata{
-			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "planning", Title: "Parser"},
-			Status:       "todo",
-			Links:        []markdown.NodeLink{{Node: "task-0"}},
-		},
-		Body: "Parser body.\n",
-	})
-	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "release", "build.md"), markdown.CommandDocument{
-		Metadata: markdown.CommandMetadata{
-			CommonFields: markdown.CommonFields{ID: "cmd-1", Type: markdown.CommandType, Graph: "release", Title: "Build"},
-			Name:         "build",
-			Run:          "go build ./cmd/flow",
-		},
-		Body: "Build release binary.\n",
-	})
-
-	if err := index.Rebuild(filepath.Join(rootDir, ".flow", workspace.ConfigDirName, workspace.IndexFileName), filepath.Join(rootDir, ".flow")); err != nil {
-		t.Fatalf("Rebuild() error = %v", err)
-	}
-
-	stdout, stderr := runForTest(t, []string{"tui", "--search", "build"}, rootDir)
-	if stderr != "" {
-		t.Fatalf("stderr = %q", stderr)
-	}
-
-	if !strings.Contains(stdout, "Workspace\nScope: local") {
-		t.Fatalf("stdout = %q", stdout)
-	}
-
-	if !strings.Contains(stdout, "Home\nPath: data/home.md") {
-		t.Fatalf("stdout = %q", stdout)
-	}
-
-	if !strings.Contains(stdout, "Graph Tree\n- execution [1 direct / 2 total]") {
-		t.Fatalf("stdout = %q", stdout)
-	}
-
-	if !strings.Contains(stdout, "Indexed Search\nQuery: build") {
-		t.Fatalf("stdout = %q", stdout)
-	}
-}
-
 func TestFlowSearchRebuildsMissingIndex(t *testing.T) {
 	rootDir := t.TempDir()
 	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "notes", "architecture.md"), markdown.NoteDocument{
@@ -705,7 +641,7 @@ func TestFlowSkillContentReturnsTemplate(t *testing.T) {
 	if !strings.Contains(stdout, "Design graph root is fixed as `design`.") {
 		t.Fatalf("stdout missing design graph guidance, got %q", stdout)
 	}
-	if !strings.Contains(stdout, "Sub-graph names are required to follow: `<type>-YYYYMMDD-NNN-<title>`.") {
+	if !strings.Contains(stdout, "Sub-graph names are required to follow: `YYYYMMDD-NNN-<type>-<title>`.") {
 		t.Fatalf("stdout missing naming-pattern guidance, got %q", stdout)
 	}
 	if !strings.Contains(stdout, "filter candidates using title/description/tags") {
@@ -714,7 +650,7 @@ func TestFlowSkillContentReturnsTemplate(t *testing.T) {
 	if !strings.Contains(stdout, "depends-on") {
 		t.Fatalf("stdout missing task dependency guidance, got %q", stdout)
 	}
-	if !strings.Contains(stdout, "flow node update --id design/FEAT-20260501-001-parser-retry-budget/overview --description") {
+	if !strings.Contains(stdout, "flow node update --id design/20260501-001-FEAT-parser-retry-budget/overview --description") {
 		t.Fatalf("stdout missing node description update example, got %q", stdout)
 	}
 }
@@ -728,7 +664,7 @@ func TestFlowSkillContentSupportsGraphOverride(t *testing.T) {
 	if !strings.Contains(stdout, "Development graph root is fixed as `delivery/parser`.") {
 		t.Fatalf("stdout missing graph override, got %q", stdout)
 	}
-	if !strings.Contains(stdout, "--graph delivery/parser/FEAT-20260501-001-parser-retry-budget") {
+	if !strings.Contains(stdout, "--graph delivery/parser/20260501-001-FEAT-parser-retry-budget") {
 		t.Fatalf("stdout missing planning graph usage in command examples, got %q", stdout)
 	}
 	if !strings.Contains(stdout, "--relationship depends-on") {

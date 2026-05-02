@@ -124,7 +124,14 @@ type DeleteDialogState = {
 type DocumentLinkDetail = {
   nodeId: string;
   context: string;
+  linkType: string;
   graphPath: string;
+};
+
+type EditableLinkDetail = {
+  nodeId: string;
+  context: string;
+  linkType: string;
 };
 
 type ThreadDocumentEntry = {
@@ -329,6 +336,7 @@ function FlowApp() {
   const [settingsDialogOpen, setSettingsDialogOpen] = useState<boolean>(false);
   const [settingsTab, setSettingsTab] = useState<"general" | "theme" | "stop">("general");
   const [formState, setFormState] = useState<DocumentFormState>(emptyDocumentFormState);
+  const [editableLinkDetails, setEditableLinkDetails] = useState<Record<string, { context: string; linkType: string }>>({});
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false);
   const [deleteDialogTarget, setDeleteDialogTarget] = useState<DeleteDialogState | null>(null);
   const [createNodeDialog, setCreateNodeDialog] = useState<{ type: GraphCreateType; graphPath: string; origin: "canvas" | "sidebar" } | null>(null);
@@ -386,6 +394,7 @@ function FlowApp() {
   const threadStackRef = useRef<HTMLDivElement | null>(null);
   const selectedDocumentOpenModeRef = useRef<DocumentOpenMode>("right-rail");
   const formStateRef = useRef<DocumentFormState>(emptyDocumentFormState);
+  const editableLinkDetailsRef = useRef<Record<string, { context: string; linkType: string }>>({});
   const selectedDocumentRef = useRef<DocumentResponse | null>(null);
   const graphCanvasDragRef = useRef<{
     documentId: string;
@@ -594,6 +603,7 @@ function FlowApp() {
     const outgoing = (selectedDocument.links ?? []).map((link) => ({
       nodeId: link.node,
       context: link.context ?? "",
+      linkType: (link.relationships ?? []).join(", "),
       graphPath: documentGraphById.get(link.node) ?? selectedDocument.graph,
     }));
 
@@ -603,6 +613,7 @@ function FlowApp() {
       incomingByNodeId.set(nodeId, {
         nodeId,
         context: "",
+        linkType: "",
         graphPath: documentGraphById.get(nodeId) ?? selectedDocument.graph,
       });
     }
@@ -616,6 +627,7 @@ function FlowApp() {
       incomingByNodeId.set(edge.source, {
         nodeId: edge.source,
         context: edge.context ?? existing?.context ?? "",
+        linkType: edge.relationships?.join(", ") ?? existing?.linkType ?? "",
         graphPath: documentGraphById.get(edge.source) ?? selectedDocument.graph,
       });
     }
@@ -624,6 +636,40 @@ function FlowApp() {
 
     return { outgoing, incoming };
   }, [documentGraphById, graphCanvasData?.edges, selectedDocument]);
+
+  const editableOutgoingLinks = useMemo((): EditableLinkDetail[] => {
+    if (selectedDocument === null) {
+      return [];
+    }
+
+    return splitList(formState.links).map((nodeId) => {
+      const existing = editableLinkDetails[nodeId];
+      return {
+        nodeId,
+        context: existing?.context ?? "",
+        linkType: existing?.linkType ?? "",
+      };
+    });
+  }, [editableLinkDetails, formState.links, selectedDocument]);
+
+  const availableLinkTargets = useMemo((): string[] => {
+    if (selectedDocument === null) {
+      return [];
+    }
+
+    const linkedIDs = new Set(splitList(formState.links));
+    const targets = new Set<string>();
+    for (const graphNode of graphTree?.graphs ?? []) {
+      for (const file of graphNode.files) {
+        if (file.id === selectedDocument.id || linkedIDs.has(file.id)) {
+          continue;
+        }
+        targets.add(file.id);
+      }
+    }
+
+    return Array.from(targets).sort((left, right) => left.localeCompare(right));
+  }, [formState.links, graphTree?.graphs, selectedDocument]);
 
   useEffect(() => {
     if (workspace === null) {
@@ -770,6 +816,18 @@ function FlowApp() {
       formStateRef.current = nextFormState;
       setFormState(nextFormState);
     }
+
+    const nextLinkDetails = Object.fromEntries(
+      (document?.links ?? []).map((link) => [
+        link.node,
+        {
+          context: link.context ?? "",
+          linkType: (link.relationships ?? []).join(", "),
+        },
+      ]),
+    );
+    editableLinkDetailsRef.current = nextLinkDetails;
+    setEditableLinkDetails(nextLinkDetails);
   }, []);
 
   function syncDocumentBodyFromActiveEditor(): boolean {
@@ -1616,6 +1674,116 @@ function FlowApp() {
       formStateRef.current = next;
       return next;
     });
+
+    if (field === "links") {
+      const allowed = new Set(splitList(value));
+      setEditableLinkDetails((current) => {
+        const next: Record<string, { context: string; linkType: string }> = {};
+        for (const [nodeId, details] of Object.entries(current)) {
+          if (allowed.has(nodeId)) {
+            next[nodeId] = details;
+          }
+        }
+        editableLinkDetailsRef.current = next;
+        return next;
+      });
+    }
+
+    if (documentAutoSaveTimerRef.current !== null) {
+      clearTimeout(documentAutoSaveTimerRef.current);
+    }
+    documentAutoSaveTimerRef.current = window.setTimeout(() => {
+      documentAutoSaveTimerRef.current = null;
+      if (selectedDocumentRef.current !== null) {
+        void handleSaveDocument(selectedDocumentRef.current, formStateRef.current);
+      }
+    }, 800);
+  }
+
+  function updateEditableLinkDetail(nodeId: string, field: "context" | "linkType", value: string): void {
+    setEditableLinkDetails((current) => {
+      const previous = current[nodeId] ?? { context: "", linkType: "" };
+      const next = {
+        ...current,
+        [nodeId]: {
+          ...previous,
+          [field]: value,
+        },
+      };
+      editableLinkDetailsRef.current = next;
+      return next;
+    });
+
+    if (documentAutoSaveTimerRef.current !== null) {
+      clearTimeout(documentAutoSaveTimerRef.current);
+    }
+    documentAutoSaveTimerRef.current = window.setTimeout(() => {
+      documentAutoSaveTimerRef.current = null;
+      if (selectedDocumentRef.current !== null) {
+        void handleSaveDocument(selectedDocumentRef.current, formStateRef.current);
+      }
+    }, 800);
+  }
+
+  function addOutgoingLink(nodeId: string): void {
+    const nextNodeID = nodeId.trim();
+    if (nextNodeID === "" || selectedDocumentRef.current === null) {
+      return;
+    }
+
+    if (nextNodeID === selectedDocumentRef.current.id) {
+      setMutationError("Cannot link a document to itself.");
+      return;
+    }
+
+    const currentLinkIDs = splitList(formStateRef.current.links);
+    if (currentLinkIDs.includes(nextNodeID)) {
+      return;
+    }
+
+    const nextLinkIDs = [...currentLinkIDs, nextNodeID];
+    const nextState = { ...formStateRef.current, links: nextLinkIDs.join("\n") };
+    formStateRef.current = nextState;
+    setFormState(nextState);
+
+    setEditableLinkDetails((current) => {
+      const next = {
+        ...current,
+        [nextNodeID]: current[nextNodeID] ?? { context: "", linkType: "" },
+      };
+      editableLinkDetailsRef.current = next;
+      return next;
+    });
+
+    if (documentAutoSaveTimerRef.current !== null) {
+      clearTimeout(documentAutoSaveTimerRef.current);
+    }
+    documentAutoSaveTimerRef.current = window.setTimeout(() => {
+      documentAutoSaveTimerRef.current = null;
+      if (selectedDocumentRef.current !== null) {
+        void handleSaveDocument(selectedDocumentRef.current, formStateRef.current);
+      }
+    }, 800);
+  }
+
+  function removeOutgoingLink(nodeId: string): void {
+    const currentLinkIDs = splitList(formStateRef.current.links);
+    if (!currentLinkIDs.includes(nodeId)) {
+      return;
+    }
+
+    const nextLinkIDs = currentLinkIDs.filter((id) => id !== nodeId);
+    const nextState = { ...formStateRef.current, links: nextLinkIDs.join("\n") };
+    formStateRef.current = nextState;
+    setFormState(nextState);
+
+    setEditableLinkDetails((current) => {
+      const next = { ...current };
+      delete next[nodeId];
+      editableLinkDetailsRef.current = next;
+      return next;
+    });
+
     if (documentAutoSaveTimerRef.current !== null) {
       clearTimeout(documentAutoSaveTimerRef.current);
     }
@@ -2443,6 +2611,7 @@ function FlowApp() {
 
       try {
         const existingLinksByNode = new Map((selectedDocumentRef.current?.links ?? []).map((link) => [link.node, link]));
+        const currentEditableLinks = editableLinkDetailsRef.current;
         const payload: Record<string, unknown> = {
           title: state.title,
           description: state.description,
@@ -2451,10 +2620,12 @@ function FlowApp() {
           body: state.body,
           links: splitList(state.links).map((id): NodeLink => {
             const existing = existingLinksByNode.get(id);
+            const details = currentEditableLinks[id];
+            const linkTypeValue = details?.linkType ?? (existing?.relationships ?? []).join(", ");
             return {
               node: id,
-              context: existing?.context ?? "",
-              relationships: existing?.relationships ?? [],
+              context: details?.context ?? existing?.context ?? "",
+              relationships: splitList(linkTypeValue),
             };
           }),
         };
@@ -3004,6 +3175,11 @@ function FlowApp() {
                                 selectedDocument={selectedDocument}
                                 formState={formState}
                                 linkStats={selectedDocumentLinks}
+                                editableOutgoingLinks={editableOutgoingLinks}
+                                availableLinkTargets={availableLinkTargets}
+                                onAddOutgoingLink={addOutgoingLink}
+                                onRemoveOutgoingLink={removeOutgoingLink}
+                                onUpdateLinkDetail={updateEditableLinkDetail}
                                 updateFormField={updateFormField}
                               />
                             )}

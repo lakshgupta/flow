@@ -2659,7 +2659,7 @@ describe("App graph canvas flows", () => {
           graph: string;
           tags: string[];
           body: string;
-          links: Array<{ node: string }>;
+          links: Array<{ node: string; context?: string; relationships?: string[] }>;
         };
         persistedDocument = {
           ...persistedDocument,
@@ -2716,6 +2716,19 @@ describe("App graph canvas flows", () => {
       target: { value: "Updated overview" },
     });
 
+    fireEvent.change(within(propertiesPanel).getByLabelText("Add outgoing link target"), {
+      target: { value: "note-2" },
+    });
+    await user.click(within(propertiesPanel).getByRole("button", { name: "Add outgoing link" }));
+
+    fireEvent.change(within(propertiesPanel).getByLabelText("Link type for note-2"), {
+      target: { value: "depends-on" },
+    });
+
+    fireEvent.change(within(propertiesPanel).getByLabelText("Link context for note-2"), {
+      target: { value: "needed for sequencing" },
+    });
+
     await waitFor(() => {
       expect(getRequestBody(fetchMock, "/api/documents/note-1", "PUT")).toEqual({
         title: "Overview",
@@ -2723,7 +2736,13 @@ describe("App graph canvas flows", () => {
         graph: "execution",
         tags: [],
         body: "# Intro Heading\n\nBody text\n\n## Deep Section\n\nMore detail\n",
-        links: [],
+        links: [
+          {
+            node: "note-2",
+            context: "needed for sequencing",
+            relationships: ["depends-on"],
+          },
+        ],
       });
     }, { timeout: 2000 });
   });

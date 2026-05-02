@@ -22,9 +22,9 @@
 
 - Follow the [Flow skill](.github/SKILL.md) for all record keeping: use Flow graph task/note nodes as the system of record for every phase of work.
 - Store graph records under `.flow/data/content`.
-- Design records must use `design/<type>-YYYYMMDD-NNN-<title>`.
-- Planning and implementation records must use `development/<type>-YYYYMMDD-NNN-<title>`.
-- Sub-graph naming pattern is mandatory: `<type>-YYYYMMDD-NNN-<title>` (for example `FEAT-20260501-001-parser-retry-budget`).
+- Design records must use `design/YYYYMMDD-NNN-<type>-<title>`.
+- Planning and implementation records must use `development/YYYYMMDD-NNN-<type>-<title>`.
+- Sub-graph naming pattern is mandatory: `YYYYMMDD-NNN-<type>-<title>` (for example `20260501-001-FEAT-parser-retry-budget`).
 - `NNN` is the zero-padded incremental count of directories created on that date.
 - For design updates, filter candidate nodes by title/description/tags first, then inspect body content.
 - Define and maintain task dependencies with explicit `depends-on` links.
@@ -34,7 +34,7 @@
 
 - Keep [docs/architecture.md](../docs/architecture.md) as the approved design source for feature work, including the arrangement and structure of UI components.
 - For UI look and feel, refer to [DESIGN.md](../DESIGN.md) for visual language, component styling, and design guidelines.
-- Keep Flow `design/<type>-YYYYMMDD-NNN-<title>` and `development/<type>-YYYYMMDD-NNN-<title>` sub-graphs and task/note nodes as the execution source of truth for planned feature work.
+- Keep Flow `design/YYYYMMDD-NNN-<type>-<title>` and `development/YYYYMMDD-NNN-<type>-<title>` sub-graphs and task/note nodes as the execution source of truth for planned feature work.
 - Run relevant validation after code changes whenever feasible.
 - Keep changes focused and prefer root-cause fixes over superficial patches.
 

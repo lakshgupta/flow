@@ -111,6 +111,21 @@ CREATE TABLE graph_layout_viewports (
 );
 
 CREATE INDEX graph_layout_viewports_graph_idx ON graph_layout_viewports(graph_path);
+
+CREATE TABLE workspace_gui_settings (
+	singleton_key INTEGER NOT NULL PRIMARY KEY CHECK(singleton_key = 1),
+	appearance TEXT NOT NULL,
+	panel_left_ratio REAL NOT NULL,
+	panel_right_ratio REAL NOT NULL,
+	panel_document_toc_ratio REAL NOT NULL,
+	updated_at TEXT NOT NULL
+);
+
+CREATE TABLE workspace_graph_directory_colors (
+	graph_path TEXT NOT NULL PRIMARY KEY,
+	color TEXT NOT NULL,
+	updated_at TEXT NOT NULL
+);
 `
 
 type indexedDocument struct {
@@ -134,6 +149,8 @@ type GraphNode struct {
 func Rebuild(indexPath string, flowPaths ...string) error {
 	preservedLayouts, _ := loadExistingGraphLayoutPositions(indexPath)
 	preservedViewports, _ := loadExistingGraphLayoutViewports(indexPath)
+	preservedGUISettings, _, _ := loadExistingWorkspaceGUISettings(indexPath)
+	preservedGraphDirectoryColors, _ := loadExistingWorkspaceGraphDirectoryColors(indexPath)
 
 	if err := os.MkdirAll(filepath.Dir(indexPath), 0o755); err != nil {
 		return fmt.Errorf("create index directory: %w", err)
@@ -157,6 +174,10 @@ func Rebuild(indexPath string, flowPaths ...string) error {
 
 	if _, err := transaction.Exec(schemaSQL); err != nil {
 		return fmt.Errorf("create index schema: %w", err)
+	}
+
+	if err := reinsertPreservedWorkspaceGUIState(transaction, preservedGUISettings, preservedGraphDirectoryColors); err != nil {
+		return err
 	}
 
 	if len(flowPaths) > 0 && flowPaths[0] != "" {
@@ -217,6 +238,20 @@ func Rebuild(indexPath string, flowPaths ...string) error {
 
 	if err := transaction.Commit(); err != nil {
 		return fmt.Errorf("commit rebuild transaction: %w", err)
+	}
+
+	return nil
+}
+
+func reinsertPreservedWorkspaceGUIState(transaction *sql.Tx, settings WorkspaceGUISettings, graphDirectoryColors map[string]string) error {
+	if settings.Appearance != "" {
+		if err := upsertWorkspaceGUISettings(transaction, settings); err != nil {
+			return err
+		}
+	}
+
+	if err := replaceWorkspaceGraphDirectoryColors(transaction, graphDirectoryColors); err != nil {
+		return err
 	}
 
 	return nil

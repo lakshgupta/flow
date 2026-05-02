@@ -1,6 +1,6 @@
 # Architecture
 
-Flow is a local-first planning tool for software projects. It stores canonical workspace data as Markdown, derives searchable and queryable state into a rebuildable SQLite index, and exposes shared backend logic through a CLI, a TUI, and a browser-based GUI.
+Flow is a local-first planning tool for software projects. It stores canonical workspace data as Markdown, derives searchable and queryable state into a rebuildable SQLite index, and exposes shared backend logic through a CLI and a browser-based GUI.
 
 This document describes the architecture that is implemented today and separates approved but not yet implemented design work into its own section.
 
@@ -25,7 +25,7 @@ Flow is built around a small set of architectural rules:
 - Markdown files are the source of truth.
 - The SQLite index is derived state and can always be rebuilt from disk.
 - Workspace behavior is local-first and does not depend on cloud services.
-- The CLI, TUI, and GUI share the same backend concepts and storage model.
+- The CLI and GUI share the same backend concepts and storage model.
 - UI interactions resolve to Markdown writes followed by index refreshes.
 
 The primary user-facing model today is a graph-oriented workspace composed of:
@@ -43,7 +43,6 @@ The primary user-facing model today is a graph-oriented workspace composed of:
 Flow ships as a single Go binary. That binary can:
 
 - run CLI commands,
-- render the TUI,
 - start the GUI HTTP server,
 - rebuild and query the index,
 - execute command documents.
@@ -163,7 +162,6 @@ At a schema level the index separates concerns into dedicated tables such as har
 - `internal/graph`: layered graph computation and graph snapshots.
 - `internal/execution`: command execution and environment overlay.
 - `internal/httpapi`: static asset serving and JSON API handlers.
-- `internal/tui`: terminal interface built on shared backend logic.
 
 ### Frontend Responsibilities
 
