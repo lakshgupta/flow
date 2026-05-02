@@ -134,6 +134,20 @@ normalize_arch() {
 	esac
 }
 
+release_target_supported() {
+	local os_name="$1"
+	local arch_name="$2"
+
+	case "${os_name}/${arch_name}" in
+		linux/amd64|darwin/amd64|darwin/arm64)
+			return 0
+			;;
+		*)
+			return 1
+			;;
+	esac
+}
+
 release_tag_candidates() {
 	local version_arg="$1"
 
@@ -209,8 +223,9 @@ fi
 
 OS_NAME="$(normalize_os)"
 ARCH_NAME="$(normalize_arch)"
-if [[ "$OS_NAME" != "linux" || "$ARCH_NAME" != "amd64" ]]; then
-	echo "No Flow release artifact is available yet for ${OS_NAME}/${ARCH_NAME}. Current release support is linux/amd64." >&2
+
+if ! release_target_supported "$OS_NAME" "$ARCH_NAME"; then
+	echo "No Flow release artifact is published for ${OS_NAME}/${ARCH_NAME}. Supported release targets are linux/amd64, darwin/amd64, and darwin/arm64." >&2
 	exit 1
 fi
 

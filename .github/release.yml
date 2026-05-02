@@ -1,0 +1,32 @@
+changelog:
+  categories:
+    - title: Changes
+      labels:
+        - '*'
+template: |
+  ## Release Assets
+
+  This release publishes these target artifacts:
+
+  - Linux `amd64` archive and checksum
+  - macOS `amd64` archive and checksum
+  - macOS `arm64` archive and checksum
+  - `install.sh`
+
+  `install.sh` auto-detects `linux/amd64`, `darwin/amd64`, and `darwin/arm64`.
+
+  ## Install
+
+  ```bash
+  bash ./install.sh
+  bash ./install.sh <version>
+  bash ./install.sh v<version>
+  ```
+
+  ## Changes
+
+  $CHANGES
+
+  ## Contributors
+
+  $CONTRIBUTORS

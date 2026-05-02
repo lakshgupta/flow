@@ -1,4 +1,4 @@
-name: Release Linux amd64
+name: Release
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ on:
       - '[0-9]+.[0-9]+.[0-9]+'
 
 jobs:
-  package-linux-amd64:
+  publish-release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -50,10 +50,13 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Build linux/amd64 release artifacts
+      - name: Build release artifacts
         env:
           FLOW_VERSION: ${{ steps.project-version.outputs.value }}
-        run: bash ./scripts/build-release-linux-amd64.sh
+        run: |
+          bash ./scripts/build-release.sh linux amd64
+          FLOW_SKIP_FRONTEND_BUILD=1 bash ./scripts/build-release.sh darwin amd64
+          FLOW_SKIP_FRONTEND_BUILD=1 bash ./scripts/build-release.sh darwin arm64
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
@@ -64,4 +67,8 @@ jobs:
           files: |
             dist/flow-${{ steps.project-version.outputs.value }}-linux-amd64.tar.gz
             dist/flow-${{ steps.project-version.outputs.value }}-linux-amd64.sha256
+            dist/flow-${{ steps.project-version.outputs.value }}-darwin-amd64.tar.gz
+            dist/flow-${{ steps.project-version.outputs.value }}-darwin-amd64.sha256
+            dist/flow-${{ steps.project-version.outputs.value }}-darwin-arm64.tar.gz
+            dist/flow-${{ steps.project-version.outputs.value }}-darwin-arm64.sha256
             dist/install.sh

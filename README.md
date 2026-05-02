@@ -6,8 +6,6 @@ Flow is a local planning tool for software projects.
 
 It helps you capture notes, tasks, and commands in one workspace, browse them as a graph in the browser, and keep everything in plain Markdown files on disk.
 
-The current release target is Linux on amd64.
-
 ## What Flow Does
 
 - keeps your project planning data in local Markdown files,
@@ -19,7 +17,7 @@ The current release target is Linux on amd64.
 
 ### From GitHub Releases
 
-Flow currently ships release artifacts for `linux/amd64`.
+Flow ships release artifacts for `linux/amd64`, `darwin/amd64`, and `darwin/arm64`.
 
 Download the `install.sh` asset from the release page and run it:
 
@@ -48,7 +46,7 @@ bash ./scripts/install.sh v0.1.0
 If you built the release artifact locally, install it with:
 
 ```bash
-bash ./scripts/install-linux-amd64.sh
+bash ./scripts/install-local-release.sh
 ```
 
 ### From Source
@@ -243,40 +241,10 @@ Recommended patterns:
 
 These commands align with the current architecture: workspace Markdown is the source of truth, and the derived index is used for fast query and graph traversal.
 
-## Release Procedure
-
-This section is for maintainers preparing a release.
-
-1. Update `internal/buildinfo/VERSION` to the release version.
-2. Build the frontend and run the validation matrix.
-3. Build the Linux release artifact.
-4. Commit the release changes.
-5. Create and push a matching tag such as `v0.1.0`.
-6. Let GitHub Actions publish the release and verify the uploaded artifacts.
-
-Recommended release validation:
-
-```bash
-cd frontend
-npm ci
-npm run build
-
-cd ..
-go test ./internal/config ./internal/workspace ./internal/markdown ./internal/graph ./internal/execution ./internal/index ./internal/httpapi ./cmd/flow
-bash ./scripts/build-release-linux-amd64.sh
-```
-
-The release workflow publishes:
-
-- `flow-<version>-linux-amd64.tar.gz`
-- `flow-<version>-linux-amd64.sha256`
-- `install.sh`
-
-Release tags may be either `<version>` or `v<version>`, but they must match `internal/buildinfo/VERSION`.
-
 ## Learn More
 
 - [docs/architecture.md](docs/architecture.md) for system architecture
 - [docs/reference.md](docs/reference.md) for workspace layout, frontmatter, GUI details, and local development notes
+- [docs/release.md](docs/release.md) for the maintainer release procedure and exact release commands
 
 
