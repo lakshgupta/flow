@@ -6,8 +6,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/scripts/lib/checksums.sh"
 source "$ROOT_DIR/scripts/lib/version.sh"
 
-TARGET_OS="$(normalize_release_os_name "${1:-}")"
-TARGET_ARCH="$(normalize_release_arch_name "${2:-}")"
+TARGET_OS="$(normalize_release_os_name "${1:-}" || true)"
+TARGET_ARCH="$(normalize_release_arch_name "${2:-}" || true)"
 
 if [[ -z "$TARGET_OS" || -z "$TARGET_ARCH" ]]; then
 	cat <<'EOF' >&2

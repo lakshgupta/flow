@@ -31,7 +31,7 @@ import (
 	"github.com/lex/flow/internal/workspace"
 )
 
-var version = buildinfo.DevVersion()
+var version = buildinfo.ProjectVersion()
 
 const defaultGUIPort = 4317
 
