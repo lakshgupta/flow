@@ -4445,6 +4445,14 @@ pre {
   background: radial-gradient(circle at 30% 20%, color-mix(in srgb, var(--card) 92%, white 8%), color-mix(in srgb, var(--muted) 82%, transparent));
 }
 
+.graph-canvas-node-circle.graph-canvas-node-tinted {
+  background: radial-gradient(
+    circle at 30% 20%,
+    color-mix(in srgb, var(--graph-node-color) 36%, var(--card)),
+    color-mix(in srgb, var(--graph-node-color) 20%, var(--card))
+  );
+}
+
 .graph-canvas-node-selected {
   border-color: var(--primary);
   box-shadow: 0 0 0 2px var(--ring), var(--shadow-card);
