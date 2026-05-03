@@ -712,6 +712,22 @@ pre {
   min-height: 100%;
   padding: 1rem;
   gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card) 98%, var(--background) 2%),
+    color-mix(in srgb, var(--card) 94%, var(--muted) 6%)
+  );
+}
+
+.sidebar-document-panel-tinted {
+  border-color: color-mix(in srgb, var(--document-graph-color) 56%, var(--border));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--document-graph-color) 36%, var(--card)),
+    color-mix(in srgb, var(--document-graph-color) 22%, var(--card))
+  );
 }
 
 .sidebar-document-toolbar {
@@ -3129,11 +3145,11 @@ pre {
 }
 
 .thread-panel.thread-panel-tinted {
-  border-color: color-mix(in srgb, var(--thread-graph-color) 38%, var(--border));
+  border-color: color-mix(in srgb, var(--thread-graph-color) 54%, var(--border));
   background: linear-gradient(
     170deg,
-    color-mix(in srgb, var(--thread-graph-color) 16%, var(--card)) 0%,
-    color-mix(in srgb, var(--thread-graph-color) 10%, color-mix(in srgb, var(--card) 94%, var(--muted) 6%)) 100%
+    color-mix(in srgb, var(--thread-graph-color) 30%, var(--card)) 0%,
+    color-mix(in srgb, var(--thread-graph-color) 18%, color-mix(in srgb, var(--card) 94%, var(--muted) 6%)) 100%
   );
 }
 
@@ -3148,7 +3164,7 @@ pre {
 }
 
 .thread-panel.thread-panel-tinted::before {
-  background: radial-gradient(120% 46% at 0% 0%, color-mix(in srgb, var(--thread-graph-color) 34%, transparent) 0%, transparent 64%);
+  background: radial-gradient(120% 46% at 0% 0%, color-mix(in srgb, var(--thread-graph-color) 44%, transparent) 0%, transparent 64%);
 }
 
 .thread-panel[data-active="false"] {
@@ -3177,10 +3193,10 @@ pre {
 }
 
 .thread-panel-active.thread-panel-tinted {
-  border-color: color-mix(in srgb, var(--thread-graph-color) 56%, var(--border));
+  border-color: color-mix(in srgb, var(--thread-graph-color) 66%, var(--border));
   box-shadow:
     0 28px 52px color-mix(in srgb, var(--foreground) 12%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--thread-graph-color) 30%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--thread-graph-color) 42%, transparent);
 }
 
 .thread-panel-readonly {
@@ -3737,12 +3753,12 @@ pre {
 }
 
 .graph-tree-row-colored .graph-sub-button {
-  background: color-mix(in srgb, var(--graph-row-color) 36%, transparent);
+  background: color-mix(in srgb, var(--graph-row-color) 56%, transparent);
   border-radius: 0.6rem;
 }
 
 .graph-tree-row-colored .graph-sub-button:hover {
-  background: color-mix(in srgb, var(--graph-row-color) 52%, transparent);
+  background: color-mix(in srgb, var(--graph-row-color) 68%, transparent);
 }
 
 .graph-color-swatch {
@@ -4405,11 +4421,11 @@ pre {
 }
 
 .graph-canvas-node-tinted {
-  border-color: color-mix(in srgb, var(--graph-node-color) 44%, var(--border));
+  border-color: color-mix(in srgb, var(--graph-node-color) 62%, var(--border));
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--graph-node-color) 26%, var(--card)),
-    color-mix(in srgb, var(--graph-node-color) 14%, var(--card))
+    color-mix(in srgb, var(--graph-node-color) 44%, var(--card)),
+    color-mix(in srgb, var(--graph-node-color) 28%, var(--card))
   );
 }
 
@@ -4448,8 +4464,8 @@ pre {
 .graph-canvas-node-circle.graph-canvas-node-tinted {
   background: radial-gradient(
     circle at 30% 20%,
-    color-mix(in srgb, var(--graph-node-color) 36%, var(--card)),
-    color-mix(in srgb, var(--graph-node-color) 20%, var(--card))
+    color-mix(in srgb, var(--graph-node-color) 66%, var(--card)),
+    color-mix(in srgb, var(--graph-node-color) 44%, var(--card))
   );
 }
 

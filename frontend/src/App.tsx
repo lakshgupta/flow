@@ -467,6 +467,12 @@ function FlowApp() {
   const graphCanvasNodeSearchSelectedIndex = graphCanvasNodeSearchMatches.findIndex((node) => node.id === selectedCanvasNodeId);
   const selectedGraphNode = graphTree?.graphs.find((graphNode) => graphNode.graphPath === selectedGraphPath) ?? null;
   const selectedCanvasNode = selectedGraphCanvasNode(graphCanvasData, selectedCanvasNodeId);
+  const selectedDocumentGraphColor = selectedDocument !== null
+    ? graphDirectoryColorHex(resolveGraphDirectoryColor(selectedDocument.graph, graphDirectoryColorsByPath))
+    : undefined;
+  const selectedDocumentTintStyle = selectedDocumentGraphColor
+    ? ({ "--document-graph-color": selectedDocumentGraphColor } as React.CSSProperties)
+    : undefined;
   const selectedCanvasNodeEdgeCount = countConnectedGraphCanvasEdges(graphCanvasData, selectedCanvasNodeId);
   const workspaceSurfaceSection = activeSurface.kind === "graph" ? "Content" : "Home";
   const workspaceSurfaceTitle = activeSurface.kind === "graph" ? selectedGraphNode?.displayName ?? selectedGraphPath : null;
@@ -1999,13 +2005,27 @@ function FlowApp() {
     });
   }
 
+  function resolveDocumentGraphPath(documentId: string, fallbackGraphPath: string): string {
+    return graphCanvasData?.nodes.find((node) => node.id === documentId)?.graph
+      ?? documentGraphById.get(documentId)
+      ?? fallbackGraphPath;
+  }
+
   function handleOpenCanvasDocument(documentId: string): void {
-    void openDocumentInCenter(documentId, selectedGraphPath);
+    const graphPath = resolveDocumentGraphPath(documentId, selectedGraphPath);
+    if (graphPath === "") {
+      return;
+    }
+    void openDocumentInCenter(documentId, graphPath);
   }
 
   function handleSelectedNodeDocumentButtonClick(): void {
     if (selectedCanvasNode !== null && activeThreadDocumentId !== selectedCanvasNode.id) {
-      void openDocumentInCenter(selectedCanvasNode.id, selectedGraphPath);
+      const graphPath = resolveDocumentGraphPath(selectedCanvasNode.id, selectedGraphPath);
+      if (graphPath === "") {
+        return;
+      }
+      void openDocumentInCenter(selectedCanvasNode.id, graphPath);
       return;
     }
 
@@ -4102,7 +4122,11 @@ function FlowApp() {
               rightRailMaximized ? (
                 renderCenterDocumentShell(true)
               ) : (
-                <div className="sidebar-document-panel" aria-label="Graph node document panel">
+                <div
+                  className={`sidebar-document-panel${selectedDocumentGraphColor ? " sidebar-document-panel-tinted" : ""}`}
+                  style={selectedDocumentTintStyle}
+                  aria-label="Graph node document panel"
+                >
                 <div className="sidebar-document-toolbar">
                   <div className="center-document-toolbar-leading">
                     {selectedDocument !== null && (
