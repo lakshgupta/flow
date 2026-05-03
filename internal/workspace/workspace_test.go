@@ -177,3 +177,50 @@ func TestRegisterLocalWorkspaceAddsTrackedLocalWorkspace(t *testing.T) {
 		t.Fatalf("locator.LocalWorkspaces = %#v, want one deduplicated path", locator.LocalWorkspaces)
 	}
 }
+
+func TestDeregisterLocalWorkspaceRemovesTrackedLocalWorkspace(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	globalPath := filepath.Join(tempDir, "global", "workspace")
+	localPathA := filepath.Join(tempDir, "repo-a", "workspace")
+	localPathB := filepath.Join(tempDir, "repo-b", "workspace")
+	locatorPath := filepath.Join(tempDir, "config", GlobalLocatorFileName)
+
+	if err := WriteGlobalLocator(locatorPath, GlobalLocator{
+		WorkspacePath:   globalPath,
+		LocalWorkspaces: []string{localPathA, localPathB},
+	}); err != nil {
+		t.Fatalf("WriteGlobalLocator() error = %v", err)
+	}
+
+	if err := DeregisterLocalWorkspace(locatorPath, localPathA); err != nil {
+		t.Fatalf("DeregisterLocalWorkspace() error = %v", err)
+	}
+
+	locator, err := ReadGlobalLocator(locatorPath)
+	if err != nil {
+		t.Fatalf("ReadGlobalLocator() error = %v", err)
+	}
+
+	if len(locator.LocalWorkspaces) != 1 || locator.LocalWorkspaces[0] != localPathB {
+		t.Fatalf("locator.LocalWorkspaces = %#v, want [%q]", locator.LocalWorkspaces, localPathB)
+	}
+}
+
+func TestDeregisterLocalWorkspaceRejectsGlobalWorkspacePath(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	globalPath := filepath.Join(tempDir, "global", "workspace")
+	locatorPath := filepath.Join(tempDir, "config", GlobalLocatorFileName)
+
+	if err := WriteGlobalLocator(locatorPath, GlobalLocator{WorkspacePath: globalPath}); err != nil {
+		t.Fatalf("WriteGlobalLocator() error = %v", err)
+	}
+
+	err := DeregisterLocalWorkspace(locatorPath, globalPath)
+	if err == nil {
+		t.Fatal("DeregisterLocalWorkspace() error = nil, want error")
+	}
+}

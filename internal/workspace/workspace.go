@@ -213,6 +213,34 @@ func RegisterLocalWorkspace(path string, workspacePath string) error {
 	return WriteGlobalLocator(path, locator)
 }
 
+// DeregisterLocalWorkspace removes a tracked local workspace path from the global locator.
+func DeregisterLocalWorkspace(path string, workspacePath string) error {
+	absPath, err := filepath.Abs(workspacePath)
+	if err != nil {
+		return fmt.Errorf("resolve local workspace path: %w", err)
+	}
+
+	locator, err := ReadGlobalLocator(path)
+	if err != nil {
+		return err
+	}
+
+	if absPath == locator.WorkspacePath {
+		return fmt.Errorf("cannot de-register global workspace")
+	}
+
+	nextLocalWorkspaces := make([]string, 0, len(locator.LocalWorkspaces))
+	for _, localPath := range locator.LocalWorkspaces {
+		if filepath.Clean(localPath) == filepath.Clean(absPath) {
+			continue
+		}
+		nextLocalWorkspaces = append(nextLocalWorkspaces, localPath)
+	}
+
+	locator.LocalWorkspaces = normalizeWorkspacePaths(nextLocalWorkspaces)
+	return WriteGlobalLocator(path, locator)
+}
+
 func normalizeWorkspacePaths(paths []string) []string {
 	set := map[string]struct{}{}
 	result := make([]string, 0, len(paths))

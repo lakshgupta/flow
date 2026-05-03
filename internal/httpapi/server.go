@@ -354,6 +354,8 @@ func (handler *apiHandler) ServeHTTP(writer http.ResponseWriter, request *http.R
 		handler.handleUpdateWorkspace(writer, request)
 	case request.URL.Path == "/api/workspace/select" && request.Method == http.MethodPut:
 		handler.handleSelectWorkspace(writer, request)
+	case request.URL.Path == "/api/workspace/local" && request.Method == http.MethodDelete:
+		handler.handleDeregisterLocalWorkspace(writer, request)
 	case request.URL.Path == "/api/graphs" && request.Method == http.MethodGet:
 		handler.handleGraphTree(writer, request)
 	case request.URL.Path == "/api/graphs" && request.Method == http.MethodPost:
@@ -512,6 +514,46 @@ func (handler *apiHandler) handleSelectWorkspace(writer http.ResponseWriter, req
 	}
 
 	handler.options.Root = resolved
+	handler.handleWorkspace(writer, request)
+}
+
+func (handler *apiHandler) handleDeregisterLocalWorkspace(writer http.ResponseWriter, request *http.Request) {
+	if !workspaceSelectionEnabled(handler.options) {
+		writeError(writer, http.StatusForbidden, "workspace selection is disabled for this GUI session")
+		return
+	}
+
+	if strings.TrimSpace(handler.options.GlobalLocatorPath) == "" {
+		writeError(writer, http.StatusBadRequest, "global workspace locator is not configured")
+		return
+	}
+
+	workspacePath := strings.TrimSpace(request.URL.Query().Get("workspacePath"))
+	if workspacePath == "" {
+		writeError(writer, http.StatusBadRequest, "workspacePath must not be empty")
+		return
+	}
+
+	absWorkspacePath, err := filepath.Abs(workspacePath)
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, fmt.Sprintf("resolve workspace path: %v", err))
+		return
+	}
+
+	if err := workspace.DeregisterLocalWorkspace(handler.options.GlobalLocatorPath, absWorkspacePath); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if handler.options.Root.WorkspacePath == absWorkspacePath {
+		globalRoot, err := workspace.ResolveGlobal(handler.options.GlobalLocatorPath)
+		if err != nil {
+			writeError(writer, http.StatusInternalServerError, err.Error())
+			return
+		}
+		handler.options.Root = globalRoot
+	}
+
 	handler.handleWorkspace(writer, request)
 }
 

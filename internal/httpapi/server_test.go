@@ -313,6 +313,86 @@ func TestNewMuxUpdatesWorkspacePanelWidths(t *testing.T) {
 	}
 }
 
+func TestNewMuxDeregistersLocalWorkspaceAndFallsBackToGlobal(t *testing.T) {
+	t.Parallel()
+
+	globalRoot := createGraphTreeHTTPAPITestWorkspace(t)
+	globalRoot.Scope = workspace.GlobalScope
+	localRoot := createGraphTreeHTTPAPITestWorkspace(t)
+
+	locatorPath := filepath.Join(t.TempDir(), "config", workspace.GlobalLocatorFileName)
+	if err := workspace.WriteGlobalLocator(locatorPath, workspace.GlobalLocator{
+		WorkspacePath:   globalRoot.WorkspacePath,
+		LocalWorkspaces: []string{localRoot.WorkspacePath},
+	}); err != nil {
+		t.Fatalf("WriteGlobalLocator() error = %v", err)
+	}
+
+	handler, err := NewMux(Options{
+		Root:              globalRoot,
+		LaunchScope:       workspace.GlobalScope,
+		GlobalLocatorPath: locatorPath,
+	})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	selected := performJSONRequestWithBody[workspaceResponse](t, handler, http.MethodPut, "/api/workspace/select", map[string]any{
+		"workspacePath": localRoot.WorkspacePath,
+	})
+	if selected.Scope != workspace.LocalScope {
+		t.Fatalf("selected.Scope = %q, want local", selected.Scope)
+	}
+
+	updated := performJSONRequest[workspaceResponse](t, handler, http.MethodDelete, "/api/workspace/local?workspacePath="+url.QueryEscape(localRoot.WorkspacePath))
+	if updated.Scope != workspace.GlobalScope {
+		t.Fatalf("updated.Scope = %q, want global", updated.Scope)
+	}
+
+	for _, choice := range updated.Workspaces {
+		if choice.WorkspacePath == localRoot.WorkspacePath {
+			t.Fatalf("updated.Workspaces = %#v, local workspace should be de-registered", updated.Workspaces)
+		}
+	}
+
+	locator, err := workspace.ReadGlobalLocator(locatorPath)
+	if err != nil {
+		t.Fatalf("ReadGlobalLocator() error = %v", err)
+	}
+	if len(locator.LocalWorkspaces) != 0 {
+		t.Fatalf("locator.LocalWorkspaces = %#v, want []", locator.LocalWorkspaces)
+	}
+}
+
+func TestNewMuxDeregisterLocalWorkspaceRejectsGlobalWorkspace(t *testing.T) {
+	t.Parallel()
+
+	globalRoot := createGraphTreeHTTPAPITestWorkspace(t)
+	globalRoot.Scope = workspace.GlobalScope
+
+	locatorPath := filepath.Join(t.TempDir(), "config", workspace.GlobalLocatorFileName)
+	if err := workspace.WriteGlobalLocator(locatorPath, workspace.GlobalLocator{WorkspacePath: globalRoot.WorkspacePath}); err != nil {
+		t.Fatalf("WriteGlobalLocator() error = %v", err)
+	}
+
+	handler, err := NewMux(Options{
+		Root:              globalRoot,
+		LaunchScope:       workspace.GlobalScope,
+		GlobalLocatorPath: locatorPath,
+	})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodDelete, "/api/workspace/local?workspacePath="+url.QueryEscape(globalRoot.WorkspacePath), nil)
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		responseBody, _ := io.ReadAll(recorder.Body)
+		t.Fatalf("status = %d, want 400, body = %s", recorder.Code, string(responseBody))
+	}
+}
+
 func TestNewMuxRebuildsIndexAfterExternalFileChange(t *testing.T) {
 	t.Parallel()
 

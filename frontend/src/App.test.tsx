@@ -2255,6 +2255,81 @@ describe("App graph canvas flows", () => {
     });
   });
 
+  it("de-registers a local workspace from settings", async () => {
+    const globalPath = "/tmp/flow-global";
+    const localPath = "/tmp/flow-local";
+    let persistedWorkspace = {
+      ...workspaceResponse,
+      scope: "global",
+      workspacePath: globalPath,
+      workspaceSelectionEnabled: true,
+      workspaces: [
+        { scope: "global", workspacePath: globalPath },
+        { scope: "local", workspacePath: localPath },
+      ],
+    };
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return persistedWorkspace;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/calendar-documents") {
+        return [];
+      }
+
+      if (url === "/api/workspace/select" && init?.method === "PUT") {
+        const body = JSON.parse(String(init.body ?? "{}")) as { workspacePath?: string };
+        if (body.workspacePath === localPath) {
+          persistedWorkspace = {
+            ...persistedWorkspace,
+            scope: "local",
+            workspacePath: localPath,
+          };
+        }
+        return persistedWorkspace;
+      }
+
+      if (typeof url === "string" && url.startsWith("/api/workspace/local?") && init?.method === "DELETE") {
+        persistedWorkspace = {
+          ...persistedWorkspace,
+          scope: "global",
+          workspacePath: globalPath,
+          workspaces: [{ scope: "global", workspacePath: globalPath }],
+        };
+        return persistedWorkspace;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Content");
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+
+    const deregisterButton = await screen.findByRole("button", { name: `De-register ${localPath}` });
+    await user.click(deregisterButton);
+
+    await waitFor(() => {
+      const deleteCall = fetchMock.mock.calls.find(([requestURL, requestInit]) => {
+        const value = String(requestURL);
+        return value.startsWith("/api/workspace/local?") && (requestInit?.method ?? "GET") === "DELETE";
+      });
+      expect(deleteCall).toBeDefined();
+    });
+
+    await waitFor(() => {
+      expect((screen.getByLabelText("Workspace") as HTMLSelectElement).value).toBe(globalPath);
+    });
+  });
+
   it("rebuilds the index from settings and refreshes the open document", async () => {
     let currentGraphTree = graphTreeResponse;
     let currentDocument = {

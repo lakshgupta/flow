@@ -57,6 +57,13 @@ export async function selectWorkspace(workspacePath: string): Promise<WorkspaceR
   });
 }
 
+export async function deregisterLocalWorkspace(workspacePath: string): Promise<WorkspaceResponse> {
+  const params = new URLSearchParams({ workspacePath });
+  return requestJSON<WorkspaceResponse>(`/api/workspace/local?${params.toString()}`, {
+    method: "DELETE",
+  });
+}
+
 export async function loadReferenceTargets(query: string, graphPath?: string, limit = 8): Promise<ReferenceTargetResponse[]> {
   const params = new URLSearchParams();
   params.set("q", query);

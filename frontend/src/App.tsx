@@ -10,7 +10,7 @@ import {
   type NodeChange,
   type ReactFlowInstance,
 } from "@xyflow/react";
-import { CalendarDays, ChevronLeft, ChevronRight, FileText, Info, Maximize2, Minimize2, PaintbrushVertical, Rows3, Search, Settings, Trash2, TriangleAlert, X } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, FileText, GalleryVerticalEnd, Info, Maximize2, Minimize2, PaintbrushVertical, Rows3, Search, Settings, Trash2, TriangleAlert, X } from "lucide-react";
 import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppSidebar } from "./components/AppSidebar";
@@ -46,7 +46,7 @@ import { Separator } from "./components/ui/separator";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger } from "./components/ui/sidebar";
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./components/ui/tooltip";
-import { requestJSON, loadCalendarDocuments, loadWorkspaceSnapshot, selectWorkspace, uploadGraphFiles } from "./lib/api";
+import { requestJSON, deregisterLocalWorkspace, loadCalendarDocuments, loadWorkspaceSnapshot, selectWorkspace, uploadGraphFiles } from "./lib/api";
 import {
   createDocumentFormState,
   createGraphDocumentPayload,
@@ -470,6 +470,7 @@ function FlowApp() {
   const selectedCanvasNodeEdgeCount = countConnectedGraphCanvasEdges(graphCanvasData, selectedCanvasNodeId);
   const workspaceSurfaceSection = activeSurface.kind === "graph" ? "Content" : "Home";
   const workspaceSurfaceTitle = activeSurface.kind === "graph" ? selectedGraphNode?.displayName ?? selectedGraphPath : null;
+  const trackedLocalWorkspaces = (workspace?.workspaces ?? []).filter((entry) => entry.scope === "local");
   const isHomeThreadRoot = documentThread.length > 0 && documentThread[0]?.documentId === HOME_THREAD_DOCUMENT_ID;
   const activeThreadTailId = documentThread.length > 0 ? documentThread[documentThread.length - 1]?.documentId ?? "" : "";
   const hasAssetThreadTail = activeThreadTailId !== "" && threadAssetsById[activeThreadTailId] !== undefined;
@@ -2360,6 +2361,43 @@ function FlowApp() {
     }
   }
 
+  async function handleWorkspaceDeregister(workspacePath: string): Promise<void> {
+    if (workspace === null || !workspace.workspaceSelectionEnabled) {
+      return;
+    }
+
+    const normalizedWorkspacePath = workspacePath.trim();
+    if (normalizedWorkspacePath === "") {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `De-register local workspace?\n\n${normalizedWorkspacePath}\n\nThis removes it from the global workspace list only. Files are not deleted.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setMutationError("");
+      setSwitchingWorkspace(true);
+      await deregisterLocalWorkspace(normalizedWorkspacePath);
+      const snapshot = await loadWorkspaceSnapshot();
+      setWorkspace(snapshot.workspaceData);
+      setGraphTree(snapshot.graphTreeData);
+      setSelectedDocumentId("");
+      setActiveSurface({ kind: "home" });
+      setGraphCanvasData(null);
+      setGraphCanvasReloadToken((current) => current + 1);
+      setMutationSuccess("Local workspace de-registered.");
+      void refreshCalendarDocumentList();
+    } catch (err) {
+      setMutationError(toErrorMessage(err));
+    } finally {
+      setSwitchingWorkspace(false);
+    }
+  }
+
   function beginDocumentTOCResize(event: React.MouseEvent<HTMLDivElement>, layout: HTMLDivElement | null): void {
     if (!isPrimaryMouseButton(event.button) || layout === null) {
       return;
@@ -3557,7 +3595,10 @@ function FlowApp() {
         onResizeMouseDown={handleLeftSidebarMouseDown}
         topContent={workspace?.workspaceSelectionEnabled ? (
           <div className="flex flex-col gap-2 px-2 pb-2">
-            <Label htmlFor="sidebar-workspace-select">Workspace</Label>
+            <Label htmlFor="sidebar-workspace-select" className="flex items-center gap-2">
+              <GalleryVerticalEnd size={14} />
+              <span>Workspace</span>
+            </Label>
             <select
               id="sidebar-workspace-select"
               className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
@@ -4437,6 +4478,45 @@ function FlowApp() {
                                   {rebuildingIndex ? "Refreshing index..." : "Refresh index"}
                                 </Button>
                               </div>
+                            </div>
+                            <div className="flex flex-col gap-3 rounded-lg border p-4">
+                              <div className="flex flex-col gap-1">
+                                <Label>Local workspaces</Label>
+                                <p className="text-sm text-muted-foreground">
+                                  De-register local workspaces from this global workspace list. This does not delete files.
+                                </p>
+                              </div>
+                              {trackedLocalWorkspaces.length > 0 ? (
+                                <div className="max-h-56 space-y-2 overflow-y-auto pr-1" aria-label="Registered local workspaces">
+                                  {trackedLocalWorkspaces.map((entry) => {
+                                    const isActive = workspace.scope === "local" && workspace.workspacePath === entry.workspacePath;
+                                    return (
+                                      <div key={`local-workspace-${entry.workspacePath}`} className="flex items-center justify-between gap-2 rounded-md border p-2">
+                                        <div className="min-w-0">
+                                          <div className="truncate text-sm" title={entry.workspacePath}>{entry.workspacePath}</div>
+                                          {isActive ? <div className="text-xs text-muted-foreground">Currently active</div> : null}
+                                        </div>
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          size="sm"
+                                          className="gap-2"
+                                          onClick={() => {
+                                            void handleWorkspaceDeregister(entry.workspacePath);
+                                          }}
+                                          disabled={switchingWorkspace}
+                                          aria-label={`De-register ${entry.workspacePath}`}
+                                        >
+                                          <Trash2 size={14} />
+                                          De-register
+                                        </Button>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <p className="text-sm text-muted-foreground">No local workspaces are currently registered.</p>
+                              )}
                             </div>
                           </div>
                         ) : (
