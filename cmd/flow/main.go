@@ -32,6 +32,7 @@ var version = buildinfo.ProjectVersion()
 
 const defaultGUIPort = 4317
 const guiLogRetentionWindow = 7 * 24 * time.Hour
+const workspaceGitignoreContent = "config/flow.index\nconfig/gui-server.json\nlogs/\n"
 
 type commandEnv struct {
 	stdout           io.Writer
@@ -2373,13 +2374,17 @@ func initializeWorkspace(root workspace.Root) error {
 
 func ensureWorkspaceGitignore(root workspace.Root) error {
 	ignorePath := filepath.Join(root.FlowPath, ".gitignore")
-	requiredEntries := []string{
-		filepath.ToSlash(filepath.Join(workspace.ConfigDirName, workspace.IndexFileName)),
-		filepath.ToSlash(filepath.Join(workspace.ConfigDirName, execution.GUIStateFileName)),
-		"logs/",
-	}
+	requiredEntries := strings.Split(strings.TrimSpace(strings.ReplaceAll(workspaceGitignoreContent, "\r\n", "\n")), "\n")
 
 	existingContent, err := os.ReadFile(ignorePath)
+	if errors.Is(err, os.ErrNotExist) {
+		if err := os.WriteFile(ignorePath, []byte(workspaceGitignoreContent), 0o644); err != nil {
+			return fmt.Errorf("write workspace ignore file: %w", err)
+		}
+
+		return nil
+	}
+
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("read workspace ignore file: %w", err)
 	}

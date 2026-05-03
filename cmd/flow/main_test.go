@@ -95,8 +95,8 @@ func TestFlowInitCreatesWorkspaceFilesWithoutChangingMarkdown(t *testing.T) {
 		t.Fatalf("ReadFile(.gitignore) error = %v", err)
 	}
 
-	if string(gitignoreData) != "config/flow.index\nconfig/gui-server.json\nlogs/\n" {
-		t.Fatalf(".gitignore = %q, want config/flow.index, config/gui-server.json, and logs/ entries", string(gitignoreData))
+	if string(gitignoreData) != workspaceGitignoreContent {
+		t.Fatalf(".gitignore = %q, want %q", string(gitignoreData), workspaceGitignoreContent)
 	}
 
 	if _, err := os.Stat(filepath.Join(rootDir, ".flow", workspace.ConfigDirName)); err != nil {
