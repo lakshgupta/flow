@@ -12,7 +12,7 @@ import {
   DialogContent,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { editorHTMLToMarkdown, markdownToHTML, parseFlowReferenceHref, parseFlowDateHref } from '../../richText'
+import { editorHTMLToMarkdown, markdownToHTML, parseFlowReferenceHref, parseFlowDateHref, parseFlowAssetHref } from '../../richText'
 import { headingIdFromText } from '../../lib/docUtils'
 import { toISODateString } from '../../lib/dateEntries'
 import type { InlineReference } from '../../types'
@@ -33,6 +33,7 @@ export interface RichTextEditorProps {
   referenceLookupGraph?: string
   onReferenceOpen?: (documentId: string, graphPath: string) => void
   onDateOpen?: (date: string) => void
+  onAssetOpenInThread?: (assetHref: string, assetName: string, kind: "pdf" | "text") => void
   scrollToHeadingSlug?: string | null
   onScrollCompleted?: () => void
 }
@@ -87,10 +88,13 @@ function DocChangeTracker({ onHtmlChange }: { onHtmlChange: () => void }) {
 }
 
 export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(function RichTextEditor(
-  { value, onChange, placeholder, ariaLabel, className, inlineReferences, referenceLookupGraph, onReferenceOpen, onDateOpen, scrollToHeadingSlug, onScrollCompleted }: RichTextEditorProps,
+  { value, onChange, placeholder, ariaLabel, className, inlineReferences, referenceLookupGraph, onReferenceOpen, onDateOpen, onAssetOpenInThread, scrollToHeadingSlug, onScrollCompleted }: RichTextEditorProps,
   ref,
 ) {
   const [datePickerOpen, setDatePickerOpen] = useState(false)
+  const [selectedAssetForToolbar, setSelectedAssetForToolbar] = useState<{ href: string; name: string; left: number; top: number } | null>(null)
+  const editorContainerRef = useRef<HTMLDivElement | null>(null)
+  const selectedAssetAnchorRef = useRef<HTMLAnchorElement | null>(null)
   // Track the last markdown value we emitted so we can skip re-syncing when
   // the parent echoes back the same value after an auto-save.
   const lastEmittedRef = useRef(value)
@@ -155,38 +159,139 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
     onChange(markdown)
   }, [editor, onChange])
 
+  const positionAssetToolbar = useCallback((anchor: HTMLAnchorElement, href: string, name: string) => {
+    const container = editorContainerRef.current
+    const containerBounds = container?.getBoundingClientRect()
+    const anchorBounds = anchor.getBoundingClientRect()
+    if (containerBounds !== undefined) {
+      const containerScrollLeft = container?.scrollLeft ?? 0
+      const containerScrollTop = container?.scrollTop ?? 0
+      const approxToolbarWidth = 240
+      const maxLeft = Math.max(8, containerBounds.width - approxToolbarWidth - 8)
+      const desiredLeft = anchorBounds.right - containerBounds.left + containerScrollLeft + 8
+      const desiredTop = anchorBounds.top - containerBounds.top + containerScrollTop - 2
+      setSelectedAssetForToolbar({
+        href,
+        name,
+        left: Math.max(8, Math.min(desiredLeft, maxLeft)),
+        top: Math.max(8, desiredTop),
+      })
+      return
+    }
+
+    setSelectedAssetForToolbar({ href, name, left: 8, top: 8 })
+  }, [])
+
   const handleEditorClickCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
-    const target = event.target
-    if (!(target instanceof HTMLElement)) {
+    const rawTarget = event.target
+    const target = rawTarget instanceof HTMLElement
+      ? rawTarget
+      : rawTarget instanceof Text
+        ? rawTarget.parentElement
+        : null
+    if (target === null) {
+      setSelectedAssetForToolbar(null)
       return
     }
 
     const anchor = target.closest('a')
     if (!(anchor instanceof HTMLAnchorElement)) {
+      setSelectedAssetForToolbar(null)
       return
     }
 
     const href = anchor.getAttribute('href') ?? anchor.href
 
+    const asset = parseFlowAssetHref(href)
+    if (asset !== null) {
+      event.preventDefault()
+      if ((event.metaKey || event.ctrlKey) && asset.isThreadViewable && asset.threadKind !== null && onAssetOpenInThread !== undefined) {
+        onAssetOpenInThread(asset.href, asset.name, asset.threadKind)
+        selectedAssetAnchorRef.current = null
+        setSelectedAssetForToolbar(null)
+        return
+      }
+
+      selectedAssetAnchorRef.current = anchor
+      positionAssetToolbar(anchor, asset.href, asset.name)
+      return
+    }
+
     const dateResult = parseFlowDateHref(href)
     if (dateResult !== null) {
       event.preventDefault()
       onDateOpen?.(dateResult.date)
+      selectedAssetAnchorRef.current = null
+      setSelectedAssetForToolbar(null)
       return
     }
 
     if (onReferenceOpen === undefined) {
+      selectedAssetAnchorRef.current = null
+      setSelectedAssetForToolbar(null)
       return
     }
 
     const reference = parseFlowReferenceHref(href)
     if (reference === null) {
+      selectedAssetAnchorRef.current = null
+      setSelectedAssetForToolbar(null)
       return
     }
 
     event.preventDefault()
     onReferenceOpen(reference.documentId, reference.graphPath)
-  }, [onReferenceOpen, onDateOpen])
+    selectedAssetAnchorRef.current = null
+    setSelectedAssetForToolbar(null)
+  }, [onAssetOpenInThread, onDateOpen, onReferenceOpen, positionAssetToolbar])
+
+  useEffect(() => {
+    if (selectedAssetForToolbar === null) {
+      return
+    }
+
+    const container = editorContainerRef.current
+    const anchor = selectedAssetAnchorRef.current
+    if (container === null || anchor === null) {
+      return
+    }
+
+    const syncPosition = () => {
+      if (!anchor.isConnected) {
+        selectedAssetAnchorRef.current = null
+        setSelectedAssetForToolbar(null)
+        return
+      }
+      positionAssetToolbar(anchor, selectedAssetForToolbar.href, selectedAssetForToolbar.name)
+    }
+
+    const handleScroll = () => {
+      syncPosition()
+    }
+
+    window.addEventListener('resize', handleScroll)
+    container.addEventListener('scroll', handleScroll)
+
+    return () => {
+      window.removeEventListener('resize', handleScroll)
+      container.removeEventListener('scroll', handleScroll)
+    }
+  }, [positionAssetToolbar, selectedAssetForToolbar])
+
+  useEffect(() => {
+    if (selectedAssetForToolbar === null) {
+      return
+    }
+
+    const anchor = selectedAssetAnchorRef.current
+    if (anchor === null || !anchor.isConnected) {
+      selectedAssetAnchorRef.current = null
+      setSelectedAssetForToolbar(null)
+      return
+    }
+
+    positionAssetToolbar(anchor, selectedAssetForToolbar.href, selectedAssetForToolbar.name)
+  }, [positionAssetToolbar, renderedHTML, selectedAssetForToolbar])
 
   function handleDateRequest() {
     setDatePickerOpen(true)
@@ -209,7 +314,24 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
   return (
     <ProseKit editor={editor}>
       <div className={className ?? 'box-border h-full w-full overflow-y-hidden overflow-x-hidden flex flex-col bg-background text-foreground'}>
-        <div className="relative w-full flex-1 box-border overflow-y-auto" onClickCapture={handleEditorClickCapture}>
+        <div ref={editorContainerRef} className="relative w-full flex-1 box-border overflow-y-auto" onClickCapture={handleEditorClickCapture}>
+          {selectedAssetForToolbar !== null ? (
+            <div
+              className="flow-editor-asset-toolbar"
+              style={{ left: `${selectedAssetForToolbar.left}px`, top: `${selectedAssetForToolbar.top}px` }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <span className="flow-editor-asset-toolbar-name" title={selectedAssetForToolbar.name}>{selectedAssetForToolbar.name}</span>
+              <a
+                className="flow-editor-asset-toolbar-download"
+                href={selectedAssetForToolbar.href}
+                download={selectedAssetForToolbar.name}
+                onClick={(event) => event.stopPropagation()}
+              >
+                Download
+              </a>
+            </div>
+          ) : null}
           <div
             ref={editor.mount}
             aria-label={ariaLabel}

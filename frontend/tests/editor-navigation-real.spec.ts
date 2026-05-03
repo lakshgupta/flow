@@ -22,6 +22,11 @@ type StartedProcess = {
   output: () => string
 }
 
+type CreatedNote = {
+  id: string
+  path: string
+}
+
 function runCommand(command: string, args: string[], cwd: string): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(command, args, { cwd }, (error, stdout, stderr) => {
@@ -105,18 +110,16 @@ async function resolveWorkspaceDocumentPath(workspacePath: string, relativeOrAbs
 }
 
 async function createNote(binaryPath: string, workspacePath: string, options: {
-  id: string
   file: string
   graph: string
   title: string
   description: string
   body: string
-}): Promise<string> {
+}): Promise<CreatedNote> {
   const output = await runFlow(binaryPath, workspacePath, [
     'create',
     'note',
     '--file', options.file,
-    '--id', options.id,
     '--graph', options.graph,
     '--title', options.title,
     '--description', options.description,
@@ -128,7 +131,13 @@ async function createNote(binaryPath: string, workspacePath: string, options: {
     throw new Error(`Unable to parse created document path from output:\n${output}`)
   }
 
-  return resolveWorkspaceDocumentPath(workspacePath, createdPathMatch[1].trim())
+  const graphPrefix = options.graph.replace(/\/+$/, '')
+  const documentID = `${graphPrefix}/${options.file}`
+
+  return {
+    id: documentID,
+    path: await resolveWorkspaceDocumentPath(workspacePath, createdPathMatch[1].trim()),
+  }
 }
 
 function startProcess(binaryPath: string, workspacePath: string): StartedProcess {
@@ -228,6 +237,188 @@ async function insertBlankParagraph(page: Parameters<typeof test>[0] extends nev
 }
 
 test.describe('Graph editor navigation with real backend', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  test('keeps horizontal canvas layout active instead of auto-resetting', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'Layout persistence regression is validated in Chromium')
+    test.setTimeout(180_000)
+
+    const binaryPath = await ensureFlowBinary()
+    const workspacePath = await mkdtemp(path.join(os.tmpdir(), 'flow-playwright-workspace-'))
+    const port = await getFreePort()
+    const url = `http://127.0.0.1:${port}`
+
+    let server: StartedProcess | null = null
+
+    try {
+      await runFlow(binaryPath, workspacePath, ['init'])
+      await runFlow(binaryPath, workspacePath, ['configure', '--gui-port', String(port)])
+
+      const layoutNote1 = await createNote(binaryPath, workspacePath, {
+        file: 'layout-note-1',
+        graph: 'graph1',
+        title: 'Layout Note 1',
+        description: 'Layout test note 1',
+        body: 'Alpha\n',
+      })
+      const layoutNote2 = await createNote(binaryPath, workspacePath, {
+        file: 'layout-note-2',
+        graph: 'graph1',
+        title: 'Layout Note 2',
+        description: 'Layout test note 2',
+        body: 'Beta\n',
+      })
+      const layoutNote3 = await createNote(binaryPath, workspacePath, {
+        file: 'layout-note-3',
+        graph: 'graph1',
+        title: 'Layout Note 3',
+        description: 'Layout test note 3',
+        body: 'Gamma\n',
+      })
+
+      server = startProcess(binaryPath, workspacePath)
+      await waitForServer(url, server)
+
+      await page.setViewportSize({ width: 1600, height: 1000 })
+      await page.goto(url)
+
+      await page.getByText(/graph1/i).first().click()
+      await expect(page.locator(`.graph-canvas-overlay-node[data-nodeid="${layoutNote1.id}"]`)).toBeVisible()
+      await expect(page.locator(`.graph-canvas-overlay-node[data-nodeid="${layoutNote2.id}"]`)).toBeVisible()
+      await expect(page.locator(`.graph-canvas-overlay-node[data-nodeid="${layoutNote3.id}"]`)).toBeVisible()
+
+      await page.getByRole('button', { name: 'Switch to horizontal layout' }).click()
+      const activeHorizontalButton = page.getByRole('button', { name: 'Switch to user-adjusted layout' })
+      await expect(activeHorizontalButton).toHaveAttribute('aria-pressed', 'true')
+
+      // Trigger a canvas data refresh path while horizontal mode is active.
+      const firstDescription = page
+        .locator(`.graph-canvas-overlay-node[data-nodeid="${layoutNote1.id}"] .graph-canvas-node-description-input`)
+      await firstDescription.fill('layout refresh probe')
+      await firstDescription.blur()
+      await expect(activeHorizontalButton).toHaveAttribute('aria-pressed', 'true')
+
+      await page.waitForTimeout(5_000)
+      await expect(activeHorizontalButton).toHaveAttribute('aria-pressed', 'true')
+    } finally {
+      if (server !== null) {
+        await server.stop()
+      }
+
+      await rm(workspacePath, { recursive: true, force: true })
+    }
+  })
+
+  test('supports ctrl/cmd multi-select merge and preserves graph links', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'Merge interaction regression is validated in Chromium')
+    test.setTimeout(180_000)
+
+    const binaryPath = await ensureFlowBinary()
+    const workspacePath = await mkdtemp(path.join(os.tmpdir(), 'flow-playwright-workspace-'))
+    const port = await getFreePort()
+    const url = `http://127.0.0.1:${port}`
+
+    let server: StartedProcess | null = null
+
+    try {
+      await runFlow(binaryPath, workspacePath, ['init'])
+      await runFlow(binaryPath, workspacePath, ['configure', '--gui-port', String(port)])
+
+      const mergeTarget = await createNote(binaryPath, workspacePath, {
+        file: 'merge-target',
+        graph: 'graph1',
+        title: 'Merge Target',
+        description: 'Target note',
+        body: 'Target body\n',
+      })
+      const mergeIncoming = await createNote(binaryPath, workspacePath, {
+        file: 'merge-incoming',
+        graph: 'graph1',
+        title: 'Merge Incoming',
+        description: 'Incoming note',
+        body: 'Incoming body\n',
+      })
+      const mergeOther = await createNote(binaryPath, workspacePath, {
+        file: 'merge-other',
+        graph: 'graph1',
+        title: 'Merge Other',
+        description: 'Secondary merge note',
+        body: 'Other body\n',
+      })
+      const mergeOutsideA = await createNote(binaryPath, workspacePath, {
+        file: 'merge-outside-a',
+        graph: 'graph1',
+        title: 'Outside A',
+        description: 'Outside target A',
+        body: 'Outside A\n',
+      })
+      const mergeOutsideB = await createNote(binaryPath, workspacePath, {
+        file: 'merge-outside-b',
+        graph: 'graph1',
+        title: 'Outside B',
+        description: 'Outside target B',
+        body: 'Outside B\n',
+      })
+
+      server = startProcess(binaryPath, workspacePath)
+      await waitForServer(url, server)
+
+      const linkSeedPayloads = [
+        { fromId: mergeTarget.id, toId: mergeOutsideA.id, context: 'target edge' },
+        { fromId: mergeOther.id, toId: mergeOutsideB.id, context: 'other edge' },
+        { fromId: mergeIncoming.id, toId: mergeOther.id, context: 'incoming edge' },
+      ]
+      for (const payload of linkSeedPayloads) {
+        const response = await fetch(`${url}/api/links`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        expect(response.ok).toBeTruthy()
+      }
+
+      await page.setViewportSize({ width: 1600, height: 1000 })
+      await page.goto(url)
+
+      await page.getByText(/graph1/i).first().click()
+      await expect(page.locator(`.graph-canvas-overlay-node[data-nodeid="${mergeTarget.id}"]`)).toBeVisible()
+      await expect(page.locator(`.graph-canvas-overlay-node[data-nodeid="${mergeOther.id}"]`)).toBeVisible()
+
+      const modifierKey = process.platform === 'darwin' ? 'Meta' : 'Control'
+      await page.keyboard.down(modifierKey)
+      await page.locator(`.graph-canvas-overlay-node[data-nodeid="${mergeTarget.id}"]`).click()
+      await page.locator(`.graph-canvas-overlay-node[data-nodeid="${mergeOther.id}"]`).click()
+      await page.keyboard.up(modifierKey)
+
+      await expect(
+        page.locator(`.graph-canvas-overlay-node[data-nodeid="${mergeTarget.id}"] .canvas-selection-badge`),
+      ).toHaveText('1')
+      await expect(
+        page.locator(`.graph-canvas-overlay-node[data-nodeid="${mergeOther.id}"] .canvas-selection-badge`),
+      ).toHaveText('2')
+      await expect(page.getByRole('button', { name: 'Merge', exact: true })).toBeVisible()
+
+      const mergeResponsePromise = page.waitForResponse((response) => {
+        return response.url().endsWith('/api/documents/merge') && response.request().method() === 'POST'
+      })
+      await page.getByRole('button', { name: 'Merge', exact: true }).click()
+      const mergeResponse = await mergeResponsePromise
+      expect(mergeResponse.ok()).toBeTruthy()
+
+      await expect.poll(async () => pathExists(mergeOther.path), { timeout: 15_000 }).toBe(false)
+      await expect.poll(async () => readFile(mergeTarget.path, 'utf8'), { timeout: 15_000 }).toContain(`node: ${mergeOutsideA.id}`)
+      await expect.poll(async () => readFile(mergeTarget.path, 'utf8'), { timeout: 15_000 }).toContain(`node: ${mergeOutsideB.id}`)
+      await expect.poll(async () => readFile(mergeIncoming.path, 'utf8'), { timeout: 15_000 }).toContain(`node: ${mergeTarget.id}`)
+      await expect.poll(async () => readFile(mergeIncoming.path, 'utf8'), { timeout: 15_000 }).not.toContain(`node: ${mergeOther.id}`)
+    } finally {
+      if (server !== null) {
+        await server.stop()
+      }
+
+      await rm(workspacePath, { recursive: true, force: true })
+    }
+  })
+
   test('persists a blank paragraph when switching graph canvas nodes', async ({ page, browserName }) => {
     test.skip(browserName !== 'chromium', 'Real backend newline regression is stabilized in Chromium')
     test.setTimeout(180_000)
@@ -243,8 +434,7 @@ test.describe('Graph editor navigation with real backend', () => {
       await runFlow(binaryPath, workspacePath, ['init'])
       await runFlow(binaryPath, workspacePath, ['configure', '--gui-port', String(port)])
 
-      const overviewFilePath = await createNote(binaryPath, workspacePath, {
-        id: 'note-1',
+      const overviewNote = await createNote(binaryPath, workspacePath, {
         file: 'overview',
         graph: 'execution',
         title: 'Overview',
@@ -252,8 +442,7 @@ test.describe('Graph editor navigation with real backend', () => {
         body: 'Overview body\n',
       })
 
-      await createNote(binaryPath, workspacePath, {
-        id: 'note-2',
+      const followUpNote = await createNote(binaryPath, workspacePath, {
         file: 'follow-up',
         graph: 'execution',
         title: 'Follow Up',
@@ -268,22 +457,23 @@ test.describe('Graph editor navigation with real backend', () => {
       await page.goto(url)
 
       await page.getByText('Execution').click()
-      await expect(page.locator('.graph-canvas-overlay-node[data-nodeid="note-1"]')).toBeVisible()
+      await expect(page.locator(`.graph-canvas-overlay-node[data-nodeid="${overviewNote.id}"]`)).toBeVisible()
+      await expect(page.locator(`.graph-canvas-overlay-node[data-nodeid="${followUpNote.id}"]`)).toBeVisible()
 
-      await page.locator('.graph-canvas-overlay-node[data-nodeid="note-1"]').click()
+      await page.locator(`.graph-canvas-overlay-node[data-nodeid="${overviewNote.id}"]`).click()
       await page.getByRole('button', { name: 'Document', exact: true }).click()
       await expect(page.getByLabel('Graph node document panel')).toBeVisible()
       await expect(page.locator(documentBodySelector)).toBeVisible()
 
       await insertBlankParagraph(page)
 
-      await page.locator('.graph-canvas-overlay-node[data-nodeid="note-2"]').click()
+      await page.locator(`.graph-canvas-overlay-node[data-nodeid="${followUpNote.id}"]`).click()
       await page.getByRole('button', { name: 'Document', exact: true }).click()
       await expect(page.getByRole('textbox', { name: 'Document title' })).toHaveValue('Follow Up')
 
-      await expect.poll(async () => readFile(overviewFilePath, 'utf8')).toContain('<p><br></p>')
+      await expect.poll(async () => readFile(overviewNote.path, 'utf8')).toContain('<p><br></p>')
 
-      await page.locator('.graph-canvas-overlay-node[data-nodeid="note-1"]').click()
+      await page.locator(`.graph-canvas-overlay-node[data-nodeid="${overviewNote.id}"]`).click()
       await page.getByRole('button', { name: 'Document', exact: true }).click()
       await expect(page.getByRole('textbox', { name: 'Document title' })).toHaveValue('Overview')
       await expect.poll(async () => page.locator(documentBodySelector).evaluate((element) => element.innerHTML)).toContain('<p><br')

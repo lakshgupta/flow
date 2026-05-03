@@ -54,6 +54,7 @@ type GraphCanvasNode struct {
 	PreviewKind       string              `json:"previewKind,omitempty"`
 	PreviewURL        string              `json:"previewURL,omitempty"`
 	PreviewName       string              `json:"previewName,omitempty"`
+	PreviewAssetCount int                 `json:"previewAssetCount,omitempty"`
 	Position          GraphCanvasPosition `json:"position"`
 	PositionPersisted bool                `json:"positionPersisted"`
 	links             []markdown.NodeLink
@@ -256,36 +257,42 @@ func buildGraphCanvasNode(item markdown.WorkspaceDocument) (GraphCanvasNode, str
 
 	switch document := item.Document.(type) {
 	case markdown.NoteDocument:
-		previewKind, previewURL, previewName := extractCanvasPreview(document.Body)
+		previewKind, previewURL, previewName, previewAssetCount := extractCanvasPreview(document.Body)
 		return GraphCanvasNode{
-			ID:          document.Metadata.ID,
-			Type:        string(document.Metadata.Type),
-			FeatureSlug: featureSlug,
-			Graph:       graphPath,
-			Title:       document.Metadata.Title,
-			Description: document.Metadata.Description,
-			Path:        item.Path,
-			Tags:        cloneStrings(document.Metadata.Tags),
-			CreatedAt:   document.Metadata.CreatedAt,
-			UpdatedAt:   document.Metadata.UpdatedAt,
-			PreviewKind: previewKind,
-			PreviewURL:  previewURL,
-			PreviewName: previewName,
-			links:       cloneNodeLinks(document.Metadata.Links),
+			ID:                document.Metadata.ID,
+			Type:              string(document.Metadata.Type),
+			FeatureSlug:       featureSlug,
+			Graph:             graphPath,
+			Title:             document.Metadata.Title,
+			Description:       document.Metadata.Description,
+			Path:              item.Path,
+			Tags:              cloneStrings(document.Metadata.Tags),
+			CreatedAt:         document.Metadata.CreatedAt,
+			UpdatedAt:         document.Metadata.UpdatedAt,
+			PreviewKind:       previewKind,
+			PreviewURL:        previewURL,
+			PreviewName:       previewName,
+			PreviewAssetCount: previewAssetCount,
+			links:             cloneNodeLinks(document.Metadata.Links),
 		}, graphPath, true, nil
 	case markdown.TaskDocument:
+		previewKind, previewURL, previewName, previewAssetCount := extractCanvasPreview(document.Body)
 		return GraphCanvasNode{
-			ID:          document.Metadata.ID,
-			Type:        string(document.Metadata.Type),
-			FeatureSlug: featureSlug,
-			Graph:       graphPath,
-			Title:       document.Metadata.Title,
-			Description: document.Metadata.Description,
-			Path:        item.Path,
-			Tags:        cloneStrings(document.Metadata.Tags),
-			CreatedAt:   document.Metadata.CreatedAt,
-			UpdatedAt:   document.Metadata.UpdatedAt,
-			links:       cloneNodeLinks(document.Metadata.Links),
+			ID:                document.Metadata.ID,
+			Type:              string(document.Metadata.Type),
+			FeatureSlug:       featureSlug,
+			Graph:             graphPath,
+			Title:             document.Metadata.Title,
+			Description:       document.Metadata.Description,
+			Path:              item.Path,
+			Tags:              cloneStrings(document.Metadata.Tags),
+			CreatedAt:         document.Metadata.CreatedAt,
+			UpdatedAt:         document.Metadata.UpdatedAt,
+			PreviewKind:       previewKind,
+			PreviewURL:        previewURL,
+			PreviewName:       previewName,
+			PreviewAssetCount: previewAssetCount,
+			links:             cloneNodeLinks(document.Metadata.Links),
 		}, graphPath, true, nil
 	case markdown.CommandDocument:
 		return GraphCanvasNode{
@@ -306,7 +313,16 @@ func buildGraphCanvasNode(item markdown.WorkspaceDocument) (GraphCanvasNode, str
 	}
 }
 
-func extractCanvasPreview(body string) (string, string, string) {
+type canvasPreviewCandidate struct {
+	target string
+	path   string
+	kind   string
+	name   string
+}
+
+func extractCanvasPreview(body string) (string, string, string, int) {
+	candidates := make([]canvasPreviewCandidate, 0)
+	seenPaths := make(map[string]struct{})
 	for _, match := range markdownImageTargetPattern.FindAllStringSubmatch(body, -1) {
 		target := strings.TrimSpace(match[1])
 		assetPath := canvasAssetPathFromTarget(target)
@@ -316,7 +332,8 @@ func extractCanvasPreview(body string) (string, string, string) {
 
 		name := filepath.Base(assetPath)
 		if isImageFileExtension(filepath.Ext(name)) {
-			return "image", target, name
+			candidates = append(candidates, canvasPreviewCandidate{target: target, path: assetPath, kind: "image", name: name})
+			seenPaths[assetPath] = struct{}{}
 		}
 	}
 
@@ -329,16 +346,23 @@ func extractCanvasPreview(body string) (string, string, string) {
 
 		name := filepath.Base(assetPath)
 		extension := strings.ToLower(filepath.Ext(name))
+		kind := "file"
 		if isImageFileExtension(extension) {
-			return "image", target, name
+			kind = "image"
+		} else if extension == ".pdf" {
+			kind = "pdf"
 		}
-		if extension == ".pdf" {
-			return "pdf", target, name
-		}
-		return "file", target, name
+
+		candidates = append(candidates, canvasPreviewCandidate{target: target, path: assetPath, kind: kind, name: name})
+		seenPaths[assetPath] = struct{}{}
 	}
 
-	return "", "", ""
+	if len(candidates) == 0 {
+		return "", "", "", 0
+	}
+
+	first := candidates[0]
+	return first.kind, first.target, first.name, len(seenPaths)
 }
 
 func canvasAssetPathFromTarget(target string) string {

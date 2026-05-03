@@ -185,6 +185,7 @@ export type GraphCanvasNodePayload = {
   previewKind?: "image" | "pdf" | "file";
   previewURL?: string;
   previewName?: string;
+  previewAssetCount?: number;
   featureSlug: string;
   tags?: string[];
   createdAt?: string;
@@ -278,6 +279,7 @@ export type GraphCanvasFlowNodeData = {
   previewKind?: "image" | "pdf" | "file";
   previewURL?: string;
   previewName?: string;
+  previewAssetCount?: number;
   featureSlug: string;
   fileName: string;
   positionPersisted: boolean;

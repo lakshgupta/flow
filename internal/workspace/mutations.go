@@ -382,6 +382,20 @@ func MergeDocuments(root Root, input MergeDocumentsInput) (markdown.WorkspaceDoc
 		docs = append(docs, doc)
 	}
 
+	targetID := documentID(docs[0].Document)
+	if strings.TrimSpace(targetID) == "" {
+		return markdown.WorkspaceDocument{}, InvalidMutationError{Err: errors.New("merge target document id is required")}
+	}
+
+	mergedAwayIDs := make(map[string]struct{}, len(docs)-1)
+	for _, doc := range docs[1:] {
+		docID := documentID(doc.Document)
+		if strings.TrimSpace(docID) == "" {
+			return markdown.WorkspaceDocument{}, InvalidMutationError{Err: errors.New("merged document id is required")}
+		}
+		mergedAwayIDs[docID] = struct{}{}
+	}
+
 	// Build merged body: target body + separator + bodies of the rest.
 	targetBody := documentBody(docs[0].Document)
 	for _, doc := range docs[1:] {
@@ -395,10 +409,128 @@ func MergeDocuments(root Root, input MergeDocumentsInput) (markdown.WorkspaceDoc
 		targetBody += appendBody
 	}
 
+	// Preserve and merge outgoing links from all merged documents into the target.
+	mergedTargetLinks := make([]markdown.NodeLink, 0, len(documentLinks(docs[0].Document)))
+	seenTargetLinks := make(map[string]int)
+	for _, link := range documentLinks(docs[0].Document) {
+		if strings.TrimSpace(link.Node) == "" || link.Node == targetID {
+			continue
+		}
+		if _, mergedAway := mergedAwayIDs[link.Node]; mergedAway {
+			continue
+		}
+		if _, exists := seenTargetLinks[link.Node]; exists {
+			continue
+		}
+		seenTargetLinks[link.Node] = len(mergedTargetLinks)
+		mergedTargetLinks = append(mergedTargetLinks, markdown.NodeLink{
+			Node:          link.Node,
+			Context:       link.Context,
+			Relationships: cloneStrings(link.Relationships),
+		})
+	}
+
+	for _, doc := range docs[1:] {
+		for _, link := range documentLinks(doc.Document) {
+			if strings.TrimSpace(link.Node) == "" || link.Node == targetID {
+				continue
+			}
+			if _, mergedAway := mergedAwayIDs[link.Node]; mergedAway {
+				continue
+			}
+			if existingIndex, exists := seenTargetLinks[link.Node]; exists {
+				existing := mergedTargetLinks[existingIndex]
+				if strings.TrimSpace(existing.Context) == "" && strings.TrimSpace(link.Context) != "" {
+					existing.Context = link.Context
+				}
+				if len(existing.Relationships) == 0 && len(link.Relationships) > 0 {
+					existing.Relationships = cloneStrings(link.Relationships)
+				}
+				mergedTargetLinks[existingIndex] = existing
+				continue
+			}
+
+			seenTargetLinks[link.Node] = len(mergedTargetLinks)
+			mergedTargetLinks = append(mergedTargetLinks, markdown.NodeLink{
+				Node:          link.Node,
+				Context:       link.Context,
+				Relationships: cloneStrings(link.Relationships),
+			})
+		}
+	}
+
 	// Update the first document with the merged body.
-	merged, err := UpdateDocumentByPath(root, docs[0].Path, DocumentPatch{Body: &targetBody})
+	merged, err := UpdateDocumentByPath(root, docs[0].Path, DocumentPatch{Body: &targetBody, Links: &mergedTargetLinks})
 	if err != nil {
 		return markdown.WorkspaceDocument{}, err
+	}
+
+	// Retarget incoming links that pointed at removed documents so they now point to the target.
+	allDocuments, err := LoadDocuments(root.FlowPath)
+	if err != nil {
+		return markdown.WorkspaceDocument{}, err
+	}
+
+	for _, workspaceDocument := range allDocuments {
+		docID := documentID(workspaceDocument.Document)
+		if strings.TrimSpace(docID) == "" || docID == targetID {
+			continue
+		}
+		if _, removed := mergedAwayIDs[docID]; removed {
+			continue
+		}
+
+		currentLinks := documentLinks(workspaceDocument.Document)
+		if len(currentLinks) == 0 {
+			continue
+		}
+
+		nextLinks := make([]markdown.NodeLink, 0, len(currentLinks))
+		seenNodes := make(map[string]int)
+		changed := false
+
+		for _, link := range currentLinks {
+			if strings.TrimSpace(link.Node) == "" || link.Node == docID {
+				changed = true
+				continue
+			}
+
+			nextNode := link.Node
+			if _, removed := mergedAwayIDs[link.Node]; removed {
+				nextNode = targetID
+				changed = true
+			}
+
+			if existingIndex, exists := seenNodes[nextNode]; exists {
+				existing := nextLinks[existingIndex]
+				if strings.TrimSpace(existing.Context) == "" && strings.TrimSpace(link.Context) != "" {
+					existing.Context = link.Context
+					nextLinks[existingIndex] = existing
+					changed = true
+				}
+				if len(existing.Relationships) == 0 && len(link.Relationships) > 0 {
+					existing.Relationships = cloneStrings(link.Relationships)
+					nextLinks[existingIndex] = existing
+					changed = true
+				}
+				continue
+			}
+
+			seenNodes[nextNode] = len(nextLinks)
+			nextLinks = append(nextLinks, markdown.NodeLink{
+				Node:          nextNode,
+				Context:       link.Context,
+				Relationships: cloneStrings(link.Relationships),
+			})
+		}
+
+		if !changed {
+			continue
+		}
+
+		if _, err := UpdateDocumentByPath(root, workspaceDocument.Path, DocumentPatch{Links: &nextLinks}); err != nil {
+			return markdown.WorkspaceDocument{}, err
+		}
 	}
 
 	// Delete the rest. Skip index rebuild on each; do a single rebuild after all deletions.
@@ -414,6 +546,21 @@ func MergeDocuments(root Root, input MergeDocumentsInput) (markdown.WorkspaceDoc
 	}
 
 	return merged, nil
+}
+
+func documentID(doc markdown.Document) string {
+	switch d := doc.(type) {
+	case markdown.NoteDocument:
+		return d.Metadata.ID
+	case markdown.TaskDocument:
+		return d.Metadata.ID
+	case markdown.CommandDocument:
+		return d.Metadata.ID
+	case markdown.HomeDocument:
+		return d.Metadata.ID
+	default:
+		return ""
+	}
 }
 
 // documentLinks returns a copy of the links list for any document type.

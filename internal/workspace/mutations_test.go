@@ -463,6 +463,87 @@ func TestDeleteDocumentByIDCleansUpReferencesToDeletedTaskOrCommand(t *testing.T
 	}
 }
 
+func TestMergeDocumentsTransfersAndRetargetsLinks(t *testing.T) {
+	t.Parallel()
+
+	root, err := ResolveLocal(t.TempDir())
+	if err != nil {
+		t.Fatalf("ResolveLocal() error = %v", err)
+	}
+
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "graph1", "target.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "target", Type: markdown.NoteType, Graph: "graph1", Title: "Target"},
+			Links:        []markdown.NodeLink{{Node: "outside-a", Context: "existing"}},
+		},
+		Body: "Target body\n",
+	})
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "graph1", "other.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "other", Type: markdown.NoteType, Graph: "graph1", Title: "Other"},
+			Links:        []markdown.NodeLink{{Node: "outside-b", Context: "from other"}},
+		},
+		Body: "Other body\n",
+	})
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "graph1", "incoming.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "incoming", Type: markdown.NoteType, Graph: "graph1", Title: "Incoming"},
+			Links:        []markdown.NodeLink{{Node: "other", Context: "points to merged"}},
+		},
+		Body: "Incoming body\n",
+	})
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "graph1", "outside-a.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{CommonFields: markdown.CommonFields{ID: "outside-a", Type: markdown.NoteType, Graph: "graph1", Title: "Outside A"}},
+		Body:     "Outside A body\n",
+	})
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "graph1", "outside-b.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{CommonFields: markdown.CommonFields{ID: "outside-b", Type: markdown.NoteType, Graph: "graph1", Title: "Outside B"}},
+		Body:     "Outside B body\n",
+	})
+
+	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {
+		t.Fatalf("index.Rebuild() error = %v", err)
+	}
+
+	merged, err := MergeDocuments(root, MergeDocumentsInput{DocumentIDs: []string{"target", "other"}})
+	if err != nil {
+		t.Fatalf("MergeDocuments() error = %v", err)
+	}
+
+	mergedNote, ok := merged.Document.(markdown.NoteDocument)
+	if !ok {
+		t.Fatalf("merged.Document = %T, want markdown.NoteDocument", merged.Document)
+	}
+
+	if !strings.Contains(mergedNote.Body, "Target body") || !strings.Contains(mergedNote.Body, "Other body") {
+		t.Fatalf("merged body = %q, want both source bodies", mergedNote.Body)
+	}
+
+	mergedLinkNodes := map[string]bool{}
+	for _, link := range mergedNote.Metadata.Links {
+		mergedLinkNodes[link.Node] = true
+	}
+	if !mergedLinkNodes["outside-a"] || !mergedLinkNodes["outside-b"] {
+		t.Fatalf("merged links = %#v, want outgoing links from both documents", mergedNote.Metadata.Links)
+	}
+
+	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "content", "graph1", "other.md")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Stat(merged-away doc) error = %v, want not exist", err)
+	}
+
+	incomingDoc, err := readDocumentFile(filepath.Join(root.FlowPath, "data", "content", "graph1", "incoming.md"))
+	if err != nil {
+		t.Fatalf("readDocumentFile(incoming) error = %v", err)
+	}
+	incomingNote, ok := incomingDoc.(markdown.NoteDocument)
+	if !ok {
+		t.Fatalf("incomingDoc = %T, want markdown.NoteDocument", incomingDoc)
+	}
+	if len(incomingNote.Metadata.Links) != 1 || incomingNote.Metadata.Links[0].Node != "target" {
+		t.Fatalf("incoming links = %#v, want retargeted link to target", incomingNote.Metadata.Links)
+	}
+}
+
 // createDependencyCleanupWorkspace builds a minimal workspace for testing graph
 // edge cleanup on deletion.
 //

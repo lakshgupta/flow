@@ -151,6 +151,63 @@ export function parseFlowReferenceHref(href: string): { documentId: string; grap
   };
 }
 
+export function parseFlowAssetHref(href: string): {
+  href: string;
+  path: string;
+  name: string;
+  isPDF: boolean;
+  threadKind: "pdf" | "text" | null;
+  isThreadViewable: boolean;
+} | null {
+  let parsed: URL
+  try {
+    parsed = new URL(href, "http://flow.local")
+  } catch {
+    return null
+  }
+
+  if (parsed.pathname !== "/api/files") {
+    return null
+  }
+
+  const pathValue = (parsed.searchParams.get("path") ?? "").trim()
+  if (pathValue === "") {
+    return null
+  }
+
+  let decodedPath = pathValue
+  try {
+    decodedPath = decodeURIComponent(pathValue)
+  } catch {
+    // Keep original query value when URL decoding fails.
+  }
+
+  const segments = decodedPath.split("/")
+  const name = segments.length > 0 ? (segments[segments.length - 1] || "attachment") : "attachment"
+  const normalizedHref = `${parsed.pathname}${parsed.search}`
+  const lowerName = name.toLowerCase()
+  const isPDF = lowerName.endsWith(".pdf")
+  const textThreadExtensions = new Set([
+    ".txt", ".md", ".markdown", ".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",
+    ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".go", ".java", ".rb",
+    ".rs", ".c", ".cc", ".cpp", ".h", ".hpp", ".cs", ".php", ".swift", ".kt", ".kts",
+    ".sh", ".bash", ".zsh", ".fish", ".ps1", ".css", ".scss", ".less", ".html", ".xml",
+    ".sql", ".csv", ".tsv", ".log",
+  ])
+  const extensionMatch = lowerName.match(/(\.[a-z0-9]+)$/)
+  const hasTextExtension = extensionMatch !== null && textThreadExtensions.has(extensionMatch[1])
+  const threadKind: "pdf" | "text" | null = isPDF ? "pdf" : hasTextExtension ? "text" : null
+
+  return {
+    href: normalizedHref,
+    path: decodedPath,
+    name,
+    isPDF,
+    threadKind,
+    isThreadViewable: threadKind !== null,
+  }
+}
+
 function renderResolvedInlineReferences(value: string, inlineReferences?: InlineReference[]): string {
   if ((inlineReferences?.length ?? 0) === 0) {
     return value;

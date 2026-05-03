@@ -73,7 +73,7 @@ import {
   normalizeGraphCanvasResponse,
   selectedGraphCanvasNode,
 } from "./lib/graphCanvasUtils";
-import { markdownToHTML, parseFlowReferenceHref, parseFlowDateHref } from "./richText";
+import { markdownToHTML, parseFlowReferenceHref, parseFlowDateHref, parseFlowAssetHref } from "./richText";
 import { graphDirectoryColorHex, resolveGraphDirectoryColor } from "./lib/graphColors";
 import { useTheme } from "./lib/theme";
 import { todayString } from "./lib/dateEntries";
@@ -139,6 +139,21 @@ type ThreadDocumentEntry = {
   graphPath: string;
 };
 
+type ThreadAssetEntry = {
+  id: string;
+  href: string;
+  name: string;
+  graphPath: string;
+  kind: "pdf" | "text";
+};
+
+function normalizeAppearance(value: unknown): "light" | "dark" | "system" {
+  if (value === "light" || value === "dark" || value === "system") {
+    return value;
+  }
+  return "system";
+}
+
 const HOME_THREAD_DOCUMENT_ID = "home";
 const DEFAULT_DOCUMENT_TOC_RATIO = 0.18;
 const MIN_DOCUMENT_TOC_RATIO = 0.14;
@@ -167,6 +182,10 @@ function clampThreadPanelWidth(width: number): number {
 
 function isValidDocumentFileName(value: string): boolean {
   return DOCUMENT_FILE_NAME_PATTERN.test(value);
+}
+
+function buildThreadAssetID(href: string, kind: "pdf" | "text"): string {
+  return `asset:${kind}:${encodeURIComponent(href)}`;
 }
 
 function stripMarkdownExtension(value: string): string {
@@ -312,6 +331,7 @@ function FlowApp() {
   const [selectedDocument, setSelectedDocument] = useState<DocumentResponse | null>(null);
   const [documentThread, setDocumentThread] = useState<ThreadDocumentEntry[]>([]);
   const [threadDocumentsById, setThreadDocumentsById] = useState<Record<string, DocumentResponse>>({});
+  const [threadAssetsById, setThreadAssetsById] = useState<Record<string, ThreadAssetEntry>>({});
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [searchTagQuery, setSearchTagQuery] = useState<string>("");
   const [searchTitleQuery, setSearchTitleQuery] = useState<string>("");
@@ -451,10 +471,12 @@ function FlowApp() {
   const workspaceSurfaceSection = activeSurface.kind === "graph" ? "Content" : "Home";
   const workspaceSurfaceTitle = activeSurface.kind === "graph" ? selectedGraphNode?.displayName ?? selectedGraphPath : null;
   const isHomeThreadRoot = documentThread.length > 0 && documentThread[0]?.documentId === HOME_THREAD_DOCUMENT_ID;
-  const isCenterDocumentOpen = selectedDocumentId !== "" && selectedDocumentOpenMode === "center";
-  const isThreadStackOpen = selectedDocumentOpenMode === "center" && (selectedDocumentId !== "" || (isHomeThreadRoot && activeSurface.kind === "home"));
-  const isSelectedDocumentLoading = selectedDocumentId !== "" && (selectedDocument === null || selectedDocument.id !== selectedDocumentId);
   const activeThreadTailId = documentThread.length > 0 ? documentThread[documentThread.length - 1]?.documentId ?? "" : "";
+  const hasAssetThreadTail = activeThreadTailId !== "" && threadAssetsById[activeThreadTailId] !== undefined;
+  const isCenterDocumentOpen = selectedDocumentId !== "" && selectedDocumentOpenMode === "center";
+  const isThreadStackOpen = selectedDocumentOpenMode === "center"
+    && (selectedDocumentId !== "" || hasAssetThreadTail || (isHomeThreadRoot && activeSurface.kind === "home"));
+  const isSelectedDocumentLoading = selectedDocumentId !== "" && (selectedDocument === null || selectedDocument.id !== selectedDocumentId);
   const activeThreadDocumentId = selectedDocumentOpenMode === "center"
     ? (selectedDocumentId !== "" ? selectedDocumentId : activeSurface.kind === "home" ? HOME_THREAD_DOCUMENT_ID : activeThreadTailId)
     : activeThreadTailId;
@@ -907,6 +929,10 @@ function FlowApp() {
       const allowedIds = new Set(nextThread.map((entry) => entry.documentId));
       return Object.fromEntries(Object.entries(current).filter(([documentId]) => allowedIds.has(documentId)));
     });
+    setThreadAssetsById((current) => {
+      const allowedIDs = new Set(nextThread.map((entry) => entry.documentId));
+      return Object.fromEntries(Object.entries(current).filter(([assetID]) => allowedIDs.has(assetID)));
+    });
   }
 
   function clearDocumentThread(): void {
@@ -1084,7 +1110,86 @@ function FlowApp() {
     }
   }
 
+  async function openAssetInThreadFromSource(
+    sourceDocumentID: string,
+    sourceGraphPath: string,
+    assetHref: string,
+    assetName: string,
+    kind: "pdf" | "text",
+  ): Promise<void> {
+    await flushPendingActiveEditorSave();
+    clearSurfaceFeedback();
+
+    const currentThread = documentThreadRef.current;
+    const sourceIndex = currentThread.findIndex((entry) => entry.documentId === sourceDocumentID);
+    const resolvedSourceGraphPath = sourceGraphPath.trim() !== ""
+      ? sourceGraphPath
+      : currentThread[sourceIndex]?.graphPath
+        ?? selectedDocumentRef.current?.graph
+        ?? documentGraphById.get(sourceDocumentID)
+        ?? selectedGraphPath;
+
+    const baseThread = sourceIndex >= 0
+      ? currentThread.slice(0, sourceIndex + 1)
+      : sourceDocumentID === HOME_THREAD_DOCUMENT_ID
+        ? [{ documentId: HOME_THREAD_DOCUMENT_ID, graphPath: "" }]
+        : sourceDocumentID !== "" && resolvedSourceGraphPath !== ""
+          ? [{ documentId: sourceDocumentID, graphPath: resolvedSourceGraphPath }]
+          : [];
+
+    const assetID = buildThreadAssetID(assetHref, kind);
+    setThreadAssetsById((current) => ({
+      ...current,
+      [assetID]: {
+        id: assetID,
+        href: assetHref,
+        name: assetName,
+        graphPath: resolvedSourceGraphPath,
+        kind,
+      },
+    }));
+
+    const nextThread = [...baseThread, { documentId: assetID, graphPath: resolvedSourceGraphPath }];
+    applyDocumentThread(nextThread);
+    setSelectedDocumentOpenMode("center");
+    setSelectedDocumentId("");
+    setSelectedCanvasNodeId(sourceDocumentID === HOME_THREAD_DOCUMENT_ID ? "" : sourceDocumentID);
+    syncSelectedDocumentState(null);
+    setThreadExpanded(false);
+    if (resolvedSourceGraphPath !== "") {
+      startTransition(() => {
+        setActiveSurface({ kind: "graph", graphPath: resolvedSourceGraphPath });
+      });
+    }
+
+    if (rightPanelTab === "document") {
+      setRightPanelTab("search");
+      setRightRailCollapsed(true);
+    }
+  }
+
   async function activateThreadDocument(documentId: string, graphPath: string): Promise<void> {
+    const threadAsset = threadAssetsById[documentId];
+    if (threadAsset !== undefined) {
+      await flushPendingActiveEditorSave();
+      clearSurfaceFeedback();
+      setSelectedDocumentOpenMode("center");
+      setSelectedDocumentId("");
+      setSelectedCanvasNodeId("");
+      syncSelectedDocumentState(null);
+      if (graphPath.trim() !== "") {
+        startTransition(() => {
+          setActiveSurface({ kind: "graph", graphPath });
+        });
+      }
+
+      if (rightPanelTab === "document") {
+        setRightPanelTab("search");
+        setRightRailCollapsed(true);
+      }
+      return;
+    }
+
     if (selectedDocumentOpenMode === "center" && activeThreadDocumentId === documentId) {
       return;
     }
@@ -1323,7 +1428,7 @@ function FlowApp() {
 
   useEffect(() => {
     if (workspace !== null) {
-      setTheme(workspace.appearance);
+      setTheme(normalizeAppearance(workspace.appearance));
     }
   }, [setTheme, workspace]);
 
@@ -1459,6 +1564,26 @@ function FlowApp() {
         setGraphCanvasUserPositions({});
         setGraphCanvasHorizontalPositions({});
         setGraphCanvasLayoutMode("user");
+        return;
+      }
+
+      if (graphCanvasLayoutMode === "horizontal") {
+        try {
+          const nextPositions = await applyElkHorizontalLayout(graphCanvasData.nodes, graphCanvasData.edges);
+          if (!cancelled) {
+            const horizontalPositions = Object.keys(nextPositions).length > 0 ? nextPositions : graphCanvasPositionMap(graphCanvasData);
+            setGraphCanvasPositions(horizontalPositions);
+            setGraphCanvasHorizontalPositions(horizontalPositions);
+            setGraphCanvasLayoutMode("horizontal");
+          }
+        } catch {
+          if (!cancelled) {
+            const fallbackPositions = graphCanvasPositionMap(graphCanvasData);
+            setGraphCanvasPositions(fallbackPositions);
+            setGraphCanvasHorizontalPositions(fallbackPositions);
+            setGraphCanvasLayoutMode("horizontal");
+          }
+        }
         return;
       }
 
@@ -2554,6 +2679,11 @@ function FlowApp() {
       return;
     }
 
+    // Cmd/Ctrl/Shift click is selection-only and should not start drag handling.
+    if (isAdditiveNodeSelection(event)) {
+      return;
+    }
+
     const shell = graphCanvasShellRef.current;
     if (shell === null) {
       return;
@@ -2993,13 +3123,18 @@ function FlowApp() {
           {threadPanels.map((panel, index) => {
             const panelIsHome = panel.documentId === HOME_THREAD_DOCUMENT_ID;
             const panelDocument = panel.document;
+            const panelAsset = threadAssetsById[panel.documentId] ?? null;
             const panelTitle = panelIsHome
               ? homeFormState.title
-              : panel.isActive ? formState.title : panelDocument?.title ?? panel.documentId;
+              : panelAsset !== null
+                ? panelAsset.name
+                : panel.isActive ? formState.title : panelDocument?.title ?? panel.documentId;
             const panelDescription = panelIsHome
               ? homeFormState.description
-              : panel.isActive ? formState.description : panelDocument?.description ?? "";
-            const panelDocumentIsLoading = !panelIsHome && panel.isActive && isSelectedDocumentLoading && selectedDocumentId === panel.documentId;
+              : panelAsset !== null
+                ? panelAsset.kind === "pdf" ? "PDF document" : "Text file"
+                : panel.isActive ? formState.description : panelDocument?.description ?? "";
+            const panelDocumentIsLoading = !panelIsHome && panelAsset === null && panel.isActive && isSelectedDocumentLoading && selectedDocumentId === panel.documentId;
 
             const panelKey = `${panel.documentId}:${index}`;
             const panelCustomWidth = threadPanelWidths[panelKey];
@@ -3037,6 +3172,8 @@ function FlowApp() {
                   <div className="thread-panel-header-leading">
                     {panelIsHome ? (
                       <Badge variant="outline" className="center-document-type-badge">Home</Badge>
+                    ) : panelAsset !== null ? (
+                      <Badge variant="outline" className="center-document-type-badge">{panelAsset.kind === "pdf" ? "PDF" : "Text"}</Badge>
                     ) : panelDocument !== null ? (
                       <Badge variant="outline" className="center-document-type-badge">{formatDocumentType(panelDocument.type)}</Badge>
                     ) : null}
@@ -3089,32 +3226,36 @@ function FlowApp() {
                         {panelIsHome ? <>{savingHome && <span className="home-save-success">Saving…</span>}</> : (
                           <>
                             {savingDocument && <span className="home-save-success">Saving…</span>}
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-sm"
-                              className="center-document-toolbar-toggle"
-                              data-active={centerDocumentSidePanelMode === "toc" ? "true" : "false"}
-                              aria-label="Toggle table of contents"
-                              aria-pressed={centerDocumentSidePanelMode === "toc"}
-                              title="Toggle table of contents"
-                              onClick={() => toggleCenterDocumentSidePanel("toc")}
-                            >
-                              <FileText size={16} />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-sm"
-                              className="center-document-toolbar-toggle"
-                              data-active={centerDocumentSidePanelMode === "properties" ? "true" : "false"}
-                              aria-label="Toggle document properties"
-                              aria-pressed={centerDocumentSidePanelMode === "properties"}
-                              title="Toggle document properties"
-                              onClick={() => toggleCenterDocumentSidePanel("properties")}
-                            >
-                              <Info size={16} />
-                            </Button>
+                            {panelAsset === null && (
+                              <>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="center-document-toolbar-toggle"
+                                  data-active={centerDocumentSidePanelMode === "toc" ? "true" : "false"}
+                                  aria-label="Toggle table of contents"
+                                  aria-pressed={centerDocumentSidePanelMode === "toc"}
+                                  title="Toggle table of contents"
+                                  onClick={() => toggleCenterDocumentSidePanel("toc")}
+                                >
+                                  <FileText size={16} />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="center-document-toolbar-toggle"
+                                  data-active={centerDocumentSidePanelMode === "properties" ? "true" : "false"}
+                                  aria-label="Toggle document properties"
+                                  aria-pressed={centerDocumentSidePanelMode === "properties"}
+                                  title="Toggle document properties"
+                                  onClick={() => toggleCenterDocumentSidePanel("properties")}
+                                >
+                                  <Info size={16} />
+                                </Button>
+                              </>
+                            )}
                           </>
                         )}
                         {isMaximizedRightRail && (
@@ -3168,6 +3309,9 @@ function FlowApp() {
                           onChange={(value) => updateHomeFormField("body", value)}
                           onReferenceOpen={(documentId, graphPath) => handleInlineReferenceOpen(HOME_THREAD_DOCUMENT_ID, documentId, graphPath, "center")}
                           onDateOpen={handleDateOpen}
+                          onAssetOpenInThread={(assetHref, assetName, kind) => {
+                            void openAssetInThreadFromSource(HOME_THREAD_DOCUMENT_ID, "", assetHref, assetName, kind);
+                          }}
                           onScrollCompleted={() => setEditorScrollTarget(null)}
                           placeholder="Start writing…"
                           scrollToHeadingSlug={editorScrollTarget}
@@ -3177,6 +3321,21 @@ function FlowApp() {
                     </div>
                   </div>
                 ) : panel.isActive ? (
+                  panelAsset !== null ? (
+                    <div className="thread-panel-shell thread-panel-shell-readonly thread-panel-shell-asset">
+                      <div className="thread-panel-title-block">
+                        <h2 className="thread-panel-title">{panelTitle}</h2>
+                        {panelDescription.trim() !== "" ? <p className="thread-panel-description">{panelDescription}</p> : null}
+                      </div>
+                      <div className="thread-panel-asset-body">
+                        <iframe
+                          src={panelAsset.kind === "pdf" ? `${panelAsset.href}#page=1&view=FitH` : panelAsset.href}
+                          title={panelAsset.name}
+                          className="thread-panel-asset-frame"
+                        />
+                      </div>
+                    </div>
+                  ) : (
                   <div className="thread-panel-shell">
                     <div className="thread-panel-title-block">
                       <input
@@ -3203,6 +3362,9 @@ function FlowApp() {
                             onChange={(value) => updateFormField("body", value)}
                             onReferenceOpen={(documentId, graphPath) => handleInlineReferenceOpen(panel.documentId, documentId, graphPath, "center")}
                             onDateOpen={handleDateOpen}
+                            onAssetOpenInThread={(assetHref, assetName, kind) => {
+                              void openAssetInThreadFromSource(panel.documentId, panel.graphPath, assetHref, assetName, kind);
+                            }}
                             ref={centerDocumentEditorRef}
                             onScrollCompleted={() => setEditorScrollTarget(null)}
                             placeholder="Type / for headings, lists, quotes, links, and highlights"
@@ -3248,6 +3410,7 @@ function FlowApp() {
                       ) : null}
                     </div>
                   </div>
+                  )
                 ) : panelIsHome ? (
                   <div className="thread-panel-shell thread-panel-shell-readonly">
                     <div className="thread-panel-title-block">
@@ -3278,6 +3441,11 @@ function FlowApp() {
 
                         const reference = parseFlowReferenceHref(href);
                         if (reference === null) {
+                          const asset = parseFlowAssetHref(href);
+                          if (asset !== null && (event.metaKey || event.ctrlKey) && asset.isThreadViewable && asset.threadKind !== null) {
+                            event.preventDefault();
+                            void openAssetInThreadFromSource(HOME_THREAD_DOCUMENT_ID, "", asset.href, asset.name, asset.threadKind);
+                          }
                           return;
                         }
 
@@ -3289,6 +3457,20 @@ function FlowApp() {
                         className="ProseMirror thread-panel-rendered-markdown"
                         aria-label="Thread panel content for Home"
                         dangerouslySetInnerHTML={{ __html: markdownToHTML(homeFormState.body, graphTree?.home.inlineReferences) }}
+                      />
+                    </div>
+                  </div>
+                ) : panelAsset !== null ? (
+                  <div className="thread-panel-shell thread-panel-shell-readonly thread-panel-shell-asset">
+                    <div className="thread-panel-title-block">
+                      <h2 className="thread-panel-title">{panelTitle}</h2>
+                      {panelDescription.trim() !== "" ? <p className="thread-panel-description">{panelDescription}</p> : null}
+                    </div>
+                    <div className="thread-panel-asset-body">
+                      <iframe
+                        src={panelAsset.kind === "pdf" ? `${panelAsset.href}#page=1&view=FitH` : panelAsset.href}
+                        title={panelAsset.name}
+                        className="thread-panel-asset-frame"
                       />
                     </div>
                   </div>
@@ -3326,6 +3508,11 @@ function FlowApp() {
 
                         const reference = parseFlowReferenceHref(href);
                         if (reference === null) {
+                          const asset = parseFlowAssetHref(href);
+                          if (asset !== null && (event.metaKey || event.ctrlKey) && asset.isThreadViewable && asset.threadKind !== null) {
+                            event.preventDefault();
+                            void openAssetInThreadFromSource(panel.documentId, panel.graphPath, asset.href, asset.name, asset.threadKind);
+                          }
                           return;
                         }
 
@@ -3373,7 +3560,7 @@ function FlowApp() {
             <Label htmlFor="sidebar-workspace-select">Workspace</Label>
             <select
               id="sidebar-workspace-select"
-              className="h-9 rounded-md border bg-background px-3 text-sm"
+              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
               value={workspace.workspacePath}
               onChange={(event) => {
                 void handleWorkspaceSelection(event.target.value);
@@ -3521,6 +3708,9 @@ function FlowApp() {
                     onChange={(value) => updateHomeFormField("body", value)}
                     onReferenceOpen={(documentId, graphPath) => handleInlineReferenceOpen(HOME_THREAD_DOCUMENT_ID, documentId, graphPath, "center")}
                     onDateOpen={handleDateOpen}
+                    onAssetOpenInThread={(assetHref, assetName, kind) => {
+                      void openAssetInThreadFromSource(HOME_THREAD_DOCUMENT_ID, "", assetHref, assetName, kind);
+                    }}
                     onScrollCompleted={() => setEditorScrollTarget(null)}
                     placeholder="Start writing…"
                     scrollToHeadingSlug={editorScrollTarget}
@@ -3955,6 +4145,9 @@ function FlowApp() {
                           onChange={(value) => updateFormField("body", value)}
                           onReferenceOpen={(documentId, graphPath) => handleInlineReferenceOpen(selectedDocument.id, documentId, graphPath, "right-rail")}
                           onDateOpen={handleDateOpen}
+                          onAssetOpenInThread={(assetHref, assetName, kind) => {
+                            void openAssetInThreadFromSource(selectedDocument.id, selectedDocument.graph, assetHref, assetName, kind);
+                          }}
                           referenceLookupGraph={selectedDocument.graph}
                           ref={rightRailDocumentEditorRef}
                           onScrollCompleted={() => setEditorScrollTarget(null)}
@@ -4251,7 +4444,7 @@ function FlowApp() {
                         )
                       )}
                       {settingsTab === "theme" && (
-                        <RadioGroup value={theme} onValueChange={(v) => { void handleAppearanceChange(v as "light" | "dark" | "system"); }}>
+                        <RadioGroup value={normalizeAppearance(theme)} onValueChange={(v) => { void handleAppearanceChange(v as "light" | "dark" | "system"); }}>
                           <div className="flex items-center gap-2">
                             <RadioGroupItem value="light" id="r1" />
                             <Label htmlFor="r1">Light</Label>

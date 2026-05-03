@@ -171,15 +171,17 @@ export function GraphCanvasOverlayNodes({
                             <ExternalLink size={12} /> Open PDF
                           </button>
                         )}
-                        <a
-                          className="graph-canvas-node-preview-open"
-                          href={node.data.previewURL}
-                          download={node.data.previewName ?? true}
-                          onClick={(event) => event.stopPropagation()}
-                          aria-label={`Download ${node.data.previewName ?? node.data.title}`}
-                        >
-                          <Download size={12} /> Download
-                        </a>
+                        {(node.data.previewAssetCount ?? 1) <= 1 ? (
+                          <a
+                            className="graph-canvas-node-preview-open"
+                            href={node.data.previewURL}
+                            download={node.data.previewName ?? true}
+                            onClick={(event) => event.stopPropagation()}
+                            aria-label={`Download ${node.data.previewName ?? node.data.title}`}
+                          >
+                            <Download size={12} /> Download
+                          </a>
+                        ) : null}
                       </div>
                     ) : null}
                   </>
@@ -208,7 +210,13 @@ export function GraphCanvasOverlayNodes({
           <button
             type="button"
             className="canvas-action-bar-btn"
-            onClick={onMerge}
+            onPointerDown={(event) => {
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              onMerge();
+            }}
           >
             Merge
           </button>
