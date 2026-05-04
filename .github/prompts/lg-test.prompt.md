@@ -28,7 +28,7 @@ Flow record-keeping requirements (required, see [.github/SKILL.md](../SKILL.md) 
 - Use one shared Flow graph for all record keeping in the project. Do not switch graphs by operation type.
 - For each new feature or testing stream, create or reuse a feature sub-directory under the shared graph, for example `flow/development/<feature-slug>`.
 - Keep at least one task node and one note node in the feature sub-directory:
-  - Task node tracks testing execution status (`todo`, `doing`, `done`).
+  - Task node tracks testing execution status (`Ready`, `Running`, `Done`, `Success`, `Failed`, `Interrupted`).
   - Note node captures executed commands, test outputs, pass/fail summary, and failure diagnostics.
 - If a tested task is implemented and committed, update that task node description or body with the commit id.
 - Link test notes to related implementation/fix/refactor nodes whenever possible.

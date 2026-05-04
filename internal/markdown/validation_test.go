@@ -203,6 +203,48 @@ func TestValidateWorkspaceDocumentsUsesGraphPathForCommandValidation(t *testing.
 	}
 }
 
+func TestValidateWorkspaceDocumentsAllowsCanonicalTaskStatuses(t *testing.T) {
+	t.Parallel()
+
+	err := ValidateWorkspaceDocuments([]WorkspaceDocument{
+		{
+			Path: "data/content/execution/task.md",
+			Document: TaskDocument{
+				Metadata: TaskMetadata{
+					CommonFields: CommonFields{ID: "task-1", Type: TaskType, Graph: "execution", Title: "Task"},
+					Status:       "Success",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ValidateWorkspaceDocuments() error = %v", err)
+	}
+}
+
+func TestValidateWorkspaceDocumentsRejectsUnknownTaskStatus(t *testing.T) {
+	t.Parallel()
+
+	err := ValidateWorkspaceDocuments([]WorkspaceDocument{
+		{
+			Path: "data/content/execution/task.md",
+			Document: TaskDocument{
+				Metadata: TaskMetadata{
+					CommonFields: CommonFields{ID: "task-1", Type: TaskType, Graph: "execution", Title: "Task"},
+					Status:       "Blocked",
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("ValidateWorkspaceDocuments() error = nil, want invalid task status")
+	}
+
+	if !strings.Contains(err.Error(), "allowed values") {
+		t.Fatalf("ValidateWorkspaceDocuments() error = %v", err)
+	}
+}
+
 func TestNormalizeWorkspaceDocumentUsesGraphPathOverFrontmatter(t *testing.T) {
 	t.Parallel()
 

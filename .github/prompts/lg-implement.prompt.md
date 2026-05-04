@@ -17,10 +17,10 @@ Follow this workflow:
 1. Find the matching feature sub-directory in the shared Flow graph using the provided feature name or sub-directory path.
 2. Use Flow task nodes in that feature sub-directory as the execution checklist.
 3. Use [docs/architecture.md](../../docs/architecture.md) to understand the intended behavior, interfaces, data flow, constraints, and testing requirements.
-4. Select exactly one `todo` task node to implement in this run unless the user explicitly names a specific task.
+4. Select exactly one `Ready` task node to implement in this run unless the user explicitly names a specific task.
 5. Implement only that single task, validating the work before marking it complete.
 6. After the task is fully completed, run the most relevant available tests, lint checks, or targeted verification for that task.
-7. Only after successful implementation and validation, update the selected task node from `doing` to `done`.
+7. Only after successful implementation and validation, update the selected task node from `Running` to `Done`.
 8. If at least one task remains incomplete, keep the feature note status as `Open` or `In Progress`, depending on the state of the work.
 9. If all task nodes for the feature are completed, update the feature note status to `Completed`.
 10. If implementation reveals necessary changes that the user explicitly requested and those changes differ from [docs/architecture.md](../../docs/architecture.md), update the relevant architecture section after the affected task is finished.
@@ -32,7 +32,7 @@ Flow record-keeping requirements (required, see [.github/SKILL.md](../SKILL.md) 
 - Use one shared Flow graph for all record keeping in the project. Do not switch graphs by operation type.
 - For each new feature, create or reuse a feature sub-directory under the shared graph, for example `flow/development/<feature-slug>`.
 - Keep at least one task node and one note node updated during the run:
-	- Task node must reflect the single selected Flow task and move through `todo` -> `doing` -> `done`.
+	- Task node must reflect the single selected Flow task and move through `Ready` -> `Running` -> `Done`.
 	- Note node must capture implementation decisions, touched files, validation commands, and outcomes.
 - If the completed task is committed in git during or after this run, update that task node description or body with the commit id.
 - Link task, note, and related command nodes to preserve execution context.
@@ -46,7 +46,7 @@ Status rules for the Flow feature note:
 - Move `Planned` to `Open` when implementation begins but no task has been completed yet.
 - Use `Open` when no implementation task has been completed yet.
 - Use `In Progress` when some task nodes are completed but work remains.
-- Use `Completed` only when every feature task node is in `done`.
+- Use `Completed` only when every feature task node is in `Done`.
 
 Architecture update rules:
 
@@ -100,7 +100,7 @@ Attempt the single Flow task node: `task-export-validate` (Add the export reques
 
 ## Progress Updates
 
-Completed the export request handler and input validation. Updated task node `task-export-validate` to `done` and changed feature status from `Planned` to `In Progress`. Ran targeted tests covering accepted filters, rejected filters, and malformed requests.
+Completed the export request handler and input validation. Updated task node `task-export-validate` to `Done` and changed feature status from `Planned` to `In Progress`. Ran targeted tests covering accepted filters, rejected filters, and malformed requests.
 
 ## Architecture Sync
 
@@ -123,13 +123,13 @@ Implementation rules:
 - Execute only one Flow task node per run unless the user explicitly instructs otherwise.
 - Always run the most relevant available tests, linting, or targeted verification after a completed task.
 - Update Flow task status immediately after a task is validated.
-- Do not mark a task complete until the implementation for that task is actually done.
+- Do not mark a task complete until the implementation for that task is actually complete.
 - If a task cannot be completed safely, leave it unchecked and explain the blocker.
 - Keep edits focused on the requested feature and avoid unrelated refactors.
 
 Run-completion record rules:
 
 - Before ending the run, update Flow notes with what was shipped and what remains.
-- Ensure remaining `todo`/`doing` task nodes are represented in Flow with accurate status and links.
+- Ensure remaining `Ready`/`Running` task nodes are represented in Flow with accurate status and links.
 - If a commit was created for a completed task, ensure that task node includes the commit id.
 - When any task is completed, update home.md with the newly completed capability so home.md incrementally evolves into the architecture/manual document.

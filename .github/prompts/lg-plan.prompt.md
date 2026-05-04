@@ -63,9 +63,9 @@ Feature sub-directory: `flow/development/<feature-slug>`
 
 Task nodes:
 
-- task-1: <task title> (status: todo)
-- task-2: <task title> (status: todo)
-- task-3: <task title> (status: todo)
+- task-1: <task title> (status: Ready)
+- task-2: <task title> (status: Ready)
+- task-3: <task title> (status: Ready)
 
 Task dependency links:
 
@@ -78,11 +78,11 @@ Feature sub-directory: `flow/development/audit-log-export`
 
 Task nodes:
 
-- task-export-validate: Add export request handler and input validation (status: todo)
-- task-export-generate: Implement export generation path (status: todo)
-- task-export-wire: Wire export action into user workflow (status: todo)
-- task-export-test: Add/update tests for valid/invalid/error paths (status: todo)
-- task-export-docs: Document behavior and operational constraints (status: todo)
+- task-export-validate: Add export request handler and input validation (status: Ready)
+- task-export-generate: Implement export generation path (status: Ready)
+- task-export-wire: Wire export action into user workflow (status: Ready)
+- task-export-test: Add/update tests for valid/invalid/error paths (status: Ready)
+- task-export-docs: Document behavior and operational constraints (status: Ready)
 
 Task dependency links:
 
@@ -103,7 +103,7 @@ Task-writing rules:
 - Avoid vague tasks like "implement feature" or "do testing".
 - Avoid tasks that mix multiple milestones, such as combining schema changes, API work, UI work, and docs in one checkbox unless they are inseparable.
 - Prefer a small number of meaningful tasks over a long checklist of trivial actions.
-- Make it obvious how the implementer will know the task is done.
+- Make it obvious how the implementer will know the task is complete.
 
 Single-task execution alignment:
 

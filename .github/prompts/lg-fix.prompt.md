@@ -29,7 +29,7 @@ Flow record-keeping requirements (required, see [.github/SKILL.md](../SKILL.md) 
 - Use one shared Flow graph for all record keeping in the project. Do not switch graphs by operation type.
 - For each new feature or fix stream, create or reuse a feature sub-directory under the shared graph, for example `flow/development/<feature-slug>`.
 - Keep at least one task node and one note node in the feature sub-directory:
-	- Task node tracks the fix lifecycle and status (`todo`, `doing`, `done`).
+	- Task node tracks the fix lifecycle and status (`Ready`, `Running`, `Done`, `Success`, `Failed`, `Interrupted`).
 	- Note node records root cause, fix decision, risk notes, and validation outcomes.
 - If a completed fix task is committed in git, update that task node description or body with the commit id.
 - Link fix notes, tasks, and related nodes so context remains traceable.

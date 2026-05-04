@@ -33,7 +33,7 @@ flow init
 
 # 2) Add one note and one task
 flow create note --file overview --graph design/20260502-001-FEAT-example --title "Feature overview"
-flow create task --file implement --graph development/20260502-001-FEAT-example --title "Implement feature" --status todo
+flow create task --file implement --graph development/20260502-001-FEAT-example --title "Implement feature" --status Ready
 
 # 3) Open the GUI
 flow gui
@@ -89,7 +89,7 @@ Do not commit these generated files:
 Typical workflow:
 
 1. Create/update notes and tasks for the feature.
-2. Implement code and update task status (`todo` -> `doing` -> `done`).
+2. Implement code and update task status (`Ready` -> `Running` -> `Done` and terminal outcomes such as `Success`, `Failed`, or `Interrupted`).
 3. Record validation outcomes in notes.
 4. Commit code plus Flow updates together for traceable history.
 
@@ -136,7 +136,7 @@ flow version
 flow init
 flow configure --gui-port 4317
 flow search parser
-flow node list --feature development --status todo --compact
+flow node list --feature development --status Ready --compact
 flow node read --id development/20260502-001-FEAT-example/implement
 flow run build
 ```

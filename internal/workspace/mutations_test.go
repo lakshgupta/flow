@@ -26,7 +26,7 @@ func TestCreateDocumentWritesMarkdownAndRebuildsIndex(t *testing.T) {
 		Graph:       "release/publish",
 		Title:       "Publish",
 		Description: "Publish release task",
-		Status:      "todo",
+		Status:      "Ready",
 		Body:        "Publish body\n",
 	})
 	if err != nil {
@@ -63,7 +63,7 @@ func TestUpdateDocumentByIDAppliesPatchAndRebuildsIndex(t *testing.T) {
 		Graph:       stringPointer("release/parser"),
 		Title:       stringPointer("Updated parser"),
 		Description: stringPointer("Updated task description"),
-		Status:      stringPointer("done"),
+		Status:      stringPointer("Done"),
 		Body:        stringPointer("Updated body\n"),
 	})
 	if err != nil {
@@ -75,7 +75,7 @@ func TestUpdateDocumentByIDAppliesPatchAndRebuildsIndex(t *testing.T) {
 		t.Fatalf("workspaceDocument.Document = %T, want markdown.TaskDocument", workspaceDocument.Document)
 	}
 
-	if updatedTask.Metadata.Title != "Updated parser" || updatedTask.Metadata.Status != "done" {
+	if updatedTask.Metadata.Title != "Updated parser" || updatedTask.Metadata.Status != "Done" {
 		t.Fatalf("updatedTask.Metadata = %#v", updatedTask.Metadata)
 	}
 	if updatedTask.Metadata.Description != "Updated task description" {
@@ -310,7 +310,7 @@ func createMutationWorkspace(t *testing.T) Root {
 	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "demo", "execution", "parser.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "wrong", Title: "Parser", Description: "Parser description"},
-			Status:       "doing",
+			Status:       "Running",
 			Links:        []markdown.NodeLink{{Node: "note-1"}},
 		},
 		Body: "Parser body\n",
@@ -343,7 +343,7 @@ func createInlineReferenceMutationWorkspace(t *testing.T) Root {
 	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "demo", "execution", "parser.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "wrong", Title: "Parser"},
-			Status:       "doing",
+			Status:       "Running",
 		},
 		Body: "Parser body\n",
 	})
@@ -561,14 +561,14 @@ func createDependencyCleanupWorkspace(t *testing.T) Root {
 	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "proj", "parent-task.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "parent-task", Type: markdown.TaskType, Graph: "proj", Title: "Parent Task"},
-			Status:       "todo",
+			Status:       "Ready",
 		},
 		Body: "Parent body\n",
 	})
 	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "proj", "child-task.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "child-task", Type: markdown.TaskType, Graph: "proj", Title: "Child Task"},
-			Status:       "todo",
+			Status:       "Ready",
 			Links:        []markdown.NodeLink{{Node: "parent-task"}},
 		},
 		Body: "Child task body\n",

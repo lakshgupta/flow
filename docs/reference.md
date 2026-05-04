@@ -105,7 +105,7 @@ Note-specific fields:
 
 Task-specific fields:
 
-- `status`: optional task state such as `todo`, `doing`, or `done`
+- `status`: optional task state, one of `Ready`, `Running`, `Done`, `Success`, `Failed`, or `Interrupted`
 - `links`: optional list of related document IDs that do not affect readiness
 
 Command-specific fields:
@@ -140,7 +140,7 @@ type: task
 graph: development/parser
 title: Build parser
 description: Implement the first parsing pass and wire it into the CLI flow
-status: todo
+status: Ready
 links:
   - note-1
 ---
@@ -214,7 +214,7 @@ Node subcommands:
   - Reads one node view (includes body and linked edge info).
 - `flow node content --id <node-id> [--graph <graph>] [--line-start <n>] [--line-end <n>] [--format text|json]`
   - Reads full body content or a specific line range.
-- `flow node list [--graph <graph>] [--feature <feature>] [--tag <tag>]... [--status <todo|doing|done>] [--limit <n>] [--compact] [--format json|markdown]`
+- `flow node list [--graph <graph>] [--feature <feature>] [--tag <tag>]... [--status <Ready|Running|Done|Success|Failed|Interrupted>] [--limit <n>] [--compact] [--format json|markdown]`
   - Lists nodes using graph/feature/tag/status filters; requires `--graph` or at least one filter.
 - `flow node edges --id <node-id> [--graph <graph>] [--format json|markdown]`
   - Lists edges touching a node.
@@ -232,7 +232,7 @@ Global mode is supported by prefixing commands with `-g`, for example `flow -g i
 Agent-oriented usage patterns:
 
 - Use compact output for planning loops and ID collection:
-  - `flow node list --feature development --status todo --compact`
+  - `flow node list --feature development --status Ready --compact`
   - `flow search --tag planning --type task --compact`
 - Pull only the lines needed for edit context:
   - `flow node content --id task-1 --line-start 80 --line-end 120`

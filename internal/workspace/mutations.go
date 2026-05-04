@@ -722,7 +722,7 @@ func buildCreateDocument(input CreateDocumentInput) markdown.Document {
 		return markdown.TaskDocument{
 			Metadata: markdown.TaskMetadata{
 				CommonFields: common,
-				Status:       input.Status,
+				Status:       markdown.NormalizeTaskStatus(input.Status),
 				Links:        cloneLinks(input.Links),
 			},
 			Body: input.Body,
@@ -759,7 +759,7 @@ func applyDocumentPatch(document markdown.Document, patch DocumentPatch) (markdo
 	case markdown.TaskDocument:
 		patchCommonFields(&value.Metadata.CommonFields, patch)
 		if patch.Status != nil {
-			value.Metadata.Status = *patch.Status
+			value.Metadata.Status = markdown.NormalizeTaskStatus(*patch.Status)
 		}
 		if patch.Links != nil {
 			value.Metadata.Links = cloneLinks(*patch.Links)

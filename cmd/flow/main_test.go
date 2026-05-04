@@ -331,7 +331,7 @@ func TestFlowCreateTaskWritesMarkdownAndReindexes(t *testing.T) {
 		"--graph", "execution/parser",
 		"--title", "Build parser",
 		"--description", "Parser task description",
-		"--status", "todo",
+		"--status", "Ready",
 		"--reference", "note-1",
 		"--tag", "backend",
 		"--body", "Task body",
@@ -355,7 +355,7 @@ func TestFlowCreateTaskWritesMarkdownAndReindexes(t *testing.T) {
 		t.Fatalf("ParseTaskDocument() error = %v", err)
 	}
 
-	if document.Metadata.ID != "execution/parser/parser" || document.Metadata.Graph != "execution/parser" || document.Metadata.Status != "todo" {
+	if document.Metadata.ID != "execution/parser/parser" || document.Metadata.Graph != "execution/parser" || document.Metadata.Status != "Ready" {
 		t.Fatalf("document metadata = %#v", document.Metadata)
 	}
 
@@ -379,8 +379,8 @@ func TestFlowCreateTaskWritesMarkdownAndReindexes(t *testing.T) {
 		t.Fatalf("QueryRow(task_status) error = %v", err)
 	}
 
-	if taskStatus != "todo" {
-		t.Fatalf("taskStatus = %q, want todo", taskStatus)
+	if taskStatus != "Ready" {
+		t.Fatalf("taskStatus = %q, want Ready", taskStatus)
 	}
 }
 
@@ -708,7 +708,7 @@ func TestFlowSearchSupportsFiltersAndCompactOutput(t *testing.T) {
 				Title: "Execution Task",
 				Tags:  []string{"agent"},
 			},
-			Status: "todo",
+			Status: "Ready",
 		},
 		Body: "Task body.\n",
 	})
@@ -1522,7 +1522,7 @@ func TestFlowNodeListReturnsMarkdownForGraph(t *testing.T) {
 				Graph: "proj",
 				Title: "Task",
 			},
-			Status: "todo",
+			Status: "Ready",
 		},
 	})
 
@@ -1609,7 +1609,7 @@ func TestFlowNodeListFiltersByFeatureTagAndStatus(t *testing.T) {
 				Title: "Feature A Task",
 				Tags:  []string{"agent", "backend"},
 			},
-			Status: "todo",
+			Status: "Ready",
 		},
 	})
 	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "feat-b", "work", "task.md"), markdown.TaskDocument{
@@ -1621,11 +1621,11 @@ func TestFlowNodeListFiltersByFeatureTagAndStatus(t *testing.T) {
 				Title: "Feature B Task",
 				Tags:  []string{"frontend"},
 			},
-			Status: "done",
+			Status: "Done",
 		},
 	})
 
-	stdout, stderr := runForTest(t, []string{"node", "list", "--feature", "feat-a", "--tag", "agent", "--status", "todo", "--compact"}, rootDir)
+	stdout, stderr := runForTest(t, []string{"node", "list", "--feature", "feat-a", "--tag", "agent", "--status", "Ready", "--compact"}, rootDir)
 	if stderr != "" {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}

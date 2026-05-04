@@ -79,6 +79,10 @@ func ValidateWorkspaceDocuments(documents []WorkspaceDocument) error {
 				return fmt.Errorf("%s: task id must not be empty", item.Path)
 			}
 
+			if !IsAllowedTaskStatus(document.Metadata.Status) {
+				return fmt.Errorf("%s: task status %q is invalid; allowed values: %s", item.Path, document.Metadata.Status, strings.Join(AllowedTaskStatuses(), ", "))
+			}
+
 			if previous, exists := documentsByID[document.Metadata.ID]; exists {
 				return fmt.Errorf("duplicate document id %q in %s and %s", document.Metadata.ID, previous.Path, item.Path)
 			}

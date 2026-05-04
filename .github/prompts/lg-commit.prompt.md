@@ -16,13 +16,13 @@ Start by reviewing:
 Follow this workflow:
 
 1. Identify the matching feature sub-directory and task nodes in Flow using the provided feature name or sub-directory path.
-2. Determine which completed (`done`) task nodes are fully represented by the current changes being committed.
+2. Determine which completed (`Done`) task nodes are fully represented by the current changes being committed.
 3. Review the implementation details and architectural context needed to write a precise commit message and body.
 4. If the working tree includes unrelated changes, avoid committing them unless the user explicitly asks to include them.
 5. Only proceed if the commit cleanly maps to one or more fully completed Flow task nodes.
-6. If the changes represent only part of a task, or if the mapping from changes to done task nodes is ambiguous, do not create the commit. Explain the mismatch and ask the user to finish the task or clarify scope first.
+6. If the changes represent only part of a task, or if the mapping from changes to Done task nodes is ambiguous, do not create the commit. Explain the mismatch and ask the user to finish the task or clarify scope first.
 7. Before creating the commit, update Flow notes to record the exact task-node-to-commit mapping.
-8. Do not delete Flow task nodes; preserve them as execution history and mark any commit-tracking node as done.
+8. Do not delete Flow task nodes; preserve them as execution history and mark any commit-tracking node as Done.
 9. After creating the commit, update each committed task node with the final git commit id in the task node description or body.
 10. Create a strong commit message with a concise subject line and a body.
 11. In the commit body, summarize the Flow task nodes implemented by the commit and the key implementation decisions.
@@ -66,7 +66,7 @@ Identify the feature sub-directory and the completed Flow task nodes being commi
 
 ## Commit Plan
 
-Explain what will be included in the commit, why the selected changes fully satisfy the chosen done task nodes, what Flow record updates will happen, and any validation or staging decisions.
+Explain what will be included in the commit, why the selected changes fully satisfy the chosen Done task nodes, what Flow record updates will happen, and any validation or staging decisions.
 
 ## Commit Message
 
@@ -84,11 +84,11 @@ Example response:
 
 ## Commit Target
 
-Commit completed work for `flow/development/audit-log-export`, covering done task nodes for request validation and export generation.
+Commit completed work for `flow/development/audit-log-export`, covering Done task nodes for request validation and export generation.
 
 ## Commit Plan
 
-Include the validated export changes in a single commit. The current changes fully satisfy done task nodes for validation and export generation, and the commit note will record the node-to-commit mapping while preserving remaining task nodes for unfinished work.
+Include the validated export changes in a single commit. The current changes fully satisfy Done task nodes for validation and export generation, and the commit note will record the node-to-commit mapping while preserving remaining task nodes for unfinished work.
 
 ## Commit Message
 
@@ -112,7 +112,7 @@ Created the commit successfully. Remaining uncommitted work: user workflow wirin
 Implementation rules:
 
 - Make the commit instead of stopping at a proposed message unless the user explicitly asks for commit drafting only.
-- Only commit work that fully completes one or more done Flow task nodes.
+- Only commit work that fully completes one or more Done Flow task nodes.
 - Ensure the commit body reflects the actual implemented work rather than generic summaries.
 - Use Flow task text as source material, but produce a human-readable commit body.
 - Keep the commit and Flow record sync synchronized.

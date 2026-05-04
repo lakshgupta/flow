@@ -78,7 +78,7 @@ func TestRebuildPreservesWorkspaceGUIState(t *testing.T) {
 	flowPath := filepath.Join(rootDir, ".flow")
 	indexPath := filepath.Join(flowPath, "config", "flow.index")
 
-	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "execution", "build.md"), "---\nid: task-1\ntype: task\ngraph: execution\ntitle: Build\nstatus: todo\n---\n\nBuild\n")
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "execution", "build.md"), "---\nid: task-1\ntype: task\ngraph: execution\ntitle: Build\nstatus: Ready\n---\n\nBuild\n")
 
 	if err := Rebuild(indexPath, flowPath); err != nil {
 		t.Fatalf("Rebuild(first) error = %v", err)

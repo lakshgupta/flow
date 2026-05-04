@@ -63,9 +63,9 @@ func TestReadNodeViewReturnsTaskDocument(t *testing.T) {
 	indexPath := filepath.Join(flowPath, "config", "flow.index")
 
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "work", "impl.md"),
-		"---\nid: task-1\ntype: task\ngraph: work\ntitle: Implement feature\nstatus: todo\nlinks:\n  - task-0\n  - note-1\n---\n\nTask body.\n")
+		"---\nid: task-1\ntype: task\ngraph: work\ntitle: Implement feature\nstatus: Ready\nlinks:\n  - task-0\n  - note-1\n---\n\nTask body.\n")
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "work", "setup.md"),
-		"---\nid: task-0\ntype: task\ngraph: work\ntitle: Setup\nstatus: done\n---\n\nSetup body.\n")
+		"---\nid: task-0\ntype: task\ngraph: work\ntitle: Setup\nstatus: Done\n---\n\nSetup body.\n")
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "work", "context.md"),
 		"---\nid: note-1\ntype: note\ngraph: work\ntitle: Context\n---\n\nContext body.\n")
 
@@ -84,8 +84,8 @@ func TestReadNodeViewReturnsTaskDocument(t *testing.T) {
 	if view.Role != "work" {
 		t.Errorf("view.Role = %q, want work", view.Role)
 	}
-	if view.Status != "todo" {
-		t.Errorf("view.Status = %q, want todo", view.Status)
+	if view.Status != "Ready" {
+		t.Errorf("view.Status = %q, want Ready", view.Status)
 	}
 	if len(view.Links) != 2 || view.Links[0] != "note-1" || view.Links[1] != "task-0" {
 		t.Errorf("view.Links = %v, want [note-1 task-0]", view.Links)
@@ -246,7 +246,7 @@ func TestReadAllNodeViewsReturnsAllDocumentsInGraph(t *testing.T) {
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "proj", "note.md"),
 		"---\nid: note-1\ntype: note\ngraph: proj\ntitle: Note\n---\n\nNote body.\n")
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "proj", "task.md"),
-		"---\nid: task-1\ntype: task\ngraph: proj\ntitle: Task\nstatus: todo\n---\n\nTask body.\n")
+		"---\nid: task-1\ntype: task\ngraph: proj\ntitle: Task\nstatus: Ready\n---\n\nTask body.\n")
 	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "other", "note.md"),
 		"---\nid: note-2\ntype: note\ngraph: other\ntitle: Other\n---\n\nOther body.\n")
 

@@ -79,7 +79,7 @@ export function createGraphDocumentPayload(type: GraphCreateType, graphPath: str
   };
 
   if (type === "task") {
-    return { ...basePayload, status: "todo" };
+    return { ...basePayload, status: "Ready" };
   }
 
   if (type === "command") {

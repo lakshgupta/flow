@@ -576,7 +576,7 @@ func TestNewMuxMutatesDocumentsAndReindexes(t *testing.T) {
 		"id":          "task-2",
 		"graph":       "release",
 		"title":       "Publish release",
-		"status":      "todo",
+		"status":      "Ready",
 		"links":       []map[string]any{{"node": "note-1"}},
 		"body":        "Publish task body\n",
 	})
@@ -590,10 +590,10 @@ func TestNewMuxMutatesDocumentsAndReindexes(t *testing.T) {
 
 	updated := performJSONRequestWithBody[documentResponse](t, handler, http.MethodPut, "/api/documents/task-2", map[string]any{
 		"title":  "Publish release build",
-		"status": "done",
+		"status": "Done",
 		"body":   "Updated publish task body\n",
 	})
-	if updated.Title != "Publish release build" || updated.Status != "done" {
+	if updated.Title != "Publish release build" || updated.Status != "Done" {
 		t.Fatalf("updated = %#v", updated)
 	}
 
@@ -1282,14 +1282,14 @@ func createHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "planning", "foundation.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "task-0", Type: markdown.TaskType, Graph: "planning", Title: "Foundation"},
-			Status:       "todo",
+			Status:       "Ready",
 		},
 		Body: "Foundation body\n",
 	})
 	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "execution", "parser.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Parser"},
-			Status:       "doing",
+			Status:       "Running",
 			Links:        []markdown.NodeLink{{Node: "task-0"}, {Node: "note-1"}},
 		},
 		Body: "Parser body\n",
@@ -1333,7 +1333,7 @@ func createGraphTreeHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "execution", "build.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "wrong", Title: "Build", Description: "Build graph task"},
-			Status:       "todo",
+			Status:       "Ready",
 		},
 		Body: "Build body\n",
 	})
@@ -1392,7 +1392,7 @@ func createCalendarHTTPAPITestWorkspace(t *testing.T) workspace.Root {
 	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "planning", "task.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
 			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "planning", Title: "Task"},
-			Status:       "todo",
+			Status:       "Ready",
 		},
 		Body: "## 2026-04-20\nPlanning task\n",
 	})

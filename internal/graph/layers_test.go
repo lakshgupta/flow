@@ -16,7 +16,7 @@ func TestBuildTaskLayerViewComputesCrossGraphLayers(t *testing.T) {
 			Document: markdown.TaskDocument{
 				Metadata: markdown.TaskMetadata{
 					CommonFields: markdown.CommonFields{ID: "task-0", Type: markdown.TaskType, Graph: "planning", Title: "Foundation"},
-					Status:       "todo",
+					Status:       "Ready",
 				},
 			},
 		},

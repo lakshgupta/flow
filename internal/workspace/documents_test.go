@@ -12,7 +12,7 @@ func TestLoadDocumentsScansGraphTreeAndNormalizesGraphFromPath(t *testing.T) {
 	t.Parallel()
 
 	flowPath := filepath.Join(t.TempDir(), DirName)
-	writeWorkspaceMarkdownDocument(t, filepath.Join(flowPath, DataDirName, GraphsDirName, "execution", "parser", "build.md"), "---\nid: task-1\ntype: task\ngraph: wrong\ntitle: Build parser\nstatus: todo\n---\n\nTask body\n")
+	writeWorkspaceMarkdownDocument(t, filepath.Join(flowPath, DataDirName, GraphsDirName, "execution", "parser", "build.md"), "---\nid: task-1\ntype: task\ngraph: wrong\ntitle: Build parser\nstatus: Ready\n---\n\nTask body\n")
 	if err := os.WriteFile(filepath.Join(flowPath, DataDirName, HomeFileName), []byte("# Home\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(home.md) error = %v", err)
 	}

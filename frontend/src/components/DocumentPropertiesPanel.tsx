@@ -18,6 +18,8 @@ type EditableLinkDetail = {
   linkType: string;
 };
 
+const taskStatusOptions = ["Ready", "Running", "Done", "Success", "Failed", "Interrupted"];
+
 function formatLinkCount(count: number, direction: "incoming" | "outgoing"): string {
   return `${count} ${direction} ${count === 1 ? "link" : "links"}`;
 }
@@ -207,9 +209,12 @@ export function DocumentPropertiesPanel({
                 onChange={(event) => updateFormField("status", event.target.value)}
               >
                 <option value="">No status</option>
-                <option value="todo">todo</option>
-                <option value="doing">doing</option>
-                <option value="done">done</option>
+                {taskStatusOptions.map((status) => (
+                  <option key={status} value={status}>{status}</option>
+                ))}
+                {formState.status.trim() !== "" && !taskStatusOptions.includes(formState.status) ? (
+                  <option value={formState.status}>{formState.status}</option>
+                ) : null}
               </select>
             </label>
           ) : null}

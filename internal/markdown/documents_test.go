@@ -65,7 +65,7 @@ func TestParseTaskDocument(t *testing.T) {
 		"graph: execution",
 		"title: Implement parser",
 		"description: Shared task description",
-		"status: todo",
+		"status: Ready",
 		"links:",
 		"  - note-1",
 		"---",
@@ -78,8 +78,8 @@ func TestParseTaskDocument(t *testing.T) {
 		t.Fatalf("ParseTaskDocument() error = %v", err)
 	}
 
-	if document.Metadata.Status != "todo" {
-		t.Fatalf("document.Metadata.Status = %q, want todo", document.Metadata.Status)
+	if document.Metadata.Status != "Ready" {
+		t.Fatalf("document.Metadata.Status = %q, want Ready", document.Metadata.Status)
 	}
 
 	if document.Metadata.Description != "Shared task description" {
@@ -200,7 +200,7 @@ func TestSerializeDocumentRoundTripsTask(t *testing.T) {
 				Description: "Task description",
 				Tags:        []string{"parser", "test"},
 			},
-			Status: "todo",
+			Status: "Ready",
 			Links:  []NodeLink{{Node: "note-1"}},
 		},
 		Body: "Task body\n",
