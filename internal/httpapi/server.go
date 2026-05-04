@@ -626,8 +626,7 @@ func (handler *apiHandler) handleUpdateWorkspace(writer http.ResponseWriter, req
 		workspaceConfig.GUI.Appearance = strings.TrimSpace(*payload.Appearance)
 	}
 
-	if err := config.Write(handler.options.Root.ConfigPath, workspaceConfig); err != nil {
-		writeError(writer, http.StatusBadRequest, err.Error())
+	if !handler.persistWorkspaceConfigForRequest(writer, workspaceConfig) {
 		return
 	}
 
@@ -964,11 +963,7 @@ func pruneWorkspaceGraphDirectoryColors(root workspace.Root, nodes []index.Graph
 	}
 
 	workspaceConfig.GUI.GraphDirectoryColors = nextColors
-	if err := config.Write(root.ConfigPath, workspaceConfig); err != nil {
-		return nil, err
-	}
-
-	if err := syncWorkspaceGUIStateToIndex(root, workspaceConfig); err != nil {
+	if err := persistWorkspaceConfig(root, workspaceConfig); err != nil {
 		return nil, err
 	}
 
@@ -1351,13 +1346,7 @@ func (handler *apiHandler) handleUpdateGraphColor(writer http.ResponseWriter, re
 		workspaceConfig.GUI.GraphDirectoryColors[graphName] = color
 	}
 
-	if err := config.Write(handler.options.Root.ConfigPath, workspaceConfig); err != nil {
-		writeError(writer, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	if err := syncWorkspaceGUIStateToIndex(handler.options.Root, workspaceConfig); err != nil {
-		writeError(writer, http.StatusInternalServerError, err.Error())
+	if !handler.persistWorkspaceConfigForRequest(writer, workspaceConfig) {
 		return
 	}
 
@@ -1788,11 +1777,7 @@ func remapGraphDirectoryColors(root workspace.Root, currentGraph string, nextGra
 	}
 
 	workspaceConfig.GUI.GraphDirectoryColors = nextColors
-	if err := config.Write(root.ConfigPath, workspaceConfig); err != nil {
-		return err
-	}
-
-	if err := syncWorkspaceGUIStateToIndex(root, workspaceConfig); err != nil {
+	if err := persistWorkspaceConfig(root, workspaceConfig); err != nil {
 		return err
 	}
 
@@ -1818,11 +1803,7 @@ func deleteGraphDirectoryColors(root workspace.Root, graphName string) error {
 	}
 
 	workspaceConfig.GUI.GraphDirectoryColors = nextColors
-	if err := config.Write(root.ConfigPath, workspaceConfig); err != nil {
-		return err
-	}
-
-	if err := syncWorkspaceGUIStateToIndex(root, workspaceConfig); err != nil {
+	if err := persistWorkspaceConfig(root, workspaceConfig); err != nil {
 		return err
 	}
 
@@ -1844,6 +1825,28 @@ func syncWorkspaceGUIStateToIndex(root workspace.Root, workspaceConfig config.Wo
 	}
 
 	return index.ReplaceWorkspaceGraphDirectoryColorsWorkspace(root.IndexPath, root.FlowPath, workspaceConfig.GUI.GraphDirectoryColors)
+}
+
+func (handler *apiHandler) persistWorkspaceConfigForRequest(writer http.ResponseWriter, workspaceConfig config.Workspace) bool {
+	if err := config.Write(handler.options.Root.ConfigPath, workspaceConfig); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return false
+	}
+
+	if err := syncWorkspaceGUIStateToIndex(handler.options.Root, workspaceConfig); err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return false
+	}
+
+	return true
+}
+
+func persistWorkspaceConfig(root workspace.Root, workspaceConfig config.Workspace) error {
+	if err := config.Write(root.ConfigPath, workspaceConfig); err != nil {
+		return err
+	}
+
+	return syncWorkspaceGUIStateToIndex(root, workspaceConfig)
 }
 
 func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteGraphView, documents []markdown.WorkspaceDocument) (documentResponse, bool, error) {

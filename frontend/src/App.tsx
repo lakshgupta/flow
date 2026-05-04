@@ -2297,21 +2297,32 @@ function FlowApp() {
     }
   }
 
+  async function updateWorkspaceSettings(payload: {
+    appearance?: "light" | "dark" | "system";
+    panelWidths?: {
+      leftRatio: number;
+      rightRatio: number;
+      documentTOCRatio: number;
+    };
+  }): Promise<WorkspaceResponse> {
+    return requestJSON<WorkspaceResponse>("/api/workspace", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  }
+
   async function persistDocumentTOCRatio(nextRatio: number): Promise<void> {
     if (workspace === null) {
       return;
     }
 
     try {
-      const updatedWorkspace = await requestJSON<WorkspaceResponse>("/api/workspace", {
-        method: "PUT",
-        body: JSON.stringify({
-          panelWidths: {
-            leftRatio: workspace.panelWidths.leftRatio,
-            rightRatio: workspace.panelWidths.rightRatio,
-            documentTOCRatio: nextRatio,
-          },
-        }),
+      const updatedWorkspace = await updateWorkspaceSettings({
+        panelWidths: {
+          leftRatio: workspace.panelWidths.leftRatio,
+          rightRatio: workspace.panelWidths.rightRatio,
+          documentTOCRatio: nextRatio,
+        },
       });
       setWorkspace(updatedWorkspace);
     } catch (saveError) {
@@ -2324,12 +2335,7 @@ function FlowApp() {
     setTheme(nextAppearance);
 
     try {
-      const updatedWorkspace = await requestJSON<WorkspaceResponse>("/api/workspace", {
-        method: "PUT",
-        body: JSON.stringify({
-          appearance: nextAppearance,
-        }),
-      });
+      const updatedWorkspace = await updateWorkspaceSettings({ appearance: nextAppearance });
       setWorkspace(updatedWorkspace);
       setError("");
     } catch (saveError) {

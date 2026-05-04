@@ -213,18 +213,16 @@ test.describe('Graph editor navigation repro', () => {
 
     await page.locator('.graph-canvas-overlay-node[data-nodeid="note-1"]').click()
     await page.getByRole('button', { name: 'Document', exact: true }).click()
-    await expect(page.getByLabel('Graph node document panel')).toBeVisible()
+    await expect(page.getByLabel('Document thread')).toBeVisible()
 
     await page.getByRole('textbox', { name: 'Document title' }).fill('Overview updated')
 
-    await page.locator('.graph-canvas-overlay-node[data-nodeid="note-2"]').click()
-    await page.getByRole('button', { name: 'Document', exact: true }).click()
+    await page.getByText('follow-up.md').click()
     await expect(page.getByRole('textbox', { name: 'Document title' })).toHaveValue('Follow Up')
 
     await expect.poll(() => noteOne.title).toBe('Overview updated')
 
-    await page.locator('.graph-canvas-overlay-node[data-nodeid="note-1"]').click()
-    await page.getByRole('button', { name: 'Document', exact: true }).click()
+    await page.getByText('overview.md').click()
     await expect(page.getByRole('textbox', { name: 'Document title' })).toHaveValue('Overview updated')
   })
 })
