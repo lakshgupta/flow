@@ -919,6 +919,7 @@ func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.R
 				TotalCount:  directCount,
 				HasChildren: false,
 				CountLabel:  fmt.Sprintf("%d direct / %d total", directCount, directCount),
+				Color:       graphDirectoryColors[graphPath],
 				Files:       filesByGraph[graphPath],
 			})
 		}
@@ -935,6 +936,12 @@ func pruneWorkspaceGraphDirectoryColors(root workspace.Root, nodes []index.Graph
 
 	if len(workspaceConfig.GUI.GraphDirectoryColors) == 0 {
 		return map[string]string{}, nil
+	}
+
+	// Graph nodes are read from index projection data. If unavailable, avoid destructive
+	// pruning and preserve configured colors until a reliable graph projection is present.
+	if len(nodes) == 0 {
+		return workspaceConfig.GUI.GraphDirectoryColors, nil
 	}
 
 	validGraphPaths := make(map[string]struct{}, len(nodes))

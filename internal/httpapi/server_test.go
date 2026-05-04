@@ -787,6 +787,39 @@ func TestNewMuxGraphTreePrunesStaleGraphDirectoryColorsAfterDiskSync(t *testing.
 	}
 }
 
+func TestNewMuxGraphTreePreservesGraphDirectoryColorsWhenIndexUnavailable(t *testing.T) {
+	t.Parallel()
+
+	root := createGraphTreeHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	performJSONRequestWithBody[updateGraphColorResponse](t, handler, http.MethodPut, "/api/graphs/execution/color", map[string]any{
+		"color": config.GraphDirectoryColorMint,
+	})
+
+	if err := os.Remove(root.IndexPath); err != nil {
+		t.Fatalf("Remove(index) error = %v", err)
+	}
+
+	graphTree := performJSONRequest[graphTreeResponse](t, handler, http.MethodGet, "/api/graphs")
+	if !slices.ContainsFunc(graphTree.Graphs, func(node graphTreeNodeResponse) bool {
+		return node.GraphPath == "execution" && node.Color == config.GraphDirectoryColorMint
+	}) {
+		t.Fatalf("graphTree.Graphs = %#v, want execution color mint while index is unavailable", graphTree.Graphs)
+	}
+
+	workspaceConfig, err := config.Read(root.ConfigPath)
+	if err != nil {
+		t.Fatalf("config.Read() error = %v", err)
+	}
+	if workspaceConfig.GUI.GraphDirectoryColors["execution"] != config.GraphDirectoryColorMint {
+		t.Fatalf("workspaceConfig.GUI.GraphDirectoryColors = %#v, want execution=mint", workspaceConfig.GUI.GraphDirectoryColors)
+	}
+}
+
 func TestNewMuxDeleteNoteCleansUpReferences(t *testing.T) {
 	t.Parallel()
 
