@@ -6,6 +6,7 @@ REPO_SLUG="${FLOW_RELEASE_REPO:-lex/flow}"
 INSTALL_DIR="${FLOW_INSTALL_DIR:-$HOME/.local/bin}"
 VERSION_ARG="${1:-}"
 TMP_DIR=""
+RELEASE_BASE_URL="${FLOW_RELEASE_BASE_URL:-https://github.com/${REPO_SLUG}/releases/download}"
 
 usage() {
 	cat <<'EOF'
@@ -17,6 +18,10 @@ Pass an explicit version such as 0.1.0 or v0.1.0 to install an older release.
 Environment overrides:
   FLOW_INSTALL_DIR   Destination directory for the flow binary
   FLOW_RELEASE_REPO  GitHub repository in owner/name format
+	FLOW_RELEASE_BASE_URL Base URL for release downloads (advanced)
+	FLOW_TARGET_OS     Override detected OS (linux or darwin)
+	FLOW_TARGET_ARCH   Override detected architecture (amd64 or arm64)
+	FLOW_INSTALL_DRY_RUN Set to 1 to print selected asset names and exit
 EOF
 }
 
@@ -105,30 +110,36 @@ verify_sha256_file() {
 }
 
 normalize_os() {
-	case "$(uname -s)" in
-		Linux)
+	local raw_os
+	raw_os="${FLOW_TARGET_OS:-$(uname -s)}"
+
+	case "$raw_os" in
+		linux|Linux)
 			printf 'linux\n'
 			;;
-		Darwin)
+		darwin|Darwin|macos|macOS|MacOS)
 			printf 'darwin\n'
 			;;
 		*)
-			echo "Unsupported OS: $(uname -s)" >&2
+			echo "Unsupported OS: $raw_os" >&2
 			return 1
 			;;
 	esac
 }
 
 normalize_arch() {
-	case "$(uname -m)" in
+	local raw_arch
+	raw_arch="${FLOW_TARGET_ARCH:-$(uname -m)}"
+
+	case "$raw_arch" in
 		x86_64|amd64)
 			printf 'amd64\n'
 			;;
-		aarch64|arm64)
+		aarch64|arm64|arm64e)
 			printf 'arm64\n'
 			;;
 		*)
-			echo "Unsupported architecture: $(uname -m)" >&2
+			echo "Unsupported architecture: $raw_arch" >&2
 			return 1
 			;;
 	esac
@@ -183,6 +194,7 @@ download_release_assets() {
 	local arch_name="$4"
 	local archive_path="$5"
 	local checksum_path="$6"
+	local base_release_url="$7"
 	local normalized_version
 	local archive_name
 	local checksum_name
@@ -199,8 +211,14 @@ download_release_assets() {
 	archive_name="flow-${normalized_version}-${os_name}-${arch_name}.tar.gz"
 	checksum_name="flow-${normalized_version}-${os_name}-${arch_name}.sha256"
 
+	if [[ "${FLOW_INSTALL_DRY_RUN:-0}" == "1" ]]; then
+		echo "Dry run: would install ${archive_name} from tag ${requested_version}."
+		echo "Dry run: base release URL is ${base_release_url}."
+		return 0
+	fi
+
 	while IFS= read -r tag; do
-		base_url="https://github.com/${repo_slug}/releases/download/${tag}"
+		base_url="${base_release_url}/${tag}"
 
 		if download "$base_url/$archive_name" "$archive_path" && download "$base_url/$checksum_name" "$checksum_path"; then
 			return 0
@@ -229,11 +247,15 @@ if ! release_target_supported "$OS_NAME" "$ARCH_NAME"; then
 	exit 1
 fi
 
-TMP_DIR="$(mktemp -d)"
+TMP_DIR="$(mktemp -d 2>/dev/null || mktemp -d -t flow-install)"
 ARCHIVE_PATH="$TMP_DIR/flow.tar.gz"
 CHECKSUM_PATH="$TMP_DIR/flow.sha256"
 
-download_release_assets "$REPO_SLUG" "$VERSION_ARG" "$OS_NAME" "$ARCH_NAME" "$ARCHIVE_PATH" "$CHECKSUM_PATH"
+download_release_assets "$REPO_SLUG" "$VERSION_ARG" "$OS_NAME" "$ARCH_NAME" "$ARCHIVE_PATH" "$CHECKSUM_PATH" "$RELEASE_BASE_URL"
+
+if [[ "${FLOW_INSTALL_DRY_RUN:-0}" == "1" ]]; then
+	exit 0
+fi
 
 if sha256_tool_available; then
 	verify_sha256_file "$ARCHIVE_PATH" "$CHECKSUM_PATH"
@@ -249,7 +271,12 @@ if [[ ! -f "$TMP_DIR/flow" ]]; then
 fi
 
 mkdir -p "$INSTALL_DIR"
-install -m 0755 "$TMP_DIR/flow" "$INSTALL_DIR/flow"
+if command -v install >/dev/null 2>&1; then
+	install -m 0755 "$TMP_DIR/flow" "$INSTALL_DIR/flow"
+else
+	cp "$TMP_DIR/flow" "$INSTALL_DIR/flow"
+	chmod 0755 "$INSTALL_DIR/flow"
+fi
 
 echo "Installed flow to $INSTALL_DIR/flow"
 echo "Ensure $INSTALL_DIR is on your PATH before running flow."

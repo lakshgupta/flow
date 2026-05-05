@@ -1,0 +1,70 @@
+name: Installer Validation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate-installer-supported-targets:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target_os: linux
+            target_arch: amd64
+          - target_os: darwin
+            target_arch: amd64
+          - target_os: darwin
+            target_arch: arm64
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Generate dist installer artifact
+        run: |
+          mkdir -p dist
+          install -m 0755 scripts/install.sh dist/install.sh
+
+      - name: Validate scripts installer syntax
+        run: bash -n scripts/install.sh
+
+      - name: Validate generated dist installer syntax
+        run: bash -n dist/install.sh
+
+      - name: Validate scripts installer supported target
+        env:
+          FLOW_INSTALL_DRY_RUN: "1"
+          FLOW_TARGET_OS: ${{ matrix.target_os }}
+          FLOW_TARGET_ARCH: ${{ matrix.target_arch }}
+        run: |
+          bash scripts/install.sh 0.2.0
+
+      - name: Validate generated dist installer supported target
+        env:
+          FLOW_INSTALL_DRY_RUN: "1"
+          FLOW_TARGET_OS: ${{ matrix.target_os }}
+          FLOW_TARGET_ARCH: ${{ matrix.target_arch }}
+        run: |
+          bash dist/install.sh 0.2.0
+
+  validate-installer-unsupported-target:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate scripts installer rejects unsupported target
+        env:
+          FLOW_INSTALL_DRY_RUN: "1"
+          FLOW_TARGET_OS: linux
+          FLOW_TARGET_ARCH: arm64
+        run: |
+          if bash scripts/install.sh 0.2.0; then
+            echo "Installer unexpectedly accepted unsupported target linux/arm64" >&2
+            exit 1
+          fi
