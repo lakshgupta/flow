@@ -14,38 +14,46 @@ vi.mock("@xyflow/react", async () => {
 
   return {
     ReactFlowProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-    ReactFlow: ({ nodes, onNodeClick, onNodeDoubleClick, onNodeDragStop, onPaneClick, onMoveEnd }: any) => (
-      <div data-testid="react-flow-mock">
-        {nodes.map((node: any) => (
-          <div key={node.id} data-testid={`flow-node-${node.id}`}>
-            <span>{node.data.title}</span>
-            <button type="button" onClick={() => onNodeClick?.({}, node)}>
-              Select {node.id}
-            </button>
-            <button type="button" onDoubleClick={() => onNodeDoubleClick?.({}, node)}>
-              Open {node.id}
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                onNodeDragStop?.({}, {
-                  ...node,
-                  position: { x: 446, y: 200 },
-                })
-              }
-            >
-              Drag stop {node.id}
-            </button>
-          </div>
-        ))}
-        <button type="button" onClick={() => onPaneClick?.()}>
-          Clear selection
-        </button>
-        <button type="button" onClick={() => onMoveEnd?.()}>
-          Move end
-        </button>
-      </div>
-    ),
+    ReactFlow: ({ nodes, onInit, onNodeClick, onNodeDoubleClick, onNodeDragStop, onPaneClick, onMoveEnd }: any) => {
+      React.useEffect(() => {
+        onInit?.({
+          toObject: () => ({ nodes }),
+        });
+      }, [nodes, onInit]);
+
+      return (
+        <div data-testid="react-flow-mock">
+          {nodes.map((node: any) => (
+            <div key={node.id} data-testid={`flow-node-${node.id}`}>
+              <span>{node.data.title}</span>
+              <button type="button" onClick={() => onNodeClick?.({}, node)}>
+                Select {node.id}
+              </button>
+              <button type="button" onDoubleClick={() => onNodeDoubleClick?.({}, node)}>
+                Open {node.id}
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  onNodeDragStop?.({}, {
+                    ...node,
+                    position: { x: 446, y: 200 },
+                  })
+                }
+              >
+                Drag stop {node.id}
+              </button>
+            </div>
+          ))}
+          <button type="button" onClick={() => onPaneClick?.()}>
+            Clear selection
+          </button>
+          <button type="button" onClick={() => onMoveEnd?.()}>
+            Move end
+          </button>
+        </div>
+      );
+    },
     Background: () => <div data-testid="flow-background" />,
     Controls: () => <div data-testid="flow-controls" />,
     useViewport: () => ({ x: 0, y: 0, zoom: 1 }),
@@ -193,7 +201,7 @@ describe("App graph canvas flows", () => {
     vi.restoreAllMocks();
   });
 
-  it("opens graph documents as thread roots in the center view and persists snapped drag-end positions", async () => {
+  it("opens graph documents as thread roots in the center view and persists the full drag-end arrangement", async () => {
     const graphCanvasResponse = {
       selectedGraph: "execution",
       availableGraphs: ["execution"],
@@ -288,7 +296,10 @@ describe("App graph canvas flows", () => {
       if (url === "/api/graph-layout" && init?.method === "PUT") {
         return {
           graph: "execution",
-          positions: [{ documentId: "note-1", x: 460, y: 200 }],
+          positions: [
+            { documentId: "note-1", x: 446, y: 200 },
+            { documentId: "note-2", x: 12, y: 12 },
+          ],
         };
       }
 
@@ -311,16 +322,15 @@ describe("App graph canvas flows", () => {
     await user.click(screen.getByRole("button", { name: "Drag stop note-1" }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/graph-layout",
-        expect.objectContaining({
-          method: "PUT",
-          body: JSON.stringify({
-            graph: "execution",
-            positions: [{ documentId: "note-1", x: 460, y: 200 }],
-          }),
-        }),
-      );
+      const requestBody = getRequestBody(fetchMock, "/api/graph-layout", "PUT") as {
+        graph: string;
+        positions: Array<{ documentId: string; x: number; y: number }>;
+      };
+
+      expect(requestBody.graph).toBe("execution");
+      expect(requestBody.positions).toHaveLength(2);
+      expect(requestBody.positions).toContainEqual({ documentId: "note-1", x: 446, y: 200 });
+      expect(requestBody.positions.some((position) => position.documentId === "note-2")).toBe(true);
     });
 
     await user.dblClick(screen.getByRole("button", { name: "Open note-1" }));

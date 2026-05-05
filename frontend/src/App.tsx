@@ -61,7 +61,6 @@ import {
 } from "./lib/docUtils";
 import {
   applyElkHorizontalLayout,
-  applyGraphCanvasLayerGuidance,
   buildGraphCanvasFlowEdges,
   buildGraphCanvasFlowNodes,
   ContextEdge,
@@ -426,9 +425,29 @@ function FlowApp() {
     shellTop: number;
     moved: boolean;
   } | null>(null);
+  const graphCanvasUserPositionsRef = useRef<Record<string, GraphCanvasPosition>>({});
+  const graphCanvasHorizontalPositionsRef = useRef<Record<string, GraphCanvasPosition>>({});
+  const graphCanvasLayoutModeRef = useRef<"user" | "horizontal">("user");
+  const graphCanvasPositionsRef = useRef<Record<string, GraphCanvasPosition>>({});
   const selectedGraphPath = activeSurface.kind === "graph" ? activeSurface.graphPath : "";
   const [rightRailCollapsed, setRightRailCollapsed] = useState<boolean>(true);
   const [rightRailMaximized, setRightRailMaximized] = useState<boolean>(false);
+
+  useEffect(() => {
+    graphCanvasPositionsRef.current = graphCanvasPositions;
+  }, [graphCanvasPositions]);
+
+  useEffect(() => {
+    graphCanvasUserPositionsRef.current = graphCanvasUserPositions;
+  }, [graphCanvasUserPositions]);
+
+  useEffect(() => {
+    graphCanvasHorizontalPositionsRef.current = graphCanvasHorizontalPositions;
+  }, [graphCanvasHorizontalPositions]);
+
+  useEffect(() => {
+    graphCanvasLayoutModeRef.current = graphCanvasLayoutMode;
+  }, [graphCanvasLayoutMode]);
 
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab | "document">("search");
   const [editorScrollTarget, setEditorScrollTarget] = useState<string | null>(null);
@@ -1574,18 +1593,39 @@ function FlowApp() {
         return;
       }
 
-      if (graphCanvasLayoutMode === "horizontal") {
+      const serverPositions = graphCanvasPositionMap(graphCanvasData);
+      const currentNodeIDs = new Set(graphCanvasData.nodes.map((node) => node.id));
+      const preserveKnownPositions = (positions: Record<string, GraphCanvasPosition>): Record<string, GraphCanvasPosition> => {
+        const next: Record<string, GraphCanvasPosition> = { ...serverPositions };
+        for (const [documentId, position] of Object.entries(positions)) {
+          if (currentNodeIDs.has(documentId)) {
+            next[documentId] = position;
+          }
+        }
+        return next;
+      };
+
+      if (graphCanvasLayoutModeRef.current === "horizontal") {
+        const cachedHorizontal = graphCanvasHorizontalPositionsRef.current;
+        if (Object.keys(cachedHorizontal).length > 0) {
+          const nextPositions = preserveKnownPositions(cachedHorizontal);
+          setGraphCanvasPositions(nextPositions);
+          setGraphCanvasHorizontalPositions(nextPositions);
+          setGraphCanvasLayoutMode("horizontal");
+          return;
+        }
+
         try {
           const nextPositions = await applyElkHorizontalLayout(graphCanvasData.nodes, graphCanvasData.edges);
           if (!cancelled) {
-            const horizontalPositions = Object.keys(nextPositions).length > 0 ? nextPositions : graphCanvasPositionMap(graphCanvasData);
+            const horizontalPositions = Object.keys(nextPositions).length > 0 ? nextPositions : serverPositions;
             setGraphCanvasPositions(horizontalPositions);
             setGraphCanvasHorizontalPositions(horizontalPositions);
             setGraphCanvasLayoutMode("horizontal");
           }
         } catch {
           if (!cancelled) {
-            const fallbackPositions = graphCanvasPositionMap(graphCanvasData);
+            const fallbackPositions = serverPositions;
             setGraphCanvasPositions(fallbackPositions);
             setGraphCanvasHorizontalPositions(fallbackPositions);
             setGraphCanvasLayoutMode("horizontal");
@@ -1594,9 +1634,19 @@ function FlowApp() {
         return;
       }
 
+      const cachedUser = graphCanvasUserPositionsRef.current;
+      if (Object.keys(cachedUser).length > 0) {
+        const nextPositions = preserveKnownPositions(cachedUser);
+        setGraphCanvasPositions(nextPositions);
+        setGraphCanvasUserPositions(nextPositions);
+        setGraphCanvasHorizontalPositions({});
+        setGraphCanvasLayoutMode("user");
+        return;
+      }
+
       const hasPersistedPositions = graphCanvasData.nodes.some((node) => node.positionPersisted);
       if (hasPersistedPositions) {
-        const nextPositions = graphCanvasPositionMap(graphCanvasData);
+        const nextPositions = serverPositions;
         setGraphCanvasPositions(nextPositions);
         setGraphCanvasUserPositions(nextPositions);
         setGraphCanvasHorizontalPositions({});
@@ -1607,7 +1657,7 @@ function FlowApp() {
       try {
         const nextPositions = await applyElkHorizontalLayout(graphCanvasData.nodes, graphCanvasData.edges);
         if (!cancelled) {
-          const initialPositions = Object.keys(nextPositions).length > 0 ? nextPositions : graphCanvasPositionMap(graphCanvasData);
+          const initialPositions = Object.keys(nextPositions).length > 0 ? nextPositions : serverPositions;
           setGraphCanvasPositions(initialPositions);
           setGraphCanvasUserPositions(initialPositions);
           setGraphCanvasHorizontalPositions({});
@@ -1615,7 +1665,7 @@ function FlowApp() {
         }
       } catch {
         if (!cancelled) {
-          const initialPositions = graphCanvasPositionMap(graphCanvasData);
+          const initialPositions = serverPositions;
           setGraphCanvasPositions(initialPositions);
           setGraphCanvasUserPositions(initialPositions);
           setGraphCanvasHorizontalPositions({});
@@ -2134,27 +2184,17 @@ function FlowApp() {
     });
   }
 
-  function snapshotGraphCanvasPositions(documentIds?: Set<string>): GraphLayoutPositionPayload[] {
-    const flow = graphCanvasFlowRef.current;
-    if (flow === null) {
-      return [];
-    }
-
-    // Use React Flow's save payload format (toObject) and persist only node coordinates.
-    const snapshot = flow.toObject();
-    return snapshot.nodes
-      .filter((node) => (documentIds === undefined ? true : documentIds.has(node.id)))
-      .map((node) => ({
-        documentId: node.id,
-        x: node.position.x,
-        y: node.position.y,
-      }));
-  }
-
   async function persistGraphCanvasPosition(documentId: string, position: GraphCanvasPosition): Promise<void> {
     try {
       setGraphCanvasError("");
-      const snapshotPositions = snapshotGraphCanvasPositions(new Set([documentId]));
+      const snapshotPositions = Object.entries({
+        ...graphCanvasPositionsRef.current,
+        [documentId]: position,
+      }).map(([currentDocumentId, currentPosition]) => ({
+        documentId: currentDocumentId,
+        x: currentPosition.x,
+        y: currentPosition.y,
+      }));
       const next = snapshotPositions.length > 0 ? snapshotPositions : [{ documentId, x: position.x, y: position.y }];
       await persistGraphCanvasPositions(next);
     } catch (saveError) {
@@ -2788,13 +2828,10 @@ function FlowApp() {
         dragState.moved = true;
       }
 
-      const nextPosition = applyGraphCanvasLayerGuidance(
-        {
-          x: nextX,
-          y: nextY,
-        },
-        graphCanvasData?.layerGuidance ?? null,
-      );
+      const nextPosition = {
+        x: nextX,
+        y: nextY,
+      };
       if (dragState.moved) {
         updateGraphCanvasNodePosition(dragState.documentId, nextPosition);
       }
@@ -2810,13 +2847,10 @@ function FlowApp() {
         return;
       }
 
-      const nextPosition = applyGraphCanvasLayerGuidance(
-        {
-          x: (pointerEvent.clientX - dragState.shellLeft - dragState.offsetX - vpX) / zoom,
-          y: (pointerEvent.clientY - dragState.shellTop - dragState.offsetY - vpY) / zoom,
-        },
-        graphCanvasData?.layerGuidance ?? null,
-      );
+      const nextPosition = {
+        x: (pointerEvent.clientX - dragState.shellLeft - dragState.offsetX - vpX) / zoom,
+        y: (pointerEvent.clientY - dragState.shellTop - dragState.offsetY - vpY) / zoom,
+      };
       updateGraphCanvasNodePosition(dragState.documentId, nextPosition);
       void persistGraphCanvasPosition(dragState.documentId, nextPosition);
     };
@@ -4052,10 +4086,10 @@ function FlowApp() {
                             handleOpenCanvasDocument(node.id);
                           }}
                           onNodeDrag={(_, node) => {
-                            updateGraphCanvasNodePosition(node.id, applyGraphCanvasLayerGuidance(node.position, graphCanvasData?.layerGuidance ?? null));
+                            updateGraphCanvasNodePosition(node.id, node.position);
                           }}
                           onNodeDragStop={(_, node) => {
-                            const nextPosition = applyGraphCanvasLayerGuidance(node.position, graphCanvasData?.layerGuidance ?? null);
+                            const nextPosition = node.position;
                             updateGraphCanvasNodePosition(node.id, nextPosition);
                             void persistGraphCanvasPosition(node.id, nextPosition);
                           }}
