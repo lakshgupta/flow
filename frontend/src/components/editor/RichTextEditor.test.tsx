@@ -3,12 +3,14 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RichTextEditor } from './RichTextEditor'
+import { editorHTMLToMarkdown } from '../../richText'
 
 const mockSetContent = vi.fn()
 const mockGetDocHTML = vi.fn()
 const mockFocus = vi.fn()
 const mockInsertText = vi.fn()
 let capturedDocChange: (() => void) | null = null
+let mockEditorViewDOMHTML = ''
 
 vi.mock('./ui/block-handle', () => ({
   BlockHandle: () => null,
@@ -35,18 +37,23 @@ vi.mock('prosekit/core', async (importOriginal) => {
 
   return {
     ...actual,
-    createEditor: vi.fn(() => ({
-      setContent: mockSetContent,
-      getDocHTML: mockGetDocHTML,
-      view: {
-        dom: document.createElement('div'),
-        focus: mockFocus,
-      },
-      commands: {
-        insertText: mockInsertText,
-      },
-      mount: vi.fn(),
-    })),
+    createEditor: vi.fn(() => {
+      const dom = document.createElement('div')
+      dom.innerHTML = mockEditorViewDOMHTML
+
+      return {
+        setContent: mockSetContent,
+        getDocHTML: mockGetDocHTML,
+        view: {
+          dom,
+          focus: mockFocus,
+        },
+        commands: {
+          insertText: mockInsertText,
+        },
+        mount: vi.fn(),
+      }
+    }),
   }
 })
 
@@ -65,6 +72,7 @@ vi.mock('prosekit/react', async (importOriginal) => {
 describe('RichTextEditor', () => {
   beforeEach(() => {
     capturedDocChange = null
+    mockEditorViewDOMHTML = ''
     mockSetContent.mockReset()
     mockGetDocHTML.mockReset()
     mockFocus.mockReset()
@@ -189,5 +197,27 @@ describe('RichTextEditor', () => {
     )
 
     expect(mockSetContent).toHaveBeenCalledTimes(1)
+  })
+
+  it('exports markdown from canonical document HTML even when live editor DOM includes decorations', () => {
+    const nestedListHTML = '<ul><li><p>Parent</p><ul><li><p>Child</p></li></ul></li></ul>'
+    mockGetDocHTML.mockReturnValue(nestedListHTML)
+    mockEditorViewDOMHTML = '<ul><li><p>Parent</p></li></ul><div class="prosekit-widget">widget decoration</div>'
+
+    const handle = { current: null as null | { getMarkdown: () => string } }
+    render(
+      <RichTextEditor
+        ref={handle}
+        ariaLabel="Document body editor"
+        onChange={vi.fn()}
+        value=""
+      />,
+    )
+
+    const markdown = handle.current?.getMarkdown() ?? ''
+    const expected = editorHTMLToMarkdown(nestedListHTML)
+
+    expect(markdown).toBe(expected)
+    expect(markdown).toContain('Child')
   })
 })

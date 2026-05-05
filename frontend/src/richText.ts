@@ -100,7 +100,7 @@ export function markdownToHTML(value: string, inlineReferences?: InlineReference
 
 export function editorHTMLToMarkdown(value: string): string {
   const normalizedHTML = normalizeEmptyParagraphMarkup(value);
-  const normalized = normalizeInlineReferenceTokens(turndown.turndown(normalizedHTML)).trim();
+  const normalized = normalizeMarkdownListSpacing(normalizeInlineReferenceTokens(turndown.turndown(normalizedHTML))).trim();
   if (normalized === "") {
     return "";
   }
@@ -236,6 +236,37 @@ function buildFlowReferenceHref(reference: InlineReference): string {
 
 function normalizeInlineReferenceTokens(value: string): string {
   return value.replace(ESCAPED_INLINE_REFERENCE_PATTERN, '[[$1]]');
+}
+
+function normalizeMarkdownListSpacing(value: string): string {
+  const lines = value.split("\n");
+  const normalizedLines: string[] = [];
+  let openFence: "```" | "~~~" | null = null;
+
+  for (const line of lines) {
+    const fenceMatch = line.match(/^\s*(```+|~~~+)/);
+    if (fenceMatch) {
+      const marker = fenceMatch[1].startsWith("`") ? "```" : "~~~";
+      if (openFence === null) {
+        openFence = marker;
+      } else if (openFence === marker) {
+        openFence = null;
+      }
+      normalizedLines.push(line);
+      continue;
+    }
+
+    if (openFence !== null) {
+      normalizedLines.push(line);
+      continue;
+    }
+
+    // Keep list indentation intact, but collapse excessive spacing after the marker
+    // so repeated round-trips do not keep changing list line formatting.
+    normalizedLines.push(line.replace(/^(\s*(?:>\s*)*)([-*+]|\d+[.)])\s{2,}(?=\S)/, "$1$2 "));
+  }
+
+  return normalizedLines.join("\n");
 }
 
 /** Wraps ISO date strings in rendered HTML (outside of existing anchors) as flow-date links. */

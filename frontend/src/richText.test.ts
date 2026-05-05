@@ -47,4 +47,67 @@ describe('richText conversion', () => {
     expect(html).toContain('href="#flow-reference?')
     expect(html).toContain('>Task1</a>')
   })
+
+  it('preserves nested unordered lists across editor round-trips', () => {
+    const sourceHTML = '<ul><li>Parent<ul><li>Child</li></ul></li></ul>'
+
+    const markdown = editorHTMLToMarkdown(sourceHTML)
+    const html = markdownToHTML(markdown)
+
+    expect(markdown).toContain('Parent')
+    expect(markdown).toContain('Child')
+    expect((html.match(/<ul>/g) ?? []).length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('preserves ordered list nesting under unordered lists', () => {
+    const sourceHTML = '<ul><li>Parent<ol><li>Step one</li><li>Step two</li></ol></li></ul>'
+
+    const markdown = editorHTMLToMarkdown(sourceHTML)
+    const html = markdownToHTML(markdown)
+
+    expect(markdown).toContain('Step one')
+    expect(markdown).toContain('Step two')
+    expect(html).toContain('<ol>')
+  })
+
+  it('preserves ProseMirror-style nested lists with paragraph-wrapped items', () => {
+    const sourceHTML = '<ul><li><p>Parent</p><ul><li><p>Child</p></li></ul></li></ul>'
+
+    const markdown = editorHTMLToMarkdown(sourceHTML)
+    const html = markdownToHTML(markdown)
+
+    expect(markdown).toContain('Parent')
+    expect(markdown).toContain('Child')
+    expect((html.match(/<ul>/g) ?? []).length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('keeps nested list depth stable across repeated round-trips', () => {
+    const baseline = [
+      '- Parent',
+      '  - Child',
+      '    - Grandchild',
+      '- Sibling',
+      '',
+    ].join('\n')
+    let markdown = editorHTMLToMarkdown(markdownToHTML(baseline))
+
+    for (let i = 0; i < 9; i += 1) {
+      const html = markdownToHTML(markdown)
+      const nextMarkdown = editorHTMLToMarkdown(html)
+      expect(nextMarkdown).toBe(markdown)
+      markdown = nextMarkdown
+    }
+
+    expect(markdown).toContain('    - Child')
+    expect(markdown).toContain('        - Grandchild')
+  })
+
+  it('does not normalize list-like lines inside fenced code blocks', () => {
+    const sourceHTML = '<pre><code class="language-markdown">-   keep\n  -   spacing\n</code></pre>'
+
+    const markdown = editorHTMLToMarkdown(sourceHTML)
+
+    expect(markdown).toContain('-   keep')
+    expect(markdown).toContain('  -   spacing')
+  })
 })

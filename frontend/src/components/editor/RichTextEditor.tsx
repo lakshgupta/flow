@@ -59,28 +59,6 @@ function createInlineReferenceRenderKey(inlineReferences?: InlineReference[]): s
     .join('\u0002')
 }
 
-function serializeLiveEditorHTML(root: HTMLElement | null, fallbackHTML: string): string {
-  if (root === null) {
-    return fallbackHTML
-  }
-
-  const clone = root.cloneNode(true)
-  if (!(clone instanceof HTMLElement)) {
-    return fallbackHTML
-  }
-
-  for (const placeholder of clone.querySelectorAll('[data-placeholder]')) {
-    placeholder.removeAttribute('data-placeholder')
-    placeholder.classList.remove('prosekit-placeholder')
-  }
-
-  for (const breakElement of clone.querySelectorAll('br.ProseMirror-trailingBreak')) {
-    breakElement.classList.remove('ProseMirror-trailingBreak')
-  }
-
-  return clone.innerHTML
-}
-
 /** Inner component: lives inside ProseKit provider so it can use ProseKit hooks. */
 function DocChangeTracker({ onHtmlChange }: { onHtmlChange: () => void }) {
   useDocChange(onHtmlChange)
@@ -308,7 +286,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
   }
 
   useImperativeHandle(ref, () => ({
-    getMarkdown: () => editorHTMLToMarkdown(serializeLiveEditorHTML(editor.view?.dom as HTMLElement | null, editor.getDocHTML())),
+    getMarkdown: () => editorHTMLToMarkdown(editor.getDocHTML()),
   }), [editor])
 
   return (
