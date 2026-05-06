@@ -159,7 +159,7 @@ const MIN_DOCUMENT_TOC_RATIO = 0.14;
 const MAX_DOCUMENT_TOC_RATIO = 0.32;
 const MIN_THREAD_PANEL_WIDTH_PX = 420;
 const THREAD_PANEL_VIEWPORT_MARGIN_PX = 112;
-const DOCUMENT_FILE_NAME_PATTERN = /^[a-z0-9][a-z0-9._/-]*$/;
+const DOCUMENT_FILE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
 
 type SearchFilters = {
   q: string;
@@ -2651,7 +2651,7 @@ function FlowApp() {
       return;
     }
     if (!isValidDocumentFileName(trimmed)) {
-      setCreateNodeFileNameError("Use only lowercase letters, numbers, hyphens, underscores, dots, and slashes.");
+      setCreateNodeFileNameError("Use only letters, numbers, hyphens, underscores, dots, and slashes.");
       return;
     }
     const { type, graphPath, origin } = createNodeDialog;
@@ -2697,7 +2697,7 @@ function FlowApp() {
       }
     } else {
       if (!isValidDocumentFileName(trimmed)) {
-        setRenameError("Use only lowercase letters, numbers, hyphens, underscores, dots, and slashes.");
+        setRenameError("Use only letters, numbers, hyphens, underscores, dots, and slashes.");
         return;
       }
       if (stripMarkdownExtension(renameDialog.fileName) === trimmed) {
@@ -4666,7 +4666,7 @@ function FlowApp() {
           <DialogHeader>
             <DialogTitle>New {createNodeDialog ? formatDocumentType(createNodeDialog.type) : ""}</DialogTitle>
             <DialogDescription>
-              Choose a file name for the new document. Use lowercase letters, numbers, and hyphens.
+              Choose a file name for the new document. Use letters, numbers, hyphens, underscores, dots, and slashes.
             </DialogDescription>
           </DialogHeader>
           <div className="shell-dialog-actions" style={{ flexDirection: "column", alignItems: "stretch", gap: "0.5rem" }}>

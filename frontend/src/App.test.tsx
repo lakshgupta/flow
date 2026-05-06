@@ -2085,11 +2085,11 @@ describe("App graph canvas flows", () => {
 
     const input = await screen.findByLabelText("Graph path");
     await user.clear(input);
-    await user.type(input, "shipping");
+    await user.type(input, "Shipping");
     await user.click(screen.getByRole("button", { name: "Rename" }));
 
     await waitFor(() => {
-      expect(getRequestBody(fetchMock, "/api/graphs/execution", "PATCH")).toEqual({ name: "shipping" });
+      expect(getRequestBody(fetchMock, "/api/graphs/execution", "PATCH")).toEqual({ name: "Shipping" });
     });
 
     expect(await screen.findByText("Shipping")).toBeInTheDocument();
@@ -2155,17 +2155,17 @@ describe("App graph canvas flows", () => {
 
     const input = await screen.findByLabelText("File name");
     await user.clear(input);
-    await user.type(input, "summary");
+    await user.type(input, "Summary-Plan");
     await user.click(screen.getByRole("button", { name: "Rename" }));
 
     await waitFor(() => {
-      expect(getRequestBody(fetchMock, "/api/documents/note-1", "PUT")).toEqual({ fileName: "summary" });
+      expect(getRequestBody(fetchMock, "/api/documents/note-1", "PUT")).toEqual({ fileName: "Summary-Plan" });
     });
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
-    expect(screen.getByText("summary.md")).toBeInTheDocument();
+    expect(screen.getByText("Summary-Plan.md")).toBeInTheDocument();
   });
 
   it("deletes a node from the content tree", async () => {
@@ -3055,7 +3055,7 @@ describe("App graph canvas flows", () => {
     expect(await screen.findByText("Start this canvas with the first document.")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Capture context/i }));
-    await user.type(await screen.findByLabelText("File name"), "new-note");
+    await user.type(await screen.findByLabelText("File name"), "New-Note");
     await user.click(screen.getByRole("button", { name: /^Create$/i }));
 
     await waitFor(() => {
@@ -3063,6 +3063,7 @@ describe("App graph canvas flows", () => {
       expect(payload.type).toBe("note");
       expect(payload.graph).toBe("execution/empty");
       expect(payload.featureSlug).toBe("execution");
+      expect(payload.fileName).toBe("New-Note");
       expect(payload.title).toBe("New Note");
     });
 
