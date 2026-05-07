@@ -170,7 +170,7 @@ bash ./install.sh v0.1.0
 If running installer from a repository checkout:
 
 ```bash
-bash ./scripts/install.sh v0.1.0
+bash ./scripts/install-local-release.sh
 ```
 
 ### From Local Source
@@ -183,6 +183,9 @@ npm run build
 cd ..
 go build ./cmd/flow
 ```
+
+The canonical project version is stored in `internal/buildinfo/VERSION`.
+Frontend builds and release scripts sync from that file so the Go binary version and frontend package metadata stay aligned.
 
 ## Learn More
 

@@ -40,6 +40,7 @@ mkdir -p "$STAGING_DIR"
 mkdir -p "$DIST_DIR"
 
 if [[ "${FLOW_SKIP_FRONTEND_BUILD:-0}" != "1" ]]; then
+	bash "$ROOT_DIR/scripts/sync-frontend-version.sh" "$VERSION"
 	pushd "$FRONTEND_DIR" >/dev/null
 	npm ci
 	# Remove prior emitted frontend bundles so the next binary embeds only fresh assets.

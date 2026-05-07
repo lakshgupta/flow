@@ -257,6 +257,7 @@ Repository layout:
 - `frontend/`: React and TypeScript browser source
 - `internal/httpapi/static/`: generated embedded frontend assets (git-ignored except `.gitkeep`)
 - `scripts/build-release.sh`: release packaging script for a specific OS and architecture
+- `scripts/sync-frontend-version.sh`: syncs `frontend/package.json` and `frontend/package-lock.json` to `internal/buildinfo/VERSION`
 - `scripts/build-release-linux-amd64.sh`: compatibility wrapper for the Linux amd64 release build
 - `scripts/install-local-release.sh`: local installer for the release archive matching the current machine
 - `scripts/install-linux-amd64.sh`: compatibility wrapper for the Linux amd64 local installer
@@ -277,4 +278,5 @@ go test ./internal/config ./internal/workspace ./internal/markdown ./internal/gr
 
 The frontend build emits bundled assets into `internal/httpapi/static/`, and the Go binary embeds those assets for `flow gui`.
 These emitted files are generated each build and are not meant to be committed.
-Plain `go build` uses the project version from `internal/buildinfo/VERSION` and appends `-dev`; release builds inject the exact release version without the suffix.
+Plain `go build` uses the project version from `internal/buildinfo/VERSION` as-is.
+Frontend builds sync `frontend/package.json` and `frontend/package-lock.json` from that same version via `scripts/sync-frontend-version.sh`, and release builds reuse the same source when stamping the CLI binary.

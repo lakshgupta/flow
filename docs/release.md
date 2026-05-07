@@ -32,6 +32,8 @@ The release workflow publishes these assets for each version:
 Keep these changes if they changed as part of the release prep:
 
 - `internal/buildinfo/VERSION`
+- `frontend/package.json`
+- `frontend/package-lock.json`
 - `.github/workflows/release.yml`
 - `.github/release.yml`
 - `docs/release.md`
@@ -59,18 +61,20 @@ Update the version file:
 ```bash
 printf '0.1.0\n' > internal/buildinfo/VERSION
 version="$(tr -d '[:space:]' < internal/buildinfo/VERSION)"
+bash ./scripts/sync-frontend-version.sh "$version"
 ```
 
 Run local validation:
 
 ```bash
 cd frontend
-npm ci
 npm run build
 
 cd ..
 go test ./internal/config ./internal/workspace ./internal/markdown ./internal/graph ./internal/execution ./internal/index ./internal/httpapi ./cmd/flow
 ```
+
+`npm run build` calls `scripts/sync-frontend-version.sh` automatically, and `scripts/build-release.sh` does the same before `npm ci`, so the frontend manifest version stays aligned with `internal/buildinfo/VERSION` across local and release builds.
 
 Build release archives locally:
 
@@ -89,7 +93,7 @@ bash ./scripts/install-local-release.sh
 Create the release commit and tag:
 
 ```bash
-git add internal/buildinfo/VERSION docs/release.md README.md docs/reference.md scripts/ .github/workflows/release.yml .github/release.yml
+git add internal/buildinfo/VERSION frontend/package.json frontend/package-lock.json docs/release.md README.md docs/reference.md scripts/ .github/workflows/release.yml .github/release.yml
 git commit -m "Prepare release ${version}"
 git tag "v${version}"
 git push origin HEAD
@@ -121,5 +125,5 @@ bash ./install.sh v0.1.0
 From a repository checkout:
 
 ```bash
-bash ./scripts/install.sh v0.1.0
+bash ./scripts/install-local-release.sh
 ```
