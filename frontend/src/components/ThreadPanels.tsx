@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, FileText, Info, Maximize2, Minimize2, Rows3,
 
 import type { DocumentPropertiesPanelProps } from "./DocumentPropertiesPanel";
 import { DocumentPropertiesPanel } from "./DocumentPropertiesPanel";
+import { RenderedMarkdown } from "./RenderedMarkdown";
 import { RichTextEditor, type RichTextEditorHandle } from "./editor/RichTextEditor";
 import { TableOfContents, type TOCItem } from "./TableOfContents";
 import { Badge } from "./ui/badge";
@@ -10,7 +11,7 @@ import { Button } from "./ui/button";
 
 import { formatDocumentType } from "../lib/docUtils";
 import { graphDirectoryColorHex, resolveGraphDirectoryColor } from "../lib/graphColors";
-import { markdownToHTML, parseFlowAssetHref, parseFlowDateHref, parseFlowReferenceHref } from "../richText";
+import { parseFlowAssetHref, parseFlowDateHref, parseFlowReferenceHref } from "../richText";
 import type { DocumentFormState, DocumentResponse, HomeFormState, HomeResponse } from "../types";
 
 type ThreadDensityMode = "comfortable" | "dense" | "ultra";
@@ -509,10 +510,11 @@ function ThreadPanelStackComponent({
                       className="thread-panel-readonly-body thread-panel-readonly-body-home"
                       onClickCapture={(event) => handleReadonlyPanelClick(event, homeThreadDocumentId, "", actions)}
                     >
-                      <div
+                      <RenderedMarkdown
                         className="ProseMirror thread-panel-rendered-markdown"
                         aria-label="Thread panel content for Home"
-                        dangerouslySetInnerHTML={{ __html: markdownToHTML(homeFormState.body, homeInlineReferences) }}
+                        value={homeFormState.body}
+                        inlineReferences={homeInlineReferences}
                       />
                     </div>
                   </div>
@@ -532,10 +534,11 @@ function ThreadPanelStackComponent({
                       className="thread-panel-readonly-body"
                       onClickCapture={(event) => handleReadonlyPanelClick(event, panel.documentId, panel.graphPath, actions)}
                     >
-                      <div
+                      <RenderedMarkdown
                         className="ProseMirror thread-panel-rendered-markdown"
                         aria-label={`Thread panel content for ${panelTitle}`}
-                        dangerouslySetInnerHTML={{ __html: markdownToHTML(panelDocument.body, panelDocument.inlineReferences) }}
+                        value={panelDocument.body}
+                        inlineReferences={panelDocument.inlineReferences}
                       />
                     </div>
                   </div>

@@ -85,6 +85,12 @@ export default function SlashMenu({ onDateRequest }: { onDateRequest?: () => voi
           onSelect={() => editor.commands.setCodeBlock()}
         />
 
+        <SlashMenuItem
+          label="Mermaid Diagram"
+          kbd="```mermaid"
+          onSelect={() => editor.commands.insertCodeBlock({ language: 'mermaid' })}
+        />
+
         {onDateRequest && (
           <SlashMenuItem
             label="Date"

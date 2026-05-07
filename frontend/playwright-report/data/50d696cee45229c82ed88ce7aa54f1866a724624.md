@@ -1,0 +1,97 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - generic [ref=e6]:
+    - generic [ref=e9]:
+      - img [ref=e11]
+      - heading "Flow" [level=2] [ref=e14]
+    - list [ref=e19]:
+      - listitem [ref=e20]:
+        - button "Home" [ref=e21] [cursor=pointer]:
+          - img [ref=e22]
+          - strong [ref=e26]: Home
+      - listitem [ref=e27]:
+        - button "Favorites" [ref=e28] [cursor=pointer]:
+          - img [ref=e29]
+          - generic [ref=e31]: Favorites
+          - img [ref=e32]
+        - list [ref=e33]:
+          - paragraph [ref=e34]: Star a graph below to pin it here.
+      - listitem [ref=e35]:
+        - generic [ref=e36]:
+          - button "Content 1" [ref=e37] [cursor=pointer]:
+            - img [ref=e38]
+            - generic [ref=e42]: Content
+            - generic [ref=e43]: "1"
+            - img [ref=e44]
+          - button "Add graph or directory" [ref=e45] [cursor=pointer]:
+            - img [ref=e46]
+        - list [ref=e48]:
+          - listitem [ref=e49]:
+            - button "Collapse" [ref=e50] [cursor=pointer]:
+              - img [ref=e51]
+            - generic [ref=e54]:
+              - strong [ref=e55]: execution
+              - generic [ref=e56]: 2 direct / 2 total
+            - button "Add execution to favorites" [ref=e57] [cursor=pointer]:
+              - img [ref=e58]
+            - button "More actions for execution" [ref=e60] [cursor=pointer]:
+              - img [ref=e61]
+          - listitem [ref=e65]:
+            - strong [ref=e68]: follow-up.md
+            - button "More actions for follow-up.md" [ref=e69] [cursor=pointer]:
+              - img [ref=e70]
+          - listitem [ref=e74]:
+            - strong [ref=e77]: mermaid-note.md
+            - button "More actions for mermaid-note.md" [ref=e78] [cursor=pointer]:
+              - img [ref=e79]
+    - separator "Resize sidebar" [ref=e83]
+  - main [ref=e84]:
+    - generic [ref=e86]:
+      - button "Toggle Sidebar" [ref=e87] [cursor=pointer]:
+        - img
+        - generic [ref=e88]: Toggle Sidebar
+      - navigation "Breadcrumb" [ref=e89]:
+        - list [ref=e90]:
+          - listitem [ref=e91]: Workspace
+          - img [ref=e93]
+          - listitem [ref=e95]: Content
+          - img [ref=e97]
+          - listitem [ref=e99]:
+            - generic [ref=e100]: execution
+    - generic [ref=e101]:
+      - generic "Document thread" [ref=e104]:
+        - region "Active thread document Mermaid Note" [ref=e105]:
+          - generic [ref=e106]:
+            - generic [ref=e108]: Note
+            - generic [ref=e109]:
+              - button "Switch to dense thread density" [ref=e110] [cursor=pointer]:
+                - img
+              - button "Restore thread width" [ref=e111] [cursor=pointer]:
+                - img
+              - button "Previous thread panel" [disabled]:
+                - img
+              - button "Next thread panel" [disabled]:
+                - img
+              - button "Toggle table of contents" [ref=e112] [cursor=pointer]:
+                - img
+              - button "Toggle document properties" [ref=e113] [cursor=pointer]:
+                - img
+              - button "Close thread from Mermaid Note" [ref=e114] [cursor=pointer]:
+                - img
+          - generic [ref=e115]:
+            - textbox "Document title" [ref=e117]: Mermaid Note
+            - generic "Document content layout" [ref=e118]:
+              - generic "Document body editor" [active] [ref=e123]:
+                - paragraph [ref=e124]: /mer
+          - separator "Resize thread panel" [ref=e125]
+      - complementary "Right pane" [ref=e126]
+    - generic [ref=e127]:
+      - button "Settings" [ref=e128] [cursor=pointer]:
+        - img [ref=e129]
+      - button "Search" [ref=e132] [cursor=pointer]:
+        - img [ref=e133]
+      - button "Calendar" [ref=e136] [cursor=pointer]:
+        - img [ref=e137]
+```

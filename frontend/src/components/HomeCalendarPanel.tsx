@@ -1,11 +1,9 @@
 import { useMemo } from "react";
-import MarkdownIt from "markdown-it";
 
 import { Calendar } from "@/components/ui/calendar";
 import { findAllDateMentions, datesWithEntries, toISODateString } from "@/lib/dateEntries";
 import type { CalendarDocumentResponse } from "@/types";
-
-const md = new MarkdownIt({ html: false, linkify: true, breaks: true });
+import { RenderedMarkdown } from "./RenderedMarkdown";
 
 type HomeCalendarPanelProps = {
   documents: CalendarDocumentResponse[];
@@ -95,9 +93,9 @@ export function HomeCalendarPanel({ documents, selectedDate, onDateChange, onDoc
                 >
                   {mention.sourceLabel}
                 </button>
-                <div
+                <RenderedMarkdown
                   className="home-cal-content rich-editor-preview"
-                  dangerouslySetInnerHTML={{ __html: md.render(mention.block) }}
+                  value={mention.block}
                 />
               </div>
             ))}

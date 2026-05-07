@@ -547,4 +547,5 @@ test.describe('Graph editor navigation with real backend', () => {
       await rm(workspacePath, { recursive: true, force: true })
     }
   })
+
 })

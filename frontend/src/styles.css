@@ -3338,6 +3338,63 @@ pre {
   max-width: none;
 }
 
+.flow-mermaid-diagram {
+  margin: 1rem 0;
+  padding: 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: 0.9rem;
+  background: color-mix(in srgb, var(--card) 88%, var(--accent) 12%);
+  overflow-x: auto;
+}
+
+.flow-mermaid-diagram-inline {
+  margin-block: 1rem;
+}
+
+.flow-mermaid-diagram-editor {
+  margin-top: 0.25rem;
+}
+
+.flow-mermaid-diagram-loading,
+.flow-mermaid-diagram-error {
+  border-style: dashed;
+}
+
+.flow-mermaid-diagram-message,
+.flow-mermaid-diagram-detail {
+  margin: 0;
+}
+
+.flow-mermaid-diagram-message {
+  font-size: 0.88rem;
+  color: var(--muted-foreground);
+}
+
+.flow-mermaid-diagram-detail {
+  margin-top: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--destructive);
+}
+
+.flow-mermaid-diagram svg {
+  display: block;
+  max-width: none;
+  height: auto;
+  overflow: visible;
+}
+
+.flow-mermaid-diagram > div {
+  display: flex;
+  justify-content: center;
+  width: max-content;
+  min-width: calc(100% - 0.1rem);
+  padding-right: 0.65rem;
+}
+
+.thread-panel-rendered-markdown pre[data-mermaid-rendered="true"] {
+  display: none;
+}
+
 /* Date links inserted via the / trigger */
 .flow-date-link {
   color: var(--primary);
@@ -5335,6 +5392,10 @@ pre {
   background: transparent;
   color: inherit;
   padding: 0;
+}
+
+.rich-editor-preview pre[data-mermaid-rendered="true"] {
+  display: none;
 }
 
 .rich-editor-preview blockquote {
