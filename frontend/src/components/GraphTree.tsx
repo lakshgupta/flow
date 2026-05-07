@@ -31,6 +31,11 @@ type FileTreeNode = {
   children: FileTreeNode[];
 };
 
+type DraggedTreeFile = {
+  file: GraphTreeFileData;
+  sourceGraphPath: string;
+};
+
 function buildFileTree(graphs: GraphTreeNodeData[]): FileTreeNode[] {
   const nodeMap = new Map<string, FileTreeNode>();
   for (const g of graphs) {
@@ -65,6 +70,7 @@ type FileTreeRowProps = {
   onCreateNode: (graphPath: string, type: "note" | "task" | "command") => void;
   onRenameGraph: (graphPath: string) => void;
   onRenameNode: (documentId: string, fileName: string) => void;
+  onMoveNode: (file: GraphTreeFileData, sourceGraphPath: string, targetGraphPath: string) => void;
   onDeleteNode: (file: GraphTreeFileData, graphPath: string) => void;
   onDeleteGraph: (graphPath: string) => void;
   onSetGraphColor: (graphPath: string, color: string | null) => void;
@@ -72,6 +78,12 @@ type FileTreeRowProps = {
   onToggleCollapse: (path: string) => void;
   isFavorite: (path: string) => boolean;
   toggleFavorite: (path: string) => void;
+  draggedFile: DraggedTreeFile | null;
+  dropTargetGraphPath: string;
+  onDragStartFile: (file: GraphTreeFileData, sourceGraphPath: string) => void;
+  onDragEndFile: () => void;
+  onDropTargetGraphPathChange: (graphPath: string) => void;
+  onEnsureExpanded: (graphPath: string) => void;
 };
 
 function graphRowStyle(color?: string): CSSProperties | undefined {
@@ -94,6 +106,7 @@ function FileTreeRow({
   onCreateNode,
   onRenameGraph,
   onRenameNode,
+  onMoveNode,
   onDeleteNode,
   onDeleteGraph,
   onSetGraphColor,
@@ -101,6 +114,12 @@ function FileTreeRow({
   onToggleCollapse,
   isFavorite,
   toggleFavorite,
+  draggedFile,
+  dropTargetGraphPath,
+  onDragStartFile,
+  onDragEndFile,
+  onDropTargetGraphPathChange,
+  onEnsureExpanded,
 }: FileTreeRowProps) {
   const isActive = activeSurface.kind === "graph" && activeSurface.graphPath === node.data.graphPath;
   const isFav = isFavorite(node.data.graphPath);
@@ -109,6 +128,9 @@ function FileTreeRow({
   const hasExpandableContent = hasChildren || files.length > 0;
   const isCollapsed = collapsed.has(node.data.graphPath);
   const graphColorStyle = graphRowStyle(node.data.color);
+  const isDropTarget = draggedFile !== null
+    && draggedFile.sourceGraphPath !== node.data.graphPath
+    && dropTargetGraphPath === node.data.graphPath;
   const [addingSubdir, setAddingSubdir] = useState(false);
   const [subdirName, setSubdirName] = useState("");
   const subdirInputRef = useRef<HTMLInputElement>(null);
@@ -121,7 +143,45 @@ function FileTreeRow({
 
   return (
     <>
-      <SidebarMenuSubItem className={`graph-tree-row group ${graphColorStyle ? "graph-tree-row-colored" : ""}`} style={{ paddingLeft: `${depth * 0.75}rem`, ...graphColorStyle }}>
+      <SidebarMenuSubItem
+        className={`graph-tree-row group ${graphColorStyle ? "graph-tree-row-colored" : ""}${isDropTarget ? " graph-tree-row-drop-target" : ""}`}
+        style={{ paddingLeft: `${depth * 0.75}rem`, ...graphColorStyle }}
+        onDragEnter={(event) => {
+          if (draggedFile === null || draggedFile.sourceGraphPath === node.data.graphPath) {
+            return;
+          }
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+          onDropTargetGraphPathChange(node.data.graphPath);
+        }}
+        onDragOver={(event) => {
+          if (draggedFile === null || draggedFile.sourceGraphPath === node.data.graphPath) {
+            return;
+          }
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+          onDropTargetGraphPathChange(node.data.graphPath);
+        }}
+        onDragLeave={(event) => {
+          const relatedTarget = event.relatedTarget;
+          if (relatedTarget instanceof Node && event.currentTarget.contains(relatedTarget)) {
+            return;
+          }
+          if (dropTargetGraphPath === node.data.graphPath) {
+            onDropTargetGraphPathChange("");
+          }
+        }}
+        onDrop={(event) => {
+          if (draggedFile === null || draggedFile.sourceGraphPath === node.data.graphPath) {
+            return;
+          }
+          event.preventDefault();
+          onEnsureExpanded(node.data.graphPath);
+          onDropTargetGraphPathChange("");
+          onMoveNode(draggedFile.file, draggedFile.sourceGraphPath, node.data.graphPath);
+          onDragEndFile();
+        }}
+      >
         {hasExpandableContent ? (
           <button
             type="button"
@@ -266,7 +326,20 @@ function FileTreeRow({
       )}
       {!isCollapsed &&
         files.map((file) => (
-          <SidebarMenuSubItem key={file.id} className="graph-file-row group" style={{ paddingLeft: `${depth * 0.75 + 1.85}rem` }}>
+          <SidebarMenuSubItem
+            key={file.id}
+            className={`graph-file-row group${draggedFile?.file.id === file.id ? " graph-file-row-dragging" : ""}`}
+            style={{ paddingLeft: `${depth * 0.75 + 1.85}rem` }}
+            draggable
+            onDragStart={(event) => {
+              event.dataTransfer.effectAllowed = "move";
+              event.dataTransfer.setData("text/plain", file.id);
+              onDragStartFile(file, node.data.graphPath);
+            }}
+            onDragEnd={() => {
+              onDragEndFile();
+            }}
+          >
             <SidebarMenuSubButton
               className="graph-file-button"
               isActive={selectedDocumentId === file.id}
@@ -319,6 +392,7 @@ function FileTreeRow({
             onCreateNode={onCreateNode}
             onRenameGraph={onRenameGraph}
             onRenameNode={onRenameNode}
+            onMoveNode={onMoveNode}
             onDeleteNode={onDeleteNode}
             onDeleteGraph={onDeleteGraph}
             onSetGraphColor={onSetGraphColor}
@@ -326,6 +400,12 @@ function FileTreeRow({
             onToggleCollapse={onToggleCollapse}
             isFavorite={isFavorite}
             toggleFavorite={toggleFavorite}
+            draggedFile={draggedFile}
+            dropTargetGraphPath={dropTargetGraphPath}
+            onDragStartFile={onDragStartFile}
+            onDragEndFile={onDragEndFile}
+            onDropTargetGraphPathChange={onDropTargetGraphPathChange}
+            onEnsureExpanded={onEnsureExpanded}
           />
         ))}
     </>
@@ -343,18 +423,21 @@ type GraphTreeProps = {
   onCreateNode: (graphPath: string, type: "note" | "task" | "command") => void;
   onRenameGraph: (graphPath: string) => void;
   onRenameNode: (documentId: string, fileName: string) => void;
+  onMoveNode: (file: GraphTreeFileData, sourceGraphPath: string, targetGraphPath: string) => void;
   onDeleteNode: (file: GraphTreeFileData, graphPath: string) => void;
   onDeleteGraph: (graphPath: string) => void;
   onSetGraphColor: (graphPath: string, color: string | null) => void;
 };
 
-export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSelectHome, onSelectGraph, onOpenDocument, onCreateGraph, onCreateNode, onRenameGraph, onRenameNode, onDeleteNode, onDeleteGraph, onSetGraphColor }: GraphTreeProps) {
+export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSelectHome, onSelectGraph, onOpenDocument, onCreateGraph, onCreateNode, onRenameGraph, onRenameNode, onMoveNode, onDeleteNode, onDeleteGraph, onSetGraphColor }: GraphTreeProps) {
   const { toggleFavorite, isFavorite } = useFavorites();
   const [contentExpanded, setContentExpanded] = useState(true);
   const [favoritesExpanded, setFavoritesExpanded] = useState(true);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [newGraphName, setNewGraphName] = useState("");
   const [addingGraph, setAddingGraph] = useState(false);
+  const [draggedFile, setDraggedFile] = useState<DraggedTreeFile | null>(null);
+  const [dropTargetGraphPath, setDropTargetGraphPath] = useState("");
   const newGraphInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -374,6 +457,26 @@ export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSele
       else next.add(path);
       return next;
     });
+  }
+
+  function ensureExpanded(path: string): void {
+    setCollapsed((prev) => {
+      if (!prev.has(path)) {
+        return prev;
+      }
+      const next = new Set(prev);
+      next.delete(path);
+      return next;
+    });
+  }
+
+  function handleDragStartFile(file: GraphTreeFileData, sourceGraphPath: string): void {
+    setDraggedFile({ file, sourceGraphPath });
+  }
+
+  function handleDragEndFile(): void {
+    setDraggedFile(null);
+    setDropTargetGraphPath("");
   }
 
   return (
@@ -495,6 +598,7 @@ export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSele
                     onCreateNode={onCreateNode}
                     onRenameGraph={onRenameGraph}
                     onRenameNode={onRenameNode}
+                    onMoveNode={onMoveNode}
                     onDeleteNode={onDeleteNode}
                     onDeleteGraph={onDeleteGraph}
                     onSetGraphColor={onSetGraphColor}
@@ -502,6 +606,12 @@ export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSele
                     onToggleCollapse={handleToggleCollapse}
                     isFavorite={isFavorite}
                     toggleFavorite={toggleFavorite}
+                    draggedFile={draggedFile}
+                    dropTargetGraphPath={dropTargetGraphPath}
+                    onDragStartFile={handleDragStartFile}
+                    onDragEndFile={handleDragEndFile}
+                    onDropTargetGraphPathChange={setDropTargetGraphPath}
+                    onEnsureExpanded={ensureExpanded}
                   />
                 ))
               ) : (

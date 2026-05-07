@@ -58,7 +58,7 @@ func TestCreateDocumentWritesMarkdownAndRebuildsIndex(t *testing.T) {
 func TestUpdateDocumentByIDAppliesPatchAndRebuildsIndex(t *testing.T) {
 	t.Parallel()
 
-	root := createMutationWorkspace(t)
+	root := createInlineReferenceMutationWorkspace(t)
 	workspaceDocument, err := UpdateDocumentByID(root, "task-1", DocumentPatch{
 		Graph:       stringPointer("release/parser"),
 		Title:       stringPointer("Updated parser"),
@@ -125,6 +125,93 @@ func TestUpdateDocumentByIDRenamesFileAndRebuildsIndex(t *testing.T) {
 	}
 	if len(results) == 0 || results[0].Path != "data/content/demo/execution/parser-renamed.md" {
 		t.Fatalf("search results = %#v, want renamed path", results)
+	}
+}
+
+func TestUpdateDocumentByIDMoveAcrossGraphsRejectsOutgoingLinks(t *testing.T) {
+	t.Parallel()
+
+	root := createDependencyCleanupWorkspace(t)
+	_, err := UpdateDocumentByID(root, "child-task", DocumentPatch{
+		Graph: stringPointer("proj/moved"),
+	})
+	if err == nil {
+		t.Fatalf("UpdateDocumentByID() error = nil, want outgoing-link validation failure")
+	}
+	if !strings.Contains(err.Error(), "outgoing links") {
+		t.Fatalf("UpdateDocumentByID() error = %v, want outgoing-links message", err)
+	}
+
+	if _, statErr := os.Stat(filepath.Join(root.FlowPath, "data", "content", "proj", "child-task.md")); statErr != nil {
+		t.Fatalf("Stat(original child-task path) error = %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(root.FlowPath, "data", "content", "proj", "moved", "child-task.md")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("Stat(moved child-task path) error = %v, want not exist", statErr)
+	}
+	childTaskDocument, readErr := readDocumentFile(filepath.Join(root.FlowPath, "data", "content", "proj", "child-task.md"))
+	if readErr != nil {
+		t.Fatalf("readDocumentFile(child-task) error = %v", readErr)
+	}
+	childTask, ok := childTaskDocument.(markdown.TaskDocument)
+	if !ok {
+		t.Fatalf("child-task document = %T, want markdown.TaskDocument", childTaskDocument)
+	}
+	if len(childTask.Metadata.Links) != 1 || childTask.Metadata.Links[0].Node != "parent-task" {
+		t.Fatalf("child-task.links = %+v, want link to parent-task preserved", childTask.Metadata.Links)
+	}
+}
+
+func TestUpdateDocumentByIDMoveAcrossGraphsRemovesIncomingLinks(t *testing.T) {
+	t.Parallel()
+
+	root := createDependencyCleanupWorkspace(t)
+	workspaceDocument, err := UpdateDocumentByID(root, "parent-task", DocumentPatch{
+		Graph: stringPointer("proj/moved"),
+	})
+	if err != nil {
+		t.Fatalf("UpdateDocumentByID() error = %v", err)
+	}
+	if workspaceDocument.Path != "data/content/proj/moved/parent-task.md" {
+		t.Fatalf("workspaceDocument.Path = %q, want data/content/proj/moved/parent-task.md", workspaceDocument.Path)
+	}
+
+	movedDocument, readErr := readDocumentFile(filepath.Join(root.FlowPath, "data", "content", "proj", "moved", "parent-task.md"))
+	if readErr != nil {
+		t.Fatalf("readDocumentFile(moved parent-task) error = %v", readErr)
+	}
+	movedTask, ok := movedDocument.(markdown.TaskDocument)
+	if !ok {
+		t.Fatalf("moved parent-task document = %T, want markdown.TaskDocument", movedDocument)
+	}
+	if movedTask.Metadata.Graph != "proj/moved" {
+		t.Fatalf("movedTask.Metadata.Graph = %q, want proj/moved", movedTask.Metadata.Graph)
+	}
+	if _, statErr := os.Stat(filepath.Join(root.FlowPath, "data", "content", "proj", "parent-task.md")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("Stat(original parent-task path) error = %v, want not exist", statErr)
+	}
+
+	childTaskDocument, readErr := readDocumentFile(filepath.Join(root.FlowPath, "data", "content", "proj", "child-task.md"))
+	if readErr != nil {
+		t.Fatalf("readDocumentFile(child-task) error = %v", readErr)
+	}
+	childTask, ok := childTaskDocument.(markdown.TaskDocument)
+	if !ok {
+		t.Fatalf("child-task document = %T, want markdown.TaskDocument", childTaskDocument)
+	}
+	if len(childTask.Metadata.Links) != 0 {
+		t.Fatalf("child-task.links = %+v, want empty after moving parent-task", childTask.Metadata.Links)
+	}
+
+	refNoteDocument, readErr := readDocumentFile(filepath.Join(root.FlowPath, "data", "content", "proj", "ref-note.md"))
+	if readErr != nil {
+		t.Fatalf("readDocumentFile(ref-note) error = %v", readErr)
+	}
+	refNote, ok := refNoteDocument.(markdown.NoteDocument)
+	if !ok {
+		t.Fatalf("ref-note document = %T, want markdown.NoteDocument", refNoteDocument)
+	}
+	if len(refNote.Metadata.Links) != 0 {
+		t.Fatalf("ref-note.links = %+v, want empty after moving parent-task", refNote.Metadata.Links)
 	}
 }
 

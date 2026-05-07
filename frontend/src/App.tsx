@@ -2641,6 +2641,32 @@ function FlowApp() {
     });
   }
 
+  async function handleSidebarMoveNode(file: GraphTreeFileData, sourceGraphPath: string, targetGraphPath: string): Promise<void> {
+    if (sourceGraphPath === targetGraphPath) {
+      return;
+    }
+
+    try {
+      clearMutationFeedback();
+      await flushPendingActiveEditorSave();
+
+      const updatedDocument = await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(file.id)}`, {
+        method: "PUT",
+        body: JSON.stringify({ graph: targetGraphPath }),
+      });
+
+      if (selectedDocumentId === updatedDocument.id) {
+        await refreshShellViews({ nextDocument: updatedDocument, nextDocumentId: updatedDocument.id });
+      } else {
+        await refreshShellViews();
+      }
+
+      setMutationSuccess(`${formatDocumentType(updatedDocument.type)} moved to ${targetGraphPath}.`);
+    } catch (moveFailure) {
+      setMutationError(toErrorMessage(moveFailure));
+    }
+  }
+
   async function handleConfirmCreateNode(): Promise<void> {
     if (createNodeDialog === null) {
       return;
@@ -3217,6 +3243,7 @@ function FlowApp() {
     handleSidebarCreateNode,
     handleSidebarRenameGraph,
     handleSidebarRenameNode,
+    handleSidebarMoveNode,
     handleSidebarDeleteNode,
     handleSidebarDeleteGraph,
     handleSidebarSetGraphColor,

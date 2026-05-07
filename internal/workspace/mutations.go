@@ -228,18 +228,16 @@ func UpdateDocumentByPath(root Root, pathValue string, patch DocumentPatch) (mar
 	updatedDocument = normalizeDocumentGraphForPath(targetRelativePath, updatedDocument)
 	targetAbsolutePath := filepath.Join(root.FlowPath, filepath.FromSlash(targetRelativePath))
 
-	_, _, shouldRewriteBreadcrumbs, err := documentBreadcrumbRewrite(relativePath, document, targetRelativePath, updatedDocument)
+	movedAcrossGraphs := documentGraph(document) != documentGraph(updatedDocument)
+	if movedAcrossGraphs && len(documentLinks(updatedDocument)) > 0 {
+		return markdown.WorkspaceDocument{}, InvalidMutationError{Err: errors.New("cannot move a node with outgoing links to another graph")}
+	}
+
+	sideEffectWrites, err := planDocumentUpdateSideEffectWrites(root.FlowPath, relativePath, targetRelativePath, document, updatedDocument, movedAcrossGraphs)
 	if err != nil {
 		return markdown.WorkspaceDocument{}, err
 	}
-
-	var rewriteWrites map[string]markdown.Document
-	if shouldRewriteBreadcrumbs {
-		rewriteWrites, err = planDocumentReferenceRewriteWrites(root.FlowPath, relativePath, targetRelativePath, document, updatedDocument)
-		if err != nil {
-			return markdown.WorkspaceDocument{}, err
-		}
-	} else {
+	if len(sideEffectWrites) == 0 {
 		if err := validateWorkspaceMutation(root.FlowPath, relativePath, targetRelativePath, updatedDocument, false); err != nil {
 			return markdown.WorkspaceDocument{}, err
 		}
@@ -254,9 +252,9 @@ func UpdateDocumentByPath(root Root, pathValue string, patch DocumentPatch) (mar
 			return markdown.WorkspaceDocument{}, fmt.Errorf("delete previous document path: %w", err)
 		}
 	}
-	for _, pathValue := range sortedDocumentPaths(rewriteWrites) {
+	for _, pathValue := range sortedDocumentPaths(sideEffectWrites) {
 		absoluteRewritePath := filepath.Join(root.FlowPath, filepath.FromSlash(pathValue))
-		if err := writeDocumentFile(absoluteRewritePath, rewriteWrites[pathValue], false); err != nil {
+		if err := writeDocumentFile(absoluteRewritePath, sideEffectWrites[pathValue], false); err != nil {
 			return markdown.WorkspaceDocument{}, err
 		}
 	}
@@ -954,7 +952,7 @@ func prepareDeletionDocuments(relativePath string, document markdown.Document, w
 			continue
 		}
 		if deletedID != "" {
-			item = removeReferenceFromWorkspaceDocument(item, deletedID)
+			item, _ = removeReferenceFromWorkspaceDocument(item, deletedID)
 		}
 		targets = append(targets, item)
 	}
@@ -965,19 +963,31 @@ func prepareDeletionDocuments(relativePath string, document markdown.Document, w
 
 	return targets, nil
 }
-func removeReferenceFromWorkspaceDocument(item markdown.WorkspaceDocument, referenceID string) markdown.WorkspaceDocument {
+func removeReferenceFromWorkspaceDocument(item markdown.WorkspaceDocument, referenceID string) (markdown.WorkspaceDocument, bool) {
 	switch document := item.Document.(type) {
 	case markdown.NoteDocument:
-		document.Metadata.Links = removeNodeLink(document.Metadata.Links, referenceID)
-		return markdown.WorkspaceDocument{Path: item.Path, Document: document}
+		nextLinks := removeNodeLink(document.Metadata.Links, referenceID)
+		if len(nextLinks) == len(document.Metadata.Links) {
+			return item, false
+		}
+		document.Metadata.Links = nextLinks
+		return markdown.WorkspaceDocument{Path: item.Path, Document: document}, true
 	case markdown.TaskDocument:
-		document.Metadata.Links = removeNodeLink(document.Metadata.Links, referenceID)
-		return markdown.WorkspaceDocument{Path: item.Path, Document: document}
+		nextLinks := removeNodeLink(document.Metadata.Links, referenceID)
+		if len(nextLinks) == len(document.Metadata.Links) {
+			return item, false
+		}
+		document.Metadata.Links = nextLinks
+		return markdown.WorkspaceDocument{Path: item.Path, Document: document}, true
 	case markdown.CommandDocument:
-		document.Metadata.Links = removeNodeLink(document.Metadata.Links, referenceID)
-		return markdown.WorkspaceDocument{Path: item.Path, Document: document}
+		nextLinks := removeNodeLink(document.Metadata.Links, referenceID)
+		if len(nextLinks) == len(document.Metadata.Links) {
+			return item, false
+		}
+		document.Metadata.Links = nextLinks
+		return markdown.WorkspaceDocument{Path: item.Path, Document: document}, true
 	default:
-		return item
+		return item, false
 	}
 }
 
@@ -1160,6 +1170,65 @@ func planDocumentReferenceRewriteWrites(flowPath string, currentRelativePath str
 
 	if err := markdown.ValidateWorkspaceDocuments(mutatedDocuments); err != nil {
 		return nil, InvalidMutationError{Err: fmt.Errorf("validate workspace documents: %w", err)}
+	}
+
+	return writes, nil
+}
+
+func planDocumentUpdateSideEffectWrites(flowPath string, currentRelativePath string, targetRelativePath string, currentDocument markdown.Document, targetDocument markdown.Document, removeIncomingLinks bool) (map[string]markdown.Document, error) {
+	oldBreadcrumb, newBreadcrumb, shouldRewriteBreadcrumbs, err := documentBreadcrumbRewrite(currentRelativePath, currentDocument, targetRelativePath, targetDocument)
+	if err != nil {
+		return nil, err
+	}
+	if !shouldRewriteBreadcrumbs && !removeIncomingLinks {
+		return nil, nil
+	}
+
+	workspaceDocuments, err := LoadDocuments(flowPath)
+	if err != nil {
+		return nil, err
+	}
+
+	rewriteMap := map[string]string{}
+	if shouldRewriteBreadcrumbs {
+		rewriteMap[oldBreadcrumb] = newBreadcrumb
+	}
+	movedDocumentID := ""
+	if removeIncomingLinks {
+		movedDocumentID = documentIDForCleanup(currentDocument)
+	}
+
+	mutatedDocuments := make([]markdown.WorkspaceDocument, 0, len(workspaceDocuments))
+	writes := map[string]markdown.Document{}
+	for _, item := range workspaceDocuments {
+		if item.Path == currentRelativePath {
+			mutatedDocuments = append(mutatedDocuments, markdown.WorkspaceDocument{Path: targetRelativePath, Document: targetDocument})
+			continue
+		}
+
+		changed := false
+		if movedDocumentID != "" {
+			var cleaned bool
+			item, cleaned = removeReferenceFromWorkspaceDocument(item, movedDocumentID)
+			changed = changed || cleaned
+		}
+		if len(rewriteMap) > 0 {
+			var rewritten bool
+			item, rewritten = rewriteWorkspaceDocumentInlineReferences(item, rewriteMap)
+			changed = changed || rewritten
+		}
+
+		mutatedDocuments = append(mutatedDocuments, item)
+		if changed {
+			writes[item.Path] = item.Document
+		}
+	}
+
+	if err := markdown.ValidateWorkspaceDocuments(mutatedDocuments); err != nil {
+		return nil, InvalidMutationError{Err: fmt.Errorf("validate workspace documents: %w", err)}
+	}
+	if len(writes) == 0 {
+		return nil, nil
 	}
 
 	return writes, nil

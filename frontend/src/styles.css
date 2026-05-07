@@ -3761,6 +3761,12 @@ pre {
   background: color-mix(in srgb, var(--graph-row-color) 68%, transparent);
 }
 
+.graph-tree-row-drop-target .graph-sub-button {
+  outline: 1px solid color-mix(in srgb, var(--foreground) 26%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--foreground) 10%, transparent);
+  background: color-mix(in srgb, var(--accent) 46%, transparent);
+}
+
 .graph-color-swatch {
   width: 0.72rem;
   height: 0.72rem;
@@ -3773,6 +3779,10 @@ pre {
 .graph-file-row {
   display: flex;
   align-items: center;
+}
+
+.graph-file-row-dragging {
+  opacity: 0.45;
 }
 
 .graph-file-button {

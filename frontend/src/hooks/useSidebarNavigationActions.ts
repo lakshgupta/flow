@@ -11,6 +11,7 @@ export type SidebarNavigationActions = {
   createNode: (graphPath: string, type: "note" | "task" | "command") => void;
   renameGraph: (graphPath: string) => void;
   renameNode: (documentId: string, fileName: string) => void;
+  moveNode: (file: GraphTreeFileData, sourceGraphPath: string, targetGraphPath: string) => void;
   deleteNode: (file: GraphTreeFileData, graphPath: string) => void;
   deleteGraph: (graphPath: string) => void;
   setGraphColor: (graphPath: string, color: string | null) => void;
@@ -25,6 +26,7 @@ type UseSidebarNavigationActionsArgs = {
   handleSidebarCreateNode: (graphPath: string, type: "note" | "task" | "command") => void;
   handleSidebarRenameGraph: (graphPath: string) => void;
   handleSidebarRenameNode: (documentId: string, fileName: string) => void;
+  handleSidebarMoveNode: (file: GraphTreeFileData, sourceGraphPath: string, targetGraphPath: string) => Promise<void> | void;
   handleSidebarDeleteNode: (file: GraphTreeFileData, graphPath: string) => void;
   handleSidebarDeleteGraph: (graphPath: string) => Promise<void> | void;
   handleSidebarSetGraphColor: (graphPath: string, color: string | null) => Promise<void> | void;
@@ -39,6 +41,7 @@ export function useSidebarNavigationActions({
   handleSidebarCreateNode,
   handleSidebarRenameGraph,
   handleSidebarRenameNode,
+  handleSidebarMoveNode,
   handleSidebarDeleteNode,
   handleSidebarDeleteGraph,
   handleSidebarSetGraphColor,
@@ -52,6 +55,7 @@ export function useSidebarNavigationActions({
     handleSidebarCreateNode,
     handleSidebarRenameGraph,
     handleSidebarRenameNode,
+    handleSidebarMoveNode,
     handleSidebarDeleteNode,
     handleSidebarDeleteGraph,
     handleSidebarSetGraphColor,
@@ -66,6 +70,7 @@ export function useSidebarNavigationActions({
     handleSidebarCreateNode,
     handleSidebarRenameGraph,
     handleSidebarRenameNode,
+    handleSidebarMoveNode,
     handleSidebarDeleteNode,
     handleSidebarDeleteGraph,
     handleSidebarSetGraphColor,
@@ -103,6 +108,10 @@ export function useSidebarNavigationActions({
     actionRefs.current.handleSidebarRenameNode(documentId, fileName);
   }, []);
 
+  const moveNode = useCallback((file: GraphTreeFileData, sourceGraphPath: string, targetGraphPath: string) => {
+    void actionRefs.current.handleSidebarMoveNode(file, sourceGraphPath, targetGraphPath);
+  }, []);
+
   const deleteNode = useCallback((file: GraphTreeFileData, graphPath: string) => {
     actionRefs.current.handleSidebarDeleteNode(file, graphPath);
   }, []);
@@ -124,6 +133,7 @@ export function useSidebarNavigationActions({
     createNode,
     renameGraph,
     renameNode,
+    moveNode,
     deleteNode,
     deleteGraph,
     setGraphColor,
@@ -132,6 +142,7 @@ export function useSidebarNavigationActions({
     createNode,
     deleteGraph,
     deleteNode,
+    moveNode,
     openDocument,
     renameGraph,
     renameNode,

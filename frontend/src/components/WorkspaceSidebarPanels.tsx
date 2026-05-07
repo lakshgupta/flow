@@ -63,6 +63,7 @@ function GraphTreePanelComponent({ graphTree, activeSurface, selectedDocumentId,
       onCreateNode={actions.createNode}
       onRenameGraph={actions.renameGraph}
       onRenameNode={actions.renameNode}
+      onMoveNode={actions.moveNode}
       onDeleteNode={actions.deleteNode}
       onDeleteGraph={actions.deleteGraph}
       onSetGraphColor={actions.setGraphColor}
