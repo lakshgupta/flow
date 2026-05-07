@@ -45,6 +45,18 @@ describe('richText conversion', () => {
     expect(markdownToHTML(markdown)).toContain('<s>retire me</s>')
   })
 
+  it('preserves styled text and background colors across markdown round-trips', () => {
+    const sourceHTML = '<p><span data-text-color="#ff0000" data-background-color="#ffff00" style="color: #ff0000; background-color: #ffff00;">alert</span></p>'
+
+    const markdown = editorHTMLToMarkdown(sourceHTML)
+    const html = markdownToHTML(markdown)
+
+    expect(markdown).toContain('data-text-color="#ff0000"')
+    expect(markdown).toContain('data-background-color="#ffff00"')
+    expect(html).toContain('data-text-color="#ff0000"')
+    expect(html).toContain('data-background-color="#ffff00"')
+  })
+
   it('renders escaped inline reference tokens as links when resolved', () => {
     const html = markdownToHTML('\\[\\[graph2 > Task1\\]\\] test', [
       {

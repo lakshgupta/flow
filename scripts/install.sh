@@ -8,6 +8,28 @@ VERSION_ARG="${1:-}"
 TMP_DIR=""
 RELEASE_BASE_URL="${FLOW_RELEASE_BASE_URL:-https://github.com/${REPO_SLUG}/releases/download}"
 
+if [[ $# -gt 1 ]]; then
+	cat <<'EOF' >&2
+install.sh accepts at most one optional version argument.
+
+To install a locally built release, use one of these instead:
+  ./scripts/install-local-release.sh
+  ./scripts/install-linux-amd64.sh
+EOF
+	exit 1
+fi
+
+if [[ $# -eq 1 && "$1" =~ ^(linux|darwin|amd64|arm64)$ ]]; then
+	cat <<'EOF' >&2
+install.sh installs published releases and expects an optional version such as 0.1.0 or v0.1.0.
+
+To install a locally built release, use one of these instead:
+  ./scripts/install-local-release.sh
+  ./scripts/install-linux-amd64.sh
+EOF
+	exit 1
+fi
+
 usage() {
 	cat <<'EOF'
 Usage: install.sh [version]

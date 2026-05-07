@@ -82,6 +82,45 @@ turndown.addRule("mark", {
     return `<mark>${content}</mark>`;
   },
 });
+turndown.addRule("styledSpanColors", {
+  filter(node) {
+    if (!(node instanceof Element) || node.tagName !== "SPAN") {
+      return false;
+    }
+
+    const textColor = extractTextColor(node);
+    const backgroundColor = extractBackgroundColor(node);
+    return textColor !== null || backgroundColor !== null;
+  },
+  replacement(content, node) {
+    if (!(node instanceof Element)) {
+      return content;
+    }
+
+    const attrs: string[] = [];
+    const textColor = extractTextColor(node);
+    if (textColor !== null) {
+      attrs.push(`data-text-color="${escapeHTML(textColor)}"`);
+      attrs.push(`style="${buildStyledSpanStyle(textColor, extractBackgroundColor(node))}"`);
+    } else {
+      const backgroundColor = extractBackgroundColor(node);
+      if (backgroundColor !== null) {
+        attrs.push(`data-background-color="${escapeHTML(backgroundColor)}"`);
+        attrs.push(`style="${buildStyledSpanStyle(null, backgroundColor)}"`);
+      }
+    }
+
+    if (textColor !== null && extractBackgroundColor(node) !== null) {
+      const backgroundColor = extractBackgroundColor(node);
+      attrs.length = 0;
+      attrs.push(`data-text-color="${escapeHTML(textColor)}"`);
+      attrs.push(`data-background-color="${escapeHTML(backgroundColor ?? "")}"`);
+      attrs.push(`style="${buildStyledSpanStyle(textColor, backgroundColor)}"`);
+    }
+
+    return `<span ${attrs.join(" ")}>${content}</span>`;
+  },
+});
 
 export function markdownToHTML(value: string, inlineReferences?: InlineReference[]): string {
   const normalizedValue = normalizeInlineReferenceTokens(value);
@@ -386,4 +425,35 @@ function escapeHTML(value: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function extractTextColor(node: Element): string | null {
+  const dataColor = node.getAttribute("data-text-color")?.trim() ?? "";
+  if (dataColor !== "") {
+    return dataColor;
+  }
+
+  const styleColor = node instanceof HTMLElement ? node.style.color.trim() : "";
+  return styleColor !== "" && styleColor !== "inherit" ? styleColor : null;
+}
+
+function extractBackgroundColor(node: Element): string | null {
+  const dataColor = node.getAttribute("data-background-color")?.trim() ?? "";
+  if (dataColor !== "") {
+    return dataColor;
+  }
+
+  const styleColor = node instanceof HTMLElement ? node.style.backgroundColor.trim() : "";
+  return styleColor !== "" && styleColor !== "inherit" ? styleColor : null;
+}
+
+function buildStyledSpanStyle(textColor: string | null, backgroundColor: string | null): string {
+  const parts: string[] = [];
+  if (textColor !== null) {
+    parts.push(`color: ${textColor};`);
+  }
+  if (backgroundColor !== null) {
+    parts.push(`background-color: ${backgroundColor};`);
+  }
+  return parts.join(" ");
 }
