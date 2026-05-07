@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"slices"
@@ -33,6 +34,17 @@ CREATE TABLE documents (
 
 CREATE INDEX documents_type_graph_idx ON documents(type, graph);
 CREATE INDEX documents_feature_type_idx ON documents(feature_slug, type);
+
+CREATE TABLE parse_failures (
+	id TEXT NOT NULL UNIQUE,
+	type TEXT NOT NULL,
+	graph TEXT NOT NULL,
+	title TEXT NOT NULL,
+	path TEXT PRIMARY KEY,
+	parse_error TEXT NOT NULL
+);
+
+CREATE INDEX parse_failures_graph_idx ON parse_failures(graph);
 
 CREATE TABLE graph_nodes (
 	graph_path TEXT PRIMARY KEY,
@@ -135,6 +147,15 @@ type indexedDocument struct {
 	document     markdown.Document
 }
 
+type indexedParseFailure struct {
+	id           string
+	docType      string
+	graphPath    string
+	title        string
+	relativePath string
+	parseError   string
+}
+
 // GraphNode summarizes one graph node derived into the SQLite index.
 type GraphNode struct {
 	GraphPath   string
@@ -181,7 +202,7 @@ func Rebuild(indexPath string, flowPaths ...string) error {
 	}
 
 	if len(flowPaths) > 0 && flowPaths[0] != "" {
-		documents, err := collectDocuments(flowPaths[0])
+		documents, parseFailures, err := collectDocuments(flowPaths[0])
 		if err != nil {
 			return err
 		}
@@ -223,7 +244,13 @@ func Rebuild(indexPath string, flowPaths ...string) error {
 			}
 		}
 
-		if err := insertGraphProjection(transaction, documents, flowPaths[0]); err != nil {
+		for _, parseFailure := range parseFailures {
+			if err := insertParseFailure(transaction, parseFailure); err != nil {
+				return err
+			}
+		}
+
+		if err := insertGraphProjection(transaction, documents, parseFailures, flowPaths[0]); err != nil {
 			return err
 		}
 
@@ -324,28 +351,35 @@ func reinsertPreservedGraphLayoutViewports(transaction *sql.Tx, documents []inde
 	return nil
 }
 
-func collectDocuments(flowPath string) ([]indexedDocument, error) {
+func collectDocuments(flowPath string) ([]indexedDocument, []indexedParseFailure, error) {
 	dataPath := filepath.Join(flowPath, "data")
 	if _, err := os.Stat(dataPath); err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			return nil, nil, nil
 		}
 
-		return nil, fmt.Errorf("stat data directory: %w", err)
+		return nil, nil, fmt.Errorf("stat data directory: %w", err)
 	}
 
 	documents := []indexedDocument{}
+	parseFailures := []indexedParseFailure{}
+	usedIDs := map[string]struct{}{}
 	if err := collectHomeDocument(flowPath, filepath.Join(dataPath, "home.md"), &documents); err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	for _, document := range documents {
+		if id, _, ok := indexedDocumentIdentity(document.document); ok {
+			usedIDs[id] = struct{}{}
+		}
 	}
 
 	graphsPath := filepath.Join(dataPath, "content")
 	if _, err := os.Stat(graphsPath); err != nil {
 		if os.IsNotExist(err) {
-			return documents, nil
+			return documents, parseFailures, nil
 		}
 
-		return nil, fmt.Errorf("stat graphs directory: %w", err)
+		return nil, nil, fmt.Errorf("stat graphs directory: %w", err)
 	}
 
 	err := filepath.WalkDir(graphsPath, func(path string, entry os.DirEntry, err error) error {
@@ -357,10 +391,10 @@ func collectDocuments(flowPath string) ([]indexedDocument, error) {
 			return nil
 		}
 
-		return appendIndexedDocument(flowPath, path, &documents)
+		return appendIndexedDocument(flowPath, path, &documents, &parseFailures, usedIDs)
 	})
 	if err != nil {
-		return nil, fmt.Errorf("scan markdown documents: %w", err)
+		return nil, nil, fmt.Errorf("scan markdown documents: %w", err)
 	}
 
 	validationTargets := make([]markdown.WorkspaceDocument, 0, len(documents))
@@ -372,7 +406,7 @@ func collectDocuments(flowPath string) ([]indexedDocument, error) {
 	}
 
 	if err := markdown.ValidateWorkspaceDocuments(validationTargets); err != nil {
-		return nil, fmt.Errorf("validate markdown documents: %w", err)
+		return nil, nil, fmt.Errorf("validate markdown documents: %w", err)
 	}
 
 	for index := range documents {
@@ -381,7 +415,7 @@ func collectDocuments(flowPath string) ([]indexedDocument, error) {
 			Document: documents[index].document,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("normalize markdown document: %w", err)
+			return nil, nil, fmt.Errorf("normalize markdown document: %w", err)
 		}
 
 		documents[index].document = normalizedDocument.Document
@@ -389,7 +423,7 @@ func collectDocuments(flowPath string) ([]indexedDocument, error) {
 		documents[index].graphPath = graphPathForDocument(documents[index].relativePath, normalizedDocument.Document)
 	}
 
-	return documents, nil
+	return documents, parseFailures, nil
 }
 
 func insertDocument(transaction *sql.Tx, indexed indexedDocument, documentKindsByID map[string]markdown.DocumentType, inlineReferenceIDsByDocument map[string][]string) error {
@@ -405,6 +439,22 @@ func insertDocument(transaction *sql.Tx, indexed indexedDocument, documentKindsB
 	default:
 		return fmt.Errorf("unsupported parsed document type %T", indexed.document)
 	}
+}
+
+func insertParseFailure(transaction *sql.Tx, parseFailure indexedParseFailure) error {
+	if _, err := transaction.Exec(
+		`INSERT INTO parse_failures (id, type, graph, title, path, parse_error) VALUES (?, ?, ?, ?, ?, ?)`,
+		parseFailure.id,
+		parseFailure.docType,
+		parseFailure.graphPath,
+		parseFailure.title,
+		parseFailure.relativePath,
+		parseFailure.parseError,
+	); err != nil {
+		return fmt.Errorf("insert parse failure for %q: %w", parseFailure.relativePath, err)
+	}
+
+	return nil
 }
 
 func insertHomeDocument(transaction *sql.Tx, relativePath string, featureSlug string, document markdown.HomeDocument) error {
@@ -553,8 +603,8 @@ func collectGraphDirPaths(graphsPath string) []string {
 	return paths
 }
 
-func insertGraphProjection(transaction *sql.Tx, documents []indexedDocument, flowPath string) error {
-	nodes := buildGraphProjection(documents)
+func insertGraphProjection(transaction *sql.Tx, documents []indexedDocument, parseFailures []indexedParseFailure, flowPath string) error {
+	nodes := buildGraphProjection(documents, parseFailures)
 
 	// Include empty directories so newly created graphs appear without needing content.
 	if flowPath != "" {
@@ -617,18 +667,18 @@ func insertGraphProjection(transaction *sql.Tx, documents []indexedDocument, flo
 	return nil
 }
 
-func buildGraphProjection(documents []indexedDocument) []GraphNode {
+func buildGraphProjection(documents []indexedDocument, parseFailures []indexedParseFailure) []GraphNode {
 	directCounts := map[string]int{}
 	totalCounts := map[string]int{}
 	children := map[string]map[string]bool{}
 
-	for _, document := range documents {
-		if document.graphPath == "" {
-			continue
+	appendGraphPath := func(graphPath string) {
+		if graphPath == "" {
+			return
 		}
 
-		directCounts[document.graphPath]++
-		segments := strings.Split(document.graphPath, "/")
+		directCounts[graphPath]++
+		segments := strings.Split(graphPath, "/")
 		for index := range segments {
 			nodePath := strings.Join(segments[:index+1], "/")
 			totalCounts[nodePath]++
@@ -640,6 +690,14 @@ func buildGraphProjection(documents []indexedDocument) []GraphNode {
 				children[parentPath][nodePath] = true
 			}
 		}
+	}
+
+	for _, document := range documents {
+		appendGraphPath(document.graphPath)
+	}
+
+	for _, parseFailure := range parseFailures {
+		appendGraphPath(parseFailure.graphPath)
 	}
 
 	paths := make([]string, 0, len(totalCounts))
@@ -663,6 +721,135 @@ func buildGraphProjection(documents []indexedDocument) []GraphNode {
 	}
 
 	return nodes
+}
+
+func appendIndexedDocument(flowPath string, path string, documents *[]indexedDocument, parseFailures *[]indexedParseFailure, usedIDs map[string]struct{}) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read markdown document %s: %w", path, err)
+	}
+
+	document, err := markdown.ParseDocument(data)
+	if err != nil {
+		if strings.Contains(err.Error(), "unsupported document type") {
+			return nil
+		}
+
+		parseFailure, buildErr := buildIndexedParseFailure(flowPath, path, data, err, usedIDs)
+		if buildErr != nil {
+			return buildErr
+		}
+		log.Printf("flow index: skipped malformed markdown %s: %v", path, err)
+		*parseFailures = append(*parseFailures, parseFailure)
+		return nil
+	}
+
+	relativePath, err := filepath.Rel(flowPath, path)
+	if err != nil {
+		return fmt.Errorf("resolve relative document path %s: %w", path, err)
+	}
+
+	normalizedPath := filepath.ToSlash(relativePath)
+	graphPath := graphPathForDocument(normalizedPath, document)
+	*documents = append(*documents, indexedDocument{
+		relativePath: normalizedPath,
+		featureSlug:  featureSlugFromGraphPath(graphPath),
+		graphPath:    graphPath,
+		document:     document,
+	})
+
+	if id, _, ok := indexedDocumentIdentity(document); ok {
+		usedIDs[id] = struct{}{}
+	}
+
+	return nil
+}
+
+func buildIndexedParseFailure(flowPath string, path string, data []byte, parseErr error, usedIDs map[string]struct{}) (indexedParseFailure, error) {
+	relativePath, err := filepath.Rel(flowPath, path)
+	if err != nil {
+		return indexedParseFailure{}, fmt.Errorf("resolve relative document path %s: %w", path, err)
+	}
+
+	normalizedPath := filepath.ToSlash(relativePath)
+	graphPath, ok, graphErr := markdown.GraphPathFromWorkspacePath(normalizedPath)
+	if graphErr != nil {
+		return indexedParseFailure{}, fmt.Errorf("resolve graph path for malformed document %s: %w", path, graphErr)
+	}
+	if !ok {
+		graphPath = ""
+	}
+
+	frontmatter := malformedFrontmatterSection(data)
+	id := strings.TrimSpace(extractScalarFrontmatterValue(frontmatter, "id"))
+	if id == "" {
+		id = defaultMalformedDocumentID(normalizedPath, graphPath)
+	}
+	if _, exists := usedIDs[id]; exists {
+		id = defaultMalformedDocumentID(normalizedPath, graphPath)
+	}
+	usedIDs[id] = struct{}{}
+
+	docType := strings.TrimSpace(extractScalarFrontmatterValue(frontmatter, "type"))
+	if docType == "" {
+		docType = "unknown"
+	}
+
+	title := strings.TrimSpace(extractScalarFrontmatterValue(frontmatter, "title"))
+	if title == "" {
+		title = strings.TrimSuffix(filepath.Base(normalizedPath), filepath.Ext(normalizedPath))
+	}
+
+	return indexedParseFailure{
+		id:           id,
+		docType:      docType,
+		graphPath:    graphPath,
+		title:        title,
+		relativePath: normalizedPath,
+		parseError:   parseErr.Error(),
+	}, nil
+}
+
+func malformedFrontmatterSection(data []byte) string {
+	normalized := strings.ReplaceAll(string(data), "\r\n", "\n")
+	if !strings.HasPrefix(normalized, "---\n") {
+		return ""
+	}
+
+	remainder := normalized[len("---\n"):]
+	if separatorIndex := strings.Index(remainder, "\n---\n"); separatorIndex >= 0 {
+		return remainder[:separatorIndex]
+	}
+
+	return remainder
+}
+
+func extractScalarFrontmatterValue(frontmatter string, key string) string {
+	for _, line := range strings.Split(frontmatter, "\n") {
+		if strings.TrimSpace(line) == "" || strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			continue
+		}
+		prefix := key + ":"
+		if !strings.HasPrefix(line, prefix) {
+			continue
+		}
+		value := strings.TrimSpace(strings.TrimPrefix(line, prefix))
+		return strings.Trim(value, `"'`)
+	}
+
+	return ""
+}
+
+func defaultMalformedDocumentID(relativePath string, graphPath string) string {
+	if graphPath == "" {
+		if relativePath == "data/home.md" || strings.HasSuffix(relativePath, "/home.md") {
+			return "invalid:home"
+		}
+		return "invalid:" + strings.TrimSuffix(relativePath, filepath.Ext(relativePath))
+	}
+
+	baseName := strings.TrimSuffix(filepath.Base(relativePath), filepath.Ext(relativePath))
+	return "invalid:" + graphPath + "/" + baseName
 }
 
 // ReadGraphNodes returns the graph projection derived in the SQLite index.
@@ -719,38 +906,6 @@ func collectHomeDocument(flowPath string, homePath string, documents *[]indexedD
 
 	*documents = append(*documents, indexedDocument{
 		relativePath: filepath.ToSlash(relativePath),
-		document:     document,
-	})
-
-	return nil
-}
-
-func appendIndexedDocument(flowPath string, path string, documents *[]indexedDocument) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return fmt.Errorf("read markdown document %s: %w", path, err)
-	}
-
-	document, err := markdown.ParseDocument(data)
-	if err != nil {
-		// Skip files with unsupported document types (e.g., legacy edge files).
-		if strings.Contains(err.Error(), "unsupported document type") {
-			return nil
-		}
-		return fmt.Errorf("parse markdown document %s: %w", path, err)
-	}
-
-	relativePath, err := filepath.Rel(flowPath, path)
-	if err != nil {
-		return fmt.Errorf("resolve relative document path %s: %w", path, err)
-	}
-
-	normalizedPath := filepath.ToSlash(relativePath)
-	graphPath := graphPathForDocument(normalizedPath, document)
-	*documents = append(*documents, indexedDocument{
-		relativePath: normalizedPath,
-		featureSlug:  featureSlugFromGraphPath(graphPath),
-		graphPath:    graphPath,
 		document:     document,
 	})
 

@@ -12,7 +12,7 @@ const testsRoot = path.dirname(currentFilePath)
 const frontendRoot = path.resolve(testsRoot, '..')
 const repoRoot = path.resolve(frontendRoot, '..')
 const flowBinaryPath = path.join(os.tmpdir(), 'flow-playwright-e2e-bin')
-const documentBodySelector = '.ProseMirror[aria-label="Context document editor"]'
+const documentBodySelector = '.ProseMirror[aria-label="Document body editor"]'
 
 let flowBinaryPromise: Promise<string> | null = null
 
@@ -457,26 +457,88 @@ test.describe('Graph editor navigation with real backend', () => {
       await page.goto(url)
 
       await page.getByText('Execution').click()
-      await expect(page.locator(`.graph-canvas-overlay-node[data-nodeid="${overviewNote.id}"]`)).toBeVisible()
-      await expect(page.locator(`.graph-canvas-overlay-node[data-nodeid="${followUpNote.id}"]`)).toBeVisible()
-
-      await page.locator(`.graph-canvas-overlay-node[data-nodeid="${overviewNote.id}"]`).click()
-      await page.getByRole('button', { name: 'Document', exact: true }).click()
-      await expect(page.getByLabel('Graph node document panel')).toBeVisible()
+      await page.getByText('overview.md').click()
+      await expect(page.getByRole('textbox', { name: 'Document title' })).toHaveValue('Overview')
       await expect(page.locator(documentBodySelector)).toBeVisible()
 
       await insertBlankParagraph(page)
 
-      await page.locator(`.graph-canvas-overlay-node[data-nodeid="${followUpNote.id}"]`).click()
-      await page.getByRole('button', { name: 'Document', exact: true }).click()
+      await page.getByText('follow-up.md').click()
       await expect(page.getByRole('textbox', { name: 'Document title' })).toHaveValue('Follow Up')
 
       await expect.poll(async () => readFile(overviewNote.path, 'utf8')).toContain('<p><br></p>')
 
-      await page.locator(`.graph-canvas-overlay-node[data-nodeid="${overviewNote.id}"]`).click()
-      await page.getByRole('button', { name: 'Document', exact: true }).click()
+      await page.getByText('overview.md').click()
       await expect(page.getByRole('textbox', { name: 'Document title' })).toHaveValue('Overview')
       await expect.poll(async () => page.locator(documentBodySelector).evaluate((element) => element.innerHTML)).toContain('<p><br')
+    } finally {
+      if (server !== null) {
+        await server.stop()
+      }
+
+      await rm(workspacePath, { recursive: true, force: true })
+    }
+  })
+
+  test('persists multiple blank paragraphs when switching graph canvas nodes', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'Real backend newline regression is stabilized in Chromium')
+    test.setTimeout(180_000)
+
+    const binaryPath = await ensureFlowBinary()
+    const workspacePath = await mkdtemp(path.join(os.tmpdir(), 'flow-playwright-workspace-'))
+    const port = await getFreePort()
+    const url = `http://127.0.0.1:${port}`
+
+    let server: StartedProcess | null = null
+
+    try {
+      await runFlow(binaryPath, workspacePath, ['init'])
+      await runFlow(binaryPath, workspacePath, ['configure', '--gui-port', String(port)])
+
+      const overviewNote = await createNote(binaryPath, workspacePath, {
+        file: 'overview',
+        graph: 'execution',
+        title: 'Overview',
+        description: 'Execution overview',
+        body: 'Overview body\n',
+      })
+
+      const followUpNote = await createNote(binaryPath, workspacePath, {
+        file: 'follow-up',
+        graph: 'execution',
+        title: 'Follow Up',
+        description: 'Execution follow-up',
+        body: 'Follow up body\n',
+      })
+
+      server = startProcess(binaryPath, workspacePath)
+      await waitForServer(url, server)
+
+      await page.setViewportSize({ width: 1600, height: 1000 })
+      await page.goto(url)
+
+      await page.getByText('Execution').click()
+      await page.getByText('overview.md').click()
+      await expect(page.getByRole('textbox', { name: 'Document title' })).toHaveValue('Overview')
+      await expect(page.locator(documentBodySelector)).toBeVisible()
+
+      await insertBlankParagraph(page)
+      await insertBlankParagraph(page)
+
+      await page.getByText('follow-up.md').click()
+      await expect(page.getByRole('textbox', { name: 'Document title' })).toHaveValue('Follow Up')
+
+      await expect.poll(async () => {
+        const content = await readFile(overviewNote.path, 'utf8')
+        return (content.match(/<p><br><\/p>/g) ?? []).length
+      }).toBeGreaterThanOrEqual(2)
+
+      await page.getByText('overview.md').click()
+      await expect(page.getByRole('textbox', { name: 'Document title' })).toHaveValue('Overview')
+      await expect.poll(async () => {
+        const html = await page.locator(documentBodySelector).evaluate((element) => element.innerHTML)
+        return (html.match(/<p><br/g) ?? []).length
+      }).toBeGreaterThanOrEqual(2)
     } finally {
       if (server !== null) {
         await server.stop()

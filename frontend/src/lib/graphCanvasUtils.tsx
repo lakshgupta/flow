@@ -575,3 +575,37 @@ export function normalizeGraphCanvasResponse(response: GraphCanvasResponseWire):
 export function graphCanvasOverlayPosition(node: Node<GraphCanvasFlowNodeData>): GraphCanvasPosition {
   return { x: node.position.x, y: node.position.y };
 }
+
+export function intersectingGraphCanvasNodeIds(
+  nodes: Node<GraphCanvasFlowNodeData>[],
+  documentId: string,
+  position: GraphCanvasPosition,
+): string[] {
+  const candidateNode = nodes.find((node) => node.id === documentId);
+  if (candidateNode === undefined) {
+    return [];
+  }
+
+  const left = position.x;
+  const top = position.y;
+  const right = left + (candidateNode.width ?? 0);
+  const bottom = top + (candidateNode.height ?? 0);
+
+  return nodes
+    .filter((node) => {
+      if (node.id === documentId) {
+        return false;
+      }
+
+      const candidateLeft = node.position.x;
+      const candidateTop = node.position.y;
+      const candidateRight = candidateLeft + (node.width ?? 0);
+      const candidateBottom = candidateTop + (node.height ?? 0);
+
+      return left < candidateRight
+        && right > candidateLeft
+        && top < candidateBottom
+        && bottom > candidateTop;
+    })
+    .map((node) => node.id);
+}

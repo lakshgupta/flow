@@ -12,6 +12,7 @@ const FLOW_REFERENCE_HASH_PREFIX = "#flow-reference?";
 const FLOW_DATE_HASH_PREFIX = "#flow-date?";
 const ISO_DATE_PATTERN = /\b(\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01]))\b/g;
 const EMPTY_PARAGRAPH_MARKUP = "<p><br></p>";
+const EMPTY_PARAGRAPH_TEXT_PATTERN = /^[\s\u00A0\u200B\u2060\uFEFF]*$/;
 
 const markdown = new MarkdownIt({
   breaks: true,
@@ -31,21 +32,7 @@ const turndown = new TurndownService({
 turndown.use(gfm);
 turndown.addRule("emptyParagraph", {
   filter(node) {
-    if (!(node instanceof Element) || node.tagName !== "P") {
-      return false;
-    }
-
-    if (node.textContent?.trim() !== "") {
-      return false;
-    }
-
-    return Array.from(node.childNodes).every((child) => {
-      if (child.nodeType === Node.TEXT_NODE) {
-        return child.textContent?.trim() === "";
-      }
-
-      return child instanceof HTMLBRElement;
-    });
+    return node instanceof Element && isSemanticallyEmptyParagraph(node);
   },
   replacement() {
     return `\n\n${EMPTY_PARAGRAPH_MARKUP}\n\n`;
@@ -81,6 +68,14 @@ turndown.addRule("flowInlineReference", {
     return parseFlowReferenceHref(node.getAttribute("href") ?? "")?.token ?? "";
   },
 });
+turndown.addRule("strikethrough", {
+  filter(node) {
+    return node instanceof Element && ["S", "STRIKE", "DEL"].includes(node.tagName);
+  },
+  replacement(content) {
+    return content === "" ? "" : `~~${content}~~`;
+  },
+});
 turndown.addRule("mark", {
   filter: "mark",
   replacement(content) {
@@ -109,9 +104,54 @@ export function editorHTMLToMarkdown(value: string): string {
 }
 
 function normalizeEmptyParagraphMarkup(value: string): string {
+  if (typeof document !== "undefined") {
+    const template = document.createElement("template");
+    template.innerHTML = value;
+
+    template.content.querySelectorAll("p").forEach((paragraph) => {
+      if (isSemanticallyEmptyParagraph(paragraph)) {
+        paragraph.innerHTML = "<br>";
+      }
+    });
+
+    return template.innerHTML;
+  }
+
   // ProseMirror may emit BR-only paragraphs with multiple <br> nodes; collapse
   // them to a stable representation to avoid growth across save/reload cycles.
   return value.replace(/<p>(?:\s*<br(?:\s[^>]*)?>\s*)+<\/p>/gi, EMPTY_PARAGRAPH_MARKUP);
+}
+
+function isSemanticallyEmptyParagraph(node: Element): boolean {
+  if (node.tagName !== "P") {
+    return false;
+  }
+
+  if (!isSemanticallyEmptyText(node.textContent)) {
+    return false;
+  }
+
+  return Array.from(node.childNodes).every((child) => isSemanticallyEmptyChild(child));
+}
+
+function isSemanticallyEmptyChild(node: ChildNode): boolean {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return isSemanticallyEmptyText(node.textContent);
+  }
+
+  if (!(node instanceof Element)) {
+    return false;
+  }
+
+  if (node instanceof HTMLBRElement) {
+    return true;
+  }
+
+  return isSemanticallyEmptyText(node.textContent) && Array.from(node.childNodes).every((child) => isSemanticallyEmptyChild(child));
+}
+
+function isSemanticallyEmptyText(value: string | null | undefined): boolean {
+  return EMPTY_PARAGRAPH_TEXT_PATTERN.test(value ?? "");
 }
 
 export function parseFlowDateHref(href: string): { date: string } | null {

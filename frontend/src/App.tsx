@@ -10,20 +10,25 @@ import {
   type NodeChange,
   type ReactFlowInstance,
 } from "@xyflow/react";
-import { CalendarDays, ChevronLeft, ChevronRight, FileText, GalleryVerticalEnd, Info, Maximize2, Minimize2, PaintbrushVertical, Rows3, Search, Settings, Trash2, TriangleAlert, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Rows3, X } from "lucide-react";
 import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppSidebar } from "./components/AppSidebar";
+import { DocumentEditorPane } from "./components/DocumentEditorPane";
+import { GraphEmptyState } from "./components/GraphEmptyState";
+import { GraphCanvasSurface } from "./components/GraphCanvasSurface";
+import { HomeSurface } from "./components/HomeSurface";
+import { RightRailControls } from "./components/RightRailControls";
+import { SettingsDialog } from "./components/SettingsDialog";
+import { GraphTreePanel, WorkspaceSelectorPanel } from "./components/WorkspaceSidebarPanels";
+import { CreateNodeDialog, DeleteDocumentDialog, RenameDialog } from "./components/WorkflowDialogs";
 import type { EdgeToolbarState, GraphCanvasOverlayController } from "./components/graphCanvasOverlayController";
 import { GraphCanvasOverlayInteraction } from "./components/GraphCanvasOverlayInteraction";
 import { GraphCanvasOverlayNodes } from "./components/GraphCanvasOverlayNodes";
-import { GraphTree } from "./components/GraphTree";
-import { HomeCalendarPanel } from "./components/HomeCalendarPanel";
 import { GraphCanvasOverlayEdges } from "./components/GraphCanvasOverlayEdges";
-import { TableOfContents } from "./components/TableOfContents";
-import { DocumentPropertiesPanel } from "./components/DocumentPropertiesPanel";
+import { RightRailCalendarPanel, RightRailSearchPanel } from "./components/RightRailPanels";
+import { ThreadPanelStack } from "./components/ThreadPanels";
 import { Badge } from "./components/ui/badge";
-import { Input } from "./components/ui/input";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -33,20 +38,17 @@ import {
 } from "./components/ui/breadcrumb";
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader } from "./components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "./components/ui/dialog";
-import { Label } from "./components/ui/label";
-import { RadioGroup, RadioGroupItem } from "./components/ui/radio-group";
 import { Separator } from "./components/ui/separator";
-import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger } from "./components/ui/sidebar";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "./components/ui/sidebar";
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./components/ui/tooltip";
 import { requestJSON, deregisterLocalWorkspace, loadCalendarDocuments, loadWorkspaceSnapshot, selectWorkspace, uploadGraphFiles } from "./lib/api";
+import { useGraphCanvasSurfaceActions } from "./hooks/useGraphCanvasSurfaceActions";
+import { useHomeSurfaceActions } from "./hooks/useHomeSurfaceActions";
+import { useRightRailDocumentActions } from "./hooks/useRightRailDocumentActions";
+import { useRightRailControlsActions } from "./hooks/useRightRailControlsActions";
+import { useSidebarNavigationActions } from "./hooks/useSidebarNavigationActions";
+import { useThreadPanelActions } from "./hooks/useThreadPanelActions";
 import {
   createDocumentFormState,
   createGraphDocumentPayload,
@@ -69,10 +71,10 @@ import {
   graphCanvasOverlayPosition,
   graphCanvasPositionMap,
   graphCanvasTypeLabel,
+    intersectingGraphCanvasNodeIds,
   normalizeGraphCanvasResponse,
   selectedGraphCanvasNode,
 } from "./lib/graphCanvasUtils";
-import { markdownToHTML, parseFlowReferenceHref, parseFlowDateHref, parseFlowAssetHref } from "./richText";
 import { graphDirectoryColorHex, resolveGraphDirectoryColor } from "./lib/graphColors";
 import { useTheme } from "./lib/theme";
 import { todayString } from "./lib/dateEntries";
@@ -307,6 +309,7 @@ function FlowApp() {
   const { theme, setTheme } = useTheme();
   const rfViewport = useViewport();
   const graphCanvasFlowRef = useRef<ReactFlowInstance<GraphCanvasFlowNodeData> | null>(null);
+  const rfViewportRef = useRef(rfViewport);
   const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null);
   const [graphTree, setGraphTree] = useState<GraphTreeResponse | null>(null);
   const [graphCanvasData, setGraphCanvasData] = useState<GraphCanvasResponse | null>(null);
@@ -392,6 +395,8 @@ function FlowApp() {
   const [isResizingRight, setIsResizingRight] = useState<boolean>(false);
   const [canvasContextMenu, setCanvasContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [shiftSelectedNodes, setShiftSelectedNodes] = useState<string[]>([]);
+  const [graphCanvasIntersectingNodeIds, setGraphCanvasIntersectingNodeIds] = useState<string[]>([]);
+  const [graphCanvasIntersectionSourceId, setGraphCanvasIntersectionSourceId] = useState<string | null>(null);
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
   const [connectingStartPos, setConnectingStartPos] = useState<{ x: number; y: number } | null>(null);
   const [connectingPointerPos, setConnectingPointerPos] = useState<{ x: number; y: number } | null>(null);
@@ -429,6 +434,7 @@ function FlowApp() {
   const graphCanvasHorizontalPositionsRef = useRef<Record<string, GraphCanvasPosition>>({});
   const graphCanvasLayoutModeRef = useRef<"user" | "horizontal">("user");
   const graphCanvasPositionsRef = useRef<Record<string, GraphCanvasPosition>>({});
+  const graphCanvasNodesRef = useRef<Node<GraphCanvasFlowNodeData>[]>([]);
   const selectedGraphPath = activeSurface.kind === "graph" ? activeSurface.graphPath : "";
   const [rightRailCollapsed, setRightRailCollapsed] = useState<boolean>(true);
   const [rightRailMaximized, setRightRailMaximized] = useState<boolean>(false);
@@ -449,6 +455,10 @@ function FlowApp() {
     graphCanvasLayoutModeRef.current = graphCanvasLayoutMode;
   }, [graphCanvasLayoutMode]);
 
+  useEffect(() => {
+    rfViewportRef.current = rfViewport;
+  }, [rfViewport]);
+
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab | "document">("search");
   const [editorScrollTarget, setEditorScrollTarget] = useState<string | null>(null);
 
@@ -468,6 +478,7 @@ function FlowApp() {
     selectedDocumentId,
     graphDirectoryColorsByPath,
   );
+  graphCanvasNodesRef.current = graphCanvasNodes;
   const graphCanvasEdgesRaw = buildGraphCanvasFlowEdges(graphCanvasData, selectedCanvasNodeId);
   const graphCanvasEdges = selectedEdgeId === ""
     ? graphCanvasEdgesRaw
@@ -546,53 +557,6 @@ function FlowApp() {
 
     return Array.from(tagSet).sort((left, right) => left.localeCompare(right));
   }, [graphCanvasData?.edges]);
-  const graphCanvasOverlayController: GraphCanvasOverlayController = {
-    state: {
-      edges: graphCanvasData?.edges ?? [],
-      graphCanvasNodes,
-      rfViewport,
-      selectedCanvasNodeId,
-      selectedEdgeId,
-      hoveredEdgeTooltip,
-      edgeToolbar,
-      relationshipTagCatalog,
-      shiftSelectedNodes,
-      connectingTarget,
-      canvasContextMenu,
-      connectingFrom,
-      connectingPointerPos,
-      connectingStartPos,
-    },
-    actions: {
-      clearEdgeClickTimer,
-      selectEdge: setSelectedEdgeId,
-      handleGraphCanvasEdgeClick,
-      handleGraphCanvasEdgeHover,
-      clearHoveredEdgeTooltip: (edgeId) => {
-        setHoveredEdgeTooltip((current) => current?.edgeId === edgeId ? null : current);
-      },
-      handleGraphCanvasEdgeDoubleClick,
-      setEdgeToolbarState: setEdgeToolbar,
-      persistEdgeToolbar: handlePersistEdgeToolbar,
-      handleDeleteEdge,
-      onNodeClick: handleGraphCanvasOverlayNodeClick,
-      onNodeDoubleClick: handleGraphCanvasOverlayNodeDoubleClick,
-      onNodePointerDown: handleGraphCanvasOverlayPointerDown,
-      onHandlePointerDown: handleConnectionHandlePointerDown,
-      onNodeDescriptionSave: (nodeId, description) => {
-        void handleGraphCanvasNodeDescriptionSave(nodeId, description);
-      },
-      onMerge: () => {
-        void handleMergeDocuments();
-      },
-      closeCanvasContextMenu: () => {
-        setCanvasContextMenu(null);
-      },
-      createGraphDocument: (type) => {
-        void handleCreateGraphDocument(type);
-      },
-    },
-  };
   const documentGraphById = useMemo(() => {
     const graphByID = new Map<string, string>();
 
@@ -604,6 +568,11 @@ function FlowApp() {
 
     return graphByID;
   }, [graphTree]);
+
+  useEffect(() => {
+    setGraphCanvasIntersectingNodeIds([]);
+    setGraphCanvasIntersectionSourceId(null);
+  }, [selectedGraphPath, graphCanvasData]);
   const threadPanels = useMemo(() => {
     return documentThread.map((entry, index) => {
       const isTail = index === documentThread.length - 1;
@@ -1068,12 +1037,54 @@ function FlowApp() {
     await flushPendingHomeSave();
   }
 
-  async function openDocumentInCenter(documentId: string, graphPath: string): Promise<void> {
-    await flushPendingActiveEditorSave();
-    clearSurfaceFeedback();
+  function openGraphSurface(graphPath: string): void {
     startTransition(() => {
       setActiveSurface({ kind: "graph", graphPath });
     });
+  }
+
+  function collapseDocumentRightRailIfOpen(): void {
+    if (rightPanelTab === "document") {
+      setRightPanelTab("search");
+      setRightRailCollapsed(true);
+    }
+  }
+
+  function syncCenterThreadSelection(documentId: string, canvasNodeId: string, document: DocumentResponse | null): void {
+    setSelectedDocumentOpenMode("center");
+    setSelectedDocumentId(documentId);
+    setSelectedCanvasNodeId(canvasNodeId);
+    syncSelectedDocumentState(document);
+  }
+
+  function resolveThreadBaseFromSource(sourceDocumentId: string, preferredGraphPath = ""): {
+    baseThread: ThreadDocumentEntry[];
+    resolvedGraphPath: string;
+  } {
+    const currentThread = documentThreadRef.current;
+    const sourceIndex = currentThread.findIndex((entry) => entry.documentId === sourceDocumentId);
+    const resolvedGraphPath = preferredGraphPath.trim() !== ""
+      ? preferredGraphPath
+      : currentThread[sourceIndex]?.graphPath
+        ?? selectedDocumentRef.current?.graph
+        ?? documentGraphById.get(sourceDocumentId)
+        ?? selectedGraphPath;
+
+    const baseThread = sourceIndex >= 0
+      ? currentThread.slice(0, sourceIndex + 1)
+      : sourceDocumentId === HOME_THREAD_DOCUMENT_ID
+        ? [{ documentId: HOME_THREAD_DOCUMENT_ID, graphPath: "" }]
+        : sourceDocumentId !== "" && resolvedGraphPath !== ""
+          ? [{ documentId: sourceDocumentId, graphPath: resolvedGraphPath }]
+          : [];
+
+    return { baseThread, resolvedGraphPath };
+  }
+
+  async function openDocumentInCenter(documentId: string, graphPath: string): Promise<void> {
+    await flushPendingActiveEditorSave();
+    clearSurfaceFeedback();
+    openGraphSurface(graphPath);
     setSelectedCanvasNodeId(documentId);
     setSelectedDocumentOpenMode("center");
     setCenterDocumentSidePanelMode("hidden");
@@ -1089,9 +1100,7 @@ function FlowApp() {
   async function openDocumentInRightRail(documentId: string, graphPath: string): Promise<void> {
     await flushPendingActiveEditorSave();
     clearSurfaceFeedback();
-    startTransition(() => {
-      setActiveSurface({ kind: "graph", graphPath });
-    });
+    openGraphSurface(graphPath);
     setThreadExpanded(false);
     setSelectedCanvasNodeId(documentId);
     setSelectedDocumentOpenMode("right-rail");
@@ -1105,20 +1114,7 @@ function FlowApp() {
     await flushPendingActiveEditorSave();
     clearSurfaceFeedback();
 
-    const currentThread = documentThreadRef.current;
-    const sourceIndex = currentThread.findIndex((entry) => entry.documentId === sourceDocumentId);
-    const sourceGraphPath = currentThread[sourceIndex]?.graphPath
-      ?? selectedDocumentRef.current?.graph
-      ?? documentGraphById.get(sourceDocumentId)
-      ?? selectedGraphPath;
-
-    const baseThread = sourceIndex >= 0
-      ? currentThread.slice(0, sourceIndex + 1)
-      : sourceDocumentId === HOME_THREAD_DOCUMENT_ID
-        ? [{ documentId: HOME_THREAD_DOCUMENT_ID, graphPath: "" }]
-      : sourceDocumentId !== "" && sourceGraphPath !== ""
-        ? [{ documentId: sourceDocumentId, graphPath: sourceGraphPath }]
-        : [];
+    const { baseThread } = resolveThreadBaseFromSource(sourceDocumentId);
 
     const nextThread = [...baseThread, { documentId: targetDocumentId, graphPath }];
     applyDocumentThread(nextThread);
@@ -1126,14 +1122,8 @@ function FlowApp() {
     setSelectedDocumentId(targetDocumentId);
     setSelectedCanvasNodeId(targetDocumentId);
     setThreadExpanded(false);
-    startTransition(() => {
-      setActiveSurface({ kind: "graph", graphPath });
-    });
-
-    if (rightPanelTab === "document") {
-      setRightPanelTab("search");
-      setRightRailCollapsed(true);
-    }
+    openGraphSurface(graphPath);
+    collapseDocumentRightRailIfOpen();
   }
 
   async function openAssetInThreadFromSource(
@@ -1146,22 +1136,7 @@ function FlowApp() {
     await flushPendingActiveEditorSave();
     clearSurfaceFeedback();
 
-    const currentThread = documentThreadRef.current;
-    const sourceIndex = currentThread.findIndex((entry) => entry.documentId === sourceDocumentID);
-    const resolvedSourceGraphPath = sourceGraphPath.trim() !== ""
-      ? sourceGraphPath
-      : currentThread[sourceIndex]?.graphPath
-        ?? selectedDocumentRef.current?.graph
-        ?? documentGraphById.get(sourceDocumentID)
-        ?? selectedGraphPath;
-
-    const baseThread = sourceIndex >= 0
-      ? currentThread.slice(0, sourceIndex + 1)
-      : sourceDocumentID === HOME_THREAD_DOCUMENT_ID
-        ? [{ documentId: HOME_THREAD_DOCUMENT_ID, graphPath: "" }]
-        : sourceDocumentID !== "" && resolvedSourceGraphPath !== ""
-          ? [{ documentId: sourceDocumentID, graphPath: resolvedSourceGraphPath }]
-          : [];
+    const { baseThread, resolvedGraphPath } = resolveThreadBaseFromSource(sourceDocumentID, sourceGraphPath);
 
     const assetID = buildThreadAssetID(assetHref, kind);
     setThreadAssetsById((current) => ({
@@ -1170,28 +1145,20 @@ function FlowApp() {
         id: assetID,
         href: assetHref,
         name: assetName,
-        graphPath: resolvedSourceGraphPath,
+        graphPath: resolvedGraphPath,
         kind,
       },
     }));
 
-    const nextThread = [...baseThread, { documentId: assetID, graphPath: resolvedSourceGraphPath }];
+    const nextThread = [...baseThread, { documentId: assetID, graphPath: resolvedGraphPath }];
     applyDocumentThread(nextThread);
-    setSelectedDocumentOpenMode("center");
-    setSelectedDocumentId("");
-    setSelectedCanvasNodeId(sourceDocumentID === HOME_THREAD_DOCUMENT_ID ? "" : sourceDocumentID);
-    syncSelectedDocumentState(null);
+    syncCenterThreadSelection("", sourceDocumentID === HOME_THREAD_DOCUMENT_ID ? "" : sourceDocumentID, null);
     setThreadExpanded(false);
-    if (resolvedSourceGraphPath !== "") {
-      startTransition(() => {
-        setActiveSurface({ kind: "graph", graphPath: resolvedSourceGraphPath });
-      });
+    if (resolvedGraphPath !== "") {
+      openGraphSurface(resolvedGraphPath);
     }
 
-    if (rightPanelTab === "document") {
-      setRightPanelTab("search");
-      setRightRailCollapsed(true);
-    }
+    collapseDocumentRightRailIfOpen();
   }
 
   async function activateThreadDocument(documentId: string, graphPath: string): Promise<void> {
@@ -1199,20 +1166,12 @@ function FlowApp() {
     if (threadAsset !== undefined) {
       await flushPendingActiveEditorSave();
       clearSurfaceFeedback();
-      setSelectedDocumentOpenMode("center");
-      setSelectedDocumentId("");
-      setSelectedCanvasNodeId("");
-      syncSelectedDocumentState(null);
+      syncCenterThreadSelection("", "", null);
       if (graphPath.trim() !== "") {
-        startTransition(() => {
-          setActiveSurface({ kind: "graph", graphPath });
-        });
+        openGraphSurface(graphPath);
       }
 
-      if (rightPanelTab === "document") {
-        setRightPanelTab("search");
-        setRightRailCollapsed(true);
-      }
+      collapseDocumentRightRailIfOpen();
       return;
     }
 
@@ -1224,32 +1183,17 @@ function FlowApp() {
     clearSurfaceFeedback();
 
     if (documentId === HOME_THREAD_DOCUMENT_ID) {
-      setSelectedDocumentOpenMode("center");
-      setSelectedDocumentId("");
-      setSelectedCanvasNodeId("");
-      syncSelectedDocumentState(null);
+      syncCenterThreadSelection("", "", null);
       startTransition(() => {
         setActiveSurface({ kind: "home" });
       });
-      if (rightPanelTab === "document") {
-        setRightPanelTab("search");
-        setRightRailCollapsed(true);
-      }
+      collapseDocumentRightRailIfOpen();
       return;
     }
 
-    setSelectedDocumentOpenMode("center");
-    setSelectedDocumentId(documentId);
-    setSelectedCanvasNodeId(documentId);
-    syncSelectedDocumentState(threadDocumentsById[documentId] ?? null);
-    startTransition(() => {
-      setActiveSurface({ kind: "graph", graphPath });
-    });
-
-    if (rightPanelTab === "document") {
-      setRightPanelTab("search");
-      setRightRailCollapsed(true);
-    }
+    syncCenterThreadSelection(documentId, documentId, threadDocumentsById[documentId] ?? null);
+    openGraphSurface(graphPath);
+    collapseDocumentRightRailIfOpen();
   }
 
   async function closeDocumentThreadFrom(index: number): Promise<void> {
@@ -1852,6 +1796,9 @@ function FlowApp() {
     return Array.from(documentsByID.values()).sort((left, right) => left.path.localeCompare(right.path));
   }, [calendarDocuments, formState.body, formState.title, graphTree?.home.path, homeFormState.body, homeFormState.title, selectedDocument, selectedDocumentId]);
 
+  const handleSelectHomeRef = useRef<() => void>(() => {});
+  const openDocumentInRightRailRef = useRef<(documentId: string, graphPath: string) => void>(() => {});
+
   function updateFormField(field: keyof DocumentFormState, value: string): void {
     setFormState((current) => {
       const next = { ...current, [field]: value };
@@ -2096,6 +2043,42 @@ function FlowApp() {
     }
   }
 
+  function clearGraphCanvasIntersections(): void {
+    setGraphCanvasIntersectingNodeIds([]);
+    setGraphCanvasIntersectionSourceId(null);
+  }
+
+  function updateGraphCanvasIntersections(documentId: string, position: GraphCanvasPosition): void {
+    const candidateNodes = graphCanvasNodesRef.current;
+    const candidateNode = candidateNodes.find((node) => node.id === documentId);
+    if (candidateNode === undefined) {
+      clearGraphCanvasIntersections();
+      return;
+    }
+
+    const flow = graphCanvasFlowRef.current as (ReactFlowInstance<GraphCanvasFlowNodeData> & {
+      getIntersectingNodes?: (node: Node<GraphCanvasFlowNodeData>) => Node<GraphCanvasFlowNodeData>[];
+      getNode?: (id: string) => Node<GraphCanvasFlowNodeData> | undefined;
+    }) | null;
+    const draftNode = {
+      ...(flow?.getNode?.(documentId) ?? candidateNode),
+      position,
+      positionAbsolute: position,
+      width: candidateNode.width,
+      height: candidateNode.height,
+    } as Node<GraphCanvasFlowNodeData>;
+
+    const fallbackIntersectingNodeIds = intersectingGraphCanvasNodeIds(candidateNodes, documentId, position);
+    const helperIntersections = flow?.getIntersectingNodes?.(draftNode) ?? null;
+    const helperIntersectingNodeIds = helperIntersections?.filter((node) => node.id !== documentId).map((node) => node.id) ?? [];
+    const intersectingNodeIds = helperIntersectingNodeIds.length > 0
+      ? helperIntersectingNodeIds
+      : fallbackIntersectingNodeIds;
+
+    setGraphCanvasIntersectionSourceId(intersectingNodeIds.length > 0 ? documentId : null);
+    setGraphCanvasIntersectingNodeIds(intersectingNodeIds);
+  }
+
   async function persistGraphCanvasPositions(positions: GraphLayoutPositionPayload[]): Promise<void> {
     if (selectedGraphPath === "" || positions.length === 0) {
       return;
@@ -2317,13 +2300,30 @@ function FlowApp() {
     void openDocumentInRightRail(documentId, nextGraphPath);
   }
 
-  function handleSearchResultNavigate(result: SearchResult): void {
+  handleSelectHomeRef.current = () => {
+    void handleSelectHome();
+  };
+  openDocumentInRightRailRef.current = (documentId: string, graphPath: string) => {
+    void openDocumentInRightRail(documentId, graphPath);
+  };
+
+  const handleRightRailSearchResultNavigate = useCallback((result: SearchResult): void => {
     if (result.type === "home") {
-      void handleSelectHome();
+      handleSelectHomeRef.current();
       return;
     }
-    void openDocumentInRightRail(result.id, result.graph);
-  }
+
+    openDocumentInRightRailRef.current(result.id, result.graph);
+  }, []);
+
+  const handleRightRailCalendarDocumentOpen = useCallback((document: CalendarDocumentResponse): void => {
+    if (document.type === "home") {
+      handleSelectHomeRef.current();
+      return;
+    }
+
+    openDocumentInRightRailRef.current(document.id, document.graph);
+  }, []);
 
   function handleTOCNavigate(itemId: string): void {
     if (activeSurface.kind === "home" || selectedDocument !== null) {
@@ -2834,6 +2834,7 @@ function FlowApp() {
       };
       if (dragState.moved) {
         updateGraphCanvasNodePosition(dragState.documentId, nextPosition);
+        updateGraphCanvasIntersections(dragState.documentId, nextPosition);
       }
     };
 
@@ -2852,6 +2853,7 @@ function FlowApp() {
         y: (pointerEvent.clientY - dragState.shellTop - dragState.offsetY - vpY) / zoom,
       };
       updateGraphCanvasNodePosition(dragState.documentId, nextPosition);
+      clearGraphCanvasIntersections();
       void persistGraphCanvasPosition(dragState.documentId, nextPosition);
     };
 
@@ -3168,6 +3170,364 @@ function FlowApp() {
     }
   }
 
+  const threadPanelActions = useThreadPanelActions({
+    activateThreadDocument,
+    setThreadDensityMode,
+    toggleThreadExpanded,
+    moveThreadFocus,
+    toggleRightRailMaximized,
+    closeDocumentThreadFrom,
+    updateHomeFormField,
+    handleInlineReferenceOpen,
+    handleDateOpen,
+    openAssetInThreadFromSource,
+    setEditorScrollTarget,
+    updateFormField,
+    toggleCenterDocumentSidePanel,
+    handleDocumentTOCResizeMouseDown,
+    handleTOCNavigate,
+    addOutgoingLink,
+    removeOutgoingLink,
+    updateEditableLinkDetail,
+    beginThreadPanelResize,
+  });
+
+  const rightRailDocumentActions = useRightRailDocumentActions({
+    toggleRightRailMaximized,
+    openDeleteDialogForSelectedDocument,
+    handleCloseContextPanel,
+    updateFormField,
+    handleInlineReferenceOpen,
+    handleDateOpen,
+    openAssetInThreadFromSource,
+    setEditorScrollTarget,
+    handleGraphCanvasFilesDrop,
+    handleInspectDocument,
+    handleRightRailDocumentTOCResizeMouseDown,
+    handleTOCNavigate,
+    selectedDocumentRef,
+  });
+
+  const sidebarNavigationActions = useSidebarNavigationActions({
+    handleWorkspaceSelection,
+    handleSelectHome,
+    handleSelectGraph,
+    handleSelectDocument,
+    handleSidebarCreateGraph,
+    handleSidebarCreateNode,
+    handleSidebarRenameGraph,
+    handleSidebarRenameNode,
+    handleSidebarDeleteNode,
+    handleSidebarDeleteGraph,
+    handleSidebarSetGraphColor,
+  });
+
+  const { graphCanvasOverlayActions, graphCanvasSurfaceActions } = useGraphCanvasSurfaceActions({
+    clearEdgeClickTimer,
+    updateIntersectingNodes: updateGraphCanvasIntersections,
+    clearIntersectingNodes: clearGraphCanvasIntersections,
+    handleGraphCanvasEdgeClick,
+    handleGraphCanvasEdgeHover,
+    handleGraphCanvasEdgeDoubleClick,
+    handlePersistEdgeToolbar,
+    handleDeleteEdge,
+    handleGraphCanvasOverlayNodeClick,
+    handleGraphCanvasOverlayNodeDoubleClick,
+    handleGraphCanvasOverlayPointerDown,
+    handleConnectionHandlePointerDown,
+    handleGraphCanvasNodeDescriptionSave,
+    handleMergeDocuments,
+    handleCreateGraphDocument,
+    handleGraphCanvasFilesDrop,
+    handleToggleGraphCanvasLayout,
+    handleGraphCanvasSearchNext,
+    handleGraphCanvasSearchPrevious,
+    handleGraphCanvasNodesChange,
+    handleOpenCanvasDocument,
+    updateGraphCanvasNodePosition,
+    persistGraphCanvasPosition,
+    persistGraphCanvasViewport,
+    setHoveredEdgeTooltip,
+    setSelectedEdgeId,
+    setEdgeToolbar,
+    setGraphCanvasDragActive,
+    setGraphCanvasNodeSearchTerm,
+    setGraphCanvasNodeSearchIndex,
+    graphCanvasFlowRef,
+    setSelectedCanvasNodeId,
+    setCanvasContextMenu,
+    setShiftSelectedNodes,
+    rfViewportRef,
+  });
+
+  const graphCanvasOverlayController = useMemo<GraphCanvasOverlayController>(() => ({
+    state: {
+      edges: graphCanvasData?.edges ?? [],
+      graphCanvasNodes,
+      rfViewport,
+      intersectingNodeIds: graphCanvasIntersectingNodeIds,
+      intersectingSourceNodeId: graphCanvasIntersectionSourceId,
+      selectedCanvasNodeId,
+      selectedEdgeId,
+      hoveredEdgeTooltip,
+      edgeToolbar,
+      relationshipTagCatalog,
+      shiftSelectedNodes,
+      connectingTarget,
+      canvasContextMenu,
+      connectingFrom,
+      connectingPointerPos,
+      connectingStartPos,
+    },
+    actions: graphCanvasOverlayActions,
+  }), [
+    canvasContextMenu,
+    connectingFrom,
+    connectingPointerPos,
+    connectingStartPos,
+    connectingTarget,
+    edgeToolbar,
+    graphCanvasData?.edges,
+    graphCanvasIntersectingNodeIds,
+    graphCanvasIntersectionSourceId,
+    graphCanvasNodes,
+    graphCanvasOverlayActions,
+    hoveredEdgeTooltip,
+    relationshipTagCatalog,
+    rfViewport,
+    selectedCanvasNodeId,
+    selectedEdgeId,
+    shiftSelectedNodes,
+  ]);
+
+  const homeSurfaceActions = useHomeSurfaceActions({
+    setHomeTOCVisible,
+    updateHomeFormField,
+    handleInlineReferenceOpen,
+    handleDateOpen,
+    openAssetInThreadFromSource,
+    setEditorScrollTarget,
+    handleHomeDocumentTOCResizeMouseDown,
+    handleTOCNavigate,
+    homeThreadDocumentId: HOME_THREAD_DOCUMENT_ID,
+  });
+
+  const graphEmptyStateActions = useMemo(() => ({
+    setDragActive: graphCanvasSurfaceActions.setDragActive,
+    handleFilesDrop: graphCanvasSurfaceActions.handleFilesDrop,
+    createGraphDocument: graphCanvasOverlayActions.createGraphDocument,
+  }), [
+    graphCanvasOverlayActions,
+    graphCanvasSurfaceActions,
+  ]);
+
+  const settingsDialogActionRefs = useRef({
+    setSettingsDialogOpen,
+    setSettingsTab,
+    handleRebuildIndex,
+    handleWorkspaceDeregister,
+    handleAppearanceChange,
+    handleStopGUI,
+  });
+
+  settingsDialogActionRefs.current.setSettingsDialogOpen = setSettingsDialogOpen;
+  settingsDialogActionRefs.current.setSettingsTab = setSettingsTab;
+  settingsDialogActionRefs.current.handleRebuildIndex = handleRebuildIndex;
+  settingsDialogActionRefs.current.handleWorkspaceDeregister = handleWorkspaceDeregister;
+  settingsDialogActionRefs.current.handleAppearanceChange = handleAppearanceChange;
+  settingsDialogActionRefs.current.handleStopGUI = handleStopGUI;
+
+  const handleSettingsDialogOpenChange = useCallback((open: boolean) => {
+    settingsDialogActionRefs.current.setSettingsDialogOpen(open);
+  }, []);
+
+  const handleSettingsDialogTabChange = useCallback((tab: "general" | "theme" | "stop") => {
+    settingsDialogActionRefs.current.setSettingsTab(tab);
+  }, []);
+
+  const handleSettingsDialogRebuildIndex = useCallback(() => {
+    void settingsDialogActionRefs.current.handleRebuildIndex();
+  }, []);
+
+  const handleSettingsDialogDeregisterWorkspace = useCallback((workspacePath: string) => {
+    void settingsDialogActionRefs.current.handleWorkspaceDeregister(workspacePath);
+  }, []);
+
+  const handleSettingsDialogAppearanceChange = useCallback((appearance: "light" | "dark" | "system") => {
+    void settingsDialogActionRefs.current.handleAppearanceChange(appearance);
+  }, []);
+
+  const handleSettingsDialogStopGUI = useCallback(() => {
+    void settingsDialogActionRefs.current.handleStopGUI();
+  }, []);
+
+  const settingsDialogActions = useMemo(() => ({
+    setOpen: handleSettingsDialogOpenChange,
+    setTab: handleSettingsDialogTabChange,
+    rebuildIndex: handleSettingsDialogRebuildIndex,
+    deregisterWorkspace: handleSettingsDialogDeregisterWorkspace,
+    changeAppearance: handleSettingsDialogAppearanceChange,
+    stopGUI: handleSettingsDialogStopGUI,
+  }), [
+    handleSettingsDialogAppearanceChange,
+    handleSettingsDialogDeregisterWorkspace,
+    handleSettingsDialogOpenChange,
+    handleSettingsDialogRebuildIndex,
+    handleSettingsDialogStopGUI,
+    handleSettingsDialogTabChange,
+  ]);
+
+  const rightRailControlsActions = useRightRailControlsActions({
+    setSettingsDialogOpen,
+    toggleRightPanel,
+    handleSelectedNodeDocumentButtonClick,
+  });
+
+  const settingsDialogProps = useMemo(() => ({
+    open: settingsDialogOpen,
+    settingsTab,
+    workspace,
+    trackedLocalWorkspaces,
+    switchingWorkspace,
+    rebuildingIndex,
+    stoppingGUI,
+    appearance: normalizeAppearance(theme),
+    actions: settingsDialogActions,
+  }), [
+    rebuildingIndex,
+    settingsDialogActions,
+    settingsDialogOpen,
+    settingsTab,
+    stoppingGUI,
+    switchingWorkspace,
+    theme,
+    trackedLocalWorkspaces,
+    workspace,
+  ]);
+
+  const deleteDocumentDialogActionRefs = useRef({
+    setDeleteDialogOpen,
+    setDeleteDialogTarget,
+    handleDeleteDocument,
+  });
+
+  deleteDocumentDialogActionRefs.current.setDeleteDialogOpen = setDeleteDialogOpen;
+  deleteDocumentDialogActionRefs.current.setDeleteDialogTarget = setDeleteDialogTarget;
+  deleteDocumentDialogActionRefs.current.handleDeleteDocument = handleDeleteDocument;
+
+  const handleDeleteDocumentDialogOpenChange = useCallback((open: boolean) => {
+    deleteDocumentDialogActionRefs.current.setDeleteDialogOpen(open);
+    if (!open) {
+      deleteDocumentDialogActionRefs.current.setDeleteDialogTarget(null);
+    }
+  }, []);
+
+  const handleDeleteDocumentDialogCancel = useCallback(() => {
+    deleteDocumentDialogActionRefs.current.setDeleteDialogTarget(null);
+    deleteDocumentDialogActionRefs.current.setDeleteDialogOpen(false);
+  }, []);
+
+  const handleDeleteDocumentDialogConfirm = useCallback(() => {
+    deleteDocumentDialogActionRefs.current.setDeleteDialogOpen(false);
+    void deleteDocumentDialogActionRefs.current.handleDeleteDocument();
+  }, []);
+
+  const deleteDocumentDialogActions = useMemo(() => ({
+    setOpen: handleDeleteDocumentDialogOpenChange,
+    cancel: handleDeleteDocumentDialogCancel,
+    confirm: handleDeleteDocumentDialogConfirm,
+  }), [
+    handleDeleteDocumentDialogCancel,
+    handleDeleteDocumentDialogConfirm,
+    handleDeleteDocumentDialogOpenChange,
+  ]);
+
+  const createNodeDialogActionRefs = useRef({
+    setCreateNodeDialog,
+    setCreateNodeFileName,
+    setCreateNodeFileNameError,
+    handleConfirmCreateNode,
+  });
+
+  createNodeDialogActionRefs.current.setCreateNodeDialog = setCreateNodeDialog;
+  createNodeDialogActionRefs.current.setCreateNodeFileName = setCreateNodeFileName;
+  createNodeDialogActionRefs.current.setCreateNodeFileNameError = setCreateNodeFileNameError;
+  createNodeDialogActionRefs.current.handleConfirmCreateNode = handleConfirmCreateNode;
+
+  const handleCreateNodeDialogOpenChange = useCallback((open: boolean) => {
+    if (!open) {
+      createNodeDialogActionRefs.current.setCreateNodeDialog(null);
+    }
+  }, []);
+
+  const handleCreateNodeDialogFileNameChange = useCallback((value: string) => {
+    createNodeDialogActionRefs.current.setCreateNodeFileName(value);
+    createNodeDialogActionRefs.current.setCreateNodeFileNameError("");
+  }, []);
+
+  const handleCreateNodeDialogCancel = useCallback(() => {
+    createNodeDialogActionRefs.current.setCreateNodeDialog(null);
+  }, []);
+
+  const handleCreateNodeDialogConfirm = useCallback(() => {
+    void createNodeDialogActionRefs.current.handleConfirmCreateNode();
+  }, []);
+
+  const createNodeDialogActions = useMemo(() => ({
+    setOpen: handleCreateNodeDialogOpenChange,
+    setFileName: handleCreateNodeDialogFileNameChange,
+    cancel: handleCreateNodeDialogCancel,
+    confirm: handleCreateNodeDialogConfirm,
+  }), [
+    handleCreateNodeDialogCancel,
+    handleCreateNodeDialogConfirm,
+    handleCreateNodeDialogFileNameChange,
+    handleCreateNodeDialogOpenChange,
+  ]);
+
+  const renameDialogActionRefs = useRef({
+    setRenameDialog,
+    setRenameValue,
+    setRenameError,
+    handleConfirmRename,
+  });
+
+  renameDialogActionRefs.current.setRenameDialog = setRenameDialog;
+  renameDialogActionRefs.current.setRenameValue = setRenameValue;
+  renameDialogActionRefs.current.setRenameError = setRenameError;
+  renameDialogActionRefs.current.handleConfirmRename = handleConfirmRename;
+
+  const handleRenameDialogOpenChange = useCallback((open: boolean) => {
+    if (!open) {
+      renameDialogActionRefs.current.setRenameDialog(null);
+    }
+  }, []);
+
+  const handleRenameDialogValueChange = useCallback((value: string) => {
+    renameDialogActionRefs.current.setRenameValue(value);
+    renameDialogActionRefs.current.setRenameError("");
+  }, []);
+
+  const handleRenameDialogCancel = useCallback(() => {
+    renameDialogActionRefs.current.setRenameDialog(null);
+  }, []);
+
+  const handleRenameDialogConfirm = useCallback(() => {
+    void renameDialogActionRefs.current.handleConfirmRename();
+  }, []);
+
+  const renameDialogActions = useMemo(() => ({
+    setOpen: handleRenameDialogOpenChange,
+    setValue: handleRenameDialogValueChange,
+    cancel: handleRenameDialogCancel,
+    confirm: handleRenameDialogConfirm,
+  }), [
+    handleRenameDialogCancel,
+    handleRenameDialogConfirm,
+    handleRenameDialogOpenChange,
+    handleRenameDialogValueChange,
+  ]);
+
   if (loading) {
     return (
       <main className="app-shell app-shell-loading">
@@ -3201,448 +3561,47 @@ function FlowApp() {
   }
 
   const renderCenterDocumentShell = (isMaximizedRightRail: boolean) => (
-    <div className="center-document-shell" data-thread-expanded={threadExpanded ? "true" : "false"}>
-      {panelError !== "" ? <p className="status-line status-line-error">{panelError}</p> : null}
-      {mutationError !== "" ? <p className="status-line status-line-error">{mutationError}</p> : null}
-      {mutationSuccess !== "" ? <p className="status-line status-line-success">{mutationSuccess}</p> : null}
-
-      {threadPanels.length === 0 ? (
-        <div className="detail-empty">
-          <p>Loading document content.</p>
-        </div>
-      ) : (
-        <div
-          ref={threadStackRef}
-          className="thread-stack"
-          data-density={threadDensityMode}
-          data-multi-thread={threadPanels.length > 1 ? "true" : "false"}
-          aria-label="Document thread"
-        >
-          {threadPanels.map((panel, index) => {
-            const panelIsHome = panel.documentId === HOME_THREAD_DOCUMENT_ID;
-            const panelDocument = panel.document;
-            const panelAsset = threadAssetsById[panel.documentId] ?? null;
-            const panelTitle = panelIsHome
-              ? homeFormState.title
-              : panelAsset !== null
-                ? panelAsset.name
-                : panel.isActive ? formState.title : panelDocument?.title ?? panel.documentId;
-            const panelDescription = panelIsHome
-              ? homeFormState.description
-              : panelAsset !== null
-                ? panelAsset.kind === "pdf" ? "PDF document" : "Text file"
-                : panel.isActive ? formState.description : panelDocument?.description ?? "";
-            const panelDocumentIsLoading = !panelIsHome && panelAsset === null && panel.isActive && isSelectedDocumentLoading && selectedDocumentId === panel.documentId;
-
-            const panelKey = `${panel.documentId}:${index}`;
-            const panelCustomWidth = threadPanelWidths[panelKey];
-            const panelGraphColor = panelIsHome
-              ? undefined
-              : graphDirectoryColorHex(resolveGraphDirectoryColor(panel.graphPath, graphDirectoryColorsByPath));
-            const threadPanelStyle = {
-              ...(panelCustomWidth !== undefined ? { "--thread-panel-width": `${panelCustomWidth}px` } : {}),
-              ...(panelGraphColor !== undefined ? { "--thread-graph-color": panelGraphColor } : {}),
-            } as React.CSSProperties;
-
-            return (
-              <section
-                key={`${panel.documentId}:${index}`}
-                className={`thread-panel ${panel.isActive ? "thread-panel-active" : "thread-panel-readonly"} ${panelGraphColor ? "thread-panel-tinted" : ""}`}
-                aria-label={panel.isActive ? `Active thread document ${panelTitle}` : `Thread document ${panelTitle}`}
-                data-active={panel.isActive ? "true" : "false"}
-                data-thread-panel-key={panelKey}
-                style={threadPanelStyle}
-                onClick={(event) => {
-                  if (panel.isActive) {
-                    return;
-                  }
-                  const target = event.target;
-                  if (!(target instanceof HTMLElement)) {
-                    return;
-                  }
-                  if (target.closest("button") !== null || target.closest("a") !== null) {
-                    return;
-                  }
-                  void activateThreadDocument(panel.documentId, panel.graphPath);
-                }}
-              >
-                <div className="thread-panel-header">
-                  <div className="thread-panel-header-leading">
-                    {panelIsHome ? (
-                      <Badge variant="outline" className="center-document-type-badge">Home</Badge>
-                    ) : panelAsset !== null ? (
-                      <Badge variant="outline" className="center-document-type-badge">{panelAsset.kind === "pdf" ? "PDF" : "Text"}</Badge>
-                    ) : panelDocument !== null ? (
-                      <Badge variant="outline" className="center-document-type-badge">{formatDocumentType(panelDocument.type)}</Badge>
-                    ) : null}
-                  </div>
-                  <div className="thread-panel-header-actions">
-                    {panel.isActive ? (
-                      <>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`Switch to ${nextThreadDensityLabel} thread density`}
-                          title={`Switch to ${nextThreadDensityLabel} thread density`}
-                          onClick={() => setThreadDensityMode(nextThreadDensityMode)}
-                        >
-                          <Rows3 size={16} />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={threadExpanded ? "Restore thread width" : "Expand thread to full width"}
-                          title={threadExpanded ? "Restore thread width" : "Expand thread to full width"}
-                          onClick={() => toggleThreadExpanded()}
-                        >
-                          {threadExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label="Previous thread panel"
-                          title="Previous thread panel (Alt + Left)"
-                          disabled={activeThreadPanelIndex <= 0}
-                          onClick={() => moveThreadFocus(-1)}
-                        >
-                          <ChevronLeft size={16} />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label="Next thread panel"
-                          title="Next thread panel (Alt + Right)"
-                          disabled={activeThreadPanelIndex < 0 || activeThreadPanelIndex >= threadPanels.length - 1}
-                          onClick={() => moveThreadFocus(1)}
-                        >
-                          <ChevronRight size={16} />
-                        </Button>
-                        {panelIsHome ? <>{savingHome && <span className="home-save-success">Saving…</span>}</> : (
-                          <>
-                            {savingDocument && <span className="home-save-success">Saving…</span>}
-                            {panelAsset === null && (
-                              <>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  className="center-document-toolbar-toggle"
-                                  data-active={centerDocumentSidePanelMode === "toc" ? "true" : "false"}
-                                  aria-label="Toggle table of contents"
-                                  aria-pressed={centerDocumentSidePanelMode === "toc"}
-                                  title="Toggle table of contents"
-                                  onClick={() => toggleCenterDocumentSidePanel("toc")}
-                                >
-                                  <FileText size={16} />
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  className="center-document-toolbar-toggle"
-                                  data-active={centerDocumentSidePanelMode === "properties" ? "true" : "false"}
-                                  aria-label="Toggle document properties"
-                                  aria-pressed={centerDocumentSidePanelMode === "properties"}
-                                  title="Toggle document properties"
-                                  onClick={() => toggleCenterDocumentSidePanel("properties")}
-                                >
-                                  <Info size={16} />
-                                </Button>
-                              </>
-                            )}
-                          </>
-                        )}
-                        {isMaximizedRightRail && (
-                          <Button
-                            onClick={() => toggleRightRailMaximized()}
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label="Minimize right pane"
-                            title="Minimize right pane"
-                          >
-                            <Minimize2 size={16} />
-                          </Button>
-                        )}
-                      </>
-                    ) : null}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Close thread from ${panelTitle || panel.documentId}`}
-                      title="Close thread"
-                      onClick={() => void closeDocumentThreadFrom(index)}
-                    >
-                      <X size={16} />
-                    </Button>
-                  </div>
-                </div>
-
-                {panel.isActive && panelDocumentIsLoading ? (
-                  <div className="detail-empty thread-panel-loading">
-                    <p>Loading document content.</p>
-                  </div>
-                ) : panel.isActive && panelIsHome ? (
-                  <div className="thread-panel-shell thread-panel-shell-home">
-                    <div className="thread-panel-title-block">
-                      <input
-                        className="center-document-toolbar-title"
-                        placeholder="Home title"
-                        value={homeFormState.title}
-                        onChange={(event) => updateHomeFormField("title", event.target.value)}
-                        aria-label="Home title"
-                      />
-                    </div>
-                    <div className="center-document-main home-document home-thread-main">
-                      <div className="home-document-body center-document-body home-thread-body">
-                        <RichTextEditor
-                          ariaLabel="Home body editor"
-                          className="home-editor"
-                          inlineReferences={graphTree?.home.inlineReferences}
-                          onChange={(value) => updateHomeFormField("body", value)}
-                          onReferenceOpen={(documentId, graphPath) => handleInlineReferenceOpen(HOME_THREAD_DOCUMENT_ID, documentId, graphPath, "center")}
-                          onDateOpen={handleDateOpen}
-                          onAssetOpenInThread={(assetHref, assetName, kind) => {
-                            void openAssetInThreadFromSource(HOME_THREAD_DOCUMENT_ID, "", assetHref, assetName, kind);
-                          }}
-                          onScrollCompleted={() => setEditorScrollTarget(null)}
-                          placeholder="Start writing…"
-                          scrollToHeadingSlug={editorScrollTarget}
-                          value={homeFormState.body}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ) : panel.isActive ? (
-                  panelAsset !== null ? (
-                    <div className="thread-panel-shell thread-panel-shell-readonly thread-panel-shell-asset">
-                      <div className="thread-panel-title-block">
-                        <h2 className="thread-panel-title">{panelTitle}</h2>
-                        {panelDescription.trim() !== "" ? <p className="thread-panel-description">{panelDescription}</p> : null}
-                      </div>
-                      <div className="thread-panel-asset-body">
-                        <iframe
-                          src={panelAsset.kind === "pdf" ? `${panelAsset.href}#page=1&view=FitH` : panelAsset.href}
-                          title={panelAsset.name}
-                          className="thread-panel-asset-frame"
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                  <div className="thread-panel-shell">
-                    <div className="thread-panel-title-block">
-                      <input
-                        className="center-document-toolbar-title"
-                        placeholder="Document title"
-                        value={formState.title}
-                        onChange={(event) => updateFormField("title", event.target.value)}
-                        aria-label="Document title"
-                      />
-                    </div>
-
-                    <div
-                      ref={centerDocumentLayoutRef}
-                      className="center-document-layout"
-                      aria-label="Document content layout"
-                      data-side-panel={centerDocumentSidePanelMode}
-                      style={{ "--document-toc-ratio": documentTOCRatio.toString() } as React.CSSProperties}
-                    >
-                      <div className="center-document-main home-document">
-                        <div className="home-document-body center-document-body">
-                          <RichTextEditor
-                            ariaLabel="Document body editor"
-                            inlineReferences={selectedDocument?.inlineReferences}
-                            onChange={(value) => updateFormField("body", value)}
-                            onReferenceOpen={(documentId, graphPath) => handleInlineReferenceOpen(panel.documentId, documentId, graphPath, "center")}
-                            onDateOpen={handleDateOpen}
-                            onAssetOpenInThread={(assetHref, assetName, kind) => {
-                              void openAssetInThreadFromSource(panel.documentId, panel.graphPath, assetHref, assetName, kind);
-                            }}
-                            ref={centerDocumentEditorRef}
-                            onScrollCompleted={() => setEditorScrollTarget(null)}
-                            placeholder="Type / for headings, lists, quotes, links, and highlights"
-                            scrollToHeadingSlug={editorScrollTarget}
-                            value={formState.body}
-                          />
-                        </div>
-                      </div>
-
-                      {showCenterDocumentSidePanel && selectedDocument !== null ? (
-                        <>
-                          <div
-                            className="center-document-toc-resizer"
-                            onMouseDown={handleDocumentTOCResizeMouseDown}
-                            role="separator"
-                            aria-label={centerDocumentSidePanelResizerLabel}
-                            aria-orientation="vertical"
-                          />
-
-                          <aside className="center-document-side-panel" aria-label={centerDocumentSidePanelLabel}>
-                            <div className="center-document-toc-header center-document-side-panel-header">
-                              <h4>{centerDocumentSidePanelTitle}</h4>
-                              <p>{centerDocumentSidePanelDescription}</p>
-                            </div>
-
-                            {centerDocumentSidePanelMode === "toc" ? (
-                              <TableOfContents items={tocItems} onNavigate={handleTOCNavigate} />
-                            ) : (
-                              <DocumentPropertiesPanel
-                                selectedDocument={selectedDocument}
-                                formState={formState}
-                                linkStats={selectedDocumentLinks}
-                                editableOutgoingLinks={editableOutgoingLinks}
-                                availableLinkTargets={availableLinkTargets}
-                                onAddOutgoingLink={addOutgoingLink}
-                                onRemoveOutgoingLink={removeOutgoingLink}
-                                onUpdateLinkDetail={updateEditableLinkDetail}
-                                updateFormField={updateFormField}
-                              />
-                            )}
-                          </aside>
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-                  )
-                ) : panelIsHome ? (
-                  <div className="thread-panel-shell thread-panel-shell-readonly">
-                    <div className="thread-panel-title-block">
-                      <h2 className="thread-panel-title">{panelTitle}</h2>
-                      {panelDescription.trim() !== "" ? <p className="thread-panel-description">{panelDescription}</p> : null}
-                    </div>
-                    <div
-                      className="thread-panel-readonly-body thread-panel-readonly-body-home"
-                      onClickCapture={(event) => {
-                        const target = event.target;
-                        if (!(target instanceof HTMLElement)) {
-                          return;
-                        }
-
-                        const anchor = target.closest("a");
-                        if (!(anchor instanceof HTMLAnchorElement)) {
-                          return;
-                        }
-
-                        const href = anchor.getAttribute("href") ?? anchor.href;
-
-                        const dateResult = parseFlowDateHref(href);
-                        if (dateResult !== null) {
-                          event.preventDefault();
-                          handleDateOpen(dateResult.date);
-                          return;
-                        }
-
-                        const reference = parseFlowReferenceHref(href);
-                        if (reference === null) {
-                          const asset = parseFlowAssetHref(href);
-                          if (asset !== null && (event.metaKey || event.ctrlKey) && asset.isThreadViewable && asset.threadKind !== null) {
-                            event.preventDefault();
-                            void openAssetInThreadFromSource(HOME_THREAD_DOCUMENT_ID, "", asset.href, asset.name, asset.threadKind);
-                          }
-                          return;
-                        }
-
-                        event.preventDefault();
-                        void handleInlineReferenceOpen(HOME_THREAD_DOCUMENT_ID, reference.documentId, reference.graphPath, "center");
-                      }}
-                    >
-                      <div
-                        className="ProseMirror thread-panel-rendered-markdown"
-                        aria-label="Thread panel content for Home"
-                        dangerouslySetInnerHTML={{ __html: markdownToHTML(homeFormState.body, graphTree?.home.inlineReferences) }}
-                      />
-                    </div>
-                  </div>
-                ) : panelAsset !== null ? (
-                  <div className="thread-panel-shell thread-panel-shell-readonly thread-panel-shell-asset">
-                    <div className="thread-panel-title-block">
-                      <h2 className="thread-panel-title">{panelTitle}</h2>
-                      {panelDescription.trim() !== "" ? <p className="thread-panel-description">{panelDescription}</p> : null}
-                    </div>
-                    <div className="thread-panel-asset-body">
-                      <iframe
-                        src={panelAsset.kind === "pdf" ? `${panelAsset.href}#page=1&view=FitH` : panelAsset.href}
-                        title={panelAsset.name}
-                        className="thread-panel-asset-frame"
-                      />
-                    </div>
-                  </div>
-                ) : panelDocument === null ? (
-                  <div className="detail-empty thread-panel-loading">
-                    <p>Loading document content.</p>
-                  </div>
-                ) : (
-                  <div className="thread-panel-shell thread-panel-shell-readonly">
-                    <div className="thread-panel-title-block">
-                      <h2 className="thread-panel-title">{panelTitle}</h2>
-                      {panelDescription.trim() !== "" ? <p className="thread-panel-description">{panelDescription}</p> : null}
-                    </div>
-                    <div
-                      className="thread-panel-readonly-body"
-                      onClickCapture={(event) => {
-                        const target = event.target;
-                        if (!(target instanceof HTMLElement)) {
-                          return;
-                        }
-
-                        const anchor = target.closest("a");
-                        if (!(anchor instanceof HTMLAnchorElement)) {
-                          return;
-                        }
-
-                        const href = anchor.getAttribute("href") ?? anchor.href;
-
-                        const dateResult = parseFlowDateHref(href);
-                        if (dateResult !== null) {
-                          event.preventDefault();
-                          handleDateOpen(dateResult.date);
-                          return;
-                        }
-
-                        const reference = parseFlowReferenceHref(href);
-                        if (reference === null) {
-                          const asset = parseFlowAssetHref(href);
-                          if (asset !== null && (event.metaKey || event.ctrlKey) && asset.isThreadViewable && asset.threadKind !== null) {
-                            event.preventDefault();
-                            void openAssetInThreadFromSource(panel.documentId, panel.graphPath, asset.href, asset.name, asset.threadKind);
-                          }
-                          return;
-                        }
-
-                        event.preventDefault();
-                        void handleInlineReferenceOpen(panel.documentId, reference.documentId, reference.graphPath, "center");
-                      }}
-                    >
-                      <div
-                        className="ProseMirror thread-panel-rendered-markdown"
-                        aria-label={`Thread panel content for ${panelTitle}`}
-                        dangerouslySetInnerHTML={{ __html: markdownToHTML(panelDocument.body, panelDocument.inlineReferences) }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <div
-                  className="thread-panel-resize-handle"
-                  role="separator"
-                  aria-label="Resize thread panel"
-                  aria-orientation="vertical"
-                  onMouseDown={(event) => {
-                    const panelElement = event.currentTarget.closest(".thread-panel");
-                    beginThreadPanelResize(event, panelElement instanceof HTMLElement ? panelElement : null, panelKey);
-                  }}
-                />
-              </section>
-            );
-          })}
-        </div>
-      )}
-    </div>
+    <ThreadPanelStack
+      panelError={panelError}
+      mutationError={mutationError}
+      mutationSuccess={mutationSuccess}
+      isMaximizedRightRail={isMaximizedRightRail}
+      threadExpanded={threadExpanded}
+      threadDensityMode={threadDensityMode}
+      nextThreadDensityLabel={nextThreadDensityLabel}
+      nextThreadDensityMode={nextThreadDensityMode}
+      threadPanels={threadPanels}
+      activeThreadPanelIndex={activeThreadPanelIndex}
+      threadStackRef={threadStackRef}
+      threadPanelWidths={threadPanelWidths}
+      graphDirectoryColorsByPath={graphDirectoryColorsByPath}
+      threadAssetsById={threadAssetsById}
+      homeThreadDocumentId={HOME_THREAD_DOCUMENT_ID}
+      homeFormState={homeFormState}
+      homeInlineReferences={graphTree?.home.inlineReferences}
+      formState={formState}
+      selectedDocument={selectedDocument}
+      selectedDocumentId={selectedDocumentId}
+      selectedDocumentInlineReferences={selectedDocument?.inlineReferences}
+      isSelectedDocumentLoading={isSelectedDocumentLoading}
+      savingHome={savingHome}
+      savingDocument={savingDocument}
+      centerDocumentLayoutRef={centerDocumentLayoutRef}
+      centerDocumentEditorRef={centerDocumentEditorRef}
+      centerDocumentSidePanelMode={centerDocumentSidePanelMode}
+      showCenterDocumentSidePanel={showCenterDocumentSidePanel}
+      centerDocumentSidePanelLabel={centerDocumentSidePanelLabel}
+      centerDocumentSidePanelTitle={centerDocumentSidePanelTitle}
+      centerDocumentSidePanelDescription={centerDocumentSidePanelDescription}
+      centerDocumentSidePanelResizerLabel={centerDocumentSidePanelResizerLabel}
+      documentTOCRatio={documentTOCRatio}
+      tocItems={tocItems}
+      selectedDocumentLinks={selectedDocumentLinks}
+      editableOutgoingLinks={editableOutgoingLinks}
+      availableLinkTargets={availableLinkTargets}
+      editorScrollTarget={editorScrollTarget}
+      actions={threadPanelActions}
+    />
   );
 
   return (
@@ -3653,46 +3612,8 @@ function FlowApp() {
       {error !== "" ? <p className="status-line status-line-error">{error}</p> : null}
       <AppSidebar
         onResizeMouseDown={handleLeftSidebarMouseDown}
-        topContent={workspace?.workspaceSelectionEnabled ? (
-          <div className="flex flex-col gap-2 px-2 pb-2">
-            <Label htmlFor="sidebar-workspace-select" className="flex items-center gap-2">
-              <GalleryVerticalEnd size={14} />
-              <span>Workspace</span>
-            </Label>
-            <select
-              id="sidebar-workspace-select"
-              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
-              value={workspace.workspacePath}
-              onChange={(event) => {
-                void handleWorkspaceSelection(event.target.value);
-              }}
-              disabled={switchingWorkspace}
-            >
-              {(workspace.workspaces ?? [{ scope: workspace.scope, workspacePath: workspace.workspacePath }]).map((item) => (
-                <option key={`${item.scope}:${item.workspacePath}`} value={item.workspacePath}>
-                  {item.scope === "global" ? `* ${item.workspacePath}` : item.workspacePath}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
-        navigationContent={(
-          <GraphTree
-            graphTree={graphTree}
-            activeSurface={activeSurface}
-            selectedDocumentId={selectedDocumentId}
-            onSelectHome={handleSelectHome}
-            onSelectGraph={handleSelectGraph}
-            onOpenDocument={(documentId, graphPath) => handleSelectDocument(documentId, graphPath)}
-            onCreateGraph={(name) => void handleSidebarCreateGraph(name)}
-            onCreateNode={(graphPath, type) => void handleSidebarCreateNode(graphPath, type)}
-            onRenameGraph={handleSidebarRenameGraph}
-            onRenameNode={handleSidebarRenameNode}
-            onDeleteNode={handleSidebarDeleteNode}
-            onDeleteGraph={(graphPath) => void handleSidebarDeleteGraph(graphPath)}
-            onSetGraphColor={(graphPath, color) => void handleSidebarSetGraphColor(graphPath, color)}
-          />
-        )}
+        topContent={<WorkspaceSelectorPanel workspace={workspace} switchingWorkspace={switchingWorkspace} actions={sidebarNavigationActions} />}
+        navigationContent={<GraphTreePanel graphTree={graphTree} activeSurface={activeSurface} selectedDocumentId={selectedDocumentId} actions={sidebarNavigationActions} />}
       />
       <SidebarInset>
         <header className="workspace-shell-header">
@@ -3720,143 +3641,32 @@ function FlowApp() {
               </Breadcrumb>
             </div>
           </header>
-
-          <Dialog open={deleteDialogOpen} onOpenChange={(open) => {
-            setDeleteDialogOpen(open);
-            if (!open) {
-              setDeleteDialogTarget(null);
-            }
-          }}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Delete document?</DialogTitle>
-                <DialogDescription>
-                  {deleteDialogTarget === null
-                    ? "This removes the selected document from the workspace."
-                    : `This removes ${deleteDialogTarget.title} from the workspace.`}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="shell-dialog-actions">
-                <Button onClick={() => { setDeleteDialogTarget(null); setDeleteDialogOpen(false); }} type="button" variant="secondary">
-                  Cancel
-                </Button>
-                <Button
-                  disabled={savingDocument || deletingDocument || deleteDialogTarget === null}
-                  onClick={() => {
-                    setDeleteDialogOpen(false);
-                    void handleDeleteDocument();
-                  }}
-                  type="button"
-                  variant="destructive"
-                >
-                  {deletingDocument ? "Deleting..." : "Delete document"}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+          <DeleteDocumentDialog
+            open={deleteDialogOpen}
+            target={deleteDialogTarget}
+            savingDocument={savingDocument}
+            deletingDocument={deletingDocument}
+            actions={deleteDocumentDialogActions}
+          />
 
           <div className="workspace-shell-body">
         <section className="middle-shell">
           {isThreadStackOpen ? (
             renderCenterDocumentShell(false)
           ) : activeSurface.kind === "home" ? (
-            <div className="home-surface">
-              {homeMutationError !== "" && <p className="status-line status-line-error home-status-message">{homeMutationError}</p>}
-              <div className="home-surface-toolbar">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="center-document-toolbar-toggle"
-                  data-active={homeTOCVisible ? "true" : "false"}
-                  aria-label={homeTOCVisible ? "Hide table of contents" : "Show table of contents"}
-                  aria-pressed={homeTOCVisible}
-                  title={homeTOCVisible ? "Hide table of contents" : "Show table of contents"}
-                  onClick={() => setHomeTOCVisible((current) => !current)}
-                >
-                  <FileText size={16} />
-                </Button>
-              </div>
-              {showFreshStartGuide && (
-                <section className="fresh-start-panel shell-inner-card" aria-label="Fresh workspace guide">
-                  <div className="fresh-start-copy">
-                    <p className="section-kicker">Fresh Workspace</p>
-                    <h3>Start with Home or create your first graph.</h3>
-                    <p>
-                      The app is loaded. This workspace is just pristine: Home only contains its default heading, and there are no graph documents yet.
-                    </p>
-                    <ul className="fresh-start-list">
-                      <li>Use the add button in the Content section to create your first graph or directory.</li>
-                      <li>Write project context directly in Home below.</li>
-                      <li>Once a graph has files, it will appear in the left tree with its documents underneath.</li>
-                    </ul>
-                  </div>
-                </section>
-              )}
-              <div
-                ref={homeDocumentLayoutRef}
-                className="home-document-layout center-document-layout"
-                aria-label="Home content layout"
-                data-side-panel={homeTOCVisible ? "toc" : "hidden"}
-                style={{ "--document-toc-ratio": documentTOCRatio.toString() } as React.CSSProperties}
-              >
-                <div className="center-document-main">
-                  <RichTextEditor
-                    ariaLabel="Home body editor"
-                    className="home-editor"
-                    inlineReferences={graphTree?.home.inlineReferences}
-                    ref={homeDocumentEditorRef}
-                    onChange={(value) => updateHomeFormField("body", value)}
-                    onReferenceOpen={(documentId, graphPath) => handleInlineReferenceOpen(HOME_THREAD_DOCUMENT_ID, documentId, graphPath, "center")}
-                    onDateOpen={handleDateOpen}
-                    onAssetOpenInThread={(assetHref, assetName, kind) => {
-                      void openAssetInThreadFromSource(HOME_THREAD_DOCUMENT_ID, "", assetHref, assetName, kind);
-                    }}
-                    onScrollCompleted={() => setEditorScrollTarget(null)}
-                    placeholder="Start writing…"
-                    scrollToHeadingSlug={editorScrollTarget}
-                    value={homeFormState.body}
-                  />
-                </div>
-
-                {homeTOCVisible ? (
-                  <>
-                    <div
-                      className="center-document-toc-resizer"
-                      onMouseDown={handleHomeDocumentTOCResizeMouseDown}
-                      role="separator"
-                      aria-label="Resize table of contents"
-                      aria-orientation="vertical"
-                    />
-
-                    <aside className="center-document-toc" aria-label="Document table of contents">
-                      <div className="center-document-toc-header">
-                        <h4>Table of Contents</h4>
-                      </div>
-                      {tocItems.length > 0 ? (
-                        <nav className="toc-nav">
-                          <ul className="toc-list">
-                            {tocItems.map((item, index) => (
-                              <li key={index} className={`toc-item toc-level-${item.level}`} style={{ marginLeft: `${(item.level - 1) * 1}rem` }}>
-                                <button
-                                  type="button"
-                                  className="toc-link"
-                                  onClick={() => handleTOCNavigate(item.id)}
-                                >
-                                  {item.text}
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        </nav>
-                      ) : (
-                        <p className="empty-state-inline">No headings yet.</p>
-                      )}
-                    </aside>
-                  </>
-                ) : null}
-              </div>
-            </div>
+            <HomeSurface
+              homeMutationError={homeMutationError}
+              homeTOCVisible={homeTOCVisible}
+              showFreshStartGuide={showFreshStartGuide}
+              homeDocumentLayoutRef={homeDocumentLayoutRef}
+              homeDocumentEditorRef={homeDocumentEditorRef}
+              documentTOCRatio={documentTOCRatio}
+              homeInlineReferences={graphTree?.home.inlineReferences}
+              editorScrollTarget={editorScrollTarget}
+              homeFormState={homeFormState}
+              tocItems={tocItems}
+              actions={homeSurfaceActions}
+            />
           ) : (
             <div className="graph-canvas-outer">
                     {graphCanvasError !== "" ? (
@@ -3868,281 +3678,38 @@ function FlowApp() {
                         <p>Loading graph canvas nodes and projected edges.</p>
                       </div>
                     ) : graphCanvasData !== null && graphCanvasData.nodes.length === 0 ? (
-                      <section
-                        className={`graph-empty-state shell-inner-card${graphCanvasDragActive ? " graph-canvas-shell-dragover" : ""}`}
-                        onDragEnter={(event) => {
-                          event.preventDefault();
-                          if (selectedGraphPath !== "") {
-                            setGraphCanvasDragActive(true);
-                          }
-                        }}
-                        onDragOver={(event) => {
-                          event.preventDefault();
-                          event.dataTransfer.dropEffect = "copy";
-                          if (selectedGraphPath !== "") {
-                            setGraphCanvasDragActive(true);
-                          }
-                        }}
-                        onDragLeave={(event) => {
-                          event.preventDefault();
-                          const related = event.relatedTarget;
-                          if (related instanceof HTMLElement && event.currentTarget.contains(related)) {
-                            return;
-                          }
-                          setGraphCanvasDragActive(false);
-                        }}
-                        onDrop={(event) => {
-                          event.preventDefault();
-                          setGraphCanvasDragActive(false);
-                          if (selectedGraphPath === "") {
-                            return;
-                          }
-                          const files = event.dataTransfer.files;
-                          if (!files || files.length === 0) {
-                            return;
-                          }
-                          void handleGraphCanvasFilesDrop(files);
-                        }}
-                      >
-                        <div className="graph-empty-state-copy">
-                          <p className="section-kicker">Empty Graph</p>
-                          <h3>Start this canvas with the first document.</h3>
-                          <p>
-                            Create a note, task, or command directly in <strong>{selectedGraphPath}</strong>. The new document will open in the
-                            right pane immediately.
-                          </p>
-                        </div>
-
-                        {graphCreateError !== "" ? <p className="status-line status-line-error">{graphCreateError}</p> : null}
-
-                        <div className="graph-create-grid">
-                          <button
-                            className="graph-create-action graph-create-action-note"
-                            onClick={() => void handleCreateGraphDocument("note")}
-                            disabled={graphCreatePendingType !== ""}
-                            type="button"
-                          >
-                            <span className="graph-create-action-type">Note</span>
-                            <strong>Capture context</strong>
-                            <span>Start a knowledge card for design details, links, or working notes.</span>
-                          </button>
-                          <button
-                            className="graph-create-action graph-create-action-task"
-                            onClick={() => void handleCreateGraphDocument("task")}
-                            disabled={graphCreatePendingType !== ""}
-                            type="button"
-                          >
-                            <span className="graph-create-action-type">Task</span>
-                            <strong>Define work</strong>
-                            <span>Drop in a dependency-ready task and refine status, links, and body in the editor.</span>
-                          </button>
-                          <button
-                            className="graph-create-action graph-create-action-command"
-                            onClick={() => void handleCreateGraphDocument("command")}
-                            disabled={graphCreatePendingType !== ""}
-                            type="button"
-                          >
-                            <span className="graph-create-action-type">Command</span>
-                            <strong>Add execution</strong>
-                            <span>Seed a runnable command document with a placeholder name and shell step.</span>
-                          </button>
-                        </div>
-
-                        {graphCreatePendingType !== "" ? <p className="empty-state-inline">Creating {graphCreatePendingType}...</p> : null}
-                      </section>
+                      <GraphEmptyState
+                        selectedGraphPath={selectedGraphPath}
+                        graphCanvasDragActive={graphCanvasDragActive}
+                        graphCreateError={graphCreateError}
+                        graphCreatePendingType={graphCreatePendingType}
+                        actions={graphEmptyStateActions}
+                      />
                     ) : graphCanvasData === null ? (
                       <div className="detail-empty shell-inner-card">
                         <p>Graph canvas data is not available yet.</p>
                       </div>
                     ) : (
-                      <div
-                        ref={graphCanvasShellRef}
-                        className={`graph-canvas-shell${connectingFrom !== null ? " canvas-connecting-mode" : ""}${graphCanvasDragActive ? " graph-canvas-shell-dragover" : ""}`}
-                        onDragEnter={(event) => {
-                          event.preventDefault();
-                          if (selectedGraphPath !== "") {
-                            setGraphCanvasDragActive(true);
-                          }
-                        }}
-                        onDragOver={(event) => {
-                          event.preventDefault();
-                          event.dataTransfer.dropEffect = "copy";
-                          if (selectedGraphPath !== "") {
-                            setGraphCanvasDragActive(true);
-                          }
-                        }}
-                        onDragLeave={(event) => {
-                          event.preventDefault();
-                          const related = event.relatedTarget;
-                          if (related instanceof HTMLElement && event.currentTarget.contains(related)) {
-                            return;
-                          }
-                          setGraphCanvasDragActive(false);
-                        }}
-                        onDrop={(event) => {
-                          event.preventDefault();
-                          setGraphCanvasDragActive(false);
-                          if (selectedGraphPath === "") {
-                            return;
-                          }
-                          const files = event.dataTransfer.files;
-                          if (!files || files.length === 0) {
-                            return;
-                          }
-                          void handleGraphCanvasFilesDrop(files);
-                        }}
-                      >
-                        <div className="graph-canvas-toolbar">
-                          <div className="graph-canvas-node-search" role="search" aria-label="Graph canvas node search">
-                            <Search size={14} aria-hidden="true" />
-                            <Input
-                              type="search"
-                              value={graphCanvasNodeSearchTerm}
-                              onChange={(event) => {
-                                setGraphCanvasNodeSearchTerm(event.target.value);
-                                setGraphCanvasNodeSearchIndex(0);
-                              }}
-                              onKeyDown={(event) => {
-                                if (event.key === "ArrowDown") {
-                                  event.preventDefault();
-                                  handleGraphCanvasSearchNext();
-                                  return;
-                                }
-
-                                if (event.key === "ArrowUp") {
-                                  event.preventDefault();
-                                  handleGraphCanvasSearchPrevious();
-                                  return;
-                                }
-
-                                if (event.key === "Enter") {
-                                  event.preventDefault();
-                                  if (event.shiftKey) {
-                                    handleGraphCanvasSearchPrevious();
-                                    return;
-                                  }
-                                  handleGraphCanvasSearchNext();
-                                }
-                              }}
-                              placeholder="Search nodes by title"
-                              aria-label="Search graph nodes"
-                              className="graph-canvas-node-search-input"
-                            />
-                            <span className="graph-canvas-node-search-count" aria-live="polite">
-                              {graphCanvasNodeSearchHasMatches
-                                ? `${Math.max(graphCanvasNodeSearchSelectedIndex + 1, 0)}/${graphCanvasNodeSearchMatches.length}`
-                                : normalizedGraphCanvasNodeSearchTerm === "" ? "" : "0"}
-                            </span>
-                            <button
-                              type="button"
-                              className="graph-canvas-node-search-nav"
-                              aria-label="Previous matching node"
-                              onClick={handleGraphCanvasSearchPrevious}
-                              disabled={!graphCanvasNodeSearchHasMatches}
-                            >
-                              <ChevronLeft size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              className="graph-canvas-node-search-nav"
-                              aria-label="Next matching node"
-                              onClick={handleGraphCanvasSearchNext}
-                              disabled={!graphCanvasNodeSearchHasMatches}
-                            >
-                              <ChevronRight size={14} />
-                            </button>
-                          </div>
-                          <button
-                            className="graph-canvas-layout-reset"
-                            type="button"
-                            onClick={() => void handleToggleGraphCanvasLayout()}
-                            disabled={graphCanvasResettingLayout}
-                            aria-label={graphCanvasLayoutMode === "horizontal" ? "Switch to user-adjusted layout" : "Switch to horizontal layout"}
-                            aria-pressed={graphCanvasLayoutMode === "horizontal"}
-                            title={graphCanvasLayoutMode === "horizontal" ? "Switch to user-adjusted layout" : "Switch to horizontal layout"}
-                          >
-                            {graphCanvasLayoutMode === "horizontal" ? <PaintbrushVertical size={14} /> : <Rows3 size={14} />}
-                          </button>
-                        </div>
-                        <EdgeEditContext.Provider value={handleEdgeDoubleClickAction}>
-                        <ReactFlow
-                          key={selectedGraphPath}
-                          onInit={(instance) => {
-                            graphCanvasFlowRef.current = instance;
-                          }}
-                          defaultViewport={graphCanvasData.viewport ?? { x: 0, y: 0, zoom: 1 }}
-                          minZoom={0.5}
-                          maxZoom={1.6}
-                          nodes={graphCanvasNodes}
-                          edges={graphCanvasEdges}
-                          onNodesChange={handleGraphCanvasNodesChange}
-                          onNodeClick={(_, node) => {
-                            clearEdgeClickTimer();
-                            setSelectedCanvasNodeId(node.id);
-                            setSelectedEdgeId("");
-                            setEdgeToolbar(null);
-                          }}
-                          onNodeDoubleClick={(_, node) => {
-                            handleOpenCanvasDocument(node.id);
-                          }}
-                          onNodeDrag={(_, node) => {
-                            updateGraphCanvasNodePosition(node.id, node.position);
-                          }}
-                          onNodeDragStop={(_, node) => {
-                            const nextPosition = node.position;
-                            updateGraphCanvasNodePosition(node.id, nextPosition);
-                            void persistGraphCanvasPosition(node.id, nextPosition);
-                          }}
-                          onPaneContextMenu={(event) => {
-                            event.preventDefault();
-                            const shell = graphCanvasShellRef.current;
-                            if (!shell) return;
-                            const rect = shell.getBoundingClientRect();
-                            setCanvasContextMenu({ x: event.clientX - rect.left, y: event.clientY - rect.top });
-                          }}
-                          onPaneClick={() => {
-                            clearEdgeClickTimer();
-                            setHoveredEdgeTooltip(null);
-                            setSelectedCanvasNodeId("");
-                            setSelectedEdgeId("");
-                            setEdgeToolbar(null);
-                            setCanvasContextMenu(null);
-                            setShiftSelectedNodes([]);
-                          }}
-                          onMoveEnd={() => {
-                            void persistGraphCanvasViewport({
-                              x: rfViewport.x,
-                              y: rfViewport.y,
-                              zoom: rfViewport.zoom,
-                            });
-                          }}
-                          nodesDraggable={false}
-                          panOnDrag
-                          zoomOnScroll
-                          zoomOnPinch
-                          zoomOnDoubleClick={false}
-                          nodesConnectable={false}
-                          elementsSelectable
-                          proOptions={{ hideAttribution: true }}
-                          edgeTypes={EDGE_TYPES}
-                          onEdgeContextMenu={(event, edge: Edge) => {
-                            event.preventDefault();
-                            const parts = edge.id.split(":");
-                            if (parts.length >= 3 && parts[0] === "link") {
-                              void handleDeleteEdge(parts[1], parts[2]);
-                            }
-                          }}
-                        >
-                          <Controls showInteractive={false} />
-                          <Background gap={32} color="var(--muted-foreground)" />
-                        </ReactFlow>
-                        </EdgeEditContext.Provider>
-                        <GraphCanvasOverlayInteraction controller={graphCanvasOverlayController} />
-                        <div className="graph-canvas-overlay">
-                          <GraphCanvasOverlayEdges controller={graphCanvasOverlayController} />
-                          <GraphCanvasOverlayNodes controller={graphCanvasOverlayController} />
-                        </div>
-                      </div>
+                      <GraphCanvasSurface
+                        graphCanvasShellRef={graphCanvasShellRef}
+                        selectedGraphPath={selectedGraphPath}
+                        graphCanvasDragActive={graphCanvasDragActive}
+                        connectingFrom={connectingFrom}
+                        graphCanvasData={graphCanvasData}
+                        graphCanvasNodes={graphCanvasNodes}
+                        graphCanvasEdges={graphCanvasEdges}
+                        edgeTypes={EDGE_TYPES}
+                        graphCanvasNodeSearchTerm={graphCanvasNodeSearchTerm}
+                        graphCanvasNodeSearchHasMatches={graphCanvasNodeSearchHasMatches}
+                        graphCanvasNodeSearchSelectedIndex={graphCanvasNodeSearchSelectedIndex}
+                        graphCanvasNodeSearchMatchCount={graphCanvasNodeSearchMatches.length}
+                        normalizedGraphCanvasNodeSearchTerm={normalizedGraphCanvasNodeSearchTerm}
+                        graphCanvasResettingLayout={graphCanvasResettingLayout}
+                        graphCanvasLayoutMode={graphCanvasLayoutMode}
+                        overlayController={graphCanvasOverlayController}
+                        edgeDoubleClickAction={handleEdgeDoubleClickAction}
+                        actions={graphCanvasSurfaceActions}
+                      />
                     )}
             </div>
           )}
@@ -4162,563 +3729,79 @@ function FlowApp() {
               rightRailMaximized ? (
                 renderCenterDocumentShell(true)
               ) : (
-                <div
-                  className={`sidebar-document-panel${selectedDocumentGraphColor ? " sidebar-document-panel-tinted" : ""}`}
-                  style={selectedDocumentTintStyle}
-                  aria-label="Graph node document panel"
-                >
-                <div className="sidebar-document-toolbar">
-                  <div className="center-document-toolbar-leading">
-                    {selectedDocument !== null && (
-                      <Badge variant="outline">{formatDocumentType(selectedDocument.type)}</Badge>
-                    )}
-                    {savingDocument && <span className="home-save-success">Saving…</span>}
-                  </div>
-                  <div className="sidebar-document-toolbar-actions">
-                    <Button
-                      onClick={() => toggleRightRailMaximized()}
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      aria-label={rightRailMaximized ? "Minimize right pane" : "Maximize right pane"}
-                    >
-                      {rightRailMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-                    </Button>
-                    {selectedDocument !== null && (
-                      <Button onClick={openDeleteDialogForSelectedDocument} disabled={deletingDocument} type="button" variant="ghost" size="sm">
-                        <Trash2 size={16} />
-                      </Button>
-                    )}
-                    <Button
-                      onClick={() => {
-                        void handleCloseContextPanel();
-                      }}
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      aria-label="Close document"
-                    >
-                      <X size={16} />
-                    </Button>
-                  </div>
-                </div>
-
-                {panelError !== "" ? <p className="status-line status-line-error">{panelError}</p> : null}
-                {mutationError !== "" ? <p className="status-line status-line-error">{mutationError}</p> : null}
-                {mutationSuccess !== "" ? <p className="status-line status-line-success">{mutationSuccess}</p> : null}
-
-                {selectedDocument === null ? (
-                  <div className="detail-empty">
-                    <p>Loading document content.</p>
-                  </div>
-                ) : (
-                  <div
-                    ref={rightRailDocumentLayoutRef}
-                    className="sidebar-document-layout"
-                    aria-label="Graph node document"
-                    style={{ "--document-toc-ratio": documentTOCRatio.toString() } as React.CSSProperties}
-                    onDragEnter={(event) => { event.preventDefault(); }}
-                    onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      const files = event.dataTransfer.files;
-                      if (!files || files.length === 0 || !selectedDocument) return;
-                      void handleGraphCanvasFilesDrop(files);
-                    }}
-                  >
-                    <div className="home-document">
-                      <div className="home-document-header">
-                        <input
-                          className="home-document-title"
-                          placeholder="Document title"
-                          value={formState.title}
-                          onChange={(event) => updateFormField("title", event.target.value)}
-                          aria-label="Document title"
-                        />
-                        <input
-                          className="home-document-description"
-                          placeholder="Add a brief description…"
-                          value={formState.description}
-                          onChange={(event) => updateFormField("description", event.target.value)}
-                          aria-label="Document description"
-                        />
-                      </div>
-                      <div className="home-document-body sidebar-document-body">
-                        <RichTextEditor
-                          ariaLabel="Context document editor"
-                          inlineReferences={selectedDocument.inlineReferences}
-                          onChange={(value) => updateFormField("body", value)}
-                          onReferenceOpen={(documentId, graphPath) => handleInlineReferenceOpen(selectedDocument.id, documentId, graphPath, "right-rail")}
-                          onDateOpen={handleDateOpen}
-                          onAssetOpenInThread={(assetHref, assetName, kind) => {
-                            void openAssetInThreadFromSource(selectedDocument.id, selectedDocument.graph, assetHref, assetName, kind);
-                          }}
-                          referenceLookupGraph={selectedDocument.graph}
-                          ref={rightRailDocumentEditorRef}
-                          onScrollCompleted={() => setEditorScrollTarget(null)}
-                          placeholder="Type / for headings, lists, quotes, links, and highlights"
-                          scrollToHeadingSlug={editorScrollTarget}
-                          value={formState.body}
-                        />
-                      </div>
-
-                      {(selectedDocument.tags ?? []).length > 0 && (
-                        <div className="chip-list">
-                          {(selectedDocument.tags ?? []).map((tag) => (
-                            <Badge key={tag} variant="secondary">
-                              {tag}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-
-                      {selectedDocumentLinks.outgoing.length > 0 && (
-                        <section className="detail-section">
-                          <h4>Outgoing Links</h4>
-                          <div className="link-list">
-                            {selectedDocumentLinks.outgoing.map((link) => (
-                              <Button
-                                key={`${link.nodeId}:${link.context}`}
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleInspectDocument(link.nodeId, link.graphPath)}
-                                className="rounded-full h-7 px-3 text-xs"
-                                type="button"
-                              >
-                                {link.nodeId}{link.context ? ` — ${link.context}` : ""}
-                              </Button>
-                            ))}
-                          </div>
-                        </section>
-                      )}
-
-                      {selectedDocumentLinks.incoming.length > 0 && (
-                        <section className="detail-section">
-                          <h4>Incoming Links</h4>
-                          <div className="link-list">
-                            {selectedDocumentLinks.incoming.map((link) => (
-                              <Button
-                                key={`${link.nodeId}:${link.context}`}
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleInspectDocument(link.nodeId, link.graphPath)}
-                                className="rounded-full h-7 px-3 text-xs"
-                                type="button"
-                              >
-                                {link.nodeId}{link.context ? ` — ${link.context}` : ""}
-                              </Button>
-                            ))}
-                          </div>
-                        </section>
-                      )}
-
-                      {selectedDocument.run && (
-                        <section className="detail-section">
-                          <h4>Run Command</h4>
-                          <pre className="run-block">{selectedDocument.run}</pre>
-                        </section>
-                      )}
-                    </div>
-
-                    <div
-                      className="sidebar-document-toc-resizer"
-                      onMouseDown={handleRightRailDocumentTOCResizeMouseDown}
-                      role="separator"
-                      aria-label="Resize table of contents"
-                      aria-orientation="vertical"
-                    />
-
-                    <aside className="sidebar-document-toc" aria-label="Document table of contents">
-                      <div className="sidebar-document-toc-header">
-                        <h4>Table of Contents</h4>
-                      </div>
-                      {tocItems.length > 0 ? (
-                        <nav className="toc-nav">
-                          <ul className="toc-list">
-                            {tocItems.map((item, index) => (
-                              <li key={index} className={`toc-item toc-level-${item.level}`} style={{ marginLeft: `${(item.level - 1) * 1}rem` }}>
-                                <button
-                                  type="button"
-                                  className="toc-link"
-                                  onClick={() => handleTOCNavigate(item.id)}
-                                >
-                                  {item.text}
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        </nav>
-                      ) : (
-                        <p className="empty-state-inline">No headings yet.</p>
-                      )}
-                    </aside>
-                  </div>
-                )}
-              </div>
+                <DocumentEditorPane
+                  selectedDocument={selectedDocument}
+                  formState={formState}
+                  panelError={panelError}
+                  mutationError={mutationError}
+                  mutationSuccess={mutationSuccess}
+                  savingDocument={savingDocument}
+                  deletingDocument={deletingDocument}
+                  isMaximized={rightRailMaximized}
+                  tintColor={selectedDocumentGraphColor}
+                  tintStyle={selectedDocumentTintStyle}
+                  documentTOCRatio={documentTOCRatio}
+                  tocItems={tocItems}
+                  outgoingLinks={selectedDocumentLinks.outgoing}
+                  incomingLinks={selectedDocumentLinks.incoming}
+                  rightRailDocumentLayoutRef={rightRailDocumentLayoutRef}
+                  rightRailDocumentEditorRef={rightRailDocumentEditorRef}
+                  editorScrollTarget={editorScrollTarget}
+                  actions={rightRailDocumentActions}
+                />
               )
             ) : rightPanelTab === "search" ? (
-              <Card className="detail-card-context shell-context-card">
-                <CardHeader className="panel-header shell-context-header">
-                  <div>
-                    <h3>Search</h3>
-                  </div>
-                </CardHeader>
-                <CardContent className="shell-context-content">
-                  <div className="right-search-field">
-                    <Search aria-hidden="true" className="right-search-icon" size={16} />
-                    <Input
-                      aria-label="Search all fields"
-                      autoFocus
-                      className="shell-search-input shell-search-input-with-icon"
-                      placeholder="Any field"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Input
-                      aria-label="Search by tag"
-                      placeholder="Tag"
-                      value={searchTagQuery}
-                      onChange={(e) => setSearchTagQuery(e.target.value)}
-                    />
-                    <Input
-                      aria-label="Search by title"
-                      placeholder="Title"
-                      value={searchTitleQuery}
-                      onChange={(e) => setSearchTitleQuery(e.target.value)}
-                    />
-                    <Input
-                      aria-label="Search by description"
-                      placeholder="Description"
-                      value={searchDescriptionQuery}
-                      onChange={(e) => setSearchDescriptionQuery(e.target.value)}
-                    />
-                    <Input
-                      aria-label="Search by content"
-                      placeholder="Content"
-                      value={searchContentQuery}
-                      onChange={(e) => setSearchContentQuery(e.target.value)}
-                    />
-                  </div>
-                  {searchError !== "" && <p className="status-line status-line-error">{searchError}</p>}
-                  {hasDeferredSearchFilter && (
-                    <div className="search-results">
-                      {searchResults.length === 0 ? (
-                        <p className="empty-state-inline">No indexed matches.</p>
-                      ) : (
-                        searchResults.map((result) => (
-                          <button
-                            key={result.id}
-                            className="search-result"
-                            type="button"
-                            onClick={() => handleSearchResultNavigate(result)}
-                          >
-                            <span className="search-result-type">{formatDocumentType(result.type)}</span>
-                            <strong>{result.title}</strong>
-                              <span className="item-file-name">{result.type === "home" ? "Workspace Home" : fileNameFromPath(result.path)}</span>
-                            <span className="item-path">{result.path}</span>
-                            {result.type !== "home" && <span>{result.graph}</span>}
-                            {result.description !== "" && <p className="search-result-description">{result.description}</p>}
-                            <p>{result.snippet}</p>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              <RightRailSearchPanel
+                searchQuery={searchQuery}
+                searchTagQuery={searchTagQuery}
+                searchTitleQuery={searchTitleQuery}
+                searchDescriptionQuery={searchDescriptionQuery}
+                searchContentQuery={searchContentQuery}
+                searchError={searchError}
+                hasDeferredSearchFilter={hasDeferredSearchFilter}
+                searchResults={searchResults}
+                setSearchQuery={setSearchQuery}
+                setSearchTagQuery={setSearchTagQuery}
+                setSearchTitleQuery={setSearchTitleQuery}
+                setSearchDescriptionQuery={setSearchDescriptionQuery}
+                setSearchContentQuery={setSearchContentQuery}
+                onResultNavigate={handleRightRailSearchResultNavigate}
+              />
             ) : rightPanelTab === "calendar" ? (
-                <Card className="detail-card-context shell-context-card home-cal-card">
-                  <CardContent className="shell-context-content p-0">
-                    <HomeCalendarPanel
-                      documents={calendarDocumentsForDisplay}
-                      selectedDate={calendarFocusDate}
-                      onDateChange={setCalendarFocusDate}
-                      onDocumentOpen={(doc) => {
-                        if (doc.type === "home") {
-                          void handleSelectHome();
-                        } else {
-                          handleSelectDocument(doc.id, doc.graph);
-                        }
-                      }}
-                      error={calendarError}
-                    />
-                  </CardContent>
-                </Card>
-              ) : null)}
+              <RightRailCalendarPanel
+                documents={calendarDocumentsForDisplay}
+                selectedDate={calendarFocusDate}
+                onDateChange={setCalendarFocusDate}
+                onDocumentOpen={handleRightRailCalendarDocumentOpen}
+                error={calendarError}
+              />
+            ) : null)}
           </div>
         </aside>
         </div>
-        <div className="right-sidebar-icons">
-            <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    className="right-rail-icon-btn"
-                    aria-label="Settings"
-                    onClick={() => setSettingsDialogOpen(true)}
-                  >
-                    <Settings size={18} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="left">Settings</TooltipContent>
-            </Tooltip>
-            <Dialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen}>
-              <DialogContent className="overflow-hidden p-0 md:max-h-[500px] md:max-w-[700px] lg:max-w-[800px]">
-                <DialogTitle className="sr-only">Settings</DialogTitle>
-                <DialogDescription className="sr-only">Customize your settings here.</DialogDescription>
-                <SidebarProvider className="items-start">
-                  <Sidebar collapsible="none" className="hidden md:flex">
-                    <SidebarContent>
-                      <SidebarGroup>
-                        <SidebarGroupContent>
-                          <SidebarMenu>
-                            {[
-                              { value: "general" as const, label: "General", icon: Info },
-                              { value: "theme" as const, label: "Appearance", icon: PaintbrushVertical },
-                              { value: "stop" as const, label: "Danger Zone", icon: TriangleAlert },
-                            ].map((item) => (
-                              <SidebarMenuItem key={item.value}>
-                                <SidebarMenuButton
-                                  isActive={settingsTab === item.value}
-                                  onClick={() => setSettingsTab(item.value)}
-                                >
-                                  <item.icon />
-                                  <span>{item.label}</span>
-                                </SidebarMenuButton>
-                              </SidebarMenuItem>
-                            ))}
-                          </SidebarMenu>
-                        </SidebarGroupContent>
-                      </SidebarGroup>
-                    </SidebarContent>
-                  </Sidebar>
-                  <main className="flex h-[480px] flex-1 flex-col overflow-hidden">
-                    <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-                      <Breadcrumb>
-                        <BreadcrumbList>
-                          <BreadcrumbItem className="hidden md:block">
-                            <span className="text-sm text-muted-foreground">Settings</span>
-                          </BreadcrumbItem>
-                          <BreadcrumbSeparator />
-                          <BreadcrumbItem>
-                            <BreadcrumbPage>
-                              {settingsTab === "general" ? "General" : settingsTab === "theme" ? "Appearance" : "Danger Zone"}
-                            </BreadcrumbPage>
-                          </BreadcrumbItem>
-                        </BreadcrumbList>
-                      </Breadcrumb>
-                    </header>
-                    <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-6">
-                      {settingsTab === "general" && (
-                        workspace ? (
-                          <div className="flex flex-col gap-4">
-                            <div className="flex flex-col gap-1">
-                              <Label>Path</Label>
-                              <div className="text-sm text-muted-foreground break-all">{workspace.workspacePath}</div>
-                            </div>
-                            <div className="flex flex-col gap-1">
-                              <Label>Scope</Label>
-                              <div className="text-sm text-muted-foreground">{workspace.scope}</div>
-                            </div>
-                            <div className="flex flex-col gap-1">
-                              <Label>GUI Port</Label>
-                              <div className="text-sm text-muted-foreground">{workspace.guiPort}</div>
-                            </div>
-                            <div className="flex flex-col gap-1">
-                              <Label>Config</Label>
-                              <div className="text-sm text-muted-foreground break-all">{workspace.configPath}</div>
-                            </div>
-                            <div className="flex flex-col gap-3 rounded-lg border p-4">
-                              <div className="flex flex-col gap-1">
-                                <Label>Refresh index</Label>
-                                <p className="text-sm text-muted-foreground">
-                                  Rebuild the derived index after files are changed outside the app so search, graphs, and open documents reflect the latest state.
-                                </p>
-                              </div>
-                              <div>
-                                <Button disabled={rebuildingIndex} onClick={() => void handleRebuildIndex()} type="button" variant="outline">
-                                  {rebuildingIndex ? "Refreshing index..." : "Refresh index"}
-                                </Button>
-                              </div>
-                            </div>
-                            <div className="flex flex-col gap-3 rounded-lg border p-4">
-                              <div className="flex flex-col gap-1">
-                                <Label>Local workspaces</Label>
-                                <p className="text-sm text-muted-foreground">
-                                  De-register local workspaces from this global workspace list. This does not delete files.
-                                </p>
-                              </div>
-                              {trackedLocalWorkspaces.length > 0 ? (
-                                <div className="max-h-56 space-y-2 overflow-y-auto pr-1" aria-label="Registered local workspaces">
-                                  {trackedLocalWorkspaces.map((entry) => {
-                                    const isActive = workspace.scope === "local" && workspace.workspacePath === entry.workspacePath;
-                                    return (
-                                      <div key={`local-workspace-${entry.workspacePath}`} className="flex items-center justify-between gap-2 rounded-md border p-2">
-                                        <div className="min-w-0">
-                                          <div className="truncate text-sm" title={entry.workspacePath}>{entry.workspacePath}</div>
-                                          {isActive ? <div className="text-xs text-muted-foreground">Currently active</div> : null}
-                                        </div>
-                                        <Button
-                                          type="button"
-                                          variant="outline"
-                                          size="sm"
-                                          className="gap-2"
-                                          onClick={() => {
-                                            void handleWorkspaceDeregister(entry.workspacePath);
-                                          }}
-                                          disabled={switchingWorkspace}
-                                          aria-label={`De-register ${entry.workspacePath}`}
-                                        >
-                                          <Trash2 size={14} />
-                                          De-register
-                                        </Button>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              ) : (
-                                <p className="text-sm text-muted-foreground">No local workspaces are currently registered.</p>
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          <p className="text-sm text-muted-foreground">No workspace loaded.</p>
-                        )
-                      )}
-                      {settingsTab === "theme" && (
-                        <RadioGroup value={normalizeAppearance(theme)} onValueChange={(v) => { void handleAppearanceChange(v as "light" | "dark" | "system"); }}>
-                          <div className="flex items-center gap-2">
-                            <RadioGroupItem value="light" id="r1" />
-                            <Label htmlFor="r1">Light</Label>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <RadioGroupItem value="dark" id="r2" />
-                            <Label htmlFor="r2">Dark</Label>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <RadioGroupItem value="system" id="r3" />
-                            <Label htmlFor="r3">System</Label>
-                          </div>
-                        </RadioGroup>
-                      )}
-                      {settingsTab === "stop" && (
-                        <div className="flex flex-col gap-4">
-                          <p className="text-sm text-muted-foreground">
-                            This closes the loopback server for the current workspace until you run Flow GUI again.
-                          </p>
-                          <Button disabled={stoppingGUI} onClick={() => void handleStopGUI()} type="button" variant="destructive">
-                            {stoppingGUI ? "Stopping GUI..." : "Stop GUI"}
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </main>
-                </SidebarProvider>
-              </DialogContent>
-            </Dialog>
-            <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    className={`right-rail-icon-btn${rightPanelTab === "search" && !rightRailCollapsed ? " right-rail-icon-btn-active" : ""}`}
-                    aria-label="Search"
-                    onClick={() => toggleRightPanel("search")}
-                  >
-                    <Search size={18} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="left">Search</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    className={`right-rail-icon-btn${rightPanelTab === "calendar" && !rightRailCollapsed ? " right-rail-icon-btn-active" : ""}`}
-                    aria-label="Calendar"
-                    onClick={() => toggleRightPanel("calendar")}
-                  >
-                    <CalendarDays size={18} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="left">Calendar</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-                {showRightRailDocumentButton ? (
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      className={`right-rail-icon-btn${rightPanelTab === "document" && !rightRailCollapsed && selectedNodeMatchesRightRailDocument ? " right-rail-icon-btn-active" : ""}`}
-                      aria-label="Document"
-                      onClick={() => handleSelectedNodeDocumentButtonClick()}
-                    >
-                      <FileText size={18} />
-                    </button>
-                  </TooltipTrigger>
-                ) : null}
-                {showRightRailDocumentButton ? <TooltipContent side="left">Document</TooltipContent> : null}
-            </Tooltip>
-          </div>
+        <RightRailControls
+          searchActive={rightPanelTab === "search" && !rightRailCollapsed}
+          calendarActive={rightPanelTab === "calendar" && !rightRailCollapsed}
+          showDocumentButton={showRightRailDocumentButton}
+          documentActive={rightPanelTab === "document" && !rightRailCollapsed && selectedNodeMatchesRightRailDocument}
+          settingsDialog={settingsDialogProps}
+          actions={rightRailControlsActions}
+        />
       </SidebarInset>
-      <Dialog open={createNodeDialog !== null} onOpenChange={(open) => { if (!open) setCreateNodeDialog(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>New {createNodeDialog ? formatDocumentType(createNodeDialog.type) : ""}</DialogTitle>
-            <DialogDescription>
-              Choose a file name for the new document. Use letters, numbers, hyphens, underscores, dots, and slashes.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="shell-dialog-actions" style={{ flexDirection: "column", alignItems: "stretch", gap: "0.5rem" }}>
-            <Label htmlFor="create-node-filename">File name</Label>
-            <Input
-              id="create-node-filename"
-              value={createNodeFileName}
-              onChange={(e) => { setCreateNodeFileName(e.target.value); setCreateNodeFileNameError(""); }}
-              onKeyDown={(e) => { if (e.key === "Enter") void handleConfirmCreateNode(); }}
-              placeholder="my-task"
-              autoFocus
-            />
-            {createNodeFileNameError !== "" && <p className="status-line status-line-error">{createNodeFileNameError}</p>}
-            <div className="shell-dialog-actions">
-              <Button onClick={() => setCreateNodeDialog(null)} type="button" variant="secondary">Cancel</Button>
-              <Button onClick={() => void handleConfirmCreateNode()} type="button" disabled={graphCreatePendingType !== ""}>
-                {graphCreatePendingType !== "" ? "Creating..." : "Create"}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={renameDialog !== null} onOpenChange={(open) => { if (!open) setRenameDialog(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{renameDialog?.kind === "graph" ? "Rename graph" : "Rename node"}</DialogTitle>
-            <DialogDescription>
-              {renameDialog?.kind === "graph"
-                ? "Choose the new graph path for this content tree entry."
-                : "Choose the new file name for this node. The .md extension is optional."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="shell-dialog-actions" style={{ flexDirection: "column", alignItems: "stretch", gap: "0.5rem" }}>
-            <Label htmlFor="rename-input">{renameDialog?.kind === "graph" ? "Graph path" : "File name"}</Label>
-            <Input
-              id="rename-input"
-              value={renameValue}
-              onChange={(e) => { setRenameValue(e.target.value); setRenameError(""); }}
-              onKeyDown={(e) => { if (e.key === "Enter") void handleConfirmRename(); }}
-              placeholder={renameDialog?.kind === "graph" ? "projects/backend" : "my-task"}
-              autoFocus
-            />
-            {renameError !== "" && <p className="status-line status-line-error">{renameError}</p>}
-            <div className="shell-dialog-actions">
-              <Button onClick={() => setRenameDialog(null)} type="button" variant="secondary">Cancel</Button>
-              <Button onClick={() => void handleConfirmRename()} type="button" disabled={renamePending}>
-                {renamePending ? "Renaming..." : "Rename"}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <CreateNodeDialog
+        dialog={createNodeDialog}
+        fileName={createNodeFileName}
+        fileNameError={createNodeFileNameError}
+        pending={graphCreatePendingType !== ""}
+        actions={createNodeDialogActions}
+      />
+      <RenameDialog
+        dialog={renameDialog}
+        value={renameValue}
+        error={renameError}
+        pending={renamePending}
+        actions={renameDialogActions}
+      />
     </SidebarProvider>
   );
 }

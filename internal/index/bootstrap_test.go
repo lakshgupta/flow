@@ -588,3 +588,51 @@ func TestRebuildIndexesInlineReferences(t *testing.T) {
 	assertQueryCount(t, database, `SELECT COUNT(*) FROM note_links`, 0)
 	assertQueryCount(t, database, `SELECT COUNT(*) FROM soft_references`, 1)
 }
+
+func TestRebuildIndexesMalformedDocumentAsParseFailure(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	flowPath := filepath.Join(rootDir, ".flow")
+	indexPath := filepath.Join(flowPath, "config", "flow.index")
+
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "proj", "valid.md"),
+		"---\nid: task-1\ntype: task\ngraph: proj\ntitle: Valid\nstatus: Ready\n---\n\nValid body\n")
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "proj", "broken.md"),
+		"---\nid: task-2\ntype: task\ngraph: proj\ntitle: Broken\nlinks:\n  - node: task-1\n    context: broken: yaml\n---\n\nBroken body\n")
+
+	if err := Rebuild(indexPath, flowPath); err != nil {
+		t.Fatalf("Rebuild() error = %v", err)
+	}
+
+	database, err := sql.Open("sqlite", indexPath)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer database.Close()
+
+	assertQueryCount(t, database, `SELECT COUNT(*) FROM documents WHERE type != 'home'`, 1)
+	assertQueryCount(t, database, `SELECT COUNT(*) FROM parse_failures`, 1)
+
+	nodes, err := ReadGraphNodes(indexPath)
+	if err != nil {
+		t.Fatalf("ReadGraphNodes() error = %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("len(nodes) = %d, want 1", len(nodes))
+	}
+	if nodes[0].DirectCount != 2 || nodes[0].TotalCount != 2 {
+		t.Fatalf("nodes[0] = %#v, want malformed file included in projection counts", nodes[0])
+	}
+
+	parseFailure, found, err := ReadDocumentParseFailure(indexPath, "task-2")
+	if err != nil {
+		t.Fatalf("ReadDocumentParseFailure() error = %v", err)
+	}
+	if !found {
+		t.Fatal("ReadDocumentParseFailure() found = false, want true")
+	}
+	if parseFailure.Path != "data/content/proj/broken.md" {
+		t.Fatalf("parseFailure.Path = %q, want malformed document path", parseFailure.Path)
+	}
+}

@@ -4256,6 +4256,16 @@ pre {
   outline-offset: 2px;
 }
 
+.canvas-node-intersecting .graph-canvas-node,
+.canvas-node-intersection-source .graph-canvas-node {
+  border-color: var(--destructive);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--destructive) 24%, transparent), var(--shadow-card);
+}
+
+.canvas-node-intersection-source .graph-canvas-node {
+  background: color-mix(in srgb, var(--destructive) 10%, var(--card));
+}
+
 .canvas-selection-badge {
   position: absolute;
   top: -0.5rem;

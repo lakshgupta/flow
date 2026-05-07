@@ -17,6 +17,14 @@ describe('richText conversion', () => {
     expect(markdownToHTML(markdown)).toContain('<p><br></p>')
   })
 
+  it('preserves multiple consecutive empty paragraphs', () => {
+    const markdown = editorHTMLToMarkdown('<p>alpha</p><p><br></p><p><br></p><p>beta</p>')
+    const html = markdownToHTML(markdown)
+
+    expect((markdown.match(/<p><br><\/p>/g) ?? []).length).toBe(2)
+    expect((html.match(/<p><br><\/p>/g) ?? []).length).toBe(2)
+  })
+
   it('collapses repeated BR-only paragraphs to a stable empty paragraph', () => {
     const markdown = editorHTMLToMarkdown('<table><tbody><tr><td><p><br><br><br class="ProseMirror-trailingBreak"></p></td></tr></tbody></table>')
 
@@ -28,6 +36,13 @@ describe('richText conversion', () => {
     const markdown = editorHTMLToMarkdown('<p>[[graph2 > Task1]] test</p>')
 
     expect(markdown).toBe('[[graph2 > Task1]] test\n')
+  })
+
+  it('serializes strikethrough markup with double tildes for markdown round-trips', () => {
+    const markdown = editorHTMLToMarkdown('<p><s>retire me</s></p>')
+
+    expect(markdown).toBe('~~retire me~~\n')
+    expect(markdownToHTML(markdown)).toContain('<s>retire me</s>')
   })
 
   it('renders escaped inline reference tokens as links when resolved', () => {

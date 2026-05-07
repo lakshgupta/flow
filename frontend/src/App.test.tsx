@@ -12,14 +12,52 @@ vi.mock("./WysiwygEditor", () => ({
 vi.mock("@xyflow/react", async () => {
   const React = await import("react");
 
+  function rectanglesIntersect(
+    left: { x: number; y: number; width: number; height: number },
+    right: { x: number; y: number; width: number; height: number },
+  ): boolean {
+    return left.x < right.x + right.width
+      && left.x + left.width > right.x
+      && left.y < right.y + right.height
+      && left.y + left.height > right.y;
+  }
+
   return {
     ReactFlowProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     ReactFlow: ({ nodes, onInit, onNodeClick, onNodeDoubleClick, onNodeDragStop, onPaneClick, onMoveEnd }: any) => {
+      const nodesRef = React.useRef(nodes);
+
+      React.useEffect(() => {
+        nodesRef.current = nodes;
+      }, [nodes]);
+
       React.useEffect(() => {
         onInit?.({
-          toObject: () => ({ nodes }),
+          toObject: () => ({ nodes: nodesRef.current }),
+          getNode: (id: string) => nodesRef.current.find((node: any) => node.id === id),
+          getIntersectingNodes: (candidate: any) => {
+            const width = candidate.width ?? 0;
+            const height = candidate.height ?? 0;
+            const position = candidate.position ?? { x: 0, y: 0 };
+
+            return nodesRef.current.filter((node: any) => {
+              if (node.id === candidate.id) {
+                return false;
+              }
+
+              return rectanglesIntersect(
+                { x: position.x, y: position.y, width, height },
+                {
+                  x: node.position.x,
+                  y: node.position.y,
+                  width: node.width ?? 0,
+                  height: node.height ?? 0,
+                },
+              );
+            });
+          },
         });
-      }, [nodes, onInit]);
+      }, [onInit]);
 
       return (
         <div data-testid="react-flow-mock">
@@ -190,6 +228,24 @@ function getRequestBody(fetchMock: ReturnType<typeof vi.fn>, path: string, metho
   return JSON.parse(body) as Record<string, unknown>;
 }
 
+async function findSidebarTreeButton(label: string, kind: "graph" | "file" = "graph"): Promise<HTMLElement> {
+  const button = (await screen.findByText(label)).closest('[data-sidebar="menu-sub-button"]');
+  if (!(button instanceof HTMLElement)) {
+    throw new Error(`missing ${label} ${kind} button`);
+  }
+
+  return button;
+}
+
+function getSidebarTreeButton(label: string, kind: "graph" | "file" = "graph"): HTMLElement {
+  const button = screen.getByText(label).closest('[data-sidebar="menu-sub-button"]');
+  if (!(button instanceof HTMLElement)) {
+    throw new Error(`missing ${label} ${kind} button`);
+  }
+
+  return button;
+}
+
 describe("App graph canvas flows", () => {
   beforeEach(() => {
     vi.spyOn(Date, "now").mockReturnValue(1_717_171_717_000);
@@ -311,11 +367,7 @@ describe("App graph canvas flows", () => {
 
     await screen.findByText("Content");
 
-    const executionButton = (await screen.findByText("Execution")).closest('[data-sidebar="menu-sub-button"]');
-    if (executionButton === null) {
-      throw new Error("missing execution graph button");
-    }
-
+    const executionButton = await findSidebarTreeButton("Execution");
     await user.click(executionButton);
     await screen.findByTestId("flow-node-note-1");
 
@@ -924,11 +976,7 @@ describe("App graph canvas flows", () => {
     const user = userEvent.setup();
     render(<ThemeProvider><App /></ThemeProvider>);
 
-    const executionButton = (await screen.findByText("Execution")).closest('[data-sidebar="menu-sub-button"]');
-    if (executionButton === null) {
-      throw new Error("missing execution graph button");
-    }
-
+    const executionButton = await findSidebarTreeButton("Execution");
     await user.click(executionButton);
     await screen.findByTestId("flow-node-note-1");
 
@@ -1244,11 +1292,7 @@ describe("App graph canvas flows", () => {
     const user = userEvent.setup();
     render(<ThemeProvider><App /></ThemeProvider>);
 
-    const executionButton = (await screen.findByText("Execution")).closest('[data-sidebar="menu-sub-button"]');
-    if (executionButton === null) {
-      throw new Error("missing execution graph button");
-    }
-
+    const executionButton = await findSidebarTreeButton("Execution");
     await user.click(executionButton);
     await screen.findByTestId("flow-node-note-1");
     await user.dblClick(screen.getByRole("button", { name: "Open note-1" }));
@@ -1659,6 +1703,169 @@ describe("App graph canvas flows", () => {
     });
   });
 
+  it("preserves multiple blank lines after switching nodes and back", async () => {
+    const graphTreeWithTwoFiles = {
+      ...graphTreeResponse,
+      graphs: [
+        {
+          ...graphTreeResponse.graphs[0],
+          files: [
+            graphTreeResponse.graphs[0].files[0],
+            {
+              id: "note-2",
+              type: "note",
+              title: "Follow Up",
+              path: "data/graphs/execution/follow-up.md",
+              fileName: "follow-up.md",
+            },
+          ],
+        },
+      ],
+    };
+    const graphCanvasResponse = {
+      selectedGraph: "execution",
+      availableGraphs: ["execution"],
+      layerGuidance: {
+        magneticThresholdPx: 18,
+        guides: [
+          { layer: 0, x: 140 },
+          { layer: 1, x: 460 },
+        ],
+      },
+      nodes: [
+        {
+          id: "note-1",
+          type: "note",
+          graph: "execution",
+          title: "Overview",
+          description: "Execution overview",
+          path: "data/graphs/execution/overview.md",
+          featureSlug: "execution",
+          position: { x: 140, y: 120 },
+          positionPersisted: false,
+        },
+        {
+          id: "note-2",
+          type: "note",
+          graph: "execution",
+          title: "Follow Up",
+          description: "Execution follow-up",
+          path: "data/graphs/execution/follow-up.md",
+          featureSlug: "execution",
+          position: { x: 460, y: 120 },
+          positionPersisted: false,
+        },
+      ],
+      edges: [],
+    };
+
+    let noteOne = {
+      id: "note-1",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Overview",
+      description: "Execution overview",
+      path: "data/graphs/execution/overview.md",
+      tags: [],
+      body: "",
+      links: [],
+      relatedNoteIds: [],
+    };
+    const noteTwo = {
+      id: "note-2",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Follow Up",
+      description: "Execution follow-up",
+      path: "data/graphs/execution/follow-up.md",
+      tags: [],
+      body: "Follow up body\n",
+      links: [],
+      relatedNoteIds: [],
+    };
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeWithTwoFiles;
+      }
+
+      if (url === "/api/graphs/note") {
+        return noteGraphs("execution");
+      }
+
+      if (url === "/api/graphs/task") {
+        return emptyGraphLists.tasks;
+      }
+
+      if (url === "/api/graphs/command") {
+        return emptyGraphLists.commands;
+      }
+
+      if (url === "/api/graph-canvas?graph=execution") {
+        return graphCanvasResponse;
+      }
+
+      if (url === "/api/documents/note-1" && (init?.method ?? "GET") === "PUT") {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { body: string };
+        noteOne = {
+          ...noteOne,
+          body: body.body,
+        };
+        return noteOne;
+      }
+
+      if (url === "/api/documents/note-1") {
+        return noteOne;
+      }
+
+      if (url === "/api/documents/note-2") {
+        return noteTwo;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    const executionButton = await findSidebarTreeButton("Execution");
+    await user.click(executionButton);
+    await screen.findByTestId("flow-node-note-1");
+
+    const overviewButton = await findSidebarTreeButton("overview.md", "file");
+    await user.click(overviewButton);
+
+    const editorSurface = await screen.findByLabelText("Document body editor");
+    await user.click(editorSurface);
+    await user.type(editorSurface, "alpha{enter}{enter}{enter}beta");
+
+    await waitFor(() => {
+      const requestBody = getRequestBody(fetchMock, "/api/documents/note-1", "PUT") as { body: string };
+      expect(requestBody.body).toContain("alpha");
+      expect(requestBody.body).toContain("beta");
+      expect((requestBody.body.match(/<p><br><\/p>/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    }, { timeout: 2000 });
+
+    const followUpButton = await findSidebarTreeButton("follow-up.md", "file");
+    await user.click(followUpButton);
+    await screen.findByText("Follow up body");
+
+    await user.click(overviewButton);
+
+    await waitFor(() => {
+      const refreshedEditor = screen.getByLabelText("Document body editor");
+      expect(refreshedEditor.textContent).toContain("alpha");
+      expect(refreshedEditor.textContent).toContain("beta");
+      expect((refreshedEditor.innerHTML.match(/<p><br/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
   it("shows a document icon after node selection and opens a thread root from it", async () => {
     const graphCanvasResponse = {
       selectedGraph: "execution",
@@ -2013,6 +2220,80 @@ describe("App graph canvas flows", () => {
     expect(await screen.findByText("Overview body")).toBeInTheDocument();
     expect(screen.queryByText("No entries for this day.")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Document" })).not.toBeInTheDocument();
+  });
+
+  it("switches workspaces from the sidebar selector and refreshes the graph tree", async () => {
+    const globalPath = "/tmp/flow-global";
+    const localPath = "/tmp/flow-local";
+    let persistedWorkspace = {
+      ...workspaceResponse,
+      scope: "global",
+      workspacePath: globalPath,
+      workspaceSelectionEnabled: true,
+      workspaces: [
+        { scope: "global", workspacePath: globalPath },
+        { scope: "local", workspacePath: localPath },
+      ],
+    };
+    let currentGraphTree = graphTreeResponse;
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return persistedWorkspace;
+      }
+
+      if (url === "/api/graphs") {
+        return currentGraphTree;
+      }
+
+      if (url === "/api/workspace/select" && init?.method === "PUT") {
+        const body = JSON.parse(String(init.body ?? "{}")) as { workspacePath?: string };
+        if (body.workspacePath === localPath) {
+          persistedWorkspace = {
+            ...persistedWorkspace,
+            scope: "local",
+            workspacePath: localPath,
+          };
+          currentGraphTree = {
+            ...graphTreeResponse,
+            graphs: [
+              {
+                ...graphTreeResponse.graphs[0],
+                graphPath: "operations",
+                displayName: "Operations",
+                files: [],
+                directCount: 0,
+                totalCount: 0,
+                countLabel: "0 direct / 0 total",
+              },
+            ],
+          };
+        }
+        return persistedWorkspace;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    const workspaceSelect = await screen.findByLabelText("Workspace");
+    expect((workspaceSelect as HTMLSelectElement).value).toBe(globalPath);
+    expect(await screen.findByText("Execution")).toBeInTheDocument();
+
+    await user.selectOptions(workspaceSelect, localPath);
+
+    await waitFor(() => {
+      expect(getRequestBody(fetchMock, "/api/workspace/select", "PUT")).toEqual({ workspacePath: localPath });
+    });
+
+    await waitFor(() => {
+      expect((screen.getByLabelText("Workspace") as HTMLSelectElement).value).toBe(localPath);
+    });
+
+    expect(await screen.findByText("Operations")).toBeInTheDocument();
+    expect(screen.queryByText("Execution")).not.toBeInTheDocument();
   });
 
   it("lets a graph with direct files collapse and expand its file list", async () => {
@@ -2462,11 +2743,7 @@ describe("App graph canvas flows", () => {
     await user.click(executionButton);
     await screen.findByTestId("flow-node-note-1");
 
-    const fileButton = screen.getByText("overview.md").closest('[data-sidebar="menu-sub-button"]');
-    if (fileButton === null) {
-      throw new Error("missing overview file button");
-    }
-
+    const fileButton = getSidebarTreeButton("overview.md", "file");
     await user.click(fileButton);
 
     expect(await screen.findByLabelText("Document content layout")).toBeInTheDocument();
@@ -2669,6 +2946,137 @@ describe("App graph canvas flows", () => {
     await waitFor(() => {
       const editorSurface = screen.getByLabelText("Document body editor");
       expect(editorSurface.contains(document.activeElement)).toBe(true);
+    });
+  });
+
+  it("keeps heading and strikethrough shortcuts rendered through app state echoes and autosave", async () => {
+    const graphCanvasResponse = {
+      selectedGraph: "execution",
+      availableGraphs: ["execution"],
+      layerGuidance: {
+        magneticThresholdPx: 18,
+        guides: [
+          { layer: 0, x: 140 },
+          { layer: 1, x: 460 },
+        ],
+      },
+      nodes: [
+        {
+          id: "note-1",
+          type: "note",
+          graph: "execution",
+          title: "Overview",
+          description: "Execution overview",
+          path: "data/graphs/execution/overview.md",
+          featureSlug: "execution",
+          position: { x: 140, y: 120 },
+          positionPersisted: false,
+        },
+      ],
+      edges: [],
+    };
+    let persistedDocument = {
+      id: "note-1",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Overview",
+      description: "Execution overview",
+      path: "data/graphs/execution/overview.md",
+      tags: [],
+      body: "",
+      links: [],
+      relatedNoteIds: [],
+    };
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/graphs/note") {
+        return noteGraphs("execution");
+      }
+
+      if (url === "/api/graphs/task") {
+        return emptyGraphLists.tasks;
+      }
+
+      if (url === "/api/graphs/command") {
+        return emptyGraphLists.commands;
+      }
+
+      if (url === "/api/graph-canvas?graph=execution") {
+        return graphCanvasResponse;
+      }
+
+      if (url === "/api/documents/note-1" && (init?.method ?? "GET") === "PUT") {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          title: string;
+          description: string;
+          graph: string;
+          tags: string[];
+          body: string;
+          links: Array<{ node: string; context?: string; relationships?: string[] }>;
+        };
+        persistedDocument = {
+          ...persistedDocument,
+          title: body.title,
+          description: body.description,
+          graph: body.graph,
+          tags: body.tags,
+          body: body.body,
+          links: body.links,
+        };
+        return persistedDocument;
+      }
+
+      if (url === "/api/documents/note-1") {
+        return persistedDocument;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Content");
+
+    const fileButton = (await screen.findByText("overview.md")).closest('[data-sidebar="menu-sub-button"]');
+    if (fileButton === null) {
+      throw new Error("missing overview file button");
+    }
+
+    await user.click(fileButton);
+
+    const editorSurface = await screen.findByLabelText("Document body editor");
+    await user.click(editorSurface);
+    await user.type(editorSurface, "# Heading{enter}~~retire me~~");
+
+    await waitFor(() => {
+      expect(within(editorSurface).getByRole("heading", { level: 1, name: "Heading" })).toBeInTheDocument();
+      const strike = editorSurface.querySelector("s, strike, del");
+      expect(strike?.textContent).toBe("retire me");
+      expect(editorSurface.textContent).not.toContain("~~");
+    });
+
+    await waitFor(() => {
+      const requestBody = getRequestBody(fetchMock, "/api/documents/note-1", "PUT") as {
+        body: string;
+      };
+      expect(requestBody.body).toContain("# Heading");
+      expect(requestBody.body).toContain("~~retire me~~");
+    }, { timeout: 2000 });
+
+    await waitFor(() => {
+      expect(within(editorSurface).getByRole("heading", { level: 1, name: "Heading" })).toBeInTheDocument();
+      const strike = editorSurface.querySelector("s, strike, del");
+      expect(strike?.textContent).toBe("retire me");
     });
   });
 

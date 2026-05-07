@@ -75,6 +75,29 @@ func TestLoadDocumentsRejectsInvalidGraphDocumentPath(t *testing.T) {
 	}
 }
 
+func TestLoadDocumentsBestEffortSkipsMalformedDocument(t *testing.T) {
+	t.Parallel()
+
+	flowPath := filepath.Join(t.TempDir(), DirName)
+	writeWorkspaceMarkdownDocument(t, filepath.Join(flowPath, DataDirName, GraphsDirName, "execution", "valid.md"), "---\nid: task-1\ntype: task\ngraph: execution\ntitle: Valid\nstatus: Ready\n---\n\nTask body\n")
+	writeWorkspaceMarkdownDocument(t, filepath.Join(flowPath, DataDirName, GraphsDirName, "execution", "broken.md"), "---\nid: task-2\ntype: task\ngraph: execution\ntitle: Broken\nlinks:\n  - node: task-1\n    context: broken: yaml\n---\n\nBroken body\n")
+
+	documents, issues, err := LoadDocumentsBestEffort(flowPath)
+	if err != nil {
+		t.Fatalf("LoadDocumentsBestEffort() error = %v", err)
+	}
+
+	if len(documents) != 1 {
+		t.Fatalf("len(documents) = %d, want 1", len(documents))
+	}
+	if len(issues) != 1 {
+		t.Fatalf("len(issues) = %d, want 1", len(issues))
+	}
+	if issues[0].Path != "data/content/execution/broken.md" {
+		t.Fatalf("issues[0].Path = %q, want malformed document path", issues[0].Path)
+	}
+}
+
 func writeWorkspaceMarkdownDocument(t *testing.T, path string, contents string) {
 	t.Helper()
 

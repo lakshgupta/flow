@@ -28,6 +28,8 @@ export type GraphCanvasOverlayState = {
   edges: GraphCanvasEdgePayload[];
   graphCanvasNodes: Node<GraphCanvasFlowNodeData>[];
   rfViewport: { x: number; y: number; zoom: number };
+  intersectingNodeIds: string[];
+  intersectingSourceNodeId: string | null;
   selectedCanvasNodeId: string;
   selectedEdgeId: string;
   hoveredEdgeTooltip: HoveredEdgeTooltip | null;

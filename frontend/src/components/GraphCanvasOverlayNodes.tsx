@@ -14,7 +14,14 @@ export interface GraphCanvasOverlayNodesProps {
 export function GraphCanvasOverlayNodes({
   controller,
 }: GraphCanvasOverlayNodesProps) {
-  const { graphCanvasNodes, rfViewport, shiftSelectedNodes, connectingTarget } = controller.state;
+  const {
+    graphCanvasNodes,
+    rfViewport,
+    shiftSelectedNodes,
+    connectingTarget,
+    intersectingNodeIds,
+    intersectingSourceNodeId,
+  } = controller.state;
   const { onNodeClick, onNodeDoubleClick, onNodePointerDown, onHandlePointerDown, onNodeDescriptionSave, onMerge } = controller.actions;
   const [draftDescriptions, setDraftDescriptions] = useState<Record<string, string>>({});
 
@@ -73,6 +80,8 @@ export function GraphCanvasOverlayNodes({
         const screenY = position.y * rfViewport.zoom + rfViewport.y;
         const graphColor = graphDirectoryColorHex(node.data.graphColor);
         const draftDescription = draftDescriptions[node.id] ?? node.data.description ?? "";
+        const isIntersecting = intersectingNodeIds.includes(node.id);
+        const isIntersectionSource = intersectingSourceNodeId === node.id && intersectingNodeIds.length > 0;
         return (
           <div
             key={node.id}
@@ -81,6 +90,8 @@ export function GraphCanvasOverlayNodes({
               "graph-canvas-overlay-node",
               shiftSelectedNodes.includes(node.id) ? "canvas-node-shift-selected" : "",
               connectingTarget === node.id ? "canvas-node-connecting-target" : "",
+              isIntersecting ? "canvas-node-intersecting" : "",
+              isIntersectionSource ? "canvas-node-intersection-source" : "",
             ]
               .filter(Boolean)
               .join(" ")}

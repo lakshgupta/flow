@@ -170,6 +170,61 @@ func TestNewMuxServesHomeAndGraphTreeAPIs(t *testing.T) {
 	}
 }
 
+func TestNewMuxKeepsMalformedDocumentInTreeAndReturnsOpenError(t *testing.T) {
+	t.Parallel()
+
+	root := createGraphTreeHTTPAPITestWorkspace(t)
+	if err := os.WriteFile(filepath.Join(root.FlowPath, "data", "content", "execution", "broken.md"), []byte("---\nid: broken-task\ntype: task\ngraph: execution\ntitle: Broken task\nlinks:\n  - node: task-1\n    context: malformed: yaml\n---\n\nBroken body\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(broken) error = %v", err)
+	}
+	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {
+		t.Fatalf("index.Rebuild() error = %v", err)
+	}
+
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	graphTree := performJSONRequest[graphTreeResponse](t, handler, http.MethodGet, "/api/graphs")
+	var executionNode *graphTreeNodeResponse
+	for index := range graphTree.Graphs {
+		if graphTree.Graphs[index].GraphPath == "execution" {
+			executionNode = &graphTree.Graphs[index]
+			break
+		}
+	}
+	if executionNode == nil {
+		t.Fatalf("graphTree.Graphs = %#v, want execution node", graphTree.Graphs)
+	}
+	if !slices.ContainsFunc(executionNode.Files, func(file graphTreeFileResponse) bool {
+		return file.ID == "broken-task" && file.FileName == "broken.md"
+	}) {
+		t.Fatalf("executionNode.Files = %#v, want malformed file entry", executionNode.Files)
+	}
+
+	valid := performJSONRequest[documentResponse](t, handler, http.MethodGet, "/api/documents/task-1")
+	if valid.ID != "task-1" {
+		t.Fatalf("valid.ID = %q, want task-1", valid.ID)
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/documents/broken-task", nil)
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusUnprocessableEntity {
+		body, _ := io.ReadAll(recorder.Body)
+		t.Fatalf("status = %d, want %d, body = %s", recorder.Code, http.StatusUnprocessableEntity, string(body))
+	}
+
+	var payload errorResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&payload); err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if !strings.Contains(payload.Error, "data/content/execution/broken.md") || !strings.Contains(payload.Error, "invalid format") {
+		t.Fatalf("payload.Error = %q, want malformed file message", payload.Error)
+	}
+}
+
 func TestNewMuxServesHomeInlineReferencesWithoutFrontmatter(t *testing.T) {
 	t.Parallel()
 

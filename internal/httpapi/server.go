@@ -848,10 +848,9 @@ func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.R
 		nodes = nil
 	}
 
-	documents, err := workspace.LoadDocuments(handler.options.Root.FlowPath)
+	files, err := index.ReadGraphTreeFilesWorkspace(handler.options.Root.IndexPath, handler.options.Root.FlowPath)
 	if err != nil {
-		// Best-effort: a single malformed document should not blank the entire GUI shell.
-		documents = nil
+		files = nil
 	}
 
 	home, err := loadHomeResponse(handler.options.Root)
@@ -860,22 +859,17 @@ func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.R
 	}
 
 	filesByGraph := make(map[string][]graphTreeFileResponse)
-	for _, item := range documents {
-		graphPath, ok, err := markdown.GraphPathFromWorkspacePath(item.Path)
-		if err != nil {
-			writeError(writer, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if !ok {
+	for _, file := range files {
+		if strings.TrimSpace(file.Graph) == "" {
 			continue
 		}
-
-		file, ok := graphTreeFileFromWorkspaceDocument(item)
-		if !ok {
-			continue
-		}
-
-		filesByGraph[graphPath] = append(filesByGraph[graphPath], file)
+		filesByGraph[file.Graph] = append(filesByGraph[file.Graph], graphTreeFileResponse{
+			ID:       file.ID,
+			Type:     file.Type,
+			Title:    file.Title,
+			Path:     file.Path,
+			FileName: file.FileName,
+		})
 	}
 
 	for graphPath := range filesByGraph {
@@ -970,37 +964,6 @@ func pruneWorkspaceGraphDirectoryColors(root workspace.Root, nodes []index.Graph
 	return nextColors, nil
 }
 
-func graphTreeFileFromWorkspaceDocument(item markdown.WorkspaceDocument) (graphTreeFileResponse, bool) {
-	switch document := item.Document.(type) {
-	case markdown.NoteDocument:
-		return graphTreeFileResponse{
-			ID:       document.Metadata.ID,
-			Type:     string(document.Metadata.Type),
-			Title:    document.Metadata.Title,
-			Path:     item.Path,
-			FileName: filepath.Base(item.Path),
-		}, true
-	case markdown.TaskDocument:
-		return graphTreeFileResponse{
-			ID:       document.Metadata.ID,
-			Type:     string(document.Metadata.Type),
-			Title:    document.Metadata.Title,
-			Path:     item.Path,
-			FileName: filepath.Base(item.Path),
-		}, true
-	case markdown.CommandDocument:
-		return graphTreeFileResponse{
-			ID:       document.Metadata.ID,
-			Type:     string(document.Metadata.Type),
-			Title:    document.Metadata.Title,
-			Path:     item.Path,
-			FileName: filepath.Base(item.Path),
-		}, true
-	default:
-		return graphTreeFileResponse{}, false
-	}
-}
-
 func (handler *apiHandler) handleGraphCanvas(writer http.ResponseWriter, request *http.Request) {
 	selectedGraph := strings.TrimSpace(request.URL.Query().Get("graph"))
 	if selectedGraph == "" {
@@ -1008,7 +971,7 @@ func (handler *apiHandler) handleGraphCanvas(writer http.ResponseWriter, request
 		return
 	}
 
-	documents, err := workspace.LoadDocuments(handler.options.Root.FlowPath)
+	documents, _, err := workspace.LoadDocumentsBestEffort(handler.options.Root.FlowPath)
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
@@ -1098,7 +1061,7 @@ func (handler *apiHandler) handleGraphLayout(writer http.ResponseWriter, request
 		return
 	}
 
-	documents, err := workspace.LoadDocuments(handler.options.Root.FlowPath)
+	documents, _, err := workspace.LoadDocumentsBestEffort(handler.options.Root.FlowPath)
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
@@ -1177,7 +1140,17 @@ func (handler *apiHandler) handleDocument(writer http.ResponseWriter, request *h
 		return
 	}
 
-	documents, err := workspace.LoadDocuments(handler.options.Root.FlowPath)
+	parseFailure, found, err := index.ReadDocumentParseFailureWorkspace(handler.options.Root.IndexPath, handler.options.Root.FlowPath, documentID)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if found {
+		writeError(writer, http.StatusUnprocessableEntity, fmt.Sprintf("document file %s has invalid format: %s", parseFailure.Path, parseFailure.ParseError))
+		return
+	}
+
+	documents, _, err := workspace.LoadDocumentsBestEffort(handler.options.Root.FlowPath)
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
@@ -1511,7 +1484,7 @@ func (handler *apiHandler) handleReferenceTargets(writer http.ResponseWriter, re
 		limit = parsedLimit
 	}
 
-	documents, err := workspace.LoadDocuments(handler.options.Root.FlowPath)
+	documents, _, err := workspace.LoadDocumentsBestEffort(handler.options.Root.FlowPath)
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
@@ -2089,7 +2062,15 @@ func decodeJSONRequest(request *http.Request, destination any) error {
 }
 
 func loadDocumentResponse(root workspace.Root, documentID string) (documentResponse, error) {
-	documents, err := workspace.LoadDocuments(root.FlowPath)
+	parseFailure, found, err := index.ReadDocumentParseFailureWorkspace(root.IndexPath, root.FlowPath, documentID)
+	if err != nil {
+		return documentResponse{}, err
+	}
+	if found {
+		return documentResponse{}, fmt.Errorf("document file %s has invalid format: %s", parseFailure.Path, parseFailure.ParseError)
+	}
+
+	documents, _, err := workspace.LoadDocumentsBestEffort(root.FlowPath)
 	if err != nil {
 		return documentResponse{}, err
 	}
@@ -2139,7 +2120,7 @@ func resolveInlineReferenceResponses(documents []markdown.WorkspaceDocument, ite
 }
 
 func loadCalendarDocumentResponses(root workspace.Root) ([]calendarDocumentResponse, error) {
-	documents, err := workspace.LoadDocuments(root.FlowPath)
+	documents, _, err := workspace.LoadDocumentsBestEffort(root.FlowPath)
 	if err != nil {
 		return nil, err
 	}
@@ -2237,7 +2218,7 @@ func loadHomeResponse(root workspace.Root) (homeResponse, error) {
 
 	home.Path = relativePath
 
-	documents, err := workspace.LoadDocuments(root.FlowPath)
+	documents, _, err := workspace.LoadDocumentsBestEffort(root.FlowPath)
 	if err != nil {
 		return homeResponse{}, fmt.Errorf("load workspace documents: %w", err)
 	}

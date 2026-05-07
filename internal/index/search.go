@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	_ "modernc.org/sqlite"
@@ -20,6 +21,25 @@ type SearchResult struct {
 	Title       string `json:"title"`
 	Path        string `json:"path"`
 	Snippet     string `json:"snippet"`
+}
+
+type GraphTreeFile struct {
+	ID         string
+	Type       string
+	Graph      string
+	Title      string
+	Path       string
+	FileName   string
+	ParseError string
+}
+
+type DocumentParseFailure struct {
+	ID         string
+	Type       string
+	Graph      string
+	Title      string
+	Path       string
+	ParseError string
 }
 
 // SearchFilters constrains search matches to one or more fields.
@@ -150,6 +170,83 @@ func ReplaceWorkspaceGraphDirectoryColorsWorkspace(indexPath string, flowPath st
 	}
 
 	return ReplaceWorkspaceGraphDirectoryColors(indexPath, colors)
+}
+
+func ReadGraphTreeFilesWorkspace(indexPath string, flowPath string) ([]GraphTreeFile, error) {
+	if err := ensureIndexExists(indexPath, flowPath); err != nil {
+		return nil, err
+	}
+
+	return ReadGraphTreeFiles(indexPath)
+}
+
+func ReadGraphTreeFiles(indexPath string) ([]GraphTreeFile, error) {
+	database, err := sql.Open("sqlite", indexPath)
+	if err != nil {
+		return nil, fmt.Errorf("open index database: %w", err)
+	}
+	defer database.Close()
+
+	rows, err := database.Query(
+		`SELECT id, type, graph, title, path, '' AS parse_error FROM documents WHERE graph != ''
+		 UNION ALL
+		 SELECT id, type, graph, title, path, parse_error FROM parse_failures WHERE graph != ''
+		 ORDER BY graph, path`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query graph tree files: %w", err)
+	}
+	defer rows.Close()
+
+	files := []GraphTreeFile{}
+	for rows.Next() {
+		var file GraphTreeFile
+		if err := rows.Scan(&file.ID, &file.Type, &file.Graph, &file.Title, &file.Path, &file.ParseError); err != nil {
+			return nil, fmt.Errorf("scan graph tree file: %w", err)
+		}
+		file.FileName = filepath.Base(file.Path)
+		files = append(files, file)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate graph tree files: %w", err)
+	}
+
+	return files, nil
+}
+
+func ReadDocumentParseFailureWorkspace(indexPath string, flowPath string, id string) (DocumentParseFailure, bool, error) {
+	if err := ensureIndexExists(indexPath, flowPath); err != nil {
+		return DocumentParseFailure{}, false, err
+	}
+
+	return ReadDocumentParseFailure(indexPath, id)
+}
+
+func ReadDocumentParseFailure(indexPath string, id string) (DocumentParseFailure, bool, error) {
+	trimmedID := strings.TrimSpace(id)
+	if trimmedID == "" {
+		return DocumentParseFailure{}, false, fmt.Errorf("document id must not be empty")
+	}
+
+	database, err := sql.Open("sqlite", indexPath)
+	if err != nil {
+		return DocumentParseFailure{}, false, fmt.Errorf("open index database: %w", err)
+	}
+	defer database.Close()
+
+	var failure DocumentParseFailure
+	err = database.QueryRow(
+		`SELECT id, type, graph, title, path, parse_error FROM parse_failures WHERE id = ?`,
+		trimmedID,
+	).Scan(&failure.ID, &failure.Type, &failure.Graph, &failure.Title, &failure.Path, &failure.ParseError)
+	if err == sql.ErrNoRows {
+		return DocumentParseFailure{}, false, nil
+	}
+	if err != nil {
+		return DocumentParseFailure{}, false, fmt.Errorf("query document parse failure: %w", err)
+	}
+
+	return failure, true, nil
 }
 
 // Search queries the derived SQLite index for document metadata and body text matches.
