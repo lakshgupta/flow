@@ -2823,6 +2823,15 @@ pre {
   padding: 0.3rem 0.35rem 0.18rem;
 }
 
+.center-document-shell[data-right-rail-docked="true"] {
+  padding-right: 0;
+}
+
+.center-document-shell[data-right-rail-docked="true"] .thread-stack {
+  padding-right: 0;
+  mask-image: linear-gradient(to right, transparent 0, black 1.5rem, black 100%);
+}
+
 .center-document-shell[data-thread-expanded="true"] .thread-stack {
   padding: 0.25rem 0.2rem calc(0.18rem + var(--thread-stack-scrollbar-gutter));
   margin-bottom: calc(-1 * var(--thread-stack-scrollbar-gutter));
@@ -3190,6 +3199,18 @@ pre {
   box-shadow:
     0 28px 52px color-mix(in srgb, var(--foreground) 12%, transparent),
     0 0 0 1px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+.center-document-shell[data-right-rail-docked="true"] .thread-panel-active {
+  flex: 1 1 var(--thread-panel-width, min(56rem, calc(100vw - 7rem)));
+}
+
+.center-document-shell[data-right-rail-docked="true"] .thread-stack[data-density="dense"] .thread-panel-active {
+  flex-basis: var(--thread-panel-width, min(46rem, calc(100vw - 8rem)));
+}
+
+.center-document-shell[data-right-rail-docked="true"] .thread-stack[data-density="ultra"] .thread-panel-active {
+  flex-basis: var(--thread-panel-width, min(44rem, calc(100vw - 8.5rem)));
 }
 
 .thread-panel-active.thread-panel-tinted {

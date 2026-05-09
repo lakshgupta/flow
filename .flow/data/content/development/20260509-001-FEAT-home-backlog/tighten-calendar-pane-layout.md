@@ -7,7 +7,7 @@ description: Remove the dead gap between the center thread pane and the right ra
 tags:
     - fix
     - frontend
-status: Ready
+status: Success
 links:
     - node: development/20260509-001-FEAT-home-backlog/review-dedupe-frontend
       context: Use the final task for bounded cleanup after the backlog fixes land.
@@ -15,4 +15,9 @@ links:
         - depends-on
 ---
 
-Adjust the center and right pane sizing logic so the center surface slides left cleanly when the calendar opens.
+Adjusted the docked thread layout so the active center panel grows into the available width when the right rail opens, and removed the trailing docked gutter that kept the thread stack visually separated from the calendar rail.
+
+Validation
+
+- cd frontend && npx playwright test tests/editor-navigation.spec.ts --project=chromium --grep "keeps the thread stack flush against the calendar rail"
+- cd frontend && npm run build

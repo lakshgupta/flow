@@ -93,6 +93,140 @@ function graphCanvasResponse() {
 }
 
 test.describe('Graph editor navigation repro', () => {
+  test('keeps the thread stack flush against the calendar rail', async ({ page }) => {
+    const noteOne = {
+      id: 'note-1',
+      type: 'note',
+      featureSlug: 'execution',
+      graph: 'execution',
+      title: 'Overview',
+      description: 'Execution overview',
+      path: 'data/graphs/execution/overview.md',
+      tags: [],
+      body: 'Overview body\n',
+      links: [],
+      relatedNoteIds: [],
+    }
+
+    await page.route('**/api/workspace', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(workspaceResponse()),
+      })
+    })
+
+    await page.route('**/api/graphs', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(graphTreeResponse()),
+      })
+    })
+
+    await page.route('**/api/graphs/note', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          type: 'note',
+          availableGraphs: ['execution'],
+          graphItems: { execution: [] },
+        }),
+      })
+    })
+
+    await page.route('**/api/graphs/task', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ type: 'task', availableGraphs: [], graphItems: {} }),
+      })
+    })
+
+    await page.route('**/api/graphs/command', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ type: 'command', availableGraphs: [], graphItems: {} }),
+      })
+    })
+
+    await page.route('**/api/calendar-documents', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      })
+    })
+
+    await page.route('**/api/graph-canvas?graph=execution', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(graphCanvasResponse()),
+      })
+    })
+
+    await page.route('**/api/documents/note-1', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(noteOne),
+      })
+    })
+
+    await page.route('**/api/documents/note-2', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'note-2',
+          type: 'note',
+          featureSlug: 'execution',
+          graph: 'execution',
+          title: 'Follow Up',
+          description: 'Execution follow-up',
+          path: 'data/graphs/execution/follow-up.md',
+          tags: [],
+          body: 'Follow up body\n',
+          links: [],
+          relatedNoteIds: [],
+        }),
+      })
+    })
+
+    await page.setViewportSize({ width: 1600, height: 1000 })
+    await page.goto('/')
+
+    await page.getByText('Execution').click()
+    await expect(page.locator('.graph-canvas-overlay-node[data-nodeid="note-1"]')).toBeVisible()
+
+    await page.locator('.graph-canvas-overlay-node[data-nodeid="note-1"]').click()
+    await page.getByRole('button', { name: 'Document', exact: true }).click()
+    await expect(page.getByLabel('Document thread')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Calendar' }).click()
+    await expect(page.getByLabel('Right pane')).toHaveAttribute('data-open', 'true')
+
+    const geometry = await page.evaluate(() => {
+      const thread = document.querySelector('.thread-panel-active')
+      const rail = document.querySelector('.app-right-sidebar')
+      if (!(thread instanceof HTMLElement) || !(rail instanceof HTMLElement)) {
+        return null
+      }
+
+      const threadRect = thread.getBoundingClientRect()
+      const railRect = rail.getBoundingClientRect()
+      return {
+        gap: railRect.left - threadRect.right,
+      }
+    })
+
+    expect(geometry).not.toBeNull()
+    expect(geometry?.gap ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(4)
+  })
+
   test('preserves pending document edits when switching graph canvas nodes and coming back', async ({ page }) => {
     let noteOne = {
       id: 'note-1',

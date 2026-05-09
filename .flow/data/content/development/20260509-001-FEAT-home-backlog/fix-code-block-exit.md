@@ -3,7 +3,7 @@ id: development/20260509-001-FEAT-home-backlog/fix-code-block-exit
 type: task
 graph: development/20260509-001-FEAT-home-backlog
 title: Fix code block cursor escape
-description: Allow the caret to move out of fenced code blocks after pasted code content
+description: Allow the caret to move out of fenced code blocks after pasted code content (commit: 29984e6)
 tags:
     - fix
     - frontend

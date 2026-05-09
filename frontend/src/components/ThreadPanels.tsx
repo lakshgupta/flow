@@ -60,6 +60,7 @@ export type ThreadPanelStackProps = {
   mutationError: string;
   mutationSuccess: string;
   isMaximizedRightRail: boolean;
+  isRightRailDocked: boolean;
   threadExpanded: boolean;
   threadDensityMode: ThreadDensityMode;
   nextThreadDensityLabel: string;
@@ -167,6 +168,7 @@ function ThreadPanelStackComponent({
   mutationError,
   mutationSuccess,
   isMaximizedRightRail,
+  isRightRailDocked,
   threadExpanded,
   threadDensityMode,
   nextThreadDensityLabel,
@@ -204,7 +206,11 @@ function ThreadPanelStackComponent({
   actions,
 }: ThreadPanelStackProps) {
   return (
-    <div className="center-document-shell" data-thread-expanded={threadExpanded ? "true" : "false"}>
+    <div
+      className="center-document-shell"
+      data-thread-expanded={threadExpanded ? "true" : "false"}
+      data-right-rail-docked={isRightRailDocked ? "true" : "false"}
+    >
       {panelError !== "" ? <p className="status-line status-line-error">{panelError}</p> : null}
       {mutationError !== "" ? <p className="status-line status-line-error">{mutationError}</p> : null}
       {mutationSuccess !== "" ? <p className="status-line status-line-success">{mutationSuccess}</p> : null}

@@ -3593,6 +3593,7 @@ function FlowApp() {
       mutationError={mutationError}
       mutationSuccess={mutationSuccess}
       isMaximizedRightRail={isMaximizedRightRail}
+      isRightRailDocked={!isMaximizedRightRail && !rightRailCollapsed}
       threadExpanded={threadExpanded}
       threadDensityMode={threadDensityMode}
       nextThreadDensityLabel={nextThreadDensityLabel}
