@@ -3,7 +3,7 @@ id: development/20260509-001-FEAT-home-backlog/review-dedupe-frontend
 type: task
 graph: development/20260509-001-FEAT-home-backlog
 title: Review and dedupe frontend
-description: Perform a bounded frontend review for duplicate logic and concrete rerender or performance issues
+description: 'Perform a bounded frontend review for duplicate logic and concrete rerender or performance issues (commit: d79fe12)'
 tags:
     - review
     - refactor

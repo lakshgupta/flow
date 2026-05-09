@@ -8,6 +8,7 @@ import { defineTextColor } from 'prosekit/extensions/text-color'
 
 import { defineCodeBlockExitKeymap } from './code-block-exit-keymap'
 import { defineCodeBlockView } from './ui/code-block-view'
+import { defineImageView } from './ui/image-view'
 
 export function defineEditorExtension(placeholder = 'Start writing…') {
   return union(
@@ -18,6 +19,7 @@ export function defineEditorExtension(placeholder = 'Start writing…') {
     defineCodeBlockShiki(),
     defineCodeBlockExitKeymap(),
     defineHorizontalRule(),
+    defineImageView(),
     defineCodeBlockView(),
   )
 }

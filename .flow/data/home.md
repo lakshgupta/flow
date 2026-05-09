@@ -11,7 +11,7 @@ title: Home
 - [x] If I paste a code using ``` option, then I can't move the cursor after it. If I move the cursor then it only moves within the code section. I am unable to move the cursor after the code section.
 - [x] when I open a calendar in the node view then the center view should slide to the left to make space for the calender to open up. Currently the thread in the center pane moves to the left, the calendar opens but there is considerable space left in between. there should never be space left in between the threads and the right pane where the calendar and other options are.
 - [x] review the code and make sure the code is performant and follows the best practices. remove the duplicate code.
-- [ ] able to resize the image
+- [x] able to resize the image
 - [ ] ignore DESIGN.md. Review the UI design of the app. Check the colors and make sure the app looks modern and sleek.
 - [ ] any thing drawn on excelidraw does not stay. the window is always empty. also, can the excalidraw and mermaid be like special section and not related to the ``` code flow?
 
