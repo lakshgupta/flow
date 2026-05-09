@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useRef, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 
 import type { ThreadPanelStackProps } from "../components/ThreadPanels";
 import type { DocumentFormState, HomeFormState } from "../types";
+import { useLatestRef } from "./useLatestRef";
 
 type ThreadDensityMode = "comfortable" | "dense" | "ultra";
 
@@ -59,7 +60,7 @@ export function useThreadPanelActions({
   updateEditableLinkDetail,
   beginThreadPanelResize,
 }: UseThreadPanelActionsArgs): ThreadPanelStackProps["actions"] {
-  const actionRefs = useRef<UseThreadPanelActionsArgs>({
+  const actionRefs = useLatestRef<UseThreadPanelActionsArgs>({
     activateThreadDocument,
     setThreadDensityMode,
     toggleThreadExpanded,
@@ -80,28 +81,6 @@ export function useThreadPanelActions({
     updateEditableLinkDetail,
     beginThreadPanelResize,
   });
-
-  actionRefs.current = {
-    activateThreadDocument,
-    setThreadDensityMode,
-    toggleThreadExpanded,
-    moveThreadFocus,
-    toggleRightRailMaximized,
-    closeDocumentThreadFrom,
-    updateHomeFormField,
-    handleInlineReferenceOpen,
-    handleDateOpen,
-    openAssetInThreadFromSource,
-    setEditorScrollTarget,
-    updateFormField,
-    toggleCenterDocumentSidePanel,
-    handleDocumentTOCResizeMouseDown,
-    handleTOCNavigate,
-    addOutgoingLink,
-    removeOutgoingLink,
-    updateEditableLinkDetail,
-    beginThreadPanelResize,
-  };
 
   const handleThreadPanelActivate = useCallback((documentId: string, graphPath: string) => {
     void actionRefs.current.activateThreadDocument(documentId, graphPath);

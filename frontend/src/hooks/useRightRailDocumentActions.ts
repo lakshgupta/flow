@@ -1,13 +1,13 @@
 import {
   useCallback,
   useMemo,
-  useRef,
   type MutableRefObject,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 
 import type { DocumentEditorPaneProps } from "../components/DocumentEditorPane";
 import type { DocumentFormState, DocumentResponse } from "../types";
+import { useLatestRef } from "./useLatestRef";
 
 type UseRightRailDocumentActionsArgs = {
   toggleRightRailMaximized: () => void;
@@ -51,7 +51,7 @@ export function useRightRailDocumentActions({
   handleTOCNavigate,
   selectedDocumentRef,
 }: UseRightRailDocumentActionsArgs): DocumentEditorPaneProps["actions"] {
-  const actionRefs = useRef({
+  const actionRefs = useLatestRef({
     toggleRightRailMaximized,
     openDeleteDialogForSelectedDocument,
     handleCloseContextPanel,
@@ -65,21 +65,6 @@ export function useRightRailDocumentActions({
     handleRightRailDocumentTOCResizeMouseDown,
     handleTOCNavigate,
   });
-
-  actionRefs.current = {
-    toggleRightRailMaximized,
-    openDeleteDialogForSelectedDocument,
-    handleCloseContextPanel,
-    updateFormField,
-    handleInlineReferenceOpen,
-    handleDateOpen,
-    openAssetInThreadFromSource,
-    setEditorScrollTarget,
-    handleGraphCanvasFilesDrop,
-    handleInspectDocument,
-    handleRightRailDocumentTOCResizeMouseDown,
-    handleTOCNavigate,
-  };
 
   const handleRightRailDocumentToggleMaximize = useCallback(() => {
     actionRefs.current.toggleRightRailMaximized();

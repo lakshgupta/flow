@@ -1,4 +1,6 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo } from "react";
+
+import { useLatestRef } from "./useLatestRef";
 
 export type RightRailControlsActions = {
   openSettings: () => void;
@@ -18,17 +20,11 @@ export function useRightRailControlsActions({
   toggleRightPanel,
   handleSelectedNodeDocumentButtonClick,
 }: UseRightRailControlsActionsArgs): RightRailControlsActions {
-  const actionRefs = useRef({
+  const actionRefs = useLatestRef({
     setSettingsDialogOpen,
     toggleRightPanel,
     handleSelectedNodeDocumentButtonClick,
   });
-
-  actionRefs.current = {
-    setSettingsDialogOpen,
-    toggleRightPanel,
-    handleSelectedNodeDocumentButtonClick,
-  };
 
   const openSettings = useCallback(() => {
     actionRefs.current.setSettingsDialogOpen(true);

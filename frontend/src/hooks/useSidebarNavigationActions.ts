@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo } from "react";
 
 import type { GraphTreeFileData } from "../types";
+import { useLatestRef } from "./useLatestRef";
 
 export type SidebarNavigationActions = {
   selectWorkspace: (workspacePath: string) => void;
@@ -46,7 +47,7 @@ export function useSidebarNavigationActions({
   handleSidebarDeleteGraph,
   handleSidebarSetGraphColor,
 }: UseSidebarNavigationActionsArgs): SidebarNavigationActions {
-  const actionRefs = useRef<UseSidebarNavigationActionsArgs>({
+  const actionRefs = useLatestRef<UseSidebarNavigationActionsArgs>({
     handleWorkspaceSelection,
     handleSelectHome,
     handleSelectGraph,
@@ -60,21 +61,6 @@ export function useSidebarNavigationActions({
     handleSidebarDeleteGraph,
     handleSidebarSetGraphColor,
   });
-
-  actionRefs.current = {
-    handleWorkspaceSelection,
-    handleSelectHome,
-    handleSelectGraph,
-    handleSelectDocument,
-    handleSidebarCreateGraph,
-    handleSidebarCreateNode,
-    handleSidebarRenameGraph,
-    handleSidebarRenameNode,
-    handleSidebarMoveNode,
-    handleSidebarDeleteNode,
-    handleSidebarDeleteGraph,
-    handleSidebarSetGraphColor,
-  };
 
   const selectWorkspace = useCallback((workspacePath: string) => {
     void actionRefs.current.handleWorkspaceSelection(workspacePath);

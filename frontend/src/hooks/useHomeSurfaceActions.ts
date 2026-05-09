@@ -1,12 +1,12 @@
 import {
   useCallback,
   useMemo,
-  useRef,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 
 import type { HomeSurfaceProps } from "../components/HomeSurface";
 import type { HomeFormState } from "../types";
+import { useLatestRef } from "./useLatestRef";
 
 type UseHomeSurfaceActionsArgs = {
   setHomeTOCVisible: React.Dispatch<React.SetStateAction<boolean>>;
@@ -42,7 +42,7 @@ export function useHomeSurfaceActions({
   handleTOCNavigate,
   homeThreadDocumentId,
 }: UseHomeSurfaceActionsArgs): HomeSurfaceProps["actions"] {
-  const actionRefs = useRef({
+  const actionRefs = useLatestRef({
     updateHomeFormField,
     handleInlineReferenceOpen,
     handleDateOpen,
@@ -51,16 +51,6 @@ export function useHomeSurfaceActions({
     handleHomeDocumentTOCResizeMouseDown,
     handleTOCNavigate,
   });
-
-  actionRefs.current = {
-    updateHomeFormField,
-    handleInlineReferenceOpen,
-    handleDateOpen,
-    openAssetInThreadFromSource,
-    setEditorScrollTarget,
-    handleHomeDocumentTOCResizeMouseDown,
-    handleTOCNavigate,
-  };
 
   const handleHomeSurfaceToggleTOC = useCallback(() => {
     setHomeTOCVisible((current) => !current);

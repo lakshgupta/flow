@@ -1,7 +1,6 @@
 import {
   useCallback,
   useMemo,
-  useRef,
   type MutableRefObject,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -19,6 +18,7 @@ import type {
   GraphCanvasPosition,
   GraphCreateType,
 } from "../types";
+import { useLatestRef } from "./useLatestRef";
 
 type GraphCanvasEdgeClickPayload = {
   edgeId: string;
@@ -108,7 +108,7 @@ export function useGraphCanvasSurfaceActions({
   graphCanvasOverlayActions: GraphCanvasOverlayActions;
   graphCanvasSurfaceActions: GraphCanvasSurfaceProps["actions"];
 } {
-  const actionRefs = useRef({
+  const actionRefs = useLatestRef({
     clearEdgeClickTimer,
     updateIntersectingNodes,
     clearIntersectingNodes,
@@ -134,33 +134,6 @@ export function useGraphCanvasSurfaceActions({
     persistGraphCanvasPosition,
     persistGraphCanvasViewport,
   });
-
-  actionRefs.current = {
-    clearEdgeClickTimer,
-    updateIntersectingNodes,
-    clearIntersectingNodes,
-    handleGraphCanvasEdgeClick,
-    handleGraphCanvasEdgeHover,
-    handleGraphCanvasEdgeDoubleClick,
-    handlePersistEdgeToolbar,
-    handleDeleteEdge,
-    handleGraphCanvasOverlayNodeClick,
-    handleGraphCanvasOverlayNodeDoubleClick,
-    handleGraphCanvasOverlayPointerDown,
-    handleConnectionHandlePointerDown,
-    handleGraphCanvasNodeDescriptionSave,
-    handleMergeDocuments,
-    handleCreateGraphDocument,
-    handleGraphCanvasFilesDrop,
-    handleToggleGraphCanvasLayout,
-    handleGraphCanvasSearchNext,
-    handleGraphCanvasSearchPrevious,
-    handleGraphCanvasNodesChange,
-    handleOpenCanvasDocument,
-    updateGraphCanvasNodePosition,
-    persistGraphCanvasPosition,
-    persistGraphCanvasViewport,
-  };
 
   const handleGraphCanvasClearHoveredTooltip = useCallback((edgeId: string) => {
     setHoveredEdgeTooltip((current) => current?.edgeId === edgeId ? null : current);
