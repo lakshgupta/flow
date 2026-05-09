@@ -154,7 +154,6 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
         <section className="flow-diagram-block" contentEditable={false}>
           <header className="flow-diagram-block-header">
             <div>
-              <p className="flow-diagram-block-kicker">Special section</p>
               <h3 className="flow-diagram-block-title">{showMermaidSection ? 'Mermaid diagram' : 'Excalidraw canvas'}</h3>
             </div>
             {languageSelector}

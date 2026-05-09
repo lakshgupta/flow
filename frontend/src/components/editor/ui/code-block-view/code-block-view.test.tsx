@@ -59,7 +59,7 @@ describe('CodeBlockView', () => {
 
     expect(screen.getByLabelText('Code block language')).toHaveValue('mermaid')
     expect(screen.getByLabelText('Mermaid diagram source')).toHaveValue('flowchart TD\nA-->B')
-    expect(screen.getByText('Special section')).toBeInTheDocument()
+    expect(screen.queryByText('Special section')).not.toBeInTheDocument()
     expect(screen.getByTestId('mermaid-editor-preview')).toHaveTextContent('flowchart TD')
   })
 
