@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 
+import { renderExcalidrawDiagramSource } from "../lib/excalidraw";
 import { renderMermaidDiagramSource } from "../lib/mermaid";
 import { toErrorMessage } from "../lib/utils";
 import { markdownToHTML } from "../richText";
@@ -23,7 +24,7 @@ function escapeHTML(value: string): string {
 
 export function RenderedMarkdown({ value, inlineReferences, className, ariaLabel }: RenderedMarkdownProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const renderPrefixRef = useRef(`flow-rendered-mermaid-${Math.random().toString(36).slice(2)}`);
+  const renderPrefixRef = useRef(`flow-rendered-diagram-${Math.random().toString(36).slice(2)}`);
   const html = useMemo(() => markdownToHTML(value, inlineReferences), [inlineReferences, value]);
 
   useEffect(() => {
@@ -32,19 +33,53 @@ export function RenderedMarkdown({ value, inlineReferences, className, ariaLabel
       return;
     }
 
-    const mermaidBlocks = Array.from(container.querySelectorAll("pre > code")).filter((code) => {
-      return code instanceof HTMLElement && /(^|\s)language-mermaid(\s|$)/.test(code.className);
+    const diagramBlocks = [
+      {
+        language: "mermaid",
+        render: (source: string, index: number) => renderMermaidDiagramSource(source, `${renderPrefixRef.current}-mermaid-${index}`).then((result) => result.svg),
+        rootClassName: "flow-mermaid-diagram",
+        inlineClassName: "flow-mermaid-diagram-inline",
+        loadingClassName: "flow-mermaid-diagram-loading",
+        errorClassName: "flow-mermaid-diagram-error",
+        messageClassName: "flow-mermaid-diagram-message",
+        detailClassName: "flow-mermaid-diagram-detail",
+        loadingMessage: "Rendering diagram...",
+        errorMessage: "Unable to render Mermaid diagram.",
+        datasetKey: "mermaidRendered",
+      },
+      {
+        language: "excalidraw",
+        render: (source: string) => renderExcalidrawDiagramSource(source),
+        rootClassName: "flow-excalidraw-diagram",
+        inlineClassName: "flow-excalidraw-diagram-inline",
+        loadingClassName: "flow-excalidraw-diagram-loading",
+        errorClassName: "flow-excalidraw-diagram-error",
+        messageClassName: "flow-excalidraw-diagram-message",
+        detailClassName: "flow-excalidraw-diagram-detail",
+        loadingMessage: "Rendering diagram...",
+        errorMessage: "Unable to render Excalidraw diagram.",
+        datasetKey: "excalidrawRendered",
+      },
+    ] as const;
+    const matchedBlocks = diagramBlocks.flatMap((diagram) => {
+      return Array.from(container.querySelectorAll("pre > code")).flatMap((code) => {
+        if (!(code instanceof HTMLElement) || new RegExp(`(^|\\s)language-${diagram.language}(\\s|$)`).test(code.className) === false) {
+          return [];
+        }
+
+        return [{ code, diagram }] as const;
+      });
     });
-    if (mermaidBlocks.length === 0) {
+    if (matchedBlocks.length === 0) {
       return;
     }
 
     let cancelled = false;
     const previews: HTMLDivElement[] = [];
-    const renderedBlocks: HTMLElement[] = [];
+    const renderedBlocks: Array<{ pre: HTMLElement; datasetKey: string }> = [];
 
     void (async () => {
-      for (const [index, code] of mermaidBlocks.entries()) {
+      for (const [index, { code, diagram }] of matchedBlocks.entries()) {
         if (!(code instanceof HTMLElement)) {
           continue;
         }
@@ -59,31 +94,30 @@ export function RenderedMarkdown({ value, inlineReferences, className, ariaLabel
         }
 
         const preview = document.createElement("div");
-        preview.className = "flow-mermaid-diagram flow-mermaid-diagram-inline flow-mermaid-diagram-loading";
-        preview.innerHTML = '<p class="flow-mermaid-diagram-message">Rendering diagram...</p>';
+        preview.className = `${diagram.rootClassName} ${diagram.inlineClassName} ${diagram.loadingClassName}`;
+        preview.innerHTML = `<p class="${diagram.messageClassName}">${diagram.loadingMessage}</p>`;
         pre.after(preview);
         previews.push(preview);
 
         try {
-          const rendered = await renderMermaidDiagramSource(source, `${renderPrefixRef.current}-${index}`);
+          const rendered = await diagram.render(source, index);
           if (cancelled) {
             return;
           }
 
-          preview.className = "flow-mermaid-diagram flow-mermaid-diagram-inline";
-          preview.innerHTML = rendered.svg;
-          rendered.bindFunctions?.(preview);
-          pre.dataset.mermaidRendered = "true";
-          renderedBlocks.push(pre);
+          preview.className = `${diagram.rootClassName} ${diagram.inlineClassName}`;
+          preview.innerHTML = rendered;
+          pre.dataset[diagram.datasetKey] = "true";
+          renderedBlocks.push({ pre, datasetKey: diagram.datasetKey });
         } catch (error) {
           if (cancelled) {
             return;
           }
 
-          preview.className = "flow-mermaid-diagram flow-mermaid-diagram-inline flow-mermaid-diagram-error";
+          preview.className = `${diagram.rootClassName} ${diagram.inlineClassName} ${diagram.errorClassName}`;
           preview.innerHTML = [
-            '<p class="flow-mermaid-diagram-message">Unable to render Mermaid diagram.</p>',
-            `<p class="flow-mermaid-diagram-detail">${escapeHTML(toErrorMessage(error))}</p>`,
+            `<p class="${diagram.messageClassName}">${diagram.errorMessage}</p>`,
+            `<p class="${diagram.detailClassName}">${escapeHTML(toErrorMessage(error))}</p>`,
           ].join("");
         }
       }
@@ -94,8 +128,8 @@ export function RenderedMarkdown({ value, inlineReferences, className, ariaLabel
       for (const preview of previews) {
         preview.remove();
       }
-      for (const pre of renderedBlocks) {
-        delete pre.dataset.mermaidRendered;
+      for (const rendered of renderedBlocks) {
+        delete rendered.pre.dataset[rendered.datasetKey];
       }
     };
   }, [html]);

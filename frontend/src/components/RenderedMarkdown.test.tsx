@@ -1,9 +1,14 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { renderExcalidrawDiagramSource } from "../lib/excalidraw";
 import { renderMermaidDiagramSource } from "../lib/mermaid";
 
 import { RenderedMarkdown } from "./RenderedMarkdown";
+
+vi.mock("../lib/excalidraw", () => ({
+  renderExcalidrawDiagramSource: vi.fn(),
+}));
 
 vi.mock("../lib/mermaid", () => ({
   renderMermaidDiagramSource: vi.fn(),
@@ -27,7 +32,7 @@ describe("RenderedMarkdown", () => {
 
     expect(renderMermaidDiagramSource).toHaveBeenCalledWith(
       expect.stringContaining("flowchart TD"),
-      expect.stringContaining("flow-rendered-mermaid-"),
+      expect.stringContaining("flow-rendered-diagram-"),
     );
   });
 
@@ -35,5 +40,17 @@ describe("RenderedMarkdown", () => {
     render(<RenderedMarkdown ariaLabel="Rendered markdown" value={"```ts\nconst value = 1\n```\n"} />);
 
     expect(renderMermaidDiagramSource).not.toHaveBeenCalled();
+  });
+
+  it("renders Excalidraw previews for fenced Excalidraw code blocks", async () => {
+    vi.mocked(renderExcalidrawDiagramSource).mockResolvedValue('<svg data-testid="excalidraw-preview"></svg>');
+
+    render(<RenderedMarkdown ariaLabel="Rendered markdown" value={"```excalidraw\n{\"type\":\"excalidraw\"}\n```\n"} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("excalidraw-preview")).toBeInTheDocument();
+    });
+
+    expect(renderExcalidrawDiagramSource).toHaveBeenCalledWith(expect.stringContaining('"type":"excalidraw"'));
   });
 });

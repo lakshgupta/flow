@@ -91,6 +91,12 @@ export default function SlashMenu({ onDateRequest }: { onDateRequest?: () => voi
           onSelect={() => editor.commands.insertCodeBlock({ language: 'mermaid' })}
         />
 
+        <SlashMenuItem
+          label="Excalidraw Diagram"
+          kbd="```excalidraw"
+          onSelect={() => editor.commands.insertCodeBlock({ language: 'excalidraw' })}
+        />
+
         {onDateRequest && (
           <SlashMenuItem
             label="Date"

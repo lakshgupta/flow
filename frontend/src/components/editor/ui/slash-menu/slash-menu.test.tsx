@@ -60,4 +60,15 @@ describe('SlashMenu', () => {
     expect(insertCodeBlock).toHaveBeenCalledWith({ language: 'mermaid' })
     expect(insertText).not.toHaveBeenCalled()
   })
+
+  it('inserts an Excalidraw code block without starter content', async () => {
+    const user = userEvent.setup()
+
+    render(<SlashMenu />)
+
+    await user.click(screen.getByRole('button', { name: /Excalidraw Diagram/i }))
+
+    expect(insertCodeBlock).toHaveBeenCalledWith({ language: 'excalidraw' })
+    expect(insertText).not.toHaveBeenCalled()
+  })
 })

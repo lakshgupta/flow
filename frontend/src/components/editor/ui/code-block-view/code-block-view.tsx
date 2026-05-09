@@ -1,23 +1,76 @@
 import type { CodeBlockAttrs } from 'prosekit/extensions/code-block'
 import { shikiBundledLanguagesInfo } from 'prosekit/extensions/code-block'
 import type { ReactNodeViewProps } from 'prosekit/react'
+import { Excalidraw } from '@excalidraw/excalidraw'
+import { useEffect, useMemo, useRef } from 'react'
 
 import { MermaidDiagram } from '../../../MermaidDiagram'
+import { parseExcalidrawSource, serializeExcalidrawScene } from '../../../../lib/excalidraw'
 
 const codeBlockLanguages = [
+  { id: 'excalidraw', name: 'Excalidraw Diagram' },
   { id: 'mermaid', name: 'Mermaid Diagram' },
-  ...shikiBundledLanguagesInfo.filter((info) => info.id !== 'mermaid'),
+  ...shikiBundledLanguagesInfo.filter((info) => info.id !== 'excalidraw' && info.id !== 'mermaid'),
 ]
 
 export default function CodeBlockView(props: ReactNodeViewProps) {
   const attrs = props.node.attrs as CodeBlockAttrs
   const language = attrs.language
   const code = props.node.textContent
+  const excalidrawSource = useMemo(() => {
+    return language === 'excalidraw' ? parseExcalidrawSource(code) : null
+  }, [code, language])
+  const excalidrawAPIRef = useRef<{ updateScene: (scene: unknown) => void } | null>(null)
+  const lastSerializedExcalidrawSourceRef = useRef(code)
   const showMermaidPreview = language === 'mermaid' && code.trim() !== ''
+  const showExcalidrawPreview = language === 'excalidraw'
 
   const setLanguage = (language: string) => {
     const attrs: CodeBlockAttrs = { language }
     props.setAttrs(attrs)
+  }
+
+  useEffect(() => {
+    if (excalidrawSource === null || excalidrawSource.status === 'error') {
+      lastSerializedExcalidrawSourceRef.current = code
+      return
+    }
+
+    lastSerializedExcalidrawSourceRef.current = excalidrawSource.normalizedSource
+  }, [code, excalidrawSource])
+
+  useEffect(() => {
+    if (showExcalidrawPreview === false || excalidrawSource === null || excalidrawSource.status === 'error') {
+      return
+    }
+    if (excalidrawAPIRef.current === null) {
+      return
+    }
+
+    excalidrawAPIRef.current.updateScene(excalidrawSource.initialData)
+  }, [excalidrawSource, showExcalidrawPreview])
+
+  const replaceCodeBlockContent = (nextCode: string) => {
+    if (nextCode === code) {
+      return
+    }
+
+    const pos = props.getPos()
+    if (typeof pos !== 'number') {
+      return
+    }
+
+    const from = pos + 1
+    const to = pos + props.node.nodeSize - 1
+    const transaction = props.view.state.tr
+
+    if (nextCode === '') {
+      transaction.delete(from, to)
+    } else {
+      transaction.replaceWith(from, to, props.view.state.schema.text(nextCode))
+    }
+
+    props.view.dispatch(transaction)
   }
 
   return (
@@ -37,10 +90,38 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
           ))}
         </select>
       </div>
-      <pre ref={props.contentRef} data-language={language}></pre>
+      <pre ref={props.contentRef} data-language={language} hidden={showExcalidrawPreview}></pre>
       {showMermaidPreview ? (
         <div className="px-4 pb-4" contentEditable={false}>
           <MermaidDiagram source={code} className="flow-mermaid-diagram-editor" />
+        </div>
+      ) : null}
+      {showExcalidrawPreview ? (
+        <div className="px-4 pb-4" contentEditable={false}>
+          {excalidrawSource?.status === 'error' ? (
+            <div className="flow-excalidraw-diagram flow-excalidraw-diagram-editor flow-excalidraw-diagram-error">
+              <p className="flow-excalidraw-diagram-message">Unable to load Excalidraw diagram.</p>
+              <p className="flow-excalidraw-diagram-detail">{excalidrawSource.error}</p>
+            </div>
+          ) : (
+            <div className="flow-excalidraw-diagram flow-excalidraw-diagram-editor flow-excalidraw-editor-shell">
+              <Excalidraw
+                excalidrawAPI={(api) => {
+                  excalidrawAPIRef.current = api
+                }}
+                initialData={excalidrawSource?.initialData}
+                onChange={(elements, appState, files) => {
+                  const nextSource = serializeExcalidrawScene(elements, appState, files)
+                  if (nextSource === lastSerializedExcalidrawSourceRef.current) {
+                    return
+                  }
+
+                  lastSerializedExcalidrawSourceRef.current = nextSource
+                  replaceCodeBlockContent(nextSource)
+                }}
+              />
+            </div>
+          )}
         </div>
       ) : null}
     </>

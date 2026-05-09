@@ -3395,6 +3395,62 @@ pre {
   display: none;
 }
 
+.flow-excalidraw-diagram {
+  margin: 1rem 0;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: 0.9rem;
+  background: color-mix(in srgb, var(--card) 92%, var(--accent) 8%);
+  overflow: hidden;
+}
+
+.flow-excalidraw-diagram-inline {
+  padding: 0.5rem;
+}
+
+.flow-excalidraw-diagram-editor {
+  min-height: 24rem;
+}
+
+.flow-excalidraw-diagram-loading,
+.flow-excalidraw-diagram-error {
+  border-style: dashed;
+}
+
+.flow-excalidraw-diagram-message,
+.flow-excalidraw-diagram-detail {
+  margin: 0;
+}
+
+.flow-excalidraw-diagram-message {
+  padding: 0.9rem;
+  font-size: 0.88rem;
+  color: var(--muted-foreground);
+}
+
+.flow-excalidraw-diagram-detail {
+  padding: 0 0.9rem 0.9rem;
+  font-size: 0.8rem;
+  color: var(--destructive);
+}
+
+.flow-excalidraw-diagram svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.flow-excalidraw-editor-shell {
+  min-height: 24rem;
+}
+
+.flow-excalidraw-editor-shell .excalidraw {
+  height: 24rem;
+}
+
+.thread-panel-rendered-markdown pre[data-excalidraw-rendered="true"] {
+  display: none;
+}
+
 /* Date links inserted via the / trigger */
 .flow-date-link {
   color: var(--primary);
