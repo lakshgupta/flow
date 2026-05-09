@@ -3,7 +3,7 @@ id: development/20260509-001-FEAT-home-backlog/refresh-ui-shell-styling
 type: task
 graph: development/20260509-001-FEAT-home-backlog
 title: Refresh UI shell styling
-description: Review the live app UI and modernize the shell colors, hierarchy, and navigation chrome
+description: 'Review the live app UI and modernize the shell colors, hierarchy, and navigation chrome (commit: fb3a8a9)'
 tags:
     - design
     - frontend

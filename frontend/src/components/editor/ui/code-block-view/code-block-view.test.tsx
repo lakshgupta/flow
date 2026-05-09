@@ -1,10 +1,27 @@
 import { createRef } from 'react'
 
 import { fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
+const excalidrawMockState = vi.hoisted(() => ({
+  latestOnChange: null as null | ((elements: unknown[], appState: unknown, files: unknown) => void),
+}))
+
 vi.mock('@excalidraw/excalidraw', () => ({
-  Excalidraw: () => <div data-testid="excalidraw-editor-preview">excalidraw</div>,
+  Excalidraw: ({ onChange }: { onChange: (elements: unknown[], appState: unknown, files: unknown) => void }) => {
+    excalidrawMockState.latestOnChange = onChange
+
+    return (
+      <button
+        data-testid="excalidraw-editor-preview"
+        onClick={() => onChange([{ id: 'drawn-element' }], { viewBackgroundColor: 'transparent' }, {})}
+        type="button"
+      >
+        excalidraw
+      </button>
+    )
+  },
 }))
 
 vi.mock('../../../MermaidDiagram', () => ({
@@ -20,7 +37,8 @@ vi.mock('../../../../lib/excalidraw', () => ({
     initialData: { elements: [], appState: { viewBackgroundColor: 'transparent' }, files: {} },
     normalizedSource: source === '' ? '{"type":"excalidraw"}' : source,
   }),
-  serializeExcalidrawScene: () => '{"type":"excalidraw"}',
+  serializeExcalidrawScene: (elements: Array<{ id: string }>) =>
+    elements.length === 0 ? '{"type":"excalidraw"}' : '{"type":"excalidraw","elements":[{"id":"drawn-element"}]}',
   setExcalidrawSourceHeight: () => '{"type":"excalidraw","flow":{"height":552}}',
 }))
 
@@ -40,6 +58,8 @@ describe('CodeBlockView', () => {
     )
 
     expect(screen.getByLabelText('Code block language')).toHaveValue('mermaid')
+    expect(screen.getByLabelText('Mermaid diagram source')).toHaveValue('flowchart TD\nA-->B')
+    expect(screen.getByText('Special section')).toBeInTheDocument()
     expect(screen.getByTestId('mermaid-editor-preview')).toHaveTextContent('flowchart TD')
   })
 
@@ -74,6 +94,55 @@ describe('CodeBlockView', () => {
     expect(screen.getByTestId('excalidraw-editor-preview')).toBeInTheDocument()
     expect(screen.getByLabelText('Resize Excalidraw diagram')).toBeInTheDocument()
     expect(screen.getByTestId('excalidraw-editor-preview').parentElement).toHaveStyle({ height: '512px' })
+  })
+
+  it('does not overwrite an existing Excalidraw scene during initial sync', () => {
+    const dispatch = vi.fn()
+    const transaction = {
+      replaceWith: vi.fn(() => transaction),
+      delete: vi.fn(() => transaction),
+    }
+
+    render(
+      <CodeBlockView
+        contentRef={createRef<HTMLPreElement>()}
+        node={{ attrs: { language: 'excalidraw' }, textContent: '{"type":"excalidraw","elements":[{"id":"persisted-element"}]}' } as never}
+        selected={false}
+        setAttrs={vi.fn()}
+        view={{ dispatch, state: { schema: { text: vi.fn(() => 'text-node') }, tr: transaction } } as never}
+        getPos={vi.fn(() => 1) as never}
+      />,
+    )
+
+    excalidrawMockState.latestOnChange?.([], { viewBackgroundColor: 'transparent' }, {})
+
+    expect(transaction.replaceWith).not.toHaveBeenCalled()
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+
+  it('persists Excalidraw scene changes after interaction', async () => {
+    const user = userEvent.setup()
+    const dispatch = vi.fn()
+    const transaction = {
+      replaceWith: vi.fn(() => transaction),
+      delete: vi.fn(() => transaction),
+    }
+
+    render(
+      <CodeBlockView
+        contentRef={createRef<HTMLPreElement>()}
+        node={{ attrs: { language: 'excalidraw' }, textContent: '{"type":"excalidraw"}' } as never}
+        selected={false}
+        setAttrs={vi.fn()}
+        view={{ dispatch, state: { schema: { text: vi.fn(() => 'text-node') }, tr: transaction } } as never}
+        getPos={vi.fn(() => 1) as never}
+      />,
+    )
+
+    await user.click(screen.getByTestId('excalidraw-editor-preview'))
+
+    expect(transaction.replaceWith).toHaveBeenCalled()
+    expect(dispatch).toHaveBeenCalled()
   })
 
   it('persists a resized Excalidraw editor height', () => {

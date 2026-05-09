@@ -29,12 +29,15 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
   const excalidrawAPIRef = useRef<{ updateScene: (scene: unknown) => void } | null>(null)
   const lastSerializedExcalidrawSourceRef = useRef(code)
   const excalidrawHeightRef = useRef(DEFAULT_EXCALIDRAW_HEIGHT)
+  const hasExcalidrawInteractionRef = useRef(false)
   const resizeStartYRef = useRef(0)
   const resizeStartHeightRef = useRef(DEFAULT_EXCALIDRAW_HEIGHT)
   const [excalidrawHeight, setExcalidrawHeight] = useState(DEFAULT_EXCALIDRAW_HEIGHT)
   const [isResizingExcalidraw, setIsResizingExcalidraw] = useState(false)
+  const showMermaidSection = language === 'mermaid'
   const showMermaidPreview = language === 'mermaid' && code.trim() !== ''
   const showExcalidrawPreview = language === 'excalidraw'
+  const showDiagramSection = showMermaidSection || showExcalidrawPreview
 
   const setLanguage = (language: string) => {
     const attrs: CodeBlockAttrs = { language }
@@ -129,75 +132,120 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
     props.view.dispatch(transaction)
   }
 
+  const languageSelector = (
+    <select
+      aria-label="Code block language"
+      className={showDiagramSection ? 'flow-diagram-block-select' : 'relative box-border w-auto cursor-pointer select-none appearance-none rounded-sm border border-white/12 bg-black/45 px-2 py-1 text-xs text-(--prosemirror-highlight) opacity-80 shadow-sm transition hover:bg-black/60 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-1 focus-visible:outline-white/25 [div[data-node-view-root]:hover_&]:opacity-95'}
+      onChange={(event) => setLanguage(event.target.value)}
+      value={language || ''}
+    >
+      <option value="">Plain Text</option>
+      {codeBlockLanguages.map((info) => (
+        <option key={info.id} value={info.id}>
+          {info.name}
+        </option>
+      ))}
+    </select>
+  )
+
   return (
     <>
-      <div className="relative mx-2 top-3 h-0 select-none overflow-visible text-xs" contentEditable={false}>
-        <select
-          aria-label="Code block language"
-          className="relative box-border w-auto cursor-pointer select-none appearance-none rounded-sm border border-white/12 bg-black/45 px-2 py-1 text-xs text-(--prosemirror-highlight) opacity-80 shadow-sm transition hover:bg-black/60 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-1 focus-visible:outline-white/25 [div[data-node-view-root]:hover_&]:opacity-95"
-          onChange={(event) => setLanguage(event.target.value)}
-          value={language || ''}
-        >
-          <option value="">Plain Text</option>
-          {codeBlockLanguages.map((info) => (
-            <option key={info.id} value={info.id}>
-              {info.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <pre ref={props.contentRef} data-language={language} hidden={showExcalidrawPreview}></pre>
-      {showMermaidPreview ? (
-        <div className="px-4 pb-4" contentEditable={false}>
-          <MermaidDiagram source={code} className="flow-mermaid-diagram-editor" />
-        </div>
-      ) : null}
-      {showExcalidrawPreview ? (
-        <div className="px-4 pb-4" contentEditable={false}>
-          {excalidrawSource?.status === 'error' ? (
-            <div className="flow-excalidraw-diagram flow-excalidraw-diagram-editor flow-excalidraw-diagram-error">
-              <p className="flow-excalidraw-diagram-message">Unable to load Excalidraw diagram.</p>
-              <p className="flow-excalidraw-diagram-detail">{excalidrawSource.error}</p>
+      {showDiagramSection ? (
+        <section className="flow-diagram-block" contentEditable={false}>
+          <header className="flow-diagram-block-header">
+            <div>
+              <p className="flow-diagram-block-kicker">Special section</p>
+              <h3 className="flow-diagram-block-title">{showMermaidSection ? 'Mermaid diagram' : 'Excalidraw canvas'}</h3>
+            </div>
+            {languageSelector}
+          </header>
+          {showMermaidSection ? (
+            <div className="flow-diagram-block-body">
+              <div className="flow-diagram-block-source">
+                <label className="flow-diagram-block-source-label">Diagram source</label>
+                <textarea
+                  aria-label="Mermaid diagram source"
+                  className="flow-diagram-source"
+                  onChange={(event) => replaceCodeBlockContent(event.target.value)}
+                  spellCheck={false}
+                  value={code}
+                />
+              </div>
+              <div className="flow-diagram-block-preview">
+                {showMermaidPreview ? (
+                  <MermaidDiagram source={code} className="flow-mermaid-diagram-editor" />
+                ) : (
+                  <p className="flow-diagram-block-empty">Add Mermaid syntax to render a live preview.</p>
+                )}
+              </div>
             </div>
           ) : (
-            <div
-              className="flow-excalidraw-diagram flow-excalidraw-diagram-editor flow-excalidraw-editor-shell group"
-              style={{ height: `${excalidrawHeight}px` }}
-            >
-              <Excalidraw
-                excalidrawAPI={(api) => {
-                  excalidrawAPIRef.current = api
-                }}
-                initialData={excalidrawSource?.initialData}
-                onChange={(elements, appState, files) => {
-                  const nextSource = serializeExcalidrawScene(elements, appState, files, {
-                    height: excalidrawHeightRef.current,
-                  })
-                  if (nextSource === lastSerializedExcalidrawSourceRef.current) {
-                    return
-                  }
+            <div className="flow-diagram-block-body">
+              <div className="flow-diagram-block-preview">
+                <div className="px-4 pb-4" contentEditable={false}>
+                  {excalidrawSource?.status === 'error' ? (
+                    <div className="flow-excalidraw-diagram flow-excalidraw-diagram-editor flow-excalidraw-diagram-error">
+                      <p className="flow-excalidraw-diagram-message">Unable to load Excalidraw diagram.</p>
+                      <p className="flow-excalidraw-diagram-detail">{excalidrawSource.error}</p>
+                    </div>
+                  ) : (
+                    <div
+                      className="flow-excalidraw-diagram flow-excalidraw-diagram-editor flow-excalidraw-editor-shell group"
+                      onFocusCapture={() => {
+                        hasExcalidrawInteractionRef.current = true
+                      }}
+                      onPointerDownCapture={() => {
+                        hasExcalidrawInteractionRef.current = true
+                      }}
+                      style={{ height: `${excalidrawHeight}px` }}
+                    >
+                      <Excalidraw
+                        excalidrawAPI={(api) => {
+                          excalidrawAPIRef.current = api
+                        }}
+                        initialData={excalidrawSource?.initialData}
+                        onChange={(elements, appState, files) => {
+                          if (hasExcalidrawInteractionRef.current === false) {
+                            return
+                          }
 
-                  lastSerializedExcalidrawSourceRef.current = nextSource
-                  replaceCodeBlockContent(nextSource)
-                }}
-              />
-              <button
-                aria-label="Resize Excalidraw diagram"
-                className="flow-excalidraw-resize-handle"
-                onPointerDown={(event) => {
-                  event.preventDefault()
-                  resizeStartYRef.current = event.clientY
-                  resizeStartHeightRef.current = excalidrawHeightRef.current
-                  setIsResizingExcalidraw(true)
-                }}
-                type="button"
-              >
-                <span className="i-lucide-grip-horizontal size-4 block" aria-hidden="true"></span>
-              </button>
+                          const nextSource = serializeExcalidrawScene(elements, appState, files, {
+                            height: excalidrawHeightRef.current,
+                          })
+                          if (nextSource === lastSerializedExcalidrawSourceRef.current) {
+                            return
+                          }
+
+                          lastSerializedExcalidrawSourceRef.current = nextSource
+                          replaceCodeBlockContent(nextSource)
+                        }}
+                      />
+                      <button
+                        aria-label="Resize Excalidraw diagram"
+                        className="flow-excalidraw-resize-handle"
+                        onPointerDown={(event) => {
+                          event.preventDefault()
+                          resizeStartYRef.current = event.clientY
+                          resizeStartHeightRef.current = excalidrawHeightRef.current
+                          setIsResizingExcalidraw(true)
+                        }}
+                        type="button"
+                      >
+                        <span className="i-lucide-grip-horizontal size-4 block" aria-hidden="true"></span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
+        </section>
+      ) : (
+        <div className="relative mx-2 top-3 h-0 select-none overflow-visible text-xs" contentEditable={false}>
+          {languageSelector}
         </div>
-      ) : null}
+      )}
+      <pre ref={props.contentRef} data-language={language} hidden={showDiagramSection}></pre>
     </>
   )
 }

@@ -3472,6 +3472,106 @@ pre {
   display: none;
 }
 
+.flow-diagram-block {
+  margin: 1rem 0;
+  border: 1px solid color-mix(in srgb, var(--warm-border) 82%, transparent);
+  border-radius: 1.1rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(247, 250, 247, 0.6));
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.flow-diagram-block-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1rem 0.85rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--warm-border) 72%, transparent);
+  background: linear-gradient(180deg, rgba(244, 248, 245, 0.98), rgba(236, 242, 238, 0.88));
+}
+
+.flow-diagram-block-kicker {
+  margin: 0 0 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.flow-diagram-block-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.flow-diagram-block-select {
+  box-sizing: border-box;
+  width: auto;
+  cursor: pointer;
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--warm-border) 82%, transparent);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--foreground);
+  padding: 0.5rem 0.85rem;
+  font-size: 0.8rem;
+  box-shadow: 0 8px 18px rgba(18, 33, 29, 0.06);
+}
+
+.flow-diagram-block-body {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.flow-diagram-block-source {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.flow-diagram-block-source-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.flow-diagram-source {
+  min-height: 9rem;
+  width: 100%;
+  resize: vertical;
+  border: 1px solid color-mix(in srgb, var(--warm-border) 80%, transparent);
+  border-radius: 0.9rem;
+  background: rgba(22, 33, 29, 0.94);
+  color: var(--primary-foreground);
+  padding: 0.9rem 1rem;
+  font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+
+.flow-diagram-source:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--ring) 70%, transparent);
+  outline-offset: 2px;
+}
+
+.flow-diagram-block-preview {
+  min-width: 0;
+}
+
+.flow-diagram-block-empty {
+  margin: 0;
+  padding: 1rem;
+  border: 1px dashed color-mix(in srgb, var(--warm-border) 74%, transparent);
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.4);
+  color: var(--muted-foreground);
+}
+
 .flow-excalidraw-diagram {
   margin: 1rem 0;
   border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
