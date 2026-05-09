@@ -86,4 +86,29 @@ describe('RichTextEditor markdown shortcuts', () => {
       expect(editor.textContent).not.toContain('~~')
     })
   })
+
+  it('moves the caret out of a trailing code block with ArrowDown', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <RichTextEditor
+        ariaLabel="Document body editor"
+        onChange={vi.fn()}
+        value=""
+      />,
+    )
+
+    const editor = screen.getByLabelText('Document body editor')
+    await user.click(editor)
+    await user.type(editor, '```js')
+    await user.keyboard('{Enter}')
+    await user.type(editor, 'const value = 1')
+    await user.keyboard('{ArrowDown}')
+    await user.type(editor, 'after block')
+
+    await waitFor(() => {
+      expect(editor.querySelector('pre')).toHaveTextContent('const value = 1')
+      expect(editor.querySelector('p')).toHaveTextContent('after block')
+    })
+  })
 })

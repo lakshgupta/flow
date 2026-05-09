@@ -3,7 +3,7 @@ id: development/20260509-001-FEAT-home-backlog/fix-editor-toolbar-focus
 type: task
 graph: development/20260509-001-FEAT-home-backlog
 title: Fix editor toolbar focus activation
-description: Restore slash and heading shortcuts on first click into the markdown editor
+description: 'Restore slash and heading shortcuts on first click into the markdown editor (commit: d8b3dcb)'
 tags:
     - fix
     - frontend
