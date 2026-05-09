@@ -2,10 +2,16 @@ import type { CodeBlockAttrs } from 'prosekit/extensions/code-block'
 import { shikiBundledLanguagesInfo } from 'prosekit/extensions/code-block'
 import type { ReactNodeViewProps } from 'prosekit/react'
 import { Excalidraw } from '@excalidraw/excalidraw'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { MermaidDiagram } from '../../../MermaidDiagram'
-import { parseExcalidrawSource, serializeExcalidrawScene } from '../../../../lib/excalidraw'
+import {
+  DEFAULT_EXCALIDRAW_HEIGHT,
+  clampExcalidrawHeight,
+  parseExcalidrawSource,
+  serializeExcalidrawScene,
+  setExcalidrawSourceHeight,
+} from '../../../../lib/excalidraw'
 
 const codeBlockLanguages = [
   { id: 'excalidraw', name: 'Excalidraw Diagram' },
@@ -22,6 +28,11 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
   }, [code, language])
   const excalidrawAPIRef = useRef<{ updateScene: (scene: unknown) => void } | null>(null)
   const lastSerializedExcalidrawSourceRef = useRef(code)
+  const excalidrawHeightRef = useRef(DEFAULT_EXCALIDRAW_HEIGHT)
+  const resizeStartYRef = useRef(0)
+  const resizeStartHeightRef = useRef(DEFAULT_EXCALIDRAW_HEIGHT)
+  const [excalidrawHeight, setExcalidrawHeight] = useState(DEFAULT_EXCALIDRAW_HEIGHT)
+  const [isResizingExcalidraw, setIsResizingExcalidraw] = useState(false)
   const showMermaidPreview = language === 'mermaid' && code.trim() !== ''
   const showExcalidrawPreview = language === 'excalidraw'
 
@@ -40,6 +51,17 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
   }, [code, excalidrawSource])
 
   useEffect(() => {
+    if (excalidrawSource === null || excalidrawSource.status === 'error') {
+      return
+    }
+
+    excalidrawHeightRef.current = excalidrawSource.height
+    if (isResizingExcalidraw === false) {
+      setExcalidrawHeight(excalidrawSource.height)
+    }
+  }, [excalidrawSource, isResizingExcalidraw])
+
+  useEffect(() => {
     if (showExcalidrawPreview === false || excalidrawSource === null || excalidrawSource.status === 'error') {
       return
     }
@@ -49,6 +71,40 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
 
     excalidrawAPIRef.current.updateScene(excalidrawSource.initialData)
   }, [excalidrawSource, showExcalidrawPreview])
+
+  useEffect(() => {
+    if (isResizingExcalidraw === false || typeof window === 'undefined') {
+      return
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      event.preventDefault()
+
+      const nextHeight = clampExcalidrawHeight(resizeStartHeightRef.current + event.clientY - resizeStartYRef.current)
+      excalidrawHeightRef.current = nextHeight
+      setExcalidrawHeight(nextHeight)
+    }
+
+    const handlePointerUp = (event: PointerEvent) => {
+      event.preventDefault()
+      setIsResizingExcalidraw(false)
+
+      const nextSource = setExcalidrawSourceHeight(lastSerializedExcalidrawSourceRef.current, excalidrawHeightRef.current)
+      if (nextSource === lastSerializedExcalidrawSourceRef.current) {
+        return
+      }
+
+      lastSerializedExcalidrawSourceRef.current = nextSource
+      replaceCodeBlockContent(nextSource)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+    }
+  }, [isResizingExcalidraw])
 
   const replaceCodeBlockContent = (nextCode: string) => {
     if (nextCode === code) {
@@ -104,14 +160,19 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
               <p className="flow-excalidraw-diagram-detail">{excalidrawSource.error}</p>
             </div>
           ) : (
-            <div className="flow-excalidraw-diagram flow-excalidraw-diagram-editor flow-excalidraw-editor-shell">
+            <div
+              className="flow-excalidraw-diagram flow-excalidraw-diagram-editor flow-excalidraw-editor-shell group"
+              style={{ height: `${excalidrawHeight}px` }}
+            >
               <Excalidraw
                 excalidrawAPI={(api) => {
                   excalidrawAPIRef.current = api
                 }}
                 initialData={excalidrawSource?.initialData}
                 onChange={(elements, appState, files) => {
-                  const nextSource = serializeExcalidrawScene(elements, appState, files)
+                  const nextSource = serializeExcalidrawScene(elements, appState, files, {
+                    height: excalidrawHeightRef.current,
+                  })
                   if (nextSource === lastSerializedExcalidrawSourceRef.current) {
                     return
                   }
@@ -120,6 +181,19 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
                   replaceCodeBlockContent(nextSource)
                 }}
               />
+              <button
+                aria-label="Resize Excalidraw diagram"
+                className="flow-excalidraw-resize-handle"
+                onPointerDown={(event) => {
+                  event.preventDefault()
+                  resizeStartYRef.current = event.clientY
+                  resizeStartHeightRef.current = excalidrawHeightRef.current
+                  setIsResizingExcalidraw(true)
+                }}
+                type="button"
+              >
+                <span className="i-lucide-grip-horizontal size-4 block" aria-hidden="true"></span>
+              </button>
             </div>
           )}
         </div>

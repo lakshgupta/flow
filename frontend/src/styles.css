@@ -3440,12 +3440,49 @@ pre {
 }
 
 .flow-excalidraw-editor-shell {
+  position: relative;
   min-height: 24rem;
 }
 
 .flow-excalidraw-editor-shell .excalidraw {
-  height: 24rem;
+  height: 100%;
 }
+
+.flow-excalidraw-resize-handle {
+  position: absolute;
+  left: 50%;
+  bottom: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 1.25rem;
+  margin-left: -1.125rem;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 78%, var(--foreground) 22%);
+  color: color-mix(in srgb, var(--foreground) 60%, transparent);
+  cursor: ns-resize;
+  opacity: 0;
+  transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+
+.flow-excalidraw-editor-shell:hover .flow-excalidraw-resize-handle,
+.flow-excalidraw-editor-shell:focus-within .flow-excalidraw-resize-handle {
+  opacity: 1;
+}
+
+.flow-excalidraw-resize-handle:hover,
+.flow-excalidraw-resize-handle:focus-visible {
+  background: color-mix(in srgb, var(--accent) 28%, var(--card) 72%);
+  color: var(--foreground);
+}
+
+.flow-excalidraw-resize-handle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--ring) 80%, transparent);
+  outline-offset: 2px;
+}
+
 
 .thread-panel-rendered-markdown pre[data-excalidraw-rendered="true"] {
   display: none;

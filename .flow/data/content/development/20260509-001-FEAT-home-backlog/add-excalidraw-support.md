@@ -3,7 +3,7 @@ id: development/20260509-001-FEAT-home-backlog/add-excalidraw-support
 type: task
 graph: development/20260509-001-FEAT-home-backlog
 title: Add Excalidraw support
-description: Add Excalidraw authoring and rendering through code blocks and slash-menu insertion
+description: 'Add Excalidraw authoring and rendering through code blocks and slash-menu insertion (commit: dbb71e2)'
 tags:
     - implementation
     - frontend

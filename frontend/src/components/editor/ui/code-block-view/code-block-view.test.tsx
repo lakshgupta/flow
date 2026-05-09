@@ -1,6 +1,6 @@
 import { createRef } from 'react'
 
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('@excalidraw/excalidraw', () => ({
@@ -12,12 +12,16 @@ vi.mock('../../../MermaidDiagram', () => ({
 }))
 
 vi.mock('../../../../lib/excalidraw', () => ({
+  DEFAULT_EXCALIDRAW_HEIGHT: 384,
+  clampExcalidrawHeight: (height: number) => height,
   parseExcalidrawSource: (source: string) => ({
     status: source.trim() === '' ? 'empty' : 'ready',
+    height: 512,
     initialData: { elements: [], appState: { viewBackgroundColor: 'transparent' }, files: {} },
     normalizedSource: source === '' ? '{"type":"excalidraw"}' : source,
   }),
   serializeExcalidrawScene: () => '{"type":"excalidraw"}',
+  setExcalidrawSourceHeight: () => '{"type":"excalidraw","flow":{"height":552}}',
 }))
 
 import CodeBlockView from './code-block-view'
@@ -68,5 +72,34 @@ describe('CodeBlockView', () => {
 
     expect(screen.getByLabelText('Code block language')).toHaveValue('excalidraw')
     expect(screen.getByTestId('excalidraw-editor-preview')).toBeInTheDocument()
+    expect(screen.getByLabelText('Resize Excalidraw diagram')).toBeInTheDocument()
+    expect(screen.getByTestId('excalidraw-editor-preview').parentElement).toHaveStyle({ height: '512px' })
+  })
+
+  it('persists a resized Excalidraw editor height', () => {
+    const dispatch = vi.fn()
+    const transaction = {
+      replaceWith: vi.fn(() => transaction),
+      delete: vi.fn(() => transaction),
+    }
+
+    render(
+      <CodeBlockView
+        contentRef={createRef<HTMLPreElement>()}
+        node={{ attrs: { language: 'excalidraw' }, textContent: '{"type":"excalidraw"}' } as never}
+        selected={false}
+        setAttrs={vi.fn()}
+        view={{ dispatch, state: { schema: { text: vi.fn(() => 'text-node') }, tr: transaction } } as never}
+        getPos={vi.fn(() => 1) as never}
+      />,
+    )
+
+    const handle = screen.getByLabelText('Resize Excalidraw diagram')
+    fireEvent.pointerDown(handle, { clientY: 100 })
+    fireEvent.pointerMove(window, { clientY: 140 })
+    fireEvent.pointerUp(window, { clientY: 140 })
+
+    expect(transaction.replaceWith).toHaveBeenCalled()
+    expect(dispatch).toHaveBeenCalled()
   })
 })
