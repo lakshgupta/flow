@@ -1,19 +1,54 @@
-import { act, render } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RichTextEditor } from './RichTextEditor'
 import { editorHTMLToMarkdown } from '../../richText'
 
+vi.mock('@/components/ui/calendar', () => ({
+  Calendar: () => null,
+}))
+
+vi.mock('react-day-picker', () => ({
+  DayPicker: () => null,
+}))
+
+vi.mock('react-day-picker/style.css', () => ({}))
+
+vi.mock('@/components/ui/dialog', () => ({
+  Dialog: ({ children }: { children: ReactNode }) => children,
+  DialogContent: ({ children }: { children: ReactNode }) => children,
+  DialogTitle: ({ children }: { children: ReactNode }) => children,
+}))
+
 const mockSetContent = vi.fn()
 const mockGetDocHTML = vi.fn()
 const mockFocus = vi.fn()
 const mockInsertText = vi.fn()
+const mockDispatch = vi.fn()
+const mockPosAtCoords = vi.fn(() => ({ pos: 1 }))
+const mockSetSelection = vi.fn(() => 'transaction')
 let capturedDocChange: (() => void) | null = null
 let mockEditorViewDOMHTML = ''
 
+vi.mock('prosekit/pm/state', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('prosekit/pm/state')>()
+
+  return {
+    ...actual,
+    TextSelection: {
+      ...actual.TextSelection,
+      create: vi.fn(() => 'selection'),
+    },
+  }
+})
+
 vi.mock('./ui/block-handle', () => ({
   BlockHandle: () => null,
+}))
+
+vi.mock('./define-editor-extension', () => ({
+  defineEditorExtension: () => ({ mocked: true }),
 }))
 
 vi.mock('./ui/drop-indicator', () => ({
@@ -46,7 +81,15 @@ vi.mock('prosekit/core', async (importOriginal) => {
         getDocHTML: mockGetDocHTML,
         view: {
           dom,
+          dispatch: mockDispatch,
           focus: mockFocus,
+          posAtCoords: mockPosAtCoords,
+          state: {
+            doc: {},
+            tr: {
+              setSelection: mockSetSelection,
+            },
+          },
         },
         commands: {
           insertText: mockInsertText,
@@ -77,6 +120,11 @@ describe('RichTextEditor', () => {
     mockGetDocHTML.mockReset()
     mockFocus.mockReset()
     mockInsertText.mockReset()
+    mockDispatch.mockReset()
+    mockPosAtCoords.mockReset()
+    mockPosAtCoords.mockReturnValue({ pos: 1 })
+    mockSetSelection.mockReset()
+    mockSetSelection.mockReturnValue('transaction')
   })
 
   afterEach(() => {
@@ -219,5 +267,32 @@ describe('RichTextEditor', () => {
 
     expect(markdown).toBe(expected)
     expect(markdown).toContain('Child')
+  })
+
+  it('re-establishes a selection on first pointer down after external content sync', () => {
+    const { rerender } = render(
+      <RichTextEditor
+        ariaLabel="Document body editor"
+        onChange={vi.fn()}
+        value="Original"
+      />,
+    )
+
+    rerender(
+      <RichTextEditor
+        ariaLabel="Document body editor"
+        onChange={vi.fn()}
+        value="Updated"
+      />,
+    )
+
+    fireEvent.pointerDown(screen.getByLabelText('Document body editor'), {
+      button: 0,
+      clientX: 24,
+      clientY: 24,
+    })
+
+    expect(mockSetSelection).toHaveBeenCalled()
+    expect(mockDispatch).toHaveBeenCalledWith('transaction')
   })
 })

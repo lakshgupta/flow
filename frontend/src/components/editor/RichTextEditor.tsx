@@ -2,9 +2,10 @@ import 'prosekit/basic/style.css'
 import 'prosekit/basic/typography.css'
 
 import { createEditor } from 'prosekit/core'
+import { TextSelection } from 'prosekit/pm/state'
 import { ProseKit, useDocChange } from 'prosekit/react'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
-import type { MouseEvent as ReactMouseEvent } from 'react'
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react'
 
 import { Calendar } from '@/components/ui/calendar'
 import {
@@ -223,6 +224,39 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
     setSelectedAssetForToolbar(null)
   }, [onAssetOpenInThread, onDateOpen, onReferenceOpen, positionAssetToolbar])
 
+  const handleEditorPointerDownCapture = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (typeof event.button === 'number' && event.button > 0) {
+      return
+    }
+
+    const view = editor.view
+    if (view === null || view === undefined) {
+      return
+    }
+
+    const rawTarget = event.target
+    const target = rawTarget instanceof HTMLElement
+      ? rawTarget
+      : rawTarget instanceof Text
+        ? rawTarget.parentElement
+        : null
+    if (target?.closest('a') instanceof HTMLAnchorElement) {
+      return
+    }
+
+    const coords = view.posAtCoords({ left: event.clientX, top: event.clientY })
+    if (coords !== null) {
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, coords.pos)))
+    }
+
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(() => view.focus())
+      return
+    }
+
+    view.focus()
+  }, [editor])
+
   useEffect(() => {
     if (selectedAssetForToolbar === null) {
       return
@@ -314,6 +348,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
             ref={editor.mount}
             aria-label={ariaLabel}
             className="ProseMirror flow-editor-content box-border min-h-full py-4 outline-hidden outline-0"
+            onPointerDownCapture={handleEditorPointerDownCapture}
           />
           <InlineMenu />
           <ReferenceMenu graphPath={referenceLookupGraph} />

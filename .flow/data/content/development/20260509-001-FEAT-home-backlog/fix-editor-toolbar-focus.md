@@ -7,7 +7,7 @@ description: Restore slash and heading shortcuts on first click into the markdow
 tags:
     - fix
     - frontend
-status: Ready
+status: Success
 links:
     - node: development/20260509-001-FEAT-home-backlog/fix-code-block-exit
       context: Continue through the editor bug backlog in order.
@@ -15,4 +15,9 @@ links:
         - depends-on
 ---
 
-Fix the initial focus or selection regression so editor commands and markdown shortcuts work immediately after clicking into a node editor.
+Restored first-click editor activation by re-establishing a ProseMirror text selection on pointer-down before focus settles, so slash commands and heading shortcuts work immediately after external content sync.
+
+Validation
+
+- cd frontend && npm test -- src/components/editor/RichTextEditor.test.tsx src/components/editor/RichTextEditor.shortcuts.test.tsx
+- cd frontend && npm run build

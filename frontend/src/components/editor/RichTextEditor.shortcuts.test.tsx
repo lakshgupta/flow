@@ -4,8 +4,28 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { RichTextEditor } from './RichTextEditor'
 
+vi.mock('@/components/ui/calendar', () => ({
+  Calendar: () => null,
+}))
+
+vi.mock('react-day-picker', () => ({
+  DayPicker: () => null,
+}))
+
+vi.mock('react-day-picker/style.css', () => ({}))
+
+vi.mock('@/components/ui/dialog', () => ({
+  Dialog: ({ children }: { children: React.ReactNode }) => children,
+  DialogContent: ({ children }: { children: React.ReactNode }) => children,
+  DialogTitle: ({ children }: { children: React.ReactNode }) => children,
+}))
+
 vi.mock('./ui/block-handle', () => ({
   BlockHandle: () => null,
+}))
+
+vi.mock('@excalidraw/excalidraw', () => ({
+  Excalidraw: () => null,
 }))
 
 vi.mock('./ui/drop-indicator', () => ({
