@@ -205,6 +205,14 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
                         initialData={excalidrawSource?.initialData}
                         onChange={(elements, appState, files) => {
                           if (hasExcalidrawInteractionRef.current === false) {
+                            if (elements.length === 0) {
+                              return
+                            }
+
+                            hasExcalidrawInteractionRef.current = true
+                          }
+
+                          if (hasExcalidrawInteractionRef.current === false) {
                             return
                           }
 

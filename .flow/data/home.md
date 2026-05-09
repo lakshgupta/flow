@@ -6,7 +6,7 @@ title: Home
 ## Backlog
 
 - [x] Remove the text "Special Section" from mermaid and excalidraw sections
-- [ ] drawings on excalidraw should be saved in the same graph directory. Currently whatever I draw does not show up in the excalidraw canvas.
+- [x] drawings on excalidraw should be saved in the same graph directory. Currently whatever I draw does not show up in the excalidraw canvas.
 - [ ] changing the workspace should also update the home and graph content to the selected workspace
 - [ ] two errors in the gui
 ```

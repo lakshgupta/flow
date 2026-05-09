@@ -120,6 +120,30 @@ describe('CodeBlockView', () => {
     expect(dispatch).not.toHaveBeenCalled()
   })
 
+  it('persists the first non-empty Excalidraw scene change without outer-shell interaction capture', () => {
+    const dispatch = vi.fn()
+    const transaction = {
+      replaceWith: vi.fn(() => transaction),
+      delete: vi.fn(() => transaction),
+    }
+
+    render(
+      <CodeBlockView
+        contentRef={createRef<HTMLPreElement>()}
+        node={{ attrs: { language: 'excalidraw' }, textContent: '{"type":"excalidraw"}' } as never}
+        selected={false}
+        setAttrs={vi.fn()}
+        view={{ dispatch, state: { schema: { text: vi.fn((value) => value) }, tr: transaction } } as never}
+        getPos={vi.fn(() => 1) as never}
+      />,
+    )
+
+    excalidrawMockState.latestOnChange?.([{ id: 'drawn-element' }], { viewBackgroundColor: 'transparent' }, {})
+
+    expect(transaction.replaceWith).toHaveBeenCalledWith(2, expect.any(Number), '{"type":"excalidraw","elements":[{"id":"drawn-element"}]}')
+    expect(dispatch).toHaveBeenCalledTimes(1)
+  })
+
   it('persists Excalidraw scene changes after interaction', async () => {
     const user = userEvent.setup()
     const dispatch = vi.fn()
