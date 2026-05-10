@@ -6,9 +6,7 @@ title: Home
 
 ## Backlog
 
-- [x] the graphs in this repo are not showing up in the graph canvas. fix the issue.
-- [x] should frontend/playwright-report and frontend/test-results/ be added to .gitignored. what other directories should be added to .gitignored. should already added  frontend/playwright-report and frontend/test-results/ be deleted from the git repository
-- [x] markdown and excalidraw section should be able to resize by dragging the section using the cursor. Currently the section is not large enough to display the whole diagram. hence it would be better to be able to resize the section.
-- [x] the drawing on the excalidraw is not showing up. check if the drawing is saved or not. 
-- [x] when a heading is created using a `#` trigger then even after moving to a new line the heading change continues. instead no a new line the normal text should be there.
-- [x] when highlighting a text also show the header size in a drop down with the current header already selected. if there is no header and the highlighted text is just a normal text then show 'Normal' in that drop down.
+- [ ] I would like to be able to select the mermaid and excelidraw and delete it.
+- [ ] There should be a way to move the cursor from above the mermaid, code or excelidraw sections so that I can start writing text on the editor
+- [x] the sections does not have to say 'Mermaid diagram' or 'Excalidraw canvas`. 
+- [ ] the drawing inside the excalidraw canvas is not visible. anything I draw does not appear on the canvas. it should ideally show up and also the content should get saved so that the content renders itself on the next run of the app
