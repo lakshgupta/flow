@@ -35,10 +35,11 @@ const moveCursorAfterCodeBlock: Command = (state, dispatch) => {
   }
 
   const type = defaultBlockAt(grandParent.contentMatchAt(insertIndex))
-  if (!type || !grandParent.canReplaceWith(insertIndex, insertIndex, type)) {
+  if (!type) {
     return false
   }
 
+  // Always allow creating a new block, even if canReplaceWith fails (e.g., at end of document)
   if (dispatch) {
     const node = type.createAndFill()
     if (!node) {
@@ -78,10 +79,11 @@ const moveCursorBeforeCodeBlock: Command = (state, dispatch) => {
   }
 
   const type = defaultBlockAt(grandParent.contentMatchAt(currentIndex))
-  if (!type || !grandParent.canReplaceWith(currentIndex, currentIndex, type)) {
+  if (!type) {
     return false
   }
 
+  // Always allow creating a new block, even if canReplaceWith fails (e.g., at start of document)
   if (dispatch) {
     const node = type.createAndFill()
     if (!node) {
