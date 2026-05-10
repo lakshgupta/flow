@@ -7,6 +7,7 @@ import { definePlaceholder } from 'prosekit/extensions/placeholder'
 import { defineTextColor } from 'prosekit/extensions/text-color'
 
 import { defineCodeBlockExitKeymap } from './code-block-exit-keymap'
+import { defineHeadingExitKeymap } from './heading-exit-keymap'
 import { defineCodeBlockView } from './ui/code-block-view'
 import { defineImageView } from './ui/image-view'
 
@@ -20,6 +21,7 @@ export function defineEditorExtension(placeholder = 'Start writing…') {
     // (for example `excalidraw`) as regular code blocks.
     defineCodeBlockShiki({ nodeTypes: ['mathBlock'] }),
     defineCodeBlockExitKeymap(),
+    defineHeadingExitKeymap(),
     defineHorizontalRule(),
     defineImageView(),
     defineCodeBlockView(),

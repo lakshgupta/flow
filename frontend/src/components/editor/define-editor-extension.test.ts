@@ -9,6 +9,7 @@ const {
   definePlaceholder,
   defineTextColor,
   defineCodeBlockExitKeymap,
+  defineHeadingExitKeymap,
   defineCodeBlockView,
   defineImageView,
 } = vi.hoisted(() => ({
@@ -20,6 +21,7 @@ const {
   definePlaceholder: vi.fn(({ placeholder }: { placeholder: string }) => `placeholder:${placeholder}`),
   defineTextColor: vi.fn(() => 'text-color-extension'),
   defineCodeBlockExitKeymap: vi.fn(() => 'code-block-exit-keymap-extension'),
+  defineHeadingExitKeymap: vi.fn(() => 'heading-exit-keymap-extension'),
   defineCodeBlockView: vi.fn(() => 'code-block-view-extension'),
   defineImageView: vi.fn(() => 'image-view-extension'),
 }))
@@ -56,6 +58,10 @@ vi.mock('./code-block-exit-keymap', () => ({
   defineCodeBlockExitKeymap,
 }))
 
+vi.mock('./heading-exit-keymap', () => ({
+  defineHeadingExitKeymap,
+}))
+
 vi.mock('./ui/code-block-view', () => ({
   defineCodeBlockView,
 }))
@@ -79,6 +85,7 @@ describe('defineEditorExtension', () => {
       'placeholder:Image ready',
       'code-block-shiki-extension',
       'code-block-exit-keymap-extension',
+      'heading-exit-keymap-extension',
       'horizontal-rule-extension',
       'image-view-extension',
       'code-block-view-extension',
@@ -90,6 +97,7 @@ describe('defineEditorExtension', () => {
       'placeholder:Image ready',
       'code-block-shiki-extension',
       'code-block-exit-keymap-extension',
+      'heading-exit-keymap-extension',
       'horizontal-rule-extension',
       'image-view-extension',
       'code-block-view-extension',

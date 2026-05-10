@@ -65,6 +65,30 @@ describe('RichTextEditor markdown shortcuts', () => {
     })
   })
 
+  it('returns to normal text after pressing Enter at the end of a heading', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <RichTextEditor
+        ariaLabel="Document body editor"
+        onChange={vi.fn()}
+        value=""
+      />,
+    )
+
+    const editor = screen.getByLabelText('Document body editor')
+    await user.click(editor)
+    await user.type(editor, '# Heading')
+    await user.keyboard('{Enter}')
+    await user.type(editor, 'Normal text')
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 1, name: 'Heading' })).toBeInTheDocument()
+      expect(editor.querySelector('p')).toHaveTextContent('Normal text')
+      expect(editor.querySelectorAll('h1')).toHaveLength(1)
+    })
+  })
+
   it('renders markdown strikethrough without leaving literal tildes behind', async () => {
     const user = userEvent.setup()
 
