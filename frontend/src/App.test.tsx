@@ -2225,6 +2225,10 @@ describe("App graph canvas flows", () => {
   it("switches workspaces from the sidebar selector and refreshes the graph tree", async () => {
     const globalPath = "/tmp/flow-global";
     const localPath = "/tmp/flow-local";
+    const localHomeResponse = {
+      ...homeResponse,
+      body: "# Local workspace home\n",
+    };
     let persistedWorkspace = {
       ...workspaceResponse,
       scope: "global",
@@ -2243,7 +2247,60 @@ describe("App graph canvas flows", () => {
       }
 
       if (url === "/api/graphs") {
-        return currentGraphTree;
+        return {
+          ...currentGraphTree,
+          home: persistedWorkspace.workspacePath === localPath ? localHomeResponse : homeResponse,
+        };
+      }
+
+      if (url === "/api/graph-canvas?graph=execution") {
+        return {
+          selectedGraph: "execution",
+          availableGraphs: ["execution"],
+          layerGuidance: {
+            magneticThresholdPx: 18,
+            guides: [],
+          },
+          nodes: [
+            {
+              id: "note-1",
+              type: "note",
+              graph: "execution",
+              title: "Overview",
+              description: "Execution overview",
+              path: "data/graphs/execution/overview.md",
+              featureSlug: "execution",
+              position: { x: 140, y: 120 },
+              positionPersisted: false,
+            },
+          ],
+          edges: [],
+        };
+      }
+
+      if (url === "/api/graph-canvas?graph=operations") {
+        return {
+          selectedGraph: "operations",
+          availableGraphs: ["operations"],
+          layerGuidance: {
+            magneticThresholdPx: 18,
+            guides: [],
+          },
+          nodes: [
+            {
+              id: "note-local-1",
+              type: "note",
+              graph: "operations",
+              title: "Local note",
+              description: "Operations note",
+              path: "data/graphs/operations/local-note.md",
+              featureSlug: "operations",
+              position: { x: 220, y: 180 },
+              positionPersisted: false,
+            },
+          ],
+          edges: [],
+        };
       }
 
       if (url === "/api/workspace/select" && init?.method === "PUT") {
@@ -2282,6 +2339,14 @@ describe("App graph canvas flows", () => {
     expect((workspaceSelect as HTMLSelectElement).value).toBe(globalPath);
     expect(await screen.findByText("Execution")).toBeInTheDocument();
 
+    const executionButton = screen.getByText("Execution").closest('[data-sidebar="menu-sub-button"]');
+    if (executionButton === null) {
+      throw new Error("missing execution graph button");
+    }
+
+    await user.click(executionButton);
+    expect(await screen.findByTestId("flow-node-note-1")).toBeInTheDocument();
+
     await user.selectOptions(workspaceSelect, localPath);
 
     await waitFor(() => {
@@ -2294,6 +2359,17 @@ describe("App graph canvas flows", () => {
 
     expect(await screen.findByText("Operations")).toBeInTheDocument();
     expect(screen.queryByText("Execution")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("flow-node-note-1")).not.toBeInTheDocument();
+    expect(await screen.findByText("Local workspace home")).toBeInTheDocument();
+
+    const operationsButton = screen.getByText("Operations").closest('[data-sidebar="menu-sub-button"]');
+    if (operationsButton === null) {
+      throw new Error("missing operations graph button");
+    }
+
+    await user.click(operationsButton);
+    expect(await screen.findByTestId("flow-node-note-local-1")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith("/api/graph-canvas?graph=operations", expect.anything());
   });
 
   it("lets a graph with direct files collapse and expand its file list", async () => {

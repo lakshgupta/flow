@@ -7,7 +7,7 @@ title: Home
 
 - [x] Remove the text "Special Section" from mermaid and excalidraw sections
 - [x] drawings on excalidraw should be saved in the same graph directory. Currently whatever I draw does not show up in the excalidraw canvas.
-- [ ] changing the workspace should also update the home and graph content to the selected workspace
+- [x] changing the workspace should also update the home and graph content to the selected workspace
 - [ ] two errors in the gui
 ```
 index-B_gaQLZO.js:615 [Violation] Permissions policy violation: unload is not allowed in this document.
@@ -67,3 +67,5 @@ index-B_gaQLZO.js:455 [prosemirror-highlight] Error resolving parser: ShikiError
 - [ ] workspace-shell-header and the right-sidebar-icons should not overlap over each other. they may merge into each other or should be separate.
 - [ ] update the dark and light theme similar to github theme.
 - [ ] sometime when I click on the markdown editor I am not able to trigger the markdown options using `/` trigger or `##` headings. I have to press enter to be able to have these show up.
+- [ ] check the margin in the section for mermaid and excelidraw. the UI should look sleek. remove the drop down in these 2 section because we know what these sections are about.
+- [ ] could image, mermaid diagram and ecalidraw sections be dragged and resized

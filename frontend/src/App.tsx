@@ -2415,7 +2415,7 @@ function FlowApp() {
       const snapshot = await loadWorkspaceSnapshot();
       setWorkspace(snapshot.workspaceData);
       setGraphTree(snapshot.graphTreeData);
-      setSelectedDocumentId("");
+      clearContextPanel();
       setActiveSurface({ kind: "home" });
       setGraphCanvasData(null);
       setGraphCanvasReloadToken((current) => current + 1);
@@ -2451,7 +2451,7 @@ function FlowApp() {
       const snapshot = await loadWorkspaceSnapshot();
       setWorkspace(snapshot.workspaceData);
       setGraphTree(snapshot.graphTreeData);
-      setSelectedDocumentId("");
+      clearContextPanel();
       setActiveSurface({ kind: "home" });
       setGraphCanvasData(null);
       setGraphCanvasReloadToken((current) => current + 1);
