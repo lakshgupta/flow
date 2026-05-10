@@ -57,7 +57,7 @@ describe('CodeBlockView', () => {
       />,
     )
 
-    expect(screen.getByLabelText('Code block language')).toHaveValue('mermaid')
+    expect(screen.queryByLabelText('Code block language')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Mermaid diagram source')).toHaveValue('flowchart TD\nA-->B')
     expect(screen.queryByText('Special section')).not.toBeInTheDocument()
     expect(screen.getByTestId('mermaid-editor-preview')).toHaveTextContent('flowchart TD')
@@ -90,7 +90,7 @@ describe('CodeBlockView', () => {
       />,
     )
 
-    expect(screen.getByLabelText('Code block language')).toHaveValue('excalidraw')
+    expect(screen.queryByLabelText('Code block language')).not.toBeInTheDocument()
     expect(screen.getByTestId('excalidraw-editor-preview')).toBeInTheDocument()
     expect(screen.getByLabelText('Resize Excalidraw diagram')).toBeInTheDocument()
     expect(screen.getByTestId('excalidraw-editor-preview').parentElement).toHaveStyle({ height: '512px' })
