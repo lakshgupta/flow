@@ -87,6 +87,7 @@
   /* ProseKit / Shiki code block */
   --prosemirror-highlight-bg: #1e1e1e;
   --prosemirror-highlight: #d4d4d4;
+  --workspace-header-rail-offset: 5.75rem;
 
   background: var(--background);
   color: var(--foreground);
@@ -901,7 +902,7 @@ pre {
 
 .right-sidebar-icons {
   position: fixed;
-  top: 1rem;
+  top: max(1rem, var(--workspace-header-rail-offset));
   right: 1rem;
   bottom: 1rem;
   width: 3.5rem;
@@ -916,6 +917,12 @@ pre {
   box-shadow: var(--shadow-deep);
   backdrop-filter: blur(20px);
   z-index: 40;
+}
+
+@media (max-width: 1024px) {
+  .right-sidebar-icons {
+    top: 1rem;
+  }
 }
 
 /* Left sidebar drag handle */
