@@ -61,6 +61,7 @@ describe('CodeBlockView', () => {
     expect(screen.getByLabelText('Mermaid diagram source')).toHaveValue('flowchart TD\nA-->B')
     expect(screen.queryByText('Special section')).not.toBeInTheDocument()
     expect(screen.getByTestId('mermaid-editor-preview')).toHaveTextContent('flowchart TD')
+    expect(screen.getByLabelText('Resize Mermaid diagram')).toBeInTheDocument()
   })
 
   it('does not render a Mermaid preview for non-mermaid code blocks', () => {

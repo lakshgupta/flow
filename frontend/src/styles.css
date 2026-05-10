@@ -3478,6 +3478,48 @@ pre {
 .thread-panel-rendered-markdown pre[data-mermaid-rendered="true"] {
   display: none;
 }
+.flow-mermaid-preview-shell {
+  position: relative;
+  min-height: 11.25rem;
+}
+.flow-mermaid-preview-shell .flow-mermaid-diagram-editor {
+  height: 100%;
+  margin: 0;
+}
+.flow-mermaid-preview-shell .flow-mermaid-diagram-editor svg {
+  height: 100%;
+}
+.flow-mermaid-resize-handle {
+  position: absolute;
+  left: 50%;
+  bottom: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 1.25rem;
+  margin-left: -1.125rem;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 78%, var(--foreground) 22%);
+  color: color-mix(in srgb, var(--foreground) 60%, transparent);
+  cursor: ns-resize;
+  opacity: 0;
+  transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+.flow-mermaid-preview-shell:hover .flow-mermaid-resize-handle,
+.flow-mermaid-preview-shell:focus-within .flow-mermaid-resize-handle {
+  opacity: 1;
+}
+.flow-mermaid-resize-handle:hover,
+.flow-mermaid-resize-handle:focus-visible {
+  background: color-mix(in srgb, var(--accent) 28%, var(--card) 72%);
+  color: var(--foreground);
+}
+.flow-mermaid-resize-handle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--ring) 80%, transparent);
+  outline-offset: 2px;
+}
 
 .flow-diagram-block {
   margin: 0.7rem 0 0.95rem;

@@ -68,6 +68,6 @@ index-B_gaQLZO.js:455 [prosemirror-highlight] Error resolving parser: ShikiError
 - [x] update the dark and light theme similar to github theme.
 - [x] sometime when I click on the markdown editor I am not able to trigger the markdown options using `/` trigger or `##` headings. I have to press enter to be able to have these show up.
 - [x] check the margin in the section for mermaid and excelidraw. the UI should look sleek. remove the drop down in these 2 section because we know what these sections are about.
-- [ ] could image, mermaid diagram and ecalidraw sections be dragged and resized
+- [x] could image, mermaid diagram and ecalidraw sections be dragged and resized
 - [ ] why does home.md content is changed to `<p><br></p>`? if there is a test case which is changing the content, then change the test case.
 

@@ -13,6 +13,14 @@ import {
   setExcalidrawSourceHeight,
 } from '../../../../lib/excalidraw'
 
+const DEFAULT_MERMAID_HEIGHT = 320
+const MIN_MERMAID_HEIGHT = 180
+const MAX_MERMAID_HEIGHT = 960
+
+function clampMermaidHeight(height: number): number {
+  return Math.min(MAX_MERMAID_HEIGHT, Math.max(MIN_MERMAID_HEIGHT, Math.round(height)))
+}
+
 const codeBlockLanguages = [
   { id: 'excalidraw', name: 'Excalidraw Diagram' },
   { id: 'mermaid', name: 'Mermaid Diagram' },
@@ -32,8 +40,13 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
   const hasExcalidrawInteractionRef = useRef(false)
   const resizeStartYRef = useRef(0)
   const resizeStartHeightRef = useRef(DEFAULT_EXCALIDRAW_HEIGHT)
+  const mermaidResizeStartYRef = useRef(0)
+  const mermaidResizeStartHeightRef = useRef(DEFAULT_MERMAID_HEIGHT)
+  const mermaidHeightRef = useRef(DEFAULT_MERMAID_HEIGHT)
   const [excalidrawHeight, setExcalidrawHeight] = useState(DEFAULT_EXCALIDRAW_HEIGHT)
   const [isResizingExcalidraw, setIsResizingExcalidraw] = useState(false)
+  const [mermaidHeight, setMermaidHeight] = useState(DEFAULT_MERMAID_HEIGHT)
+  const [isResizingMermaid, setIsResizingMermaid] = useState(false)
   const showMermaidSection = language === 'mermaid'
   const showMermaidPreview = language === 'mermaid' && code.trim() !== ''
   const showExcalidrawPreview = language === 'excalidraw'
@@ -109,6 +122,32 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
     }
   }, [isResizingExcalidraw])
 
+  useEffect(() => {
+    if (isResizingMermaid === false || typeof window === 'undefined') {
+      return
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      event.preventDefault()
+
+      const nextHeight = clampMermaidHeight(mermaidResizeStartHeightRef.current + event.clientY - mermaidResizeStartYRef.current)
+      mermaidHeightRef.current = nextHeight
+      setMermaidHeight(nextHeight)
+    }
+
+    const handlePointerUp = (event: PointerEvent) => {
+      event.preventDefault()
+      setIsResizingMermaid(false)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+    }
+  }, [isResizingMermaid])
+
   const replaceCodeBlockContent = (nextCode: string) => {
     if (nextCode === code) {
       return
@@ -170,11 +209,28 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
                 />
               </div>
               <div className="flow-diagram-block-preview">
-                {showMermaidPreview ? (
-                  <MermaidDiagram source={code} className="flow-mermaid-diagram-editor" />
-                ) : (
-                  <p className="flow-diagram-block-empty">Add Mermaid syntax to render a live preview.</p>
-                )}
+                <div className="flow-mermaid-preview-shell group" style={{ height: `${mermaidHeight}px` }}>
+                  {showMermaidPreview ? (
+                    <>
+                      <MermaidDiagram source={code} className="flow-mermaid-diagram-editor" />
+                      <button
+                        aria-label="Resize Mermaid diagram"
+                        className="flow-mermaid-resize-handle"
+                        onPointerDown={(event) => {
+                          event.preventDefault()
+                          mermaidResizeStartYRef.current = event.clientY
+                          mermaidResizeStartHeightRef.current = mermaidHeightRef.current
+                          setIsResizingMermaid(true)
+                        }}
+                        type="button"
+                      >
+                        <span className="i-lucide-grip-horizontal size-4 block" aria-hidden="true"></span>
+                      </button>
+                    </>
+                  ) : (
+                    <p className="flow-diagram-block-empty">Add Mermaid syntax to render a live preview.</p>
+                  )}
+                </div>
               </div>
             </div>
           ) : (
