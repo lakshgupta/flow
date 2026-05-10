@@ -191,11 +191,6 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
     <>
       {showDiagramSection ? (
         <section className="flow-diagram-block" contentEditable={false}>
-          <header className="flow-diagram-block-header">
-            <div>
-              <h3 className="flow-diagram-block-title">{showMermaidSection ? 'Mermaid diagram' : 'Excalidraw canvas'}</h3>
-            </div>
-          </header>
           {showMermaidSection ? (
             <div className="flow-diagram-block-body">
               <div className="flow-diagram-block-source">
