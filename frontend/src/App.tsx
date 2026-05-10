@@ -58,6 +58,7 @@ import {
   fileNameFromPath,
   formatDocumentType,
   generateTOC,
+  normalizeHomeBodyForSave,
   parseEnv,
   splitList,
 } from "./lib/docUtils";
@@ -871,7 +872,7 @@ function FlowApp() {
       return false;
     }
 
-    const nextBody = homeDocumentEditorRef.current.getMarkdown();
+    const nextBody = normalizeHomeBodyForSave(homeDocumentEditorRef.current.getMarkdown());
     if (nextBody === homeFormStateRef.current.body) {
       return false;
     }
@@ -1927,8 +1928,9 @@ function FlowApp() {
   }
 
   function updateHomeFormField(field: keyof HomeFormState, value: string): void {
+    const normalizedValue = field === "body" ? normalizeHomeBodyForSave(value) : value;
     setHomeFormState((current) => {
-      const next = { ...current, [field]: value };
+      const next = { ...current, [field]: normalizedValue };
       homeFormStateRef.current = next;
       return next;
     });
@@ -2998,7 +3000,7 @@ function FlowApp() {
           body: JSON.stringify({
             title: state.title,
             description: state.description,
-            body: state.body,
+            body: normalizeHomeBodyForSave(state.body),
           }),
         });
 

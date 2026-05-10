@@ -26,6 +26,16 @@ export const emptyHomeFormState: HomeFormState = {
   body: "",
 };
 
+const HOME_EMPTY_PARAGRAPH_PATTERN = /^(?:\s*<p><br><\/p>\s*)+$/;
+
+export function normalizeHomeBodyForSave(body: string): string {
+  const normalized = body.trim();
+  if (normalized.length === 0 || HOME_EMPTY_PARAGRAPH_PATTERN.test(normalized)) {
+    return "";
+  }
+  return body;
+}
+
 export function formatDocumentType(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }

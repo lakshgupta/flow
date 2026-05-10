@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { fileNameFromPath, generateTOC, headingIdFromText } from "./docUtils";
+import { fileNameFromPath, generateTOC, headingIdFromText, normalizeHomeBodyForSave } from "./docUtils";
 
 describe("docUtils", () => {
   it("normalizes heading text into stable ids", () => {
@@ -18,5 +18,11 @@ describe("docUtils", () => {
   it("extracts the file name from slash-separated paths", () => {
     expect(fileNameFromPath("graphs/execution/task.md")).toBe("task.md");
     expect(fileNameFromPath("note.md")).toBe("note.md");
+  });
+
+  it("normalizes Home body saves when content is only empty paragraphs", () => {
+    expect(normalizeHomeBodyForSave("<p><br></p>\n")).toBe("");
+    expect(normalizeHomeBodyForSave("<p><br></p>\n<p><br></p>\n")).toBe("");
+    expect(normalizeHomeBodyForSave("<p>Home</p>\n")).toBe("<p>Home</p>\n");
   });
 });
