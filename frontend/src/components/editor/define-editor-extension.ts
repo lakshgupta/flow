@@ -16,7 +16,9 @@ export function defineEditorExtension(placeholder = 'Start writing…') {
     defineTextColor(),
     defineBackgroundColor(),
     definePlaceholder({ placeholder }),
-    defineCodeBlockShiki(),
+    // Keep the Shiki extension mounted but avoid parsing custom diagram languages
+    // (for example `excalidraw`) as regular code blocks.
+    defineCodeBlockShiki({ nodeTypes: ['mathBlock'] }),
     defineCodeBlockExitKeymap(),
     defineHorizontalRule(),
     defineImageView(),

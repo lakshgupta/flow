@@ -319,6 +319,10 @@ func NewMux(options Options) (http.Handler, error) {
 	staticHandler := http.FileServer(http.FS(assets))
 
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		// Some editor dependencies register unload handlers; allow them to avoid
+		// noisy browser policy violation logs in the GUI console.
+		writer.Header().Set("Permissions-Policy", "unload=(self)")
+
 		if strings.HasPrefix(request.URL.Path, "/api/") {
 			api.ServeHTTP(writer, request)
 			return

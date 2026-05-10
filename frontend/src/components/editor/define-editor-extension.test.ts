@@ -71,6 +71,7 @@ describe('defineEditorExtension', () => {
     const extension = defineEditorExtension('Image ready')
 
     expect(defineImageView).toHaveBeenCalledTimes(1)
+    expect(defineCodeBlockShiki).toHaveBeenCalledWith({ nodeTypes: ['mathBlock'] })
     expect(union).toHaveBeenCalledWith(
       'basic-extension',
       'text-color-extension',
