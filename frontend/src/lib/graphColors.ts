@@ -16,15 +16,15 @@ export type GraphDirectoryColorOption = {
 };
 
 export const GRAPH_DIRECTORY_COLOR_OPTIONS: GraphDirectoryColorOption[] = [
-  { id: "rose", label: "Rose", hex: "#f4c7cf" },
-  { id: "peach", label: "Peach", hex: "#f8d6ba" },
-  { id: "amber", label: "Amber", hex: "#f5e2b8" },
-  { id: "lemon", label: "Lemon", hex: "#f4efbb" },
-  { id: "mint", label: "Mint", hex: "#c8edd5" },
-  { id: "sage", label: "Sage", hex: "#d0e3c6" },
-  { id: "sky", label: "Sky", hex: "#c7e3f6" },
-  { id: "lilac", label: "Lilac", hex: "#dacff6" },
-  { id: "blush", label: "Blush", hex: "#f2d1df" },
+  { id: "rose", label: "Rose", hex: "#e8aebb" },
+  { id: "peach", label: "Peach", hex: "#eebf9e" },
+  { id: "amber", label: "Amber", hex: "#e7cc96" },
+  { id: "lemon", label: "Lemon", hex: "#ddd586" },
+  { id: "mint", label: "Mint", hex: "#a9d8b8" },
+  { id: "sage", label: "Sage", hex: "#b7cea5" },
+  { id: "sky", label: "Sky", hex: "#a7cde5" },
+  { id: "lilac", label: "Lilac", hex: "#c4b4e6" },
+  { id: "blush", label: "Blush", hex: "#e2b2c5" },
 ];
 
 export const GRAPH_DIRECTORY_COLOR_BY_ID: Record<GraphDirectoryColorId, GraphDirectoryColorOption> =
