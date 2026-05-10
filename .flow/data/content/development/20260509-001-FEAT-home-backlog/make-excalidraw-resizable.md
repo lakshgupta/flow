@@ -3,7 +3,7 @@ id: development/20260509-001-FEAT-home-backlog/make-excalidraw-resizable
 type: task
 graph: development/20260509-001-FEAT-home-backlog
 title: Make Excalidraw resizable
-description: Allow the embedded Excalidraw surface to be resized without breaking editor layout
+description: 'Allow the embedded Excalidraw surface to be resized without breaking editor layout (commit: d60ab54)'
 tags:
     - implementation
     - frontend

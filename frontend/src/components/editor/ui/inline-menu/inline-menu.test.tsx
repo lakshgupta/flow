@@ -10,6 +10,8 @@ const toggleCode = Object.assign(vi.fn(), { canExec: vi.fn(() => true) })
 const addLink = Object.assign(vi.fn(), { canExec: vi.fn(() => true) })
 const expandLink = vi.fn()
 const removeLink = vi.fn()
+const setParagraph = vi.fn()
+const setHeading = Object.assign(vi.fn(), { canExec: vi.fn(() => true) })
 const addTextColor = Object.assign(vi.fn(), { canExec: vi.fn(() => true) })
 const removeTextColor = vi.fn()
 const addBackgroundColor = Object.assign(vi.fn(), { canExec: vi.fn(() => true) })
@@ -34,6 +36,11 @@ const mockEditor = {
     code: { isActive: () => false },
     link: { isActive: () => false },
   },
+  nodes: {
+    heading: {
+      isActive: ({ level }: { level: number }) => level === 0,
+    },
+  },
   commands: {
     toggleBold,
     toggleItalic,
@@ -43,6 +50,8 @@ const mockEditor = {
     addLink,
     expandLink,
     removeLink,
+    setParagraph,
+    setHeading,
     addTextColor,
     removeTextColor,
     addBackgroundColor,
@@ -85,5 +94,20 @@ describe('InlineMenu', () => {
     await user.click(screen.getByRole('button', { name: 'Background color Mint' }))
 
     expect(addBackgroundColor).toHaveBeenCalledWith({ color: '#c8edd5' })
+  })
+
+  it('shows a heading dropdown with Normal selected when the selection is not a heading', async () => {
+    const user = userEvent.setup()
+
+    render(<InlineMenu />)
+
+    const headingSelect = screen.getByLabelText('Heading size')
+    expect(headingSelect).toHaveValue('0')
+
+    await user.selectOptions(headingSelect, '2')
+    expect(setHeading).toHaveBeenCalledWith({ level: 2 })
+
+    await user.selectOptions(headingSelect, '0')
+    expect(setParagraph).toHaveBeenCalled()
   })
 })

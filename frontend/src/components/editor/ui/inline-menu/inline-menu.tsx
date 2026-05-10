@@ -17,6 +17,11 @@ type ColorMarkState = {
   color?: string
 }
 
+type HeadingState = {
+  level: 0 | 1 | 2 | 3
+  canExec: boolean
+}
+
 function normalizeHexColor(value: string | undefined, fallback: string): string {
   if (value === undefined || value.trim() === '') {
     return fallback
@@ -53,6 +58,13 @@ function getMarkState(state: EditorState, markName: string): ColorMarkState {
 function getInlineMenuItems(editor: Editor<EditorExtension>) {
   const textColor = getMarkState(editor.state, 'textColor')
   const backgroundColor = getMarkState(editor.state, 'backgroundColor')
+  const headingLevel: 0 | 1 | 2 | 3 = editor.nodes.heading.isActive({ level: 1 })
+    ? 1
+    : editor.nodes.heading.isActive({ level: 2 })
+      ? 2
+      : editor.nodes.heading.isActive({ level: 3 })
+        ? 3
+        : 0
 
   return {
     bold: editor.commands.toggleBold
@@ -118,6 +130,20 @@ function getInlineMenuItems(editor: Editor<EditorExtension>) {
         clear: editor.commands.removeBackgroundColor
           ? () => editor.commands.removeBackgroundColor()
           : undefined,
+      }
+      : undefined,
+    heading: editor.commands.setHeading
+      ? {
+        level: headingLevel,
+        canExec: true,
+        command: (nextLevel: 0 | 1 | 2 | 3) => {
+          if (nextLevel === 0) {
+            editor.commands.setParagraph()
+            return
+          }
+
+          editor.commands.setHeading({ level: nextLevel })
+        },
       }
       : undefined,
   }
@@ -224,6 +250,11 @@ export default function InlineMenu() {
   const clearBackgroundColor = () => {
     items.backgroundColor?.clear?.()
     setBackgroundColorMenuOpen(false)
+    editor.focus()
+  }
+
+  const applyHeadingLevel = (level: 0 | 1 | 2 | 3) => {
+    items.heading?.command(level)
     editor.focus()
   }
 
@@ -340,6 +371,23 @@ export default function InlineMenu() {
               <span className="sr-only">Background color</span>
             </span>
           </Button>
+        )}
+
+        {items.heading && items.heading.canExec && (
+          <label className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-50">
+            <span className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Heading</span>
+            <select
+              aria-label="Heading size"
+              className="min-w-28 bg-transparent text-sm outline-none"
+              value={String(items.heading.level)}
+              onChange={(event) => applyHeadingLevel(Number(event.target.value) as 0 | 1 | 2 | 3)}
+            >
+              <option value="0">Normal</option>
+              <option value="1">Heading 1</option>
+              <option value="2">Heading 2</option>
+              <option value="3">Heading 3</option>
+            </select>
+          </label>
         )}
       </InlinePopover>
 
