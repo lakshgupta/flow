@@ -65,7 +65,7 @@ index-B_gaQLZO.js:455 [prosemirror-highlight] Error resolving parser: ShikiError
 (anonymous) @ index-B_gaQLZO.js:455
 ```
 - [x] workspace-shell-header and the right-sidebar-icons should not overlap over each other. they may merge into each other or should be separate.
-- [ ] update the dark and light theme similar to github theme.
+- [x] update the dark and light theme similar to github theme.
 - [ ] sometime when I click on the markdown editor I am not able to trigger the markdown options using `/` trigger or `##` headings. I have to press enter to be able to have these show up.
 - [ ] check the margin in the section for mermaid and excelidraw. the UI should look sleek. remove the drop down in these 2 section because we know what these sections are about.
 - [ ] could image, mermaid diagram and ecalidraw sections be dragged and resized
