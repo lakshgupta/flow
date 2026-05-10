@@ -295,4 +295,25 @@ describe('RichTextEditor', () => {
     expect(mockSetSelection).toHaveBeenCalled()
     expect(mockDispatch).toHaveBeenCalledWith('transaction')
   })
+
+  it('falls back to a valid selection when pointer coordinates cannot be resolved', () => {
+    mockPosAtCoords.mockReturnValue(null)
+
+    render(
+      <RichTextEditor
+        ariaLabel="Document body editor"
+        onChange={vi.fn()}
+        value=""
+      />,
+    )
+
+    fireEvent.pointerDown(screen.getByLabelText('Document body editor'), {
+      button: 0,
+      clientX: 4,
+      clientY: 4,
+    })
+
+    expect(mockSetSelection).toHaveBeenCalled()
+    expect(mockDispatch).toHaveBeenCalledWith('transaction')
+  })
 })

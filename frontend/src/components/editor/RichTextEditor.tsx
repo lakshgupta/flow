@@ -245,9 +245,11 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
     }
 
     const coords = view.posAtCoords({ left: event.clientX, top: event.clientY })
-    if (coords !== null) {
-      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, coords.pos)))
-    }
+    const fallbackPos = typeof view.state.doc.content?.size === 'number'
+      ? view.state.doc.content.size
+      : 0
+    const selectionPos = coords?.pos ?? fallbackPos
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, selectionPos)))
 
     if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
       window.requestAnimationFrame(() => view.focus())
