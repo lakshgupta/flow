@@ -1,6 +1,7 @@
 import type { CodeBlockAttrs } from 'prosekit/extensions/code-block'
 import { shikiBundledLanguagesInfo } from 'prosekit/extensions/code-block'
 import type { ReactNodeViewProps } from 'prosekit/react'
+import { TextSelection } from 'prosekit/pm/state'
 import { Excalidraw } from '@excalidraw/excalidraw'
 import { Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -183,6 +184,24 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
     props.view.focus()
   }
 
+  const insertParagraphBeforeCodeBlock = () => {
+    const pos = props.getPos()
+    if (typeof pos !== 'number') {
+      return
+    }
+
+    const paragraph = props.view.state.schema.nodes.paragraph?.createAndFill()
+    if (!paragraph) {
+      return
+    }
+
+    const transaction = props.view.state.tr
+    transaction.replaceWith(pos, pos, paragraph)
+    transaction.setSelection(TextSelection.near(transaction.doc.resolve(pos + 1), 1))
+    props.view.dispatch(transaction.scrollIntoView())
+    props.view.focus()
+  }
+
   const languageSelector = (
     <select
       aria-label="Code block language"
@@ -201,7 +220,20 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
 
   const diagramActionBar = (
     <div className="flow-diagram-block-header">
-      <div className="flow-diagram-block-actions">{languageSelector}</div>
+      <div className="flow-diagram-block-actions">
+        <button
+          aria-label="Write above code block"
+          className="flow-diagram-block-action"
+          onClick={() => insertParagraphBeforeCodeBlock()}
+          onPointerDown={(event) => {
+            event.preventDefault()
+          }}
+          type="button"
+        >
+          <span>Write above</span>
+        </button>
+        {languageSelector}
+      </div>
       <button
         aria-label={`Delete ${showMermaidSection ? 'Mermaid' : 'Excalidraw'} diagram`}
         className="flow-diagram-block-action flow-diagram-block-action-destructive"
@@ -330,7 +362,20 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
         </section>
       ) : (
         <div className="relative mx-2 top-3 h-0 select-none overflow-visible text-xs" contentEditable={false}>
-          {languageSelector}
+          <div className="flow-code-block-inline-controls">
+            <button
+              aria-label="Write above code block"
+              className="flow-diagram-block-action flow-code-block-inline-action"
+              onClick={() => insertParagraphBeforeCodeBlock()}
+              onPointerDown={(event) => {
+                event.preventDefault()
+              }}
+              type="button"
+            >
+              <span>Write above</span>
+            </button>
+            {languageSelector}
+          </div>
         </div>
       )}
       <pre ref={props.contentRef} data-language={language} hidden={showDiagramSection}></pre>

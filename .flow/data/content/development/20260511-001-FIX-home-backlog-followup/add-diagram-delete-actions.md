@@ -3,11 +3,11 @@ id: development/20260511-001-FIX-home-backlog-followup/add-diagram-delete-action
 type: task
 graph: development/20260511-001-FIX-home-backlog-followup
 title: Add diagram delete actions
-description: Add a delete control for Mermaid and Excalidraw diagram sections
+description: 'Add a delete control for Mermaid and Excalidraw diagram sections (commit: 08bc80c)'
 tags:
     - implementation
     - frontend
-status: Done
+status: Success
 links:
     - node: development/20260511-001-FIX-home-backlog-followup/fix-diagram-cursor-exit
       relationships:

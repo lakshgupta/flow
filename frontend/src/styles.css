@@ -3688,6 +3688,18 @@ pre {
   border-color: color-mix(in srgb, hsl(var(--destructive)) 44%, var(--warm-border));
 }
 
+.flow-code-block-inline-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.flow-code-block-inline-action {
+  padding-inline: 0.7rem;
+  padding-block: 0.38rem;
+  font-size: 0.74rem;
+}
+
 .flow-diagram-block-kicker {
   margin: 0 0 0.2rem;
   font-size: 0.72rem;

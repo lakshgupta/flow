@@ -4,6 +4,20 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
+const textSelectionNearMock = vi.hoisted(() => vi.fn(() => 'selection'))
+
+vi.mock('prosekit/pm/state', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('prosekit/pm/state')>()
+
+  return {
+    ...actual,
+    TextSelection: {
+      ...actual.TextSelection,
+      near: textSelectionNearMock,
+    },
+  }
+})
+
 const excalidrawMockState = vi.hoisted(() => ({
   latestOnChange: null as null | ((elements: unknown[], appState: unknown, files: unknown) => void),
 }))
@@ -50,6 +64,11 @@ function createViewMocks() {
   const transaction = {
     replaceWith: vi.fn(() => transaction),
     delete: vi.fn(() => transaction),
+    setSelection: vi.fn(() => transaction),
+    scrollIntoView: vi.fn(() => transaction),
+    doc: {
+      resolve: vi.fn(() => 'resolved-position'),
+    },
   }
 
   return {
@@ -60,7 +79,14 @@ function createViewMocks() {
       dispatch,
       focus,
       state: {
-        schema: { text: vi.fn((value) => value) },
+        schema: {
+          text: vi.fn((value) => value),
+          nodes: {
+            paragraph: {
+              createAndFill: vi.fn(() => ({ type: 'paragraph-node' })),
+            },
+          },
+        },
         tr: transaction,
       },
     },
@@ -105,6 +131,31 @@ describe('CodeBlockView', () => {
     )
 
     expect(screen.queryByTestId('mermaid-editor-preview')).not.toBeInTheDocument()
+  })
+
+  it('inserts a paragraph above a plain code block', () => {
+    const { dispatch, focus, transaction, view } = createViewMocks()
+
+    render(
+      <CodeBlockView
+        contentRef={createRef<HTMLPreElement>()}
+        node={{ attrs: { language: 'typescript' }, nodeSize: 18, textContent: 'const value = 1' } as never}
+        selected={false}
+        setAttrs={vi.fn()}
+        view={view as never}
+        getPos={vi.fn(() => 3) as never}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Write above code block' }))
+
+    expect(transaction.replaceWith).toHaveBeenCalledWith(3, 3, { type: 'paragraph-node' })
+    expect(transaction.doc.resolve).toHaveBeenCalledWith(4)
+    expect(textSelectionNearMock).toHaveBeenCalledWith('resolved-position', 1)
+    expect(transaction.setSelection).toHaveBeenCalledWith('selection')
+    expect(transaction.scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(dispatch).toHaveBeenCalledTimes(1)
+    expect(focus).toHaveBeenCalledTimes(1)
   })
 
   it('renders an Excalidraw editor for excalidraw code blocks', () => {
@@ -235,6 +286,30 @@ describe('CodeBlockView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete Mermaid diagram' }))
 
     expect(transaction.delete).toHaveBeenCalledWith(4, 24)
+    expect(dispatch).toHaveBeenCalledTimes(1)
+    expect(focus).toHaveBeenCalledTimes(1)
+  })
+
+  it('inserts a paragraph above a Mermaid diagram block', () => {
+    const { dispatch, focus, transaction, view } = createViewMocks()
+
+    render(
+      <CodeBlockView
+        contentRef={createRef<HTMLPreElement>()}
+        node={{ attrs: { language: 'mermaid' }, nodeSize: 20, textContent: 'flowchart TD\nA-->B' } as never}
+        selected={false}
+        setAttrs={vi.fn()}
+        view={view as never}
+        getPos={vi.fn(() => 6) as never}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Write above code block' }))
+
+    expect(transaction.replaceWith).toHaveBeenCalledWith(6, 6, { type: 'paragraph-node' })
+    expect(transaction.doc.resolve).toHaveBeenCalledWith(7)
+    expect(textSelectionNearMock).toHaveBeenCalledWith('resolved-position', 1)
+    expect(transaction.setSelection).toHaveBeenCalledWith('selection')
     expect(dispatch).toHaveBeenCalledTimes(1)
     expect(focus).toHaveBeenCalledTimes(1)
   })
