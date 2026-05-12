@@ -43,6 +43,14 @@ export interface RichTextEditorHandle {
   getMarkdown: () => string
 }
 
+function clampSelectionPosition(position: number | undefined, docSize: number): number {
+  if (typeof position !== 'number' || Number.isFinite(position) === false) {
+    return 1
+  }
+
+  return Math.min(Math.max(1, Math.round(position)), Math.max(docSize, 1))
+}
+
 function createInlineReferenceRenderKey(inlineReferences?: InlineReference[]): string {
   if ((inlineReferences?.length ?? 0) === 0) {
     return ''
@@ -106,8 +114,17 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
     lastRenderedHTMLRef.current = renderedHTML
     lastSyncedInlineReferencesKeyRef.current = inlineReferenceRenderKey
     lastEmittedRef.current = value
+    const currentSelection = editor.view?.state.selection
     isSettingRef.current = true
     editor.setContent(renderedHTML || '<p></p>')
+
+    const nextView = editor.view
+    if (currentSelection !== undefined && nextView !== null && nextView !== undefined) {
+      const docSize = nextView.state.doc.content.size
+      const anchor = clampSelectionPosition(currentSelection.anchor, docSize)
+      const head = clampSelectionPosition(currentSelection.head, docSize)
+      nextView.dispatch(nextView.state.tr.setSelection(TextSelection.create(nextView.state.doc, anchor, head)))
+    }
   }, [editor, inlineReferenceRenderKey, renderedHTML, value])
 
   // Scroll to a heading by its slug when requested by the parent (e.g. TOC click).

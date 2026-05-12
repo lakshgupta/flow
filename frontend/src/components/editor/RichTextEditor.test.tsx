@@ -30,6 +30,7 @@ const mockPosAtCoords = vi.fn(() => ({ pos: 1 }))
 const mockSetSelection = vi.fn(() => 'transaction')
 let capturedDocChange: (() => void) | null = null
 let mockEditorViewDOMHTML = ''
+let latestMockEditorState: { doc: { content?: { size?: number } }; selection?: { anchor: number; head: number }; tr: { setSelection: typeof mockSetSelection } } | null = null
 
 vi.mock('prosekit/pm/state', async (importOriginal) => {
   const actual = await importOriginal<typeof import('prosekit/pm/state')>()
@@ -75,6 +76,14 @@ vi.mock('prosekit/core', async (importOriginal) => {
     createEditor: vi.fn(() => {
       const dom = document.createElement('div')
       dom.innerHTML = mockEditorViewDOMHTML
+        const state = {
+          doc: { content: { size: 12 } },
+          selection: { anchor: 1, head: 1 },
+          tr: {
+            setSelection: mockSetSelection,
+          },
+        }
+        latestMockEditorState = state
 
       return {
         setContent: mockSetContent,
@@ -84,12 +93,7 @@ vi.mock('prosekit/core', async (importOriginal) => {
           dispatch: mockDispatch,
           focus: mockFocus,
           posAtCoords: mockPosAtCoords,
-          state: {
-            doc: {},
-            tr: {
-              setSelection: mockSetSelection,
-            },
-          },
+            state,
         },
         commands: {
           insertText: mockInsertText,
@@ -116,6 +120,7 @@ describe('RichTextEditor', () => {
   beforeEach(() => {
     capturedDocChange = null
     mockEditorViewDOMHTML = ''
+    latestMockEditorState = null
     mockSetContent.mockReset()
     mockGetDocHTML.mockReset()
     mockFocus.mockReset()
@@ -198,6 +203,40 @@ describe('RichTextEditor', () => {
     )
 
     expect(mockSetContent).toHaveBeenCalledTimes(1)
+  })
+
+  it('preserves the current selection when external content sync updates the editor', () => {
+    const handleChange = vi.fn()
+
+    const { rerender } = render(
+      <RichTextEditor
+        ariaLabel="Document body editor"
+        onChange={handleChange}
+        value="Original"
+      />,
+    )
+
+    mockSetSelection.mockClear()
+    mockDispatch.mockClear()
+
+    if (latestMockEditorState === null) {
+      throw new Error('missing mocked editor state')
+    }
+
+    latestMockEditorState.selection = { anchor: 5, head: 5 }
+    latestMockEditorState.doc = { content: { size: 12 } }
+
+    rerender(
+      <RichTextEditor
+        ariaLabel="Document body editor"
+        onChange={handleChange}
+        value="Updated"
+      />,
+    )
+
+    expect(mockSetContent).toHaveBeenCalled()
+    expect(mockSetSelection).toHaveBeenCalledWith('selection')
+    expect(mockDispatch).toHaveBeenCalledWith('transaction')
   })
 
   it('resets editor content when inline reference details change on the same array instance', () => {

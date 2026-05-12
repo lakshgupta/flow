@@ -3,11 +3,11 @@ id: development/20260511-001-FIX-home-backlog-followup/align-right-rail-icon-con
 type: task
 graph: development/20260511-001-FIX-home-backlog-followup
 title: Align right rail icon contrast
-description: Match right rail icon contrast with the left sidebar controls
+description: 'Match right rail icon contrast with the left sidebar controls (commit: 970e146)'
 tags:
     - implementation
     - frontend
-status: Done
+status: Success
 links:
     - node: development/20260511-001-FIX-home-backlog-followup/fix-editor-cursor-jump
       relationships:
