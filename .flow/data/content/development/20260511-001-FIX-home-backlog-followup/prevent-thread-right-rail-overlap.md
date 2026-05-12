@@ -3,11 +3,11 @@ id: development/20260511-001-FIX-home-backlog-followup/prevent-thread-right-rail
 type: task
 graph: development/20260511-001-FIX-home-backlog-followup
 title: Prevent thread and rail overlap
-description: Keep the thread view clear of the right icon rail
+description: 'Keep the thread view clear of the right icon rail (commit: 7ff4c4b)'
 tags:
     - fix
     - frontend
-status: Done
+status: Success
 links:
     - node: development/20260511-001-FIX-home-backlog-followup/tighten-top-breadcrumb
       relationships:

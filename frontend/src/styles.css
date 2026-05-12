@@ -2571,6 +2571,26 @@ pre {
   min-width: 0;
 }
 
+.workspace-shell-breadcrumb .ds-breadcrumb-list {
+  gap: 0.28rem;
+}
+
+.workspace-shell-breadcrumb .ds-breadcrumb-item,
+.workspace-shell-breadcrumb .ds-breadcrumb-page,
+.workspace-shell-breadcrumb .ds-breadcrumb-separator {
+  font-size: 0.76rem;
+  line-height: 1.2;
+}
+
+.workspace-shell-breadcrumb .ds-breadcrumb-separator {
+  color: color-mix(in srgb, var(--muted-foreground) 82%, transparent);
+}
+
+.workspace-shell-breadcrumb .ds-breadcrumb-separator svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
 .workspace-shell-body {
   flex: 1 1 0;
   min-height: 0;
