@@ -3,11 +3,11 @@ id: development/20260511-001-FIX-home-backlog-followup/fix-editor-cursor-jump
 type: task
 graph: development/20260511-001-FIX-home-backlog-followup
 title: Fix editor cursor jump
-description: Stop active editing from jumping the caret to the top of the document
+description: 'Stop active editing from jumping the caret to the top of the document (commit: fac2eab)'
 tags:
     - fix
     - frontend
-status: Done
+status: Success
 links:
     - node: development/20260511-001-FIX-home-backlog-followup/run-home-backlog-regression
       relationships:

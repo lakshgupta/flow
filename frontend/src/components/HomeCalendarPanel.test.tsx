@@ -8,6 +8,10 @@ vi.mock("../lib/mermaid", () => ({
   renderMermaidDiagramSource: vi.fn(),
 }));
 
+vi.mock("../lib/excalidraw", () => ({
+  renderExcalidrawDiagramSource: vi.fn(),
+}));
+
 describe("HomeCalendarPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -82,7 +86,7 @@ describe("HomeCalendarPanel", () => {
 
     expect(renderMermaidDiagramSource).toHaveBeenCalledWith(
       expect.stringContaining("flowchart TD"),
-      expect.stringContaining("flow-rendered-mermaid-"),
+      expect.stringContaining("flow-rendered-diagram-"),
     );
   });
 });
