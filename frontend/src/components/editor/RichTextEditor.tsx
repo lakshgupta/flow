@@ -260,6 +260,9 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
     if (target?.closest('a') instanceof HTMLAnchorElement) {
       return
     }
+    if (target?.closest('[data-flow-editor-interactive="true"]') instanceof HTMLElement) {
+      return
+    }
 
     const coords = view.posAtCoords({ left: event.clientX, top: event.clientY })
     const fallbackPos = typeof view.state.doc.content?.size === 'number'

@@ -355,4 +355,37 @@ describe('RichTextEditor', () => {
     expect(mockSetSelection).toHaveBeenCalled()
     expect(mockDispatch).toHaveBeenCalledWith('transaction')
   })
+
+  it('does not intercept pointer down events from embedded interactive diagram shells', () => {
+    render(
+      <RichTextEditor
+        ariaLabel="Document body editor"
+        onChange={vi.fn()}
+        value=""
+      />,
+    )
+
+    const editorSurface = screen.getByLabelText('Document body editor')
+    const interactiveShell = document.createElement('div')
+    interactiveShell.className = 'flow-excalidraw-editor-shell'
+    interactiveShell.dataset.flowEditorInteractive = 'true'
+
+    const interactiveButton = document.createElement('button')
+    interactiveButton.type = 'button'
+    interactiveButton.textContent = 'draw'
+    interactiveShell.appendChild(interactiveButton)
+    editorSurface.appendChild(interactiveShell)
+
+    mockSetSelection.mockClear()
+    mockDispatch.mockClear()
+
+    fireEvent.pointerDown(interactiveButton, {
+      button: 0,
+      clientX: 8,
+      clientY: 8,
+    })
+
+    expect(mockSetSelection).not.toHaveBeenCalled()
+    expect(mockDispatch).not.toHaveBeenCalled()
+  })
 })

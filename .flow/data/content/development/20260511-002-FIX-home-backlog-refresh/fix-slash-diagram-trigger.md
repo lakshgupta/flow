@@ -3,11 +3,11 @@ id: development/20260511-002-FIX-home-backlog-refresh/fix-slash-diagram-trigger
 type: task
 graph: development/20260511-002-FIX-home-backlog-refresh
 title: Fix slash diagram trigger
-description: Restore slash-menu insertion for Mermaid and Excalidraw blocks
+description: 'Restore slash-menu insertion for Mermaid and Excalidraw blocks (commit: 7bd92ff)'
 tags:
     - fix
     - frontend
-status: Done
+status: Success
 links:
     - node: development/20260511-002-FIX-home-backlog-refresh/fix-excalidraw-editor-session
       relationships:

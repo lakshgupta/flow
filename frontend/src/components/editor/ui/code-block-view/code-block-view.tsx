@@ -309,6 +309,7 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
                     </div>
                   ) : (
                     <div
+                      data-flow-editor-interactive="true"
                       className="flow-excalidraw-diagram flow-excalidraw-diagram-editor flow-excalidraw-editor-shell group"
                       onFocusCapture={() => {
                         hasExcalidrawInteractionRef.current = true
