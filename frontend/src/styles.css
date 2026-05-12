@@ -3640,6 +3640,54 @@ pre {
   background: var(--surface-warm);
 }
 
+.flow-diagram-block-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.flow-diagram-block-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--warm-border) 82%, transparent);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--foreground);
+  padding: 0.48rem 0.78rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  box-shadow: 0 8px 18px rgba(18, 33, 29, 0.06);
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.flow-diagram-block-action:hover,
+.flow-diagram-block-action:focus-visible {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: color-mix(in srgb, var(--warm-border) 92%, transparent);
+}
+
+.flow-diagram-block-action:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--ring) 70%, transparent);
+  outline-offset: 2px;
+}
+
+.flow-diagram-block-action svg {
+  flex: none;
+}
+
+.flow-diagram-block-action-destructive {
+  color: hsl(var(--destructive));
+  border-color: color-mix(in srgb, hsl(var(--destructive)) 30%, var(--warm-border));
+  background: color-mix(in srgb, hsl(var(--destructive)) 10%, white);
+}
+
+.flow-diagram-block-action-destructive:hover,
+.flow-diagram-block-action-destructive:focus-visible {
+  background: color-mix(in srgb, hsl(var(--destructive)) 16%, white);
+  border-color: color-mix(in srgb, hsl(var(--destructive)) 44%, var(--warm-border));
+}
+
 .flow-diagram-block-kicker {
   margin: 0 0 0.2rem;
   font-size: 0.72rem;

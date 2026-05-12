@@ -44,34 +44,62 @@ vi.mock('../../../../lib/excalidraw', () => ({
 
 import CodeBlockView from './code-block-view'
 
+function createViewMocks() {
+  const dispatch = vi.fn()
+  const focus = vi.fn()
+  const transaction = {
+    replaceWith: vi.fn(() => transaction),
+    delete: vi.fn(() => transaction),
+  }
+
+  return {
+    dispatch,
+    focus,
+    transaction,
+    view: {
+      dispatch,
+      focus,
+      state: {
+        schema: { text: vi.fn((value) => value) },
+        tr: transaction,
+      },
+    },
+  }
+}
+
 describe('CodeBlockView', () => {
   it('renders a Mermaid preview for mermaid code blocks', () => {
+    const { view } = createViewMocks()
+
     render(
       <CodeBlockView
         contentRef={createRef<HTMLPreElement>()}
-        node={{ attrs: { language: 'mermaid' }, textContent: 'flowchart TD\nA-->B' } as never}
+        node={{ attrs: { language: 'mermaid' }, nodeSize: 24, textContent: 'flowchart TD\nA-->B' } as never}
         selected={false}
         setAttrs={vi.fn()}
-        view={null as never}
+        view={view as never}
         getPos={vi.fn() as never}
       />,
     )
 
-    expect(screen.queryByLabelText('Code block language')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Code block language')).toHaveValue('mermaid')
     expect(screen.getByLabelText('Mermaid diagram source')).toHaveValue('flowchart TD\nA-->B')
     expect(screen.queryByText('Special section')).not.toBeInTheDocument()
     expect(screen.getByTestId('mermaid-editor-preview')).toHaveTextContent('flowchart TD')
     expect(screen.getByLabelText('Resize Mermaid diagram')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete Mermaid diagram' })).toBeInTheDocument()
   })
 
   it('does not render a Mermaid preview for non-mermaid code blocks', () => {
+    const { view } = createViewMocks()
+
     render(
       <CodeBlockView
         contentRef={createRef<HTMLPreElement>()}
-        node={{ attrs: { language: 'typescript' }, textContent: 'const value = 1' } as never}
+        node={{ attrs: { language: 'typescript' }, nodeSize: 18, textContent: 'const value = 1' } as never}
         selected={false}
         setAttrs={vi.fn()}
-        view={null as never}
+        view={view as never}
         getPos={vi.fn() as never}
       />,
     )
@@ -80,37 +108,42 @@ describe('CodeBlockView', () => {
   })
 
   it('renders an Excalidraw editor for excalidraw code blocks', () => {
+    const { dispatch, focus, transaction, view } = createViewMocks()
+
     render(
       <CodeBlockView
         contentRef={createRef<HTMLPreElement>()}
-        node={{ attrs: { language: 'excalidraw' }, textContent: '{"type":"excalidraw"}' } as never}
+        node={{ attrs: { language: 'excalidraw' }, nodeSize: 28, textContent: '{"type":"excalidraw"}' } as never}
         selected={false}
         setAttrs={vi.fn()}
-        view={{ dispatch: vi.fn(), state: { schema: { text: vi.fn() }, tr: { replaceWith: vi.fn(), delete: vi.fn() } } } as never}
+        view={view as never}
         getPos={vi.fn(() => 1) as never}
       />,
     )
 
-    expect(screen.queryByLabelText('Code block language')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Code block language')).toHaveValue('excalidraw')
     expect(screen.getByTestId('excalidraw-editor-preview')).toBeInTheDocument()
     expect(screen.getByLabelText('Resize Excalidraw diagram')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete Excalidraw diagram' })).toBeInTheDocument()
     expect(screen.getByTestId('excalidraw-editor-preview').parentElement).toHaveStyle({ height: '512px' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Excalidraw diagram' }))
+
+    expect(transaction.delete).toHaveBeenCalledWith(1, 29)
+    expect(dispatch).toHaveBeenCalledTimes(1)
+    expect(focus).toHaveBeenCalledTimes(1)
   })
 
   it('does not overwrite an existing Excalidraw scene during initial sync', () => {
-    const dispatch = vi.fn()
-    const transaction = {
-      replaceWith: vi.fn(() => transaction),
-      delete: vi.fn(() => transaction),
-    }
+    const { dispatch, transaction, view } = createViewMocks()
 
     render(
       <CodeBlockView
         contentRef={createRef<HTMLPreElement>()}
-        node={{ attrs: { language: 'excalidraw' }, textContent: '{"type":"excalidraw","elements":[{"id":"persisted-element"}]}' } as never}
+        node={{ attrs: { language: 'excalidraw' }, nodeSize: 68, textContent: '{"type":"excalidraw","elements":[{"id":"persisted-element"}]}' } as never}
         selected={false}
         setAttrs={vi.fn()}
-        view={{ dispatch, state: { schema: { text: vi.fn(() => 'text-node') }, tr: transaction } } as never}
+        view={view as never}
         getPos={vi.fn(() => 1) as never}
       />,
     )
@@ -122,19 +155,15 @@ describe('CodeBlockView', () => {
   })
 
   it('persists the first non-empty Excalidraw scene change without outer-shell interaction capture', () => {
-    const dispatch = vi.fn()
-    const transaction = {
-      replaceWith: vi.fn(() => transaction),
-      delete: vi.fn(() => transaction),
-    }
+    const { dispatch, transaction, view } = createViewMocks()
 
     render(
       <CodeBlockView
         contentRef={createRef<HTMLPreElement>()}
-        node={{ attrs: { language: 'excalidraw' }, textContent: '{"type":"excalidraw"}' } as never}
+        node={{ attrs: { language: 'excalidraw' }, nodeSize: 28, textContent: '{"type":"excalidraw"}' } as never}
         selected={false}
         setAttrs={vi.fn()}
-        view={{ dispatch, state: { schema: { text: vi.fn((value) => value) }, tr: transaction } } as never}
+        view={view as never}
         getPos={vi.fn(() => 1) as never}
       />,
     )
@@ -147,19 +176,15 @@ describe('CodeBlockView', () => {
 
   it('persists Excalidraw scene changes after interaction', async () => {
     const user = userEvent.setup()
-    const dispatch = vi.fn()
-    const transaction = {
-      replaceWith: vi.fn(() => transaction),
-      delete: vi.fn(() => transaction),
-    }
+    const { dispatch, transaction, view } = createViewMocks()
 
     render(
       <CodeBlockView
         contentRef={createRef<HTMLPreElement>()}
-        node={{ attrs: { language: 'excalidraw' }, textContent: '{"type":"excalidraw"}' } as never}
+        node={{ attrs: { language: 'excalidraw' }, nodeSize: 28, textContent: '{"type":"excalidraw"}' } as never}
         selected={false}
         setAttrs={vi.fn()}
-        view={{ dispatch, state: { schema: { text: vi.fn(() => 'text-node') }, tr: transaction } } as never}
+        view={view as never}
         getPos={vi.fn(() => 1) as never}
       />,
     )
@@ -171,19 +196,15 @@ describe('CodeBlockView', () => {
   })
 
   it('persists a resized Excalidraw editor height', () => {
-    const dispatch = vi.fn()
-    const transaction = {
-      replaceWith: vi.fn(() => transaction),
-      delete: vi.fn(() => transaction),
-    }
+    const { dispatch, transaction, view } = createViewMocks()
 
     render(
       <CodeBlockView
         contentRef={createRef<HTMLPreElement>()}
-        node={{ attrs: { language: 'excalidraw' }, textContent: '{"type":"excalidraw"}' } as never}
+        node={{ attrs: { language: 'excalidraw' }, nodeSize: 28, textContent: '{"type":"excalidraw"}' } as never}
         selected={false}
         setAttrs={vi.fn()}
-        view={{ dispatch, state: { schema: { text: vi.fn(() => 'text-node') }, tr: transaction } } as never}
+        view={view as never}
         getPos={vi.fn(() => 1) as never}
       />,
     )
@@ -195,5 +216,26 @@ describe('CodeBlockView', () => {
 
     expect(transaction.replaceWith).toHaveBeenCalled()
     expect(dispatch).toHaveBeenCalled()
+  })
+
+  it('deletes a Mermaid code block from the document', () => {
+    const { dispatch, focus, transaction, view } = createViewMocks()
+
+    render(
+      <CodeBlockView
+        contentRef={createRef<HTMLPreElement>()}
+        node={{ attrs: { language: 'mermaid' }, nodeSize: 20, textContent: 'flowchart TD\nA-->B' } as never}
+        selected={false}
+        setAttrs={vi.fn()}
+        view={view as never}
+        getPos={vi.fn(() => 4) as never}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Mermaid diagram' }))
+
+    expect(transaction.delete).toHaveBeenCalledWith(4, 24)
+    expect(dispatch).toHaveBeenCalledTimes(1)
+    expect(focus).toHaveBeenCalledTimes(1)
   })
 })

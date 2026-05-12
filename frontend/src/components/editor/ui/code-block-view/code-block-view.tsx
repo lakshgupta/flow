@@ -2,6 +2,7 @@ import type { CodeBlockAttrs } from 'prosekit/extensions/code-block'
 import { shikiBundledLanguagesInfo } from 'prosekit/extensions/code-block'
 import type { ReactNodeViewProps } from 'prosekit/react'
 import { Excalidraw } from '@excalidraw/excalidraw'
+import { Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { MermaidDiagram } from '../../../MermaidDiagram'
@@ -171,6 +172,17 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
     props.view.dispatch(transaction)
   }
 
+  const removeCodeBlock = () => {
+    const pos = props.getPos()
+    if (typeof pos !== 'number') {
+      return
+    }
+
+    const transaction = props.view.state.tr.delete(pos, pos + props.node.nodeSize)
+    props.view.dispatch(transaction)
+    props.view.focus()
+  }
+
   const languageSelector = (
     <select
       aria-label="Code block language"
@@ -187,10 +199,29 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
     </select>
   )
 
+  const diagramActionBar = (
+    <div className="flow-diagram-block-header">
+      <div className="flow-diagram-block-actions">{languageSelector}</div>
+      <button
+        aria-label={`Delete ${showMermaidSection ? 'Mermaid' : 'Excalidraw'} diagram`}
+        className="flow-diagram-block-action flow-diagram-block-action-destructive"
+        onClick={() => removeCodeBlock()}
+        onPointerDown={(event) => {
+          event.preventDefault()
+        }}
+        type="button"
+      >
+        <Trash2 size={14} />
+        <span>Delete</span>
+      </button>
+    </div>
+  )
+
   return (
     <>
       {showDiagramSection ? (
         <section className="flow-diagram-block" contentEditable={false}>
+          {diagramActionBar}
           {showMermaidSection ? (
             <div className="flow-diagram-block-body">
               <div className="flow-diagram-block-source">
