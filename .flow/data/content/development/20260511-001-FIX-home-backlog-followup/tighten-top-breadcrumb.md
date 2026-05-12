@@ -3,11 +3,11 @@ id: development/20260511-001-FIX-home-backlog-followup/tighten-top-breadcrumb
 type: task
 graph: development/20260511-001-FIX-home-backlog-followup
 title: Tighten top breadcrumb
-description: Reduce the width footprint of the top breadcrumb section
+description: 'Reduce the width footprint of the top breadcrumb section (commit: 34f0edf)'
 tags:
     - implementation
     - frontend
-status: Done
+status: Success
 links:
     - node: development/20260511-001-FIX-home-backlog-followup/align-right-rail-icon-contrast
       relationships:
