@@ -3862,8 +3862,61 @@ pre {
   min-height: 24rem;
 }
 
+/*
+ * Excalidraw mobile-mode layout fix
+ *
+ * When the container is narrower than Excalidraw's breakpoint (~640px) it adds
+ * the class `excalidraw--mobile`, which switches its toolbar containers
+ * (FixedSideContainer, App-bottom-bar, SVGLayer …) from position:absolute to
+ * position:static. That stacks them in the document flow and pushes the canvas
+ * wrapper thousands of pixels below the visible area; the shell's
+ * overflow:hidden then hides the canvas completely.
+ *
+ * Fix: make .excalidraw a positioning context, force every toolbar container
+ * back to position:absolute so it overlaps the canvas (the same layout used
+ * in desktop mode), and pull the canvas wrapper and the interactive canvas
+ * up to inset:0 within the shell.
+ */
 .flow-excalidraw-editor-shell .excalidraw {
-  height: 100%;
+  position: relative !important;
+  height: 100% !important;
+  overflow: hidden !important;
+}
+
+/* Toolbar overlay containers — taken out of flow so they don't push canvas down */
+.flow-excalidraw-editor-shell .excalidraw > .FixedSideContainer,
+.flow-excalidraw-editor-shell .excalidraw > .App-bottom-bar,
+.flow-excalidraw-editor-shell .excalidraw > .SVGLayer,
+.flow-excalidraw-editor-shell .excalidraw > .excalidraw-textEditorContainer,
+.flow-excalidraw-editor-shell .excalidraw > .excalidraw-contextMenuContainer,
+.flow-excalidraw-editor-shell .excalidraw > .excalidraw-eye-dropper-container {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 2;
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* Re-enable pointer events for all toolbar child elements */
+.flow-excalidraw-editor-shell .excalidraw > .FixedSideContainer *,
+.flow-excalidraw-editor-shell .excalidraw > .App-bottom-bar * {
+  pointer-events: auto;
+}
+
+/* Static drawing canvas wrapper — positioned at top of container */
+.flow-excalidraw-editor-shell .excalidraw > .excalidraw__canvas-wrapper {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 0;
+}
+
+/* Interactive (event-receiving) canvas layer — sits above drawing canvas */
+.flow-excalidraw-editor-shell .excalidraw > canvas.excalidraw__canvas {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 1;
 }
 
 .flow-excalidraw-resize-handle {

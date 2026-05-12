@@ -209,6 +209,37 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
     props.view.focus()
   }
 
+  const writeAfterCodeBlock = () => {
+    const pos = props.getPos()
+    if (typeof pos !== 'number') {
+      return
+    }
+
+    const endPos = pos + props.node.nodeSize
+    const { state } = props.view
+    const $end = state.doc.resolve(endPos)
+
+    // If there is already a paragraph right after, just move the cursor there.
+    if ($end.nodeAfter?.type === state.schema.nodes.paragraph) {
+      const transaction = state.tr.setSelection(TextSelection.near($end, 1))
+      props.view.dispatch(transaction.scrollIntoView())
+      props.view.focus()
+      return
+    }
+
+    // Otherwise insert a new paragraph after the block.
+    const paragraph = state.schema.nodes.paragraph?.createAndFill()
+    if (!paragraph) {
+      return
+    }
+
+    const transaction = state.tr
+    transaction.replaceWith(endPos, endPos, paragraph)
+    transaction.setSelection(TextSelection.near(transaction.doc.resolve(endPos + 1), 1))
+    props.view.dispatch(transaction.scrollIntoView())
+    props.view.focus()
+  }
+
   const languageSelector = (
     <select
       aria-label="Code block language"
@@ -238,6 +269,17 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
           type="button"
         >
           <span>Write above</span>
+        </button>
+        <button
+          aria-label="Write below code block"
+          className="flow-diagram-block-action"
+          onClick={() => writeAfterCodeBlock()}
+          onPointerDown={(event) => {
+            event.preventDefault()
+          }}
+          type="button"
+        >
+          <span>Write below</span>
         </button>
         {languageSelector}
       </div>
