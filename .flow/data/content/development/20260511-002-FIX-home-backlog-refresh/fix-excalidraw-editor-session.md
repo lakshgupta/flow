@@ -3,11 +3,11 @@ id: development/20260511-002-FIX-home-backlog-refresh/fix-excalidraw-editor-sess
 type: task
 graph: development/20260511-002-FIX-home-backlog-refresh
 title: Fix Excalidraw editor session
-description: Restore drawing and interaction inside embedded Excalidraw sections
+description: 'Restore drawing and interaction inside embedded Excalidraw sections (commit: ba650d1)'
 tags:
     - fix
     - frontend
-status: Done
+status: Success
 links:
     - node: development/20260511-002-FIX-home-backlog-refresh/polish-workspace-shell
       relationships:
