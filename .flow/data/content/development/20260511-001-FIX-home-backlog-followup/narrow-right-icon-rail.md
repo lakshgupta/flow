@@ -3,11 +3,11 @@ id: development/20260511-001-FIX-home-backlog-followup/narrow-right-icon-rail
 type: task
 graph: development/20260511-001-FIX-home-backlog-followup
 title: Narrow right icon rail
-description: Reduce right rail width so it consumes less horizontal space
+description: 'Reduce right rail width so it consumes less horizontal space (commit: da88b5c)'
 tags:
     - implementation
     - frontend
-status: Done
+status: Success
 links:
     - node: development/20260511-001-FIX-home-backlog-followup/prevent-thread-right-rail-overlap
       relationships:

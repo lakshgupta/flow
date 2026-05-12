@@ -3000,12 +3000,14 @@ pre {
 }
 
 .center-document-shell[data-right-rail-docked="true"] {
+  --thread-right-rail-clearance: 4.35rem;
   padding-right: 0;
 }
 
 .center-document-shell[data-right-rail-docked="true"] .thread-stack {
-  padding-right: 0;
-  mask-image: linear-gradient(to right, transparent 0, black 1.5rem, black 100%);
+  padding-right: calc(0.65rem + var(--thread-right-rail-clearance));
+  scroll-padding-inline-end: calc(1.25rem + var(--thread-right-rail-clearance));
+  mask-image: linear-gradient(to right, transparent 0, black 1.5rem, black calc(100% - var(--thread-right-rail-clearance)), transparent 100%);
 }
 
 .center-document-shell[data-thread-expanded="true"] .thread-stack {
@@ -3366,15 +3368,15 @@ pre {
 }
 
 .center-document-shell[data-right-rail-docked="true"] .thread-panel-active {
-  flex: 1 1 var(--thread-panel-width, min(56rem, calc(100vw - 7rem)));
+  flex: 1 1 var(--thread-panel-width, min(56rem, calc(100vw - 7rem - var(--thread-right-rail-clearance))));
 }
 
 .center-document-shell[data-right-rail-docked="true"] .thread-stack[data-density="dense"] .thread-panel-active {
-  flex-basis: var(--thread-panel-width, min(46rem, calc(100vw - 8rem)));
+  flex-basis: var(--thread-panel-width, min(46rem, calc(100vw - 8rem - var(--thread-right-rail-clearance))));
 }
 
 .center-document-shell[data-right-rail-docked="true"] .thread-stack[data-density="ultra"] .thread-panel-active {
-  flex-basis: var(--thread-panel-width, min(44rem, calc(100vw - 8.5rem)));
+  flex-basis: var(--thread-panel-width, min(44rem, calc(100vw - 8.5rem - var(--thread-right-rail-clearance))));
 }
 
 .thread-panel-active.thread-panel-tinted {
