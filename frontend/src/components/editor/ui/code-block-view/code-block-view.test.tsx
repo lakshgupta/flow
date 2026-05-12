@@ -20,11 +20,19 @@ vi.mock('prosekit/pm/state', async (importOriginal) => {
 
 const excalidrawMockState = vi.hoisted(() => ({
   latestOnChange: null as null | ((elements: unknown[], appState: unknown, files: unknown) => void),
+  latestUpdateScene: vi.fn(),
 }))
 
 vi.mock('@excalidraw/excalidraw', () => ({
-  Excalidraw: ({ onChange }: { onChange: (elements: unknown[], appState: unknown, files: unknown) => void }) => {
+  Excalidraw: ({
+    excalidrawAPI,
+    onChange,
+  }: {
+    excalidrawAPI?: (api: { updateScene: typeof excalidrawMockState.latestUpdateScene }) => void;
+    onChange: (elements: unknown[], appState: unknown, files: unknown) => void;
+  }) => {
     excalidrawMockState.latestOnChange = onChange
+    excalidrawAPI?.({ updateScene: excalidrawMockState.latestUpdateScene })
 
     return (
       <button
@@ -94,6 +102,12 @@ function createViewMocks() {
 }
 
 describe('CodeBlockView', () => {
+  beforeEach(() => {
+    excalidrawMockState.latestOnChange = null
+    excalidrawMockState.latestUpdateScene.mockClear()
+    textSelectionNearMock.mockClear()
+  })
+
   it('renders a Mermaid preview for mermaid code blocks', () => {
     const { view } = createViewMocks()
 
@@ -244,6 +258,42 @@ describe('CodeBlockView', () => {
 
     expect(transaction.replaceWith).toHaveBeenCalled()
     expect(dispatch).toHaveBeenCalled()
+  })
+
+  it('does not push the same Excalidraw scene back into the canvas after a local edit rerenders', async () => {
+    const user = userEvent.setup()
+    const { dispatch, transaction, view } = createViewMocks()
+
+    const rendered = render(
+      <CodeBlockView
+        contentRef={createRef<HTMLPreElement>()}
+        node={{ attrs: { language: 'excalidraw' }, nodeSize: 28, textContent: '{"type":"excalidraw"}' } as never}
+        selected={false}
+        setAttrs={vi.fn()}
+        view={view as never}
+        getPos={vi.fn(() => 1) as never}
+      />,
+    )
+
+    expect(excalidrawMockState.latestUpdateScene).toHaveBeenCalledTimes(1)
+
+    await user.click(screen.getByTestId('excalidraw-editor-preview'))
+
+    expect(transaction.replaceWith).toHaveBeenCalled()
+    expect(dispatch).toHaveBeenCalled()
+
+    rendered.rerender(
+      <CodeBlockView
+        contentRef={createRef<HTMLPreElement>()}
+        node={{ attrs: { language: 'excalidraw' }, nodeSize: 64, textContent: '{"type":"excalidraw","elements":[{"id":"drawn-element"}]}' } as never}
+        selected={false}
+        setAttrs={vi.fn()}
+        view={view as never}
+        getPos={vi.fn(() => 1) as never}
+      />,
+    )
+
+    expect(excalidrawMockState.latestUpdateScene).toHaveBeenCalledTimes(1)
   })
 
   it('persists a resized Excalidraw editor height', () => {

@@ -38,6 +38,7 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
   }, [code, language])
   const excalidrawAPIRef = useRef<{ updateScene: (scene: unknown) => void } | null>(null)
   const lastSerializedExcalidrawSourceRef = useRef(code)
+  const skipNextExcalidrawSceneSyncRef = useRef(false)
   const excalidrawHeightRef = useRef(DEFAULT_EXCALIDRAW_HEIGHT)
   const hasExcalidrawInteractionRef = useRef(false)
   const resizeStartYRef = useRef(0)
@@ -87,6 +88,11 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
       return
     }
 
+    if (skipNextExcalidrawSceneSyncRef.current) {
+      skipNextExcalidrawSceneSyncRef.current = false
+      return
+    }
+
     excalidrawAPIRef.current.updateScene(excalidrawSource.initialData)
   }, [excalidrawSource, showExcalidrawPreview])
 
@@ -113,6 +119,7 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
       }
 
       lastSerializedExcalidrawSourceRef.current = nextSource
+      skipNextExcalidrawSceneSyncRef.current = true
       replaceCodeBlockContent(nextSource)
     }
 
@@ -337,6 +344,7 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
                           }
 
                           lastSerializedExcalidrawSourceRef.current = nextSource
+                          skipNextExcalidrawSceneSyncRef.current = true
                           replaceCodeBlockContent(nextSource)
                         }}
                       />

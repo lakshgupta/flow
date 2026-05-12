@@ -3,11 +3,11 @@ id: development/20260511-001-FIX-home-backlog-followup/fix-diagram-cursor-exit
 type: task
 graph: development/20260511-001-FIX-home-backlog-followup
 title: Fix diagram cursor exit
-description: Allow the caret to move into normal text around diagram and code blocks
+description: 'Allow the caret to move into normal text around diagram and code blocks (commit: d61674f)'
 tags:
     - fix
     - frontend
-status: Done
+status: Success
 links:
     - node: development/20260511-001-FIX-home-backlog-followup/fix-excalidraw-visibility-persistence
       relationships:
