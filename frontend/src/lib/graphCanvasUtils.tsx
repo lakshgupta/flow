@@ -5,7 +5,7 @@ import type { CSSProperties } from "react";
 import { createContext } from "react";
 
 import { fileNameFromPath } from "./docUtils";
-import { graphDirectoryColorHex, resolveGraphDirectoryColor } from "./graphColors";
+import { graphDirectoryColorHex, resolveParentGraphDirectoryColor } from "./graphColors";
 import type {
   GraphCanvasEdgePayload,
   GraphCanvasFlowNodeData,
@@ -150,7 +150,7 @@ export function buildGraphCanvasFlowNodes(
   return graphCanvasData.nodes.map((item) => {
     const shape = graphCanvasNodeShape(item.shape);
     const dimensions = graphCanvasNodeDimensions(shape, item.previewKind);
-    const graphColor = resolveGraphDirectoryColor(item.graph, graphDirectoryColorsByPath);
+    const graphColor = resolveParentGraphDirectoryColor(item.graph, graphDirectoryColorsByPath);
     const data: GraphCanvasFlowNodeData = {
       label: renderGraphCanvasNodeLabel({
         id: item.id,

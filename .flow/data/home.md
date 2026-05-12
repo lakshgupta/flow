@@ -6,7 +6,6 @@ title: Home
 
 ## Backlog
 
-- [ ] the color on the nodes in the graph view should be from the color set on the closest parent directory
 - [ ] the thread view should not intersect with the right icon panel
 - [ ] the right icon panel could be made narrower
 - [ ] the top breadcrumb section could be made narrower

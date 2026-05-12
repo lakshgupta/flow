@@ -3,11 +3,11 @@ id: development/20260511-001-FIX-home-backlog-followup/fix-excalidraw-visibility
 type: task
 graph: development/20260511-001-FIX-home-backlog-followup
 title: Fix Excalidraw visibility and persistence
-description: Make drawn Excalidraw content visible immediately and persist across reloads
+description: 'Make drawn Excalidraw content visible immediately and persist across reloads (commit: ec72776)'
 tags:
     - fix
     - frontend
-status: Done
+status: Success
 links:
     - node: development/20260511-001-FIX-home-backlog-followup/inherit-graph-node-parent-color
       relationships:

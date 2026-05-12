@@ -1,8 +1,8 @@
 import type { Node } from "@xyflow/react";
 import { describe, expect, it } from "vitest";
 
-import { CANVAS_NODE_H, CANVAS_NODE_W, intersectingGraphCanvasNodeIds } from "./graphCanvasUtils";
-import type { GraphCanvasFlowNodeData } from "../types";
+import { CANVAS_NODE_H, CANVAS_NODE_W, buildGraphCanvasFlowNodes, intersectingGraphCanvasNodeIds } from "./graphCanvasUtils";
+import type { GraphCanvasFlowNodeData, GraphCanvasResponse } from "../types";
 
 function makeNode(id: string, x: number, y: number): Node<GraphCanvasFlowNodeData> {
   return {
@@ -46,5 +46,47 @@ describe("intersectingGraphCanvasNodeIds", () => {
 
     expect(intersectingGraphCanvasNodeIds(nodes, "note-1", { x: 140, y: 120 })).toEqual([]);
     expect(intersectingGraphCanvasNodeIds(nodes, "missing", { x: 490, y: 230 })).toEqual([]);
+  });
+});
+
+describe("buildGraphCanvasFlowNodes", () => {
+  it("uses the closest parent graph directory color for nested graph nodes", () => {
+    const graphCanvasData: GraphCanvasResponse = {
+      selectedGraph: "graph1/graph11",
+      availableGraphs: ["graph1", "graph1/graph11"],
+      layerGuidance: {
+        magneticThresholdPx: 24,
+        guides: [],
+      },
+      nodes: [
+        {
+          id: "note-1",
+          type: "note",
+          graph: "graph1/graph11",
+          title: "Nested note",
+          description: "",
+          path: "graph1/graph11/note-1.md",
+          featureSlug: "graph11",
+          position: { x: 120, y: 140 },
+          positionPersisted: true,
+        },
+      ],
+      edges: [],
+      viewport: null,
+    };
+
+    const nodes = buildGraphCanvasFlowNodes(
+      graphCanvasData,
+      {},
+      "",
+      "",
+      {
+        graph1: "rose",
+        "graph1/graph11": "lemon",
+      },
+    );
+
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].data.graphColor).toBe("rose");
   });
 });
