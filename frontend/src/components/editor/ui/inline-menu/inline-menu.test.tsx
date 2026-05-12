@@ -88,12 +88,12 @@ describe('InlineMenu', () => {
     await user.click(screen.getByRole('button', { name: /Text color/i }))
     await user.click(screen.getByRole('button', { name: 'Text color Rose' }))
 
-    expect(addTextColor).toHaveBeenCalledWith({ color: '#e8aebb' })
+    expect(addTextColor).toHaveBeenCalledWith({ color: '#d8879d' })
 
     await user.click(screen.getByRole('button', { name: /Background color/i }))
     await user.click(screen.getByRole('button', { name: 'Background color Mint' }))
 
-    expect(addBackgroundColor).toHaveBeenCalledWith({ color: '#a9d8b8' })
+    expect(addBackgroundColor).toHaveBeenCalledWith({ color: '#78b592' })
   })
 
   it('shows a heading dropdown with Normal selected when the selection is not a heading', async () => {
