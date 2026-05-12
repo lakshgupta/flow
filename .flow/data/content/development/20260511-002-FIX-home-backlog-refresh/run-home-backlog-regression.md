@@ -7,5 +7,15 @@ description: Run focused and broad regression coverage for the refreshed home ba
 tags:
     - test
     - frontend
-status: Ready
+status: Success
 ---
+
+- Re-ran the full frontend regression after the final shell polish commit to validate the refreshed home backlog as an integrated slice.
+- Confirmed the production frontend bundle still builds cleanly after the combined graph, editor, Excalidraw, slash-menu, and shell styling fixes.
+
+Validation
+
+- cd frontend && npm test
+- cd frontend && npm test -- RichTextEditor.shortcuts.test.tsx
+- cd frontend && npm test
+- cd frontend && npm run build

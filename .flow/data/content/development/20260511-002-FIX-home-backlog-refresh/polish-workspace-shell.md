@@ -3,11 +3,11 @@ id: development/20260511-002-FIX-home-backlog-refresh/polish-workspace-shell
 type: task
 graph: development/20260511-002-FIX-home-backlog-refresh
 title: Polish workspace shell
-description: Refresh spacing, icon treatment, and layout polish across the workspace shell
+description: 'Refresh spacing, icon treatment, and layout polish across the workspace shell (commit: 4db1a56)'
 tags:
     - fix
     - frontend
-status: Done
+status: Success
 links:
     - node: development/20260511-002-FIX-home-backlog-refresh/run-home-backlog-regression
       relationships:
