@@ -3,11 +3,11 @@ id: development/20260511-002-FIX-home-backlog-refresh/intensify-node-colors-ligh
 type: task
 graph: development/20260511-002-FIX-home-backlog-refresh
 title: Intensify node colors in light mode
-description: Increase graph node tint visibility in the light theme
+description: 'Increase graph node tint visibility in the light theme (commit: dc2787d)'
 tags:
     - fix
     - frontend
-status: Done
+status: Success
 links:
     - node: development/20260511-002-FIX-home-backlog-refresh/restore-node-colors-dark
       relationships:

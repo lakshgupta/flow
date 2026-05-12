@@ -4325,6 +4325,11 @@ pre {
   border-radius: 0.6rem;
 }
 
+.dark .graph-tree-row-colored .graph-sub-button {
+  background: color-mix(in srgb, var(--graph-row-color) 26%, var(--card));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--graph-row-color) 28%, transparent);
+}
+
 .graph-tree-row-colored .graph-sub-button .graph-button-labels strong {
   color: color-mix(in srgb, #1f2328 86%, var(--graph-row-color));
 }
@@ -4345,6 +4350,10 @@ pre {
 
 .graph-tree-row-colored .graph-sub-button:hover {
   background: color-mix(in srgb, var(--graph-row-color) 68%, transparent);
+}
+
+.dark .graph-tree-row-colored .graph-sub-button:hover {
+  background: color-mix(in srgb, var(--graph-row-color) 34%, var(--surface-warm-alt));
 }
 
 .graph-tree-row-drop-target .graph-sub-button {
@@ -5026,6 +5035,19 @@ pre {
 .graph-canvas-node-tinted {
   border-color: color-mix(in srgb, var(--graph-node-color) 62%, var(--border));
   background: color-mix(in srgb, var(--graph-node-color) 14%, var(--surface-warm));
+}
+
+.dark .graph-canvas-node-tinted {
+  border-color: color-mix(in srgb, var(--graph-node-color) 76%, var(--border));
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--graph-node-color) 22%, var(--surface-warm-alt)),
+      color-mix(in srgb, var(--graph-node-color) 14%, var(--card))
+    );
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--graph-node-color) 22%, transparent),
+    rgba(0, 0, 0, 0.18) 0px 8px 20px;
 }
 
 .graph-canvas-node:hover {
