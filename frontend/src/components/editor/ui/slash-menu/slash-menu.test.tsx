@@ -57,7 +57,8 @@ describe('SlashMenu', () => {
 
     await user.click(screen.getByRole('button', { name: /Mermaid Diagram/i }))
 
-    expect(insertCodeBlock).toHaveBeenCalledWith({ language: 'mermaid' })
+    expect(setCodeBlock).toHaveBeenCalledWith({ language: 'mermaid' })
+    expect(insertCodeBlock).not.toHaveBeenCalled()
     expect(insertText).not.toHaveBeenCalled()
   })
 
@@ -68,7 +69,8 @@ describe('SlashMenu', () => {
 
     await user.click(screen.getByRole('button', { name: /Excalidraw Diagram/i }))
 
-    expect(insertCodeBlock).toHaveBeenCalledWith({ language: 'excalidraw' })
+    expect(setCodeBlock).toHaveBeenCalledWith({ language: 'excalidraw' })
+    expect(insertCodeBlock).not.toHaveBeenCalled()
     expect(insertText).not.toHaveBeenCalled()
   })
 })
