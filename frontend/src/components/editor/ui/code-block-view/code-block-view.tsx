@@ -3,7 +3,7 @@ import { shikiBundledLanguagesInfo } from 'prosekit/extensions/code-block'
 import type { ReactNodeViewProps } from 'prosekit/react'
 import { TextSelection } from 'prosekit/pm/state'
 import { Excalidraw } from '@excalidraw/excalidraw'
-import { Trash2 } from 'lucide-react'
+import { ArrowDownToLine, ArrowUpToLine, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { MermaidDiagram } from '../../../MermaidDiagram'
@@ -268,7 +268,7 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
           }}
           type="button"
         >
-          <span>Write above</span>
+          <ArrowUpToLine size={14} />
         </button>
         <button
           aria-label="Write below code block"
@@ -279,9 +279,9 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
           }}
           type="button"
         >
-          <span>Write below</span>
+          <ArrowDownToLine size={14} />
         </button>
-        {languageSelector}
+        {showMermaidSection && languageSelector}
       </div>
       <button
         aria-label={`Delete ${showMermaidSection ? 'Mermaid' : 'Excalidraw'} diagram`}
@@ -293,7 +293,6 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
         type="button"
       >
         <Trash2 size={14} />
-        <span>Delete</span>
       </button>
     </div>
   )
