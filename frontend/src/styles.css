@@ -3803,6 +3803,7 @@ pre {
 
 .flow-diagram-block-preview {
   min-width: 0;
+  overflow-x: auto;
 }
 
 .flow-diagram-block-empty {
@@ -3860,6 +3861,7 @@ pre {
 .flow-excalidraw-editor-shell {
   position: relative;
   min-height: 24rem;
+  min-width: 1000px;
 }
 
 /*

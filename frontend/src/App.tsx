@@ -1393,8 +1393,23 @@ function FlowApp() {
 
   useEffect(() => {
     const next = createHomeFormState(graphTree?.home ?? null);
-    homeFormStateRef.current = next;
-    setHomeFormState(next);
+    if (
+      homeDocumentEditorRef.current !== null &&
+      homeFormStateRef.current.body !== "" &&
+      homeFormStateRef.current.body !== next.body
+    ) {
+      // The home editor is mounted with non-empty content that differs from the
+      // server state. A document save (or other mutation) may have updated
+      // graphTree while the home save is still pending. Preserve the editor body
+      // so that the pending local edits are not overwritten. Title and
+      // description are still updated from the server response.
+      const merged = { ...next, body: homeFormStateRef.current.body };
+      homeFormStateRef.current = merged;
+      setHomeFormState(merged);
+    } else {
+      homeFormStateRef.current = next;
+      setHomeFormState(next);
+    }
   }, [graphTree]);
 
   useEffect(() => {
@@ -3556,6 +3571,53 @@ function FlowApp() {
     handleRenameDialogOpenChange,
     handleRenameDialogValueChange,
   ]);
+
+  // Flush any pending debounced saves immediately without waiting for an
+  // animation frame — used by the page-hide / visibility-change handlers.
+  const flushOnHideRef = useRef<() => void>(() => {});
+  // Update every render so the callback always closes over current state/refs.
+  flushOnHideRef.current = () => {
+    const hasDocTimer = documentAutoSaveTimerRef.current !== null;
+    const hasHomeTimer = homeAutoSaveTimerRef.current !== null;
+    if (!hasDocTimer && !hasHomeTimer) {
+      return;
+    }
+    if (hasDocTimer) {
+      clearTimeout(documentAutoSaveTimerRef.current);
+      documentAutoSaveTimerRef.current = null;
+    }
+    if (hasHomeTimer) {
+      clearTimeout(homeAutoSaveTimerRef.current);
+      homeAutoSaveTimerRef.current = null;
+    }
+    // Sync latest editor state into the form refs synchronously.
+    syncDocumentBodyFromActiveEditor();
+    syncHomeBodyFromEditor();
+    // Fire saves; these are fast local fetches so they complete before unload.
+    if (hasDocTimer && selectedDocumentRef.current !== null) {
+      void handleSaveDocument(selectedDocumentRef.current, formStateRef.current);
+    }
+    if (hasHomeTimer) {
+      void handleSaveHomeContent(homeFormStateRef.current);
+    }
+  };
+
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.visibilityState === "hidden") {
+        flushOnHideRef.current();
+      }
+    }
+    function handlePageHide() {
+      flushOnHideRef.current();
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", handlePageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", handlePageHide);
+    };
+  }, []);
 
   if (loading) {
     return (
