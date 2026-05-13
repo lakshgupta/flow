@@ -3,8 +3,10 @@ import { union } from 'prosekit/core'
 import { defineBackgroundColor } from 'prosekit/extensions/background-color'
 import { defineCodeBlockShiki } from 'prosekit/extensions/code-block'
 import { defineHorizontalRule } from 'prosekit/extensions/horizontal-rule'
+import { defineMath } from 'prosekit/extensions/math'
 import { definePlaceholder } from 'prosekit/extensions/placeholder'
 import { defineTextColor } from 'prosekit/extensions/text-color'
+import { render as renderKaTeX } from 'katex'
 
 import { defineCodeBlockExitKeymap } from './code-block-exit-keymap'
 import { defineHeadingExitKeymap } from './heading-exit-keymap'
@@ -20,6 +22,10 @@ export function defineEditorExtension(placeholder = 'Start writing…') {
     // Keep the Shiki extension mounted but avoid parsing custom diagram languages
     // (for example `excalidraw`) as regular code blocks.
     defineCodeBlockShiki({ nodeTypes: ['mathBlock'] }),
+    defineMath({
+      renderMathBlock: (text, element) => renderKaTeX(text, element, { displayMode: true, throwOnError: false, output: 'mathml' }),
+      renderMathInline: (text, element) => renderKaTeX(text, element, { displayMode: false, throwOnError: false, output: 'mathml' }),
+    }),
     defineCodeBlockExitKeymap(),
     defineHeadingExitKeymap(),
     defineHorizontalRule(),

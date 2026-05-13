@@ -1,5 +1,6 @@
 import MarkdownIt from "markdown-it";
 import markdownItAnchor from "markdown-it-anchor";
+import markdownItKaTeX from "@traptitech/markdown-it-katex";
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
 
@@ -21,7 +22,7 @@ const markdown = new MarkdownIt({
 }).use(markdownItAnchor, {
   permalink: false, // don't add permalink symbols
   slugify: slugifyValue,
-});
+}).use(markdownItKaTeX, { throwOnError: false, output: 'mathml' });
 
 const turndown = new TurndownService({
   bulletListMarker: "-",
@@ -30,6 +31,26 @@ const turndown = new TurndownService({
 });
 
 turndown.use(gfm);
+turndown.addRule("mathBlock", {
+  filter(node) {
+    return node instanceof Element && node.tagName === "DIV" && node.classList.contains("prosemirror-math-block");
+  },
+  replacement(_content, node) {
+    if (!(node instanceof Element)) return "";
+    const source = node.querySelector("code")?.textContent ?? "";
+    return `\n\n$$${source}$$\n\n`;
+  },
+});
+turndown.addRule("mathInline", {
+  filter(node) {
+    return node instanceof Element && node.tagName === "SPAN" && node.classList.contains("prosemirror-math-inline");
+  },
+  replacement(_content, node) {
+    if (!(node instanceof Element)) return "";
+    const source = node.querySelector("code")?.textContent ?? "";
+    return `$${source}$`;
+  },
+});
 turndown.addRule("emptyParagraph", {
   filter(node) {
     return node instanceof Element && isSemanticallyEmptyParagraph(node);

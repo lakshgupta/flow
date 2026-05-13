@@ -6,6 +6,7 @@ const {
   defineBackgroundColor,
   defineCodeBlockShiki,
   defineHorizontalRule,
+  defineMath,
   definePlaceholder,
   defineTextColor,
   defineCodeBlockExitKeymap,
@@ -18,6 +19,7 @@ const {
   defineBackgroundColor: vi.fn(() => 'background-color-extension'),
   defineCodeBlockShiki: vi.fn(() => 'code-block-shiki-extension'),
   defineHorizontalRule: vi.fn(() => 'horizontal-rule-extension'),
+  defineMath: vi.fn(() => 'math-extension'),
   definePlaceholder: vi.fn(({ placeholder }: { placeholder: string }) => `placeholder:${placeholder}`),
   defineTextColor: vi.fn(() => 'text-color-extension'),
   defineCodeBlockExitKeymap: vi.fn(() => 'code-block-exit-keymap-extension'),
@@ -46,6 +48,10 @@ vi.mock('prosekit/extensions/horizontal-rule', () => ({
   defineHorizontalRule,
 }))
 
+vi.mock('prosekit/extensions/math', () => ({
+  defineMath,
+}))
+
 vi.mock('prosekit/extensions/placeholder', () => ({
   definePlaceholder,
 }))
@@ -70,6 +76,10 @@ vi.mock('./ui/image-view', () => ({
   defineImageView,
 }))
 
+vi.mock('katex', () => ({
+  render: vi.fn(),
+}))
+
 import { defineEditorExtension } from './define-editor-extension'
 
 describe('defineEditorExtension', () => {
@@ -78,12 +88,14 @@ describe('defineEditorExtension', () => {
 
     expect(defineImageView).toHaveBeenCalledTimes(1)
     expect(defineCodeBlockShiki).toHaveBeenCalledWith({ nodeTypes: ['mathBlock'] })
+    expect(defineMath).toHaveBeenCalledTimes(1)
     expect(union).toHaveBeenCalledWith(
       'basic-extension',
       'text-color-extension',
       'background-color-extension',
       'placeholder:Image ready',
       'code-block-shiki-extension',
+      'math-extension',
       'code-block-exit-keymap-extension',
       'heading-exit-keymap-extension',
       'horizontal-rule-extension',
@@ -96,6 +108,7 @@ describe('defineEditorExtension', () => {
       'background-color-extension',
       'placeholder:Image ready',
       'code-block-shiki-extension',
+      'math-extension',
       'code-block-exit-keymap-extension',
       'heading-exit-keymap-extension',
       'horizontal-rule-extension',

@@ -281,7 +281,6 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
         >
           <ArrowDownToLine size={14} />
         </button>
-        {showMermaidSection && languageSelector}
       </div>
       <button
         aria-label={`Delete ${showMermaidSection ? 'Mermaid' : 'Excalidraw'} diagram`}
