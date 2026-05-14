@@ -2000,12 +2000,12 @@ describe("App graph canvas flows", () => {
 
     await user.click(screen.getByRole("button", { name: "Select note-1" }));
 
-    const iconStrip = document.querySelector(".right-sidebar-icons");
-    if (!(iconStrip instanceof HTMLElement)) {
-      throw new Error("missing right sidebar icon strip");
+    const headerTrailing = document.querySelector(".workspace-shell-header-trailing");
+    if (!(headerTrailing instanceof HTMLElement)) {
+      throw new Error("missing header trailing section");
     }
 
-    const iconButtons = within(iconStrip).getAllByRole("button");
+    const iconButtons = within(headerTrailing).getAllByRole("button");
     expect(iconButtons.map((button) => button.getAttribute("aria-label"))).toEqual([
       "Settings",
       "Search",

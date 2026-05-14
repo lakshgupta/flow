@@ -82,13 +82,9 @@ export function useRightRailDocumentActions({
     actionRefs.current.updateFormField(field, value);
   }, []);
 
-  const handleRightRailDocumentInlineReferenceOpen = useCallback((documentId: string, graphPath: string) => {
-    const currentDocument = selectedDocumentRef.current;
-    if (currentDocument === null) {
-      return;
-    }
-    void actionRefs.current.handleInlineReferenceOpen(currentDocument.id, documentId, graphPath, "right-rail");
-  }, [selectedDocumentRef]);
+  const handleRightRailDocumentInlineReferenceOpen = useCallback((_documentId: string, _graphPath: string) => {
+    // References are only navigable in thread/expanded mode, not in the compact right-rail view.
+  }, []);
 
   const handleRightRailDocumentDateOpen = useCallback((date: string) => {
     actionRefs.current.handleDateOpen(date);

@@ -528,8 +528,6 @@ function FlowApp() {
     ? "Resize document properties"
     : "Resize table of contents";
   const hasRightRailDocument = selectedDocumentId !== "" && selectedDocumentOpenMode === "right-rail";
-  const showRightRailDocumentButton = activeSurface.kind === "graph" && !isCenterDocumentOpen && (selectedCanvasNode !== null || hasRightRailDocument);
-  const selectedNodeMatchesRightRailDocument = selectedCanvasNode !== null && hasRightRailDocument && selectedDocumentId === selectedCanvasNode.id;
   const nextThreadDensityMode: ThreadDensityMode = threadDensityMode === "comfortable"
     ? "dense"
     : threadDensityMode === "dense"
@@ -1239,6 +1237,15 @@ function FlowApp() {
       return;
     }
 
+    // When document is in right-rail mode, expand it to the full center thread view.
+    if (selectedDocumentOpenMode === "right-rail" && rightPanelTab === "document" && selectedDocumentId !== "") {
+      const graphPath = resolveDocumentGraphPath(selectedDocumentId, selectedGraphPath);
+      if (graphPath !== "") {
+        void openDocumentInCenter(selectedDocumentId, graphPath);
+      }
+      return;
+    }
+
     setRightRailMaximized((current) => !current);
   }
 
@@ -1276,7 +1283,11 @@ function FlowApp() {
 
   function handleGraphCanvasOverlayNodeDoubleClick(event: React.MouseEvent<HTMLDivElement>, nodeId: string): void {
     event.stopPropagation();
-    handleOpenCanvasDocument(nodeId);
+    const graphPath = resolveDocumentGraphPath(nodeId, selectedGraphPath);
+    if (graphPath === "") {
+      return;
+    }
+    void openDocumentInRightRail(nodeId, graphPath);
   }
 
   async function handleGraphCanvasNodeDescriptionSave(nodeId: string, description: string): Promise<void> {
@@ -3732,6 +3743,14 @@ function FlowApp() {
                 </BreadcrumbList>
               </Breadcrumb>
             </div>
+            <div className="workspace-shell-header-trailing">
+              <RightRailControls
+                searchActive={rightPanelTab === "search" && !rightRailCollapsed}
+                calendarActive={rightPanelTab === "calendar" && !rightRailCollapsed}
+                settingsDialog={settingsDialogProps}
+                actions={rightRailControlsActions}
+              />
+            </div>
           </header>
           <DeleteDocumentDialog
             open={deleteDialogOpen}
@@ -3871,14 +3890,6 @@ function FlowApp() {
           </div>
         </aside>
         </div>
-        <RightRailControls
-          searchActive={rightPanelTab === "search" && !rightRailCollapsed}
-          calendarActive={rightPanelTab === "calendar" && !rightRailCollapsed}
-          showDocumentButton={showRightRailDocumentButton}
-          documentActive={rightPanelTab === "document" && !rightRailCollapsed && selectedNodeMatchesRightRailDocument}
-          settingsDialog={settingsDialogProps}
-          actions={rightRailControlsActions}
-        />
       </SidebarInset>
       <CreateNodeDialog
         dialog={createNodeDialog}
