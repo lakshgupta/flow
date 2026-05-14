@@ -261,6 +261,7 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
       <div className="flow-diagram-block-actions">
         <button
           aria-label="Write above code block"
+          title="Write above"
           className="flow-diagram-block-action"
           onClick={() => insertParagraphBeforeCodeBlock()}
           onPointerDown={(event) => {
@@ -272,6 +273,7 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
         </button>
         <button
           aria-label="Write below code block"
+          title="Write below"
           className="flow-diagram-block-action"
           onClick={() => writeAfterCodeBlock()}
           onPointerDown={(event) => {
@@ -414,6 +416,7 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
           <div className="flow-code-block-inline-controls">
             <button
               aria-label="Write above code block"
+              title="Write above"
               className="flow-diagram-block-action flow-code-block-inline-action"
               onClick={() => insertParagraphBeforeCodeBlock()}
               onPointerDown={(event) => {
@@ -421,7 +424,19 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
               }}
               type="button"
             >
-              <span>Write above</span>
+              <ArrowUpToLine size={14} />
+            </button>
+            <button
+              aria-label="Write below code block"
+              title="Write below"
+              className="flow-diagram-block-action flow-code-block-inline-action"
+              onClick={() => writeAfterCodeBlock()}
+              onPointerDown={(event) => {
+                event.preventDefault()
+              }}
+              type="button"
+            >
+              <ArrowDownToLine size={14} />
             </button>
             {languageSelector}
           </div>
