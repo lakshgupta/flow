@@ -1302,8 +1302,10 @@ func TestNewMuxGraphTreeDegradesGracefullyWhenIndexIsUnavailable(t *testing.T) {
 	if graphTree.Home.ID != "home" {
 		t.Fatalf("graphTree.Home = %#v, want fallback home response", graphTree.Home)
 	}
-	if len(graphTree.Graphs) != 0 {
-		t.Fatalf("len(graphTree.Graphs) = %d, want 0 when documents are unreadable", len(graphTree.Graphs))
+	// The index is missing, so the handler rebuilds it from the workspace files.
+	// The broken document is stored as a parse failure; valid graphs are still returned.
+	if len(graphTree.Graphs) != 2 {
+		t.Fatalf("len(graphTree.Graphs) = %d, want 2 graphs rebuilt from workspace (execution, execution/parser)", len(graphTree.Graphs))
 	}
 }
 

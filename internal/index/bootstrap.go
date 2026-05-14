@@ -177,11 +177,15 @@ func Rebuild(indexPath string, flowPaths ...string) error {
 		return fmt.Errorf("create index directory: %w", err)
 	}
 
-	if err := os.Remove(indexPath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("reset index file: %w", err)
+	// Write the new index to a temporary file first, then rename it into place.
+	// This makes the swap atomic: concurrent readers always see either the old
+	// complete database or the new one, never a partially-constructed file.
+	tmpPath := indexPath + ".tmp"
+	if err := os.Remove(tmpPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove stale temporary index: %w", err)
 	}
 
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := sql.Open("sqlite", tmpPath)
 	if err != nil {
 		return fmt.Errorf("open index database: %w", err)
 	}
@@ -265,6 +269,15 @@ func Rebuild(indexPath string, flowPaths ...string) error {
 
 	if err := transaction.Commit(); err != nil {
 		return fmt.Errorf("commit rebuild transaction: %w", err)
+	}
+
+	// Close the database before the rename so SQLite flushes all journal files.
+	if err := database.Close(); err != nil {
+		return fmt.Errorf("close temporary index database: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, indexPath); err != nil {
+		return fmt.Errorf("replace index file: %w", err)
 	}
 
 	return nil
