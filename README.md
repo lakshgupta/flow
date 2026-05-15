@@ -71,20 +71,22 @@ Use Flow inside the same repository as your code.
 ```bash
 cd /path/to/your-repo
 flow init
-git add .flow/data/content .flow/home.md .flow/.gitignore
+git add .flow/data/content .flow/data/home.md .flow/.gitignore
 git commit -m "Initialize Flow workspace"
 ```
 
 Commit these:
 
 - `.flow/data/content/**`
-- `.flow/home.md`
+- `.flow/data/home.md`
 - `.flow/.gitignore`
 
 Do not commit these generated files:
 
 - `.flow/config/flow.index`
+- `.flow/config/flow.index.tmp`
 - `.flow/config/gui-server.json`
+- `.flow/logs/`
 
 Typical workflow:
 
@@ -92,6 +94,56 @@ Typical workflow:
 2. Implement code and update task status (`Ready` -> `Running` -> `Done` and terminal outcomes such as `Success`, `Failed`, or `Interrupted`).
 3. Record validation outcomes in notes.
 4. Commit code plus Flow updates together for traceable history.
+
+## Global vs Local Mode
+
+Flow has two workspace modes: **global** and **local**.
+
+**Global mode** is a single personal workspace that lives in your user config directory, independent of any project. Use it as a personal knowledge and task base that is always available regardless of which directory you are in.
+
+**Local mode** ties a workspace to a specific project directory. The `.flow/` folder sits inside your repository, so workspace content travels with the code.
+
+### Set Up the Global Workspace (one time)
+
+```bash
+# Point Flow at the directory that will hold your global workspace
+flow -g configure --workspace ~/flow-workspace
+
+# Initialize it (creates .flow/ files at the configured path)
+flow -g init
+
+# Open the global GUI
+flow -g gui
+```
+
+### Set Up a Local Workspace in a Project
+
+Before using local mode, the global workspace must be configured (the step above).
+
+```bash
+cd /path/to/your-repo
+
+# Initialize a local workspace and register it with the global GUI
+flow init
+
+# Open the local GUI on its own port
+flow configure --gui-port 4318
+flow gui
+```
+
+`flow init` in a project directory registers the project automatically with the global workspace, so it shows up in the **global GUI's workspace switcher** without any extra steps.
+
+### Using the Global GUI as a Workspace Hub
+
+When you start the global GUI (`flow -g gui`), the sidebar shows a workspace selector listing the global workspace and every registered local workspace. Click any entry to switch context, browse its graphs, and edit its documents — all from the same browser tab.
+
+To see which workspaces are registered:
+
+```bash
+flow -g workspace list
+```
+
+If a local workspace was moved or deleted and should no longer appear, remove it from the list using the sidebar remove button in the global GUI, or re-register a new path with `flow init` from that directory.
 
 ## Use flow skill In Project Work
 

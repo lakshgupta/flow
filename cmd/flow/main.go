@@ -32,7 +32,7 @@ var version = buildinfo.ProjectVersion()
 
 const defaultGUIPort = 4317
 const guiLogRetentionWindow = 7 * 24 * time.Hour
-const workspaceGitignoreContent = "config/flow.index\nconfig/gui-server.json\nlogs/\n"
+const workspaceGitignoreContent = "config/flow.index\nconfig/flow.index.tmp\nconfig/gui-server.json\nlogs/\n"
 
 type commandEnv struct {
 	stdout           io.Writer
