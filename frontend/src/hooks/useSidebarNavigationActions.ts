@@ -16,6 +16,7 @@ export type SidebarNavigationActions = {
   deleteNode: (file: GraphTreeFileData, graphPath: string) => void;
   deleteGraph: (graphPath: string) => void;
   setGraphColor: (graphPath: string, color: string | null) => void;
+  setGraphCanvasDisabled: (graphPath: string, disabled: boolean) => void;
 };
 
 type UseSidebarNavigationActionsArgs = {
@@ -31,6 +32,7 @@ type UseSidebarNavigationActionsArgs = {
   handleSidebarDeleteNode: (file: GraphTreeFileData, graphPath: string) => void;
   handleSidebarDeleteGraph: (graphPath: string) => Promise<void> | void;
   handleSidebarSetGraphColor: (graphPath: string, color: string | null) => Promise<void> | void;
+  handleSidebarSetGraphCanvasDisabled: (graphPath: string, disabled: boolean) => Promise<void> | void;
 };
 
 export function useSidebarNavigationActions({
@@ -46,6 +48,7 @@ export function useSidebarNavigationActions({
   handleSidebarDeleteNode,
   handleSidebarDeleteGraph,
   handleSidebarSetGraphColor,
+  handleSidebarSetGraphCanvasDisabled,
 }: UseSidebarNavigationActionsArgs): SidebarNavigationActions {
   const actionRefs = useLatestRef<UseSidebarNavigationActionsArgs>({
     handleWorkspaceSelection,
@@ -60,6 +63,7 @@ export function useSidebarNavigationActions({
     handleSidebarDeleteNode,
     handleSidebarDeleteGraph,
     handleSidebarSetGraphColor,
+    handleSidebarSetGraphCanvasDisabled,
   });
 
   const selectWorkspace = useCallback((workspacePath: string) => {
@@ -110,6 +114,10 @@ export function useSidebarNavigationActions({
     void actionRefs.current.handleSidebarSetGraphColor(graphPath, color);
   }, []);
 
+  const setGraphCanvasDisabled = useCallback((graphPath: string, disabled: boolean) => {
+    void actionRefs.current.handleSidebarSetGraphCanvasDisabled(graphPath, disabled);
+  }, []);
+
   return useMemo(() => ({
     selectWorkspace,
     selectHome,
@@ -123,6 +131,7 @@ export function useSidebarNavigationActions({
     deleteNode,
     deleteGraph,
     setGraphColor,
+    setGraphCanvasDisabled,
   }), [
     createGraph,
     createNode,
@@ -136,5 +145,6 @@ export function useSidebarNavigationActions({
     selectHome,
     selectWorkspace,
     setGraphColor,
+    setGraphCanvasDisabled,
   ]);
 }

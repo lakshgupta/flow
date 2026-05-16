@@ -50,10 +50,11 @@ type Workspace struct {
 
 // GUI holds loopback server settings for a workspace.
 type GUI struct {
-	Port                 int               `yaml:"port"`
-	Appearance           string            `yaml:"appearance,omitempty"`
-	PanelWidths          PanelWidths       `yaml:"panelWidths"`
-	GraphDirectoryColors map[string]string `yaml:"graphDirectoryColors,omitempty"`
+	Port                    int               `yaml:"port"`
+	Appearance              string            `yaml:"appearance,omitempty"`
+	PanelWidths             PanelWidths       `yaml:"panelWidths"`
+	GraphDirectoryColors    map[string]string `yaml:"graphDirectoryColors,omitempty"`
+	GraphCanvasEnabled      map[string]bool   `yaml:"graphCanvasEnabled,omitempty"`
 }
 
 // PanelWidths stores persisted panel width ratios for the desktop GUI shell.
@@ -114,6 +115,17 @@ func (workspace Workspace) Validate() error {
 
 		if !isSupportedGraphDirectoryColor(color) {
 			return fmt.Errorf("gui.graphDirectoryColors[%q] must be one of %q, %q, %q, %q, %q, %q, %q, %q, or %q", graphPath, GraphDirectoryColorRose, GraphDirectoryColorPeach, GraphDirectoryColorAmber, GraphDirectoryColorLemon, GraphDirectoryColorMint, GraphDirectoryColorSage, GraphDirectoryColorSky, GraphDirectoryColorLilac, GraphDirectoryColorBlush)
+		}
+	}
+
+	for graphPath := range workspace.GUI.GraphCanvasEnabled {
+		if strings.TrimSpace(graphPath) == "" {
+			return fmt.Errorf("gui.graphCanvasEnabled keys must not be empty")
+		}
+
+		cleanedGraphPath := filepath.Clean(graphPath)
+		if strings.HasPrefix(cleanedGraphPath, "..") {
+			return fmt.Errorf("gui.graphCanvasEnabled key %q is invalid", graphPath)
 		}
 	}
 
@@ -228,6 +240,22 @@ func normalizeWorkspace(workspace Workspace) Workspace {
 		workspace.GUI.GraphDirectoryColors = normalizedGraphDirectoryColors
 	} else {
 		workspace.GUI.GraphDirectoryColors = nil
+	}
+
+	normalizedGraphCanvasEnabled := map[string]bool{}
+	for graphPath, enabled := range workspace.GUI.GraphCanvasEnabled {
+		trimmedGraphPath := strings.TrimSpace(graphPath)
+		if trimmedGraphPath == "" || !enabled {
+			continue
+		}
+
+		normalizedGraphCanvasEnabled[filepath.ToSlash(filepath.Clean(trimmedGraphPath))] = true
+	}
+
+	if len(normalizedGraphCanvasEnabled) > 0 {
+		workspace.GUI.GraphCanvasEnabled = normalizedGraphCanvasEnabled
+	} else {
+		workspace.GUI.GraphCanvasEnabled = nil
 	}
 
 	return workspace

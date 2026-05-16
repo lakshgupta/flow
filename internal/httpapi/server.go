@@ -81,14 +81,15 @@ type calendarDocumentResponse struct {
 }
 
 type graphTreeNodeResponse struct {
-	GraphPath   string                  `json:"graphPath"`
-	DisplayName string                  `json:"displayName"`
-	DirectCount int                     `json:"directCount"`
-	TotalCount  int                     `json:"totalCount"`
-	HasChildren bool                    `json:"hasChildren"`
-	CountLabel  string                  `json:"countLabel"`
-	Color       string                  `json:"color,omitempty"`
-	Files       []graphTreeFileResponse `json:"files"`
+	GraphPath      string                  `json:"graphPath"`
+	DisplayName    string                  `json:"displayName"`
+	DirectCount    int                     `json:"directCount"`
+	TotalCount     int                     `json:"totalCount"`
+	HasChildren    bool                    `json:"hasChildren"`
+	CountLabel     string                  `json:"countLabel"`
+	Color          string                  `json:"color,omitempty"`
+	CanvasDisabled bool                    `json:"canvasDisabled,omitempty"`
+	Files          []graphTreeFileResponse `json:"files"`
 }
 
 type graphTreeFileResponse struct {
@@ -264,6 +265,15 @@ type updateGraphColorResponse struct {
 	Color string `json:"color,omitempty"`
 }
 
+type updateGraphCanvasDisabledRequest struct {
+	Disabled bool `json:"disabled"`
+}
+
+type updateGraphCanvasDisabledResponse struct {
+	Name           string `json:"name"`
+	CanvasDisabled bool   `json:"canvasDisabled"`
+}
+
 type deleteDocumentResponse struct {
 	Deleted bool   `json:"deleted"`
 	ID      string `json:"id"`
@@ -368,6 +378,8 @@ func (handler *apiHandler) ServeHTTP(writer http.ResponseWriter, request *http.R
 		handler.handleCreateGraphFiles(writer, request)
 	case strings.HasPrefix(request.URL.Path, "/api/graphs/") && strings.HasSuffix(request.URL.Path, "/color") && request.Method == http.MethodPut:
 		handler.handleUpdateGraphColor(writer, request)
+	case strings.HasPrefix(request.URL.Path, "/api/graphs/") && strings.HasSuffix(request.URL.Path, "/canvas-disabled") && request.Method == http.MethodPut:
+		handler.handleUpdateGraphCanvasDisabled(writer, request)
 	case strings.HasPrefix(request.URL.Path, "/api/graphs/") && request.Method == http.MethodPatch:
 		handler.handleRenameGraph(writer, request)
 	case strings.HasPrefix(request.URL.Path, "/api/graphs/") && request.Method == http.MethodDelete:
@@ -887,17 +899,22 @@ func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.R
 	if colors, colorErr := pruneWorkspaceGraphDirectoryColors(handler.options.Root, nodes); colorErr == nil {
 		graphDirectoryColors = colors
 	}
+	graphCanvasEnabled := map[string]bool{}
+	if enabled, enabledErr := pruneWorkspaceGraphCanvasEnabled(handler.options.Root, nodes); enabledErr == nil {
+		graphCanvasEnabled = enabled
+	}
 	if len(nodes) > 0 {
 		for _, node := range nodes {
 			response.Graphs = append(response.Graphs, graphTreeNodeResponse{
-				GraphPath:   node.GraphPath,
-				DisplayName: node.DisplayName,
-				DirectCount: node.DirectCount,
-				TotalCount:  node.TotalCount,
-				HasChildren: node.HasChildren,
-				CountLabel:  fmt.Sprintf("%d direct / %d total", node.DirectCount, node.TotalCount),
-				Color:       graphDirectoryColors[node.GraphPath],
-				Files:       filesByGraph[node.GraphPath],
+				GraphPath:      node.GraphPath,
+				DisplayName:    node.DisplayName,
+				DirectCount:    node.DirectCount,
+				TotalCount:     node.TotalCount,
+				HasChildren:    node.HasChildren,
+				CountLabel:     fmt.Sprintf("%d direct / %d total", node.DirectCount, node.TotalCount),
+				Color:          graphDirectoryColors[node.GraphPath],
+				CanvasDisabled: !graphCanvasEnabled[node.GraphPath],
+				Files:          filesByGraph[node.GraphPath],
 			})
 		}
 	} else if len(filesByGraph) > 0 {
@@ -910,14 +927,15 @@ func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.R
 		for _, graphPath := range graphPaths {
 			directCount := len(filesByGraph[graphPath])
 			response.Graphs = append(response.Graphs, graphTreeNodeResponse{
-				GraphPath:   graphPath,
-				DisplayName: graphPath,
-				DirectCount: directCount,
-				TotalCount:  directCount,
-				HasChildren: false,
-				CountLabel:  fmt.Sprintf("%d direct / %d total", directCount, directCount),
-				Color:       graphDirectoryColors[graphPath],
-				Files:       filesByGraph[graphPath],
+				GraphPath:      graphPath,
+				DisplayName:    graphPath,
+				DirectCount:    directCount,
+				TotalCount:     directCount,
+				HasChildren:    false,
+				CountLabel:     fmt.Sprintf("%d direct / %d total", directCount, directCount),
+				Color:          graphDirectoryColors[graphPath],
+				CanvasDisabled: !graphCanvasEnabled[graphPath],
+				Files:          filesByGraph[graphPath],
 			})
 		}
 	}
@@ -966,6 +984,47 @@ func pruneWorkspaceGraphDirectoryColors(root workspace.Root, nodes []index.Graph
 	}
 
 	return nextColors, nil
+}
+
+func pruneWorkspaceGraphCanvasEnabled(root workspace.Root, nodes []index.GraphNode) (map[string]bool, error) {
+	workspaceConfig, err := readWorkspaceConfig(root)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(workspaceConfig.GUI.GraphCanvasEnabled) == 0 {
+		return map[string]bool{}, nil
+	}
+
+	if len(nodes) == 0 {
+		return workspaceConfig.GUI.GraphCanvasEnabled, nil
+	}
+
+	validGraphPaths := make(map[string]struct{}, len(nodes))
+	for _, node := range nodes {
+		validGraphPaths[node.GraphPath] = struct{}{}
+	}
+
+	nextEnabled := make(map[string]bool, len(workspaceConfig.GUI.GraphCanvasEnabled))
+	changed := false
+	for graphPath, enabled := range workspaceConfig.GUI.GraphCanvasEnabled {
+		if _, ok := validGraphPaths[graphPath]; !ok {
+			changed = true
+			continue
+		}
+		nextEnabled[graphPath] = enabled
+	}
+
+	if !changed {
+		return workspaceConfig.GUI.GraphCanvasEnabled, nil
+	}
+
+	workspaceConfig.GUI.GraphCanvasEnabled = nextEnabled
+	if err := persistWorkspaceConfig(root, workspaceConfig); err != nil {
+		return nil, err
+	}
+
+	return nextEnabled, nil
 }
 
 func (handler *apiHandler) handleGraphCanvas(writer http.ResponseWriter, request *http.Request) {
@@ -1330,6 +1389,57 @@ func (handler *apiHandler) handleUpdateGraphColor(writer http.ResponseWriter, re
 	writeJSON(writer, http.StatusOK, updateGraphColorResponse{Name: graphName, Color: workspaceConfig.GUI.GraphDirectoryColors[graphName]})
 }
 
+func (handler *apiHandler) handleUpdateGraphCanvasDisabled(writer http.ResponseWriter, request *http.Request) {
+	graphName, ok := graphNameFromGraphCanvasDisabledRequestPath(request.URL.Path)
+	if !ok {
+		writeError(writer, http.StatusBadRequest, "graph name must not be empty")
+		return
+	}
+
+	graphDir := filepath.Join(handler.options.Root.GraphsPath, filepath.FromSlash(graphName))
+	if _, err := os.Stat(graphDir); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			writeError(writer, http.StatusNotFound, fmt.Sprintf("graph %q not found", graphName))
+			return
+		}
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var payload updateGraphCanvasDisabledRequest
+	if err := decodeJSONRequest(request, &payload); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	workspaceConfig, err := readWorkspaceConfig(handler.options.Root)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if payload.Disabled {
+		if len(workspaceConfig.GUI.GraphCanvasEnabled) > 0 {
+			delete(workspaceConfig.GUI.GraphCanvasEnabled, graphName)
+		}
+	} else {
+		if workspaceConfig.GUI.GraphCanvasEnabled == nil {
+			workspaceConfig.GUI.GraphCanvasEnabled = map[string]bool{}
+		}
+		workspaceConfig.GUI.GraphCanvasEnabled[graphName] = true
+	}
+
+	// Canvas enablement is config-only state. Avoid syncing workspace GUI state to
+	// the index here to prevent transient index read/write contention right before
+	// the client refreshes /api/graphs.
+	if err := config.Write(handler.options.Root.ConfigPath, workspaceConfig); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, updateGraphCanvasDisabledResponse{Name: graphName, CanvasDisabled: !workspaceConfig.GUI.GraphCanvasEnabled[graphName]})
+}
+
 func (handler *apiHandler) handleDeleteDocument(writer http.ResponseWriter, request *http.Request) {
 	documentID := strings.TrimPrefix(request.URL.Path, "/api/documents/")
 	if strings.TrimSpace(documentID) == "" {
@@ -1598,6 +1708,15 @@ func graphNameFromGraphColorRequestPath(path string) (string, bool) {
 	}
 
 	trimmed := strings.TrimSuffix(path, "/color")
+	return graphNameFromGraphRequestPath(trimmed)
+}
+
+func graphNameFromGraphCanvasDisabledRequestPath(path string) (string, bool) {
+	if !strings.HasSuffix(path, "/canvas-disabled") {
+		return "", false
+	}
+
+	trimmed := strings.TrimSuffix(path, "/canvas-disabled")
 	return graphNameFromGraphRequestPath(trimmed)
 }
 

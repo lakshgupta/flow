@@ -2639,6 +2639,25 @@ function FlowApp() {
     }
   }
 
+  async function handleSidebarSetGraphCanvasDisabled(graphPath: string, disabled: boolean): Promise<void> {
+    try {
+      clearMutationFeedback();
+      await requestJSON<{ name: string; canvasDisabled: boolean }>(`/api/graphs/${encodeURIComponent(graphPath)}/canvas-disabled`, {
+        method: "PUT",
+        body: JSON.stringify({ disabled }),
+      });
+
+      const snapshot = await loadWorkspaceSnapshot();
+      setGraphTree(snapshot.graphTreeData);
+
+      if (!disabled) {
+        await handleSelectGraph(graphPath);
+      }
+    } catch (err) {
+      setMutationError(toErrorMessage(err));
+    }
+  }
+
   function handleSidebarCreateNode(graphPath: string, type: "note" | "task" | "command" = "note"): void {
     setCreateNodeDialog({ type, graphPath, origin: "sidebar" });
     setCreateNodeFileName("");
@@ -3275,6 +3294,7 @@ function FlowApp() {
     handleSidebarDeleteNode,
     handleSidebarDeleteGraph,
     handleSidebarSetGraphColor,
+    handleSidebarSetGraphCanvasDisabled,
   });
 
   const { graphCanvasOverlayActions, graphCanvasSurfaceActions } = useGraphCanvasSurfaceActions({

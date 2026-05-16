@@ -45,6 +45,7 @@ export type GraphTreeNodeData = {
   hasChildren: boolean;
   countLabel: string;
   color?: string;
+  canvasDisabled?: boolean;
   files: GraphTreeFileData[];
 };
 

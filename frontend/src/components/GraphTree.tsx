@@ -1,4 +1,4 @@
-import { CheckSquare, ChevronDown, ChevronRight, FileText, FolderPlus, Home, Layers, Minus, MoreHorizontal, Paintbrush, Pencil, Plus, Star, Terminal, Trash2 } from "lucide-react";
+import { CheckSquare, ChevronDown, ChevronRight, EyeOff, FileText, FolderPlus, Home, Layers, Minus, MoreHorizontal, Paintbrush, Pencil, Plus, Star, Terminal, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import {
@@ -74,6 +74,7 @@ type FileTreeRowProps = {
   onDeleteNode: (file: GraphTreeFileData, graphPath: string) => void;
   onDeleteGraph: (graphPath: string) => void;
   onSetGraphColor: (graphPath: string, color: string | null) => void;
+  onSetGraphCanvasDisabled: (graphPath: string, disabled: boolean) => void;
   collapsed: Set<string>;
   onToggleCollapse: (path: string) => void;
   isFavorite: (path: string) => boolean;
@@ -110,6 +111,7 @@ function FileTreeRow({
   onDeleteNode,
   onDeleteGraph,
   onSetGraphColor,
+  onSetGraphCanvasDisabled,
   collapsed,
   onToggleCollapse,
   isFavorite,
@@ -122,6 +124,7 @@ function FileTreeRow({
   onEnsureExpanded,
 }: FileTreeRowProps) {
   const isActive = activeSurface.kind === "graph" && activeSurface.graphPath === node.data.graphPath;
+  const canvasDisabled = node.data.canvasDisabled === true;
   const isFav = isFavorite(node.data.graphPath);
   const files = node.data.files ?? [];
   const hasChildren = node.children.length > 0;
@@ -195,15 +198,16 @@ function FileTreeRow({
           <span className="graph-tree-chevron-spacer" />
         )}
         <SidebarMenuSubButton
-          className="graph-sub-button"
-          isActive={isActive}
-          onClick={() => onSelectGraph(node.data.graphPath)}
+          className={`graph-sub-button${canvasDisabled ? " graph-sub-button-canvas-disabled" : ""}`}
+          isActive={isActive && !canvasDisabled}
+          onClick={canvasDisabled ? undefined : () => onSelectGraph(node.data.graphPath)}
           type="button"
         >
           <span className="graph-button-labels">
             <strong>{node.data.displayName}</strong>
             <span className="graph-path">{node.data.countLabel}</span>
           </span>
+          {canvasDisabled && <EyeOff size={11} className="graph-canvas-disabled-icon" aria-label="Canvas view disabled" />}
         </SidebarMenuSubButton>
         <button
           type="button"
@@ -252,6 +256,11 @@ function FileTreeRow({
                 </DropdownMenuRadioGroup>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => { onSetGraphCanvasDisabled(node.data.graphPath, !canvasDisabled); }}>
+              <EyeOff size={12} />
+              {canvasDisabled ? "Enable canvas view" : "Disable canvas view"}
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => { setAddingSubdir(true); }}>
               <FolderPlus size={12} />
@@ -396,6 +405,7 @@ function FileTreeRow({
             onDeleteNode={onDeleteNode}
             onDeleteGraph={onDeleteGraph}
             onSetGraphColor={onSetGraphColor}
+            onSetGraphCanvasDisabled={onSetGraphCanvasDisabled}
             collapsed={collapsed}
             onToggleCollapse={onToggleCollapse}
             isFavorite={isFavorite}
@@ -427,9 +437,10 @@ type GraphTreeProps = {
   onDeleteNode: (file: GraphTreeFileData, graphPath: string) => void;
   onDeleteGraph: (graphPath: string) => void;
   onSetGraphColor: (graphPath: string, color: string | null) => void;
+  onSetGraphCanvasDisabled: (graphPath: string, disabled: boolean) => void;
 };
 
-export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSelectHome, onSelectGraph, onOpenDocument, onCreateGraph, onCreateNode, onRenameGraph, onRenameNode, onMoveNode, onDeleteNode, onDeleteGraph, onSetGraphColor }: GraphTreeProps) {
+export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSelectHome, onSelectGraph, onOpenDocument, onCreateGraph, onCreateNode, onRenameGraph, onRenameNode, onMoveNode, onDeleteNode, onDeleteGraph, onSetGraphColor, onSetGraphCanvasDisabled }: GraphTreeProps) {
   const { toggleFavorite, isFavorite } = useFavorites();
   const [contentExpanded, setContentExpanded] = useState(true);
   const [favoritesExpanded, setFavoritesExpanded] = useState(true);
@@ -602,6 +613,7 @@ export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSele
                     onDeleteNode={onDeleteNode}
                     onDeleteGraph={onDeleteGraph}
                     onSetGraphColor={onSetGraphColor}
+                    onSetGraphCanvasDisabled={onSetGraphCanvasDisabled}
                     collapsed={collapsed}
                     onToggleCollapse={handleToggleCollapse}
                     isFavorite={isFavorite}

@@ -911,6 +911,174 @@ func TestNewMuxDeleteNoteCleansUpReferences(t *testing.T) {
 	}
 }
 
+func TestNewMuxUpdatesGraphCanvasDisabledAndPreservesFilesInTree(t *testing.T) {
+	t.Parallel()
+
+	root := createGraphTreeHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	// Initially all graphs should have canvasDisabled=true (opt-in model, nothing explicitly enabled).
+	graphTree := performJSONRequest[graphTreeResponse](t, handler, http.MethodGet, "/api/graphs")
+	for _, node := range graphTree.Graphs {
+		if !node.CanvasDisabled {
+			t.Fatalf("graphTree node %q: CanvasDisabled = false, want true (opt-in default)", node.GraphPath)
+		}
+	}
+
+	// Enable canvas for "execution".
+	updated := performJSONRequestWithBody[updateGraphCanvasDisabledResponse](t, handler, http.MethodPut, "/api/graphs/execution/canvas-disabled", map[string]any{
+		"disabled": false,
+	})
+	if updated.Name != "execution" {
+		t.Fatalf("updated.Name = %q, want execution", updated.Name)
+	}
+	if updated.CanvasDisabled {
+		t.Fatalf("updated.CanvasDisabled = true, want false after enable")
+	}
+
+	// Tree should reflect canvasDisabled=false for execution, true for execution/parser (not enabled).
+	graphTree = performJSONRequest[graphTreeResponse](t, handler, http.MethodGet, "/api/graphs")
+	executionNode := graphTreeNodeByPath(t, graphTree.Graphs, "execution")
+	if executionNode.CanvasDisabled {
+		t.Fatalf("execution CanvasDisabled = true, want false after enable")
+	}
+	// Subdirectory not explicitly enabled should remain disabled.
+	parserNode := graphTreeNodeByPath(t, graphTree.Graphs, "execution/parser")
+	if !parserNode.CanvasDisabled {
+		t.Fatalf("execution/parser CanvasDisabled = false, want true (not explicitly enabled)")
+	}
+
+	// Files must still be present in the tree after enabling canvas (the core regression check).
+	if len(executionNode.Files) != 1 || executionNode.Files[0].ID != "task-1" {
+		t.Fatalf("executionNode.Files = %#v, want execution files still present after canvas enable", executionNode.Files)
+	}
+	if len(parserNode.Files) != 1 || parserNode.Files[0].ID != "cmd-1" {
+		t.Fatalf("parserNode.Files = %#v, want parser files still present after canvas enable", parserNode.Files)
+	}
+
+	// Canvas nodes must be reachable for the enabled graph (files + scoped subdirectory files).
+	canvasView := performJSONRequest[graph.GraphCanvasView](t, handler, http.MethodGet, "/api/graph-canvas?graph=execution")
+	if canvasView.SelectedGraph != "execution" {
+		t.Fatalf("canvasView.SelectedGraph = %q, want execution", canvasView.SelectedGraph)
+	}
+	if len(canvasView.Nodes) != 2 {
+		t.Fatalf("len(canvasView.Nodes) = %d, want 2 (task-1 and cmd-1 scoped to execution)", len(canvasView.Nodes))
+	}
+
+	// Disable canvas for "execution" again.
+	disabled := performJSONRequestWithBody[updateGraphCanvasDisabledResponse](t, handler, http.MethodPut, "/api/graphs/execution/canvas-disabled", map[string]any{
+		"disabled": true,
+	})
+	if !disabled.CanvasDisabled {
+		t.Fatalf("disabled.CanvasDisabled = false, want true after disable")
+	}
+
+	graphTree = performJSONRequest[graphTreeResponse](t, handler, http.MethodGet, "/api/graphs")
+	for _, node := range graphTree.Graphs {
+		if !node.CanvasDisabled {
+			t.Fatalf("graphTree node %q: CanvasDisabled = false after disable, want true", node.GraphPath)
+		}
+	}
+
+	// Persisted config must only track enabled graphs (opt-in storage).
+	workspaceConfig, err := config.Read(root.ConfigPath)
+	if err != nil {
+		t.Fatalf("config.Read() error = %v", err)
+	}
+	if len(workspaceConfig.GUI.GraphCanvasEnabled) != 0 {
+		t.Fatalf("workspaceConfig.GUI.GraphCanvasEnabled = %#v, want empty after disable", workspaceConfig.GUI.GraphCanvasEnabled)
+	}
+}
+
+func TestNewMuxRapidGraphCanvasTogglePreservesFilesInTree(t *testing.T) {
+	t.Parallel()
+
+	root := createGraphTreeHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	for iteration := 0; iteration < 20; iteration++ {
+		disableCanvas := iteration%2 == 0
+		updated := performJSONRequestWithBody[updateGraphCanvasDisabledResponse](t, handler, http.MethodPut, "/api/graphs/execution/canvas-disabled", map[string]any{
+			"disabled": disableCanvas,
+		})
+
+		if updated.Name != "execution" {
+			t.Fatalf("iteration %d: updated.Name = %q, want execution", iteration, updated.Name)
+		}
+		if updated.CanvasDisabled != disableCanvas {
+			t.Fatalf("iteration %d: updated.CanvasDisabled = %v, want %v", iteration, updated.CanvasDisabled, disableCanvas)
+		}
+
+		// Simulate the UI pattern: reload graph tree immediately after toggling canvas state.
+		graphTree := performJSONRequest[graphTreeResponse](t, handler, http.MethodGet, "/api/graphs")
+
+		executionNode := graphTreeNodeByPath(t, graphTree.Graphs, "execution")
+		if executionNode.CanvasDisabled != disableCanvas {
+			t.Fatalf("iteration %d: execution CanvasDisabled = %v, want %v", iteration, executionNode.CanvasDisabled, disableCanvas)
+		}
+		if len(executionNode.Files) != 1 || executionNode.Files[0].ID != "task-1" {
+			t.Fatalf("iteration %d: executionNode.Files = %#v, want [task-1]", iteration, executionNode.Files)
+		}
+
+		parserNode := graphTreeNodeByPath(t, graphTree.Graphs, "execution/parser")
+		if len(parserNode.Files) != 1 || parserNode.Files[0].ID != "cmd-1" {
+			t.Fatalf("iteration %d: parserNode.Files = %#v, want [cmd-1]", iteration, parserNode.Files)
+		}
+	}
+}
+
+func TestNewMuxGraphCanvasDisabledPrunesStaleEntriesAfterDelete(t *testing.T) {
+	t.Parallel()
+
+	root := createGraphTreeHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	performJSONRequestWithBody[updateGraphCanvasDisabledResponse](t, handler, http.MethodPut, "/api/graphs/execution/canvas-disabled", map[string]any{
+		"disabled": false,
+	})
+	performJSONRequestWithBody[updateGraphCanvasDisabledResponse](t, handler, http.MethodPut, "/api/graphs/execution%2Fparser/canvas-disabled", map[string]any{
+		"disabled": false,
+	})
+
+	// Verify both are enabled.
+	workspaceConfig, err := config.Read(root.ConfigPath)
+	if err != nil {
+		t.Fatalf("config.Read() error = %v", err)
+	}
+	if !workspaceConfig.GUI.GraphCanvasEnabled["execution"] || !workspaceConfig.GUI.GraphCanvasEnabled["execution/parser"] {
+		t.Fatalf("workspaceConfig.GUI.GraphCanvasEnabled = %#v, want both enabled", workspaceConfig.GUI.GraphCanvasEnabled)
+	}
+
+	// Delete the parser subgraph directory and rebuild the index.
+	if err := os.RemoveAll(filepath.Join(root.FlowPath, "data", "content", "execution", "parser")); err != nil {
+		t.Fatalf("RemoveAll(parser) error = %v", err)
+	}
+	performJSONRequest[rebuildIndexResponse](t, handler, http.MethodPost, "/api/index/rebuild")
+
+	// Fetching the tree should prune the stale execution/parser entry.
+	performJSONRequest[graphTreeResponse](t, handler, http.MethodGet, "/api/graphs")
+
+	workspaceConfig, err = config.Read(root.ConfigPath)
+	if err != nil {
+		t.Fatalf("config.Read() after prune error = %v", err)
+	}
+	if !workspaceConfig.GUI.GraphCanvasEnabled["execution"] {
+		t.Fatalf("workspaceConfig.GUI.GraphCanvasEnabled = %#v, want execution still enabled", workspaceConfig.GUI.GraphCanvasEnabled)
+	}
+	if _, exists := workspaceConfig.GUI.GraphCanvasEnabled["execution/parser"]; exists {
+		t.Fatalf("workspaceConfig.GUI.GraphCanvasEnabled = %#v, did not expect stale execution/parser key", workspaceConfig.GUI.GraphCanvasEnabled)
+	}
+}
+
 func TestNewMuxServesEmbeddedIndexHTML(t *testing.T) {
 	t.Parallel()
 
@@ -1543,6 +1711,19 @@ func graphCanvasNodeByID(t *testing.T, nodes []graph.GraphCanvasNode, id string)
 
 	t.Fatalf("graph canvas nodes missing %q in %#v", id, nodes)
 	return graph.GraphCanvasNode{}
+}
+
+func graphTreeNodeByPath(t *testing.T, graphs []graphTreeNodeResponse, graphPath string) graphTreeNodeResponse {
+	t.Helper()
+
+	for _, node := range graphs {
+		if node.GraphPath == graphPath {
+			return node
+		}
+	}
+
+	t.Fatalf("graph tree missing node %q in %#v", graphPath, graphs)
+	return graphTreeNodeResponse{}
 }
 
 func assertGraphCanvasEdgeIDs(t *testing.T, edges []graph.GraphCanvasEdge, want []string) {

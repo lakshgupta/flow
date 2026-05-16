@@ -91,6 +91,7 @@ describe("GraphTree", () => {
           onDeleteNode={() => undefined}
           onDeleteGraph={() => undefined}
           onSetGraphColor={() => undefined}
+          onSetGraphCanvasDisabled={() => undefined}
         />
       </SidebarProvider>,
     );
@@ -134,6 +135,7 @@ describe("GraphTree", () => {
           onDeleteNode={() => undefined}
           onDeleteGraph={() => undefined}
           onSetGraphColor={() => undefined}
+          onSetGraphCanvasDisabled={() => undefined}
         />
       </SidebarProvider>,
     );

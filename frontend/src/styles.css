@@ -4423,6 +4423,18 @@ pre {
   padding-bottom: 0.3rem;
 }
 
+.graph-sub-button-canvas-disabled {
+  cursor: default;
+  pointer-events: none;
+}
+
+.graph-canvas-disabled-icon {
+  flex-shrink: 0;
+  margin-left: 0.25rem;
+  opacity: 0.55;
+  color: var(--muted-foreground);
+}
+
 .graph-fav-toggle {
   flex-shrink: 0;
   display: flex;

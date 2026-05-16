@@ -67,6 +67,7 @@ function GraphTreePanelComponent({ graphTree, activeSurface, selectedDocumentId,
       onDeleteNode={actions.deleteNode}
       onDeleteGraph={actions.deleteGraph}
       onSetGraphColor={actions.setGraphColor}
+      onSetGraphCanvasDisabled={actions.setGraphCanvasDisabled}
     />
   );
 }
