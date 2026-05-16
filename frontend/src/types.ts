@@ -193,6 +193,9 @@ export type GraphCanvasNodePayload = {
   updatedAt?: string;
   position: GraphCanvasPosition;
   positionPersisted: boolean;
+  width?: number;
+  height?: number;
+  zIndex?: number;
 };
 
 export type GraphCanvasEdgePayload = {
@@ -229,6 +232,9 @@ export type GraphLayoutPositionPayload = {
   documentId: string;
   x: number;
   y: number;
+  width?: number;
+  height?: number;
+  zIndex?: number;
 };
 
 export type GraphLayoutResponse = {
@@ -284,6 +290,9 @@ export type GraphCanvasFlowNodeData = {
   featureSlug: string;
   fileName: string;
   positionPersisted: boolean;
+  width: number;
+  height: number;
+  zIndex: number;
   isCanvasSelected: boolean;
   isPanelDocument: boolean;
 };

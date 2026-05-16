@@ -16,6 +16,9 @@ type GraphLayoutPosition struct {
 	DocumentID string
 	X          float64
 	Y          float64
+	Width      *float64
+	Height     *float64
+	ZIndex     *int
 	UpdatedAt  string
 }
 
@@ -45,7 +48,7 @@ func ReadGraphLayoutPositions(indexPath string, graphPath string) ([]GraphLayout
 		return nil, err
 	}
 
-	rows, err := database.Query(`SELECT graph_path, document_id, x, y, updated_at FROM graph_layout_positions WHERE graph_path = ? ORDER BY document_id`, trimmedGraphPath)
+	rows, err := database.Query(`SELECT graph_path, document_id, x, y, width, height, z_index, updated_at FROM graph_layout_positions WHERE graph_path = ? ORDER BY document_id`, trimmedGraphPath)
 	if err != nil {
 		return nil, fmt.Errorf("query graph layout positions: %w", err)
 	}
@@ -54,8 +57,23 @@ func ReadGraphLayoutPositions(indexPath string, graphPath string) ([]GraphLayout
 	positions := []GraphLayoutPosition{}
 	for rows.Next() {
 		var position GraphLayoutPosition
-		if err := rows.Scan(&position.GraphPath, &position.DocumentID, &position.X, &position.Y, &position.UpdatedAt); err != nil {
+		var width sql.NullFloat64
+		var height sql.NullFloat64
+		var zIndex sql.NullInt64
+		if err := rows.Scan(&position.GraphPath, &position.DocumentID, &position.X, &position.Y, &width, &height, &zIndex, &position.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan graph layout position: %w", err)
+		}
+		if width.Valid {
+			value := width.Float64
+			position.Width = &value
+		}
+		if height.Valid {
+			value := height.Float64
+			position.Height = &value
+		}
+		if zIndex.Valid {
+			value := int(zIndex.Int64)
+			position.ZIndex = &value
 		}
 		positions = append(positions, position)
 	}
@@ -118,7 +136,11 @@ func loadExistingGraphLayoutPositions(indexPath string) ([]GraphLayoutPosition, 
 		return nil, nil
 	}
 
-	rows, err := database.Query(`SELECT graph_path, document_id, x, y, updated_at FROM graph_layout_positions ORDER BY graph_path, document_id`)
+	if err := ensureGraphLayoutSchema(database); err != nil {
+		return nil, err
+	}
+
+	rows, err := database.Query(`SELECT graph_path, document_id, x, y, width, height, z_index, updated_at FROM graph_layout_positions ORDER BY graph_path, document_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -127,8 +149,23 @@ func loadExistingGraphLayoutPositions(indexPath string) ([]GraphLayoutPosition, 
 	positions := []GraphLayoutPosition{}
 	for rows.Next() {
 		var position GraphLayoutPosition
-		if err := rows.Scan(&position.GraphPath, &position.DocumentID, &position.X, &position.Y, &position.UpdatedAt); err != nil {
+		var width sql.NullFloat64
+		var height sql.NullFloat64
+		var zIndex sql.NullInt64
+		if err := rows.Scan(&position.GraphPath, &position.DocumentID, &position.X, &position.Y, &width, &height, &zIndex, &position.UpdatedAt); err != nil {
 			return nil, err
+		}
+		if width.Valid {
+			value := width.Float64
+			position.Width = &value
+		}
+		if height.Valid {
+			value := height.Float64
+			position.Height = &value
+		}
+		if zIndex.Valid {
+			value := int(zIndex.Int64)
+			position.ZIndex = &value
 		}
 		positions = append(positions, position)
 	}
@@ -243,11 +280,24 @@ func ensureGraphLayoutSchema(database *sql.DB) error {
 			document_id TEXT NOT NULL,
 			x REAL NOT NULL,
 			y REAL NOT NULL,
+			width REAL,
+			height REAL,
+			z_index INTEGER,
 			updated_at TEXT NOT NULL,
 			PRIMARY KEY (graph_path, document_id)
 		);
 	`); err != nil {
 		return fmt.Errorf("ensure graph layout table: %w", err)
+	}
+
+	if err := ensureGraphLayoutPositionColumn(database, "width", "REAL"); err != nil {
+		return err
+	}
+	if err := ensureGraphLayoutPositionColumn(database, "height", "REAL"); err != nil {
+		return err
+	}
+	if err := ensureGraphLayoutPositionColumn(database, "z_index", "INTEGER"); err != nil {
+		return err
 	}
 
 	if _, err := database.Exec(`CREATE INDEX IF NOT EXISTS graph_layout_positions_graph_idx ON graph_layout_positions(graph_path, document_id)`); err != nil {
@@ -304,6 +354,13 @@ func normalizeGraphLayoutPosition(position GraphLayoutPosition) (GraphLayoutPosi
 		return GraphLayoutPosition{}, fmt.Errorf("document id must not be empty")
 	}
 
+	if position.Width != nil && *position.Width <= 0 {
+		return GraphLayoutPosition{}, fmt.Errorf("width must be greater than zero")
+	}
+	if position.Height != nil && *position.Height <= 0 {
+		return GraphLayoutPosition{}, fmt.Errorf("height must be greater than zero")
+	}
+
 	if position.UpdatedAt == "" {
 		position.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	}
@@ -331,16 +388,74 @@ func normalizeGraphLayoutViewport(viewport GraphLayoutViewport) (GraphLayoutView
 }
 
 func insertGraphLayoutPosition(transaction *sql.Tx, position GraphLayoutPosition) error {
+	var width any
+	if position.Width != nil {
+		width = *position.Width
+	}
+
+	var height any
+	if position.Height != nil {
+		height = *position.Height
+	}
+
+	var zIndex any
+	if position.ZIndex != nil {
+		zIndex = *position.ZIndex
+	}
+
 	if _, err := transaction.Exec(
-		`INSERT INTO graph_layout_positions (graph_path, document_id, x, y, updated_at) VALUES (?, ?, ?, ?, ?)
-		 ON CONFLICT(graph_path, document_id) DO UPDATE SET x = excluded.x, y = excluded.y, updated_at = excluded.updated_at`,
+		`INSERT INTO graph_layout_positions (graph_path, document_id, x, y, width, height, z_index, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(graph_path, document_id) DO UPDATE SET x = excluded.x, y = excluded.y, width = excluded.width, height = excluded.height, z_index = excluded.z_index, updated_at = excluded.updated_at`,
 		position.GraphPath,
 		position.DocumentID,
 		position.X,
 		position.Y,
+		width,
+		height,
+		zIndex,
 		position.UpdatedAt,
 	); err != nil {
 		return fmt.Errorf("write graph layout position for %q in %q: %w", position.DocumentID, position.GraphPath, err)
+	}
+
+	return nil
+}
+
+func ensureGraphLayoutPositionColumn(database *sql.DB, columnName string, columnType string) error {
+	hasColumn := false
+	rows, err := database.Query(`PRAGMA table_info(graph_layout_positions)`)
+	if err != nil {
+		return fmt.Errorf("inspect graph layout table columns: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name string
+		var valueType string
+		var notNull int
+		var defaultValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &valueType, &notNull, &defaultValue, &pk); err != nil {
+			return fmt.Errorf("scan graph layout table columns: %w", err)
+		}
+
+		if strings.EqualFold(name, columnName) {
+			hasColumn = true
+			break
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate graph layout table columns: %w", err)
+	}
+
+	if hasColumn {
+		return nil
+	}
+
+	statement := fmt.Sprintf(`ALTER TABLE graph_layout_positions ADD COLUMN %s %s`, columnName, columnType)
+	if _, err := database.Exec(statement); err != nil {
+		return fmt.Errorf("add graph layout %s column: %w", columnName, err)
 	}
 
 	return nil

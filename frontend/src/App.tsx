@@ -1262,19 +1262,39 @@ function FlowApp() {
     setHoveredEdgeTooltip(null);
     setEdgeToolbar(null);
     if (isAdditiveNodeSelection(event)) {
+      clearGraphCanvasIntersections();
       setShiftSelectedNodes((prev) => {
-        if (prev.includes(nodeId)) {
-          return prev.filter((id) => id !== nodeId);
-        }
-        if (prev.length > 0) {
-          const firstType = graphCanvasNodes.find((n) => n.id === prev[0])?.data.type;
+        const baseline = prev.length > 0
+          ? prev
+          : selectedCanvasNodeId !== ""
+            ? [selectedCanvasNodeId]
+            : [];
+
+        if (baseline.length > 0) {
+          const firstType = graphCanvasNodes.find((n) => n.id === baseline[0])?.data.type;
           if (firstType !== graphCanvasNodes.find((n) => n.id === nodeId)?.data.type) {
-            return prev;
+            return baseline;
           }
         }
-        return [...prev, nodeId];
+
+        if (baseline.includes(nodeId)) {
+          return baseline;
+        }
+
+        return [...baseline, nodeId];
       });
+      if (selectedCanvasNodeId === "") {
+        setSelectedCanvasNodeId(nodeId);
+      }
       return;
+    }
+
+    const selectedPosition = graphCanvasPositionsRef.current[nodeId]
+      ?? graphCanvasData?.nodes.find((node) => node.id === nodeId)?.position;
+    if (selectedPosition !== undefined) {
+      updateGraphCanvasIntersections(nodeId, selectedPosition);
+    } else {
+      clearGraphCanvasIntersections();
     }
 
     setSelectedCanvasNodeId(nodeId);
@@ -2071,6 +2091,38 @@ function FlowApp() {
     }
   }
 
+  function updateGraphCanvasNodeLayout(documentId: string, layout: { width?: number; height?: number; zIndex?: number }): void {
+    setGraphCanvasData((current) => {
+      if (current === null) {
+        return current;
+      }
+
+      let changed = false;
+      const nextNodes = current.nodes.map((node) => {
+        if (node.id !== documentId) {
+          return node;
+        }
+
+        const width = layout.width ?? node.width;
+        const height = layout.height ?? node.height;
+        const zIndex = layout.zIndex ?? node.zIndex;
+        if (width === node.width && height === node.height && zIndex === node.zIndex) {
+          return node;
+        }
+
+        changed = true;
+        return {
+          ...node,
+          width,
+          height,
+          zIndex,
+        };
+      });
+
+      return changed ? { ...current, nodes: nextNodes } : current;
+    });
+  }
+
   function clearGraphCanvasIntersections(): void {
     setGraphCanvasIntersectingNodeIds([]);
     setGraphCanvasIntersectionSourceId(null);
@@ -2147,6 +2199,12 @@ function FlowApp() {
         return current;
       }
 
+      const layoutByID = new Map(response.positions.map((item) => [item.documentId, {
+        width: item.width,
+        height: item.height,
+        zIndex: item.zIndex,
+      }]));
+
       return {
         ...current,
         nodes: current.nodes.map((node) => {
@@ -2155,10 +2213,15 @@ function FlowApp() {
             return node;
           }
 
+          const persistedLayout = layoutByID.get(node.id);
+
           return {
             ...node,
             position: persisted,
             positionPersisted: true,
+            width: persistedLayout?.width ?? node.width,
+            height: persistedLayout?.height ?? node.height,
+            zIndex: persistedLayout?.zIndex ?? node.zIndex,
           };
         }),
       };
@@ -2198,15 +2261,96 @@ function FlowApp() {
   async function persistGraphCanvasPosition(documentId: string, position: GraphCanvasPosition): Promise<void> {
     try {
       setGraphCanvasError("");
+      const flowNodes = graphCanvasNodesRef.current;
+      const layoutByID = new Map(flowNodes.map((node) => [node.id, {
+        width: node.data.width,
+        height: node.data.height,
+        zIndex: node.data.zIndex,
+      }]));
+
       const snapshotPositions = Object.entries({
         ...graphCanvasPositionsRef.current,
         [documentId]: position,
-      }).map(([currentDocumentId, currentPosition]) => ({
-        documentId: currentDocumentId,
-        x: currentPosition.x,
-        y: currentPosition.y,
-      }));
+      }).map(([currentDocumentId, currentPosition]) => {
+        const layout = layoutByID.get(currentDocumentId);
+        return {
+          documentId: currentDocumentId,
+          x: currentPosition.x,
+          y: currentPosition.y,
+          width: layout?.width,
+          height: layout?.height,
+          zIndex: layout?.zIndex,
+        };
+      });
       const next = snapshotPositions.length > 0 ? snapshotPositions : [{ documentId, x: position.x, y: position.y }];
+      await persistGraphCanvasPositions(next);
+    } catch (saveError) {
+      setGraphCanvasError(toErrorMessage(saveError));
+    }
+  }
+
+  async function persistGraphCanvasNodeLayout(documentId: string, layout: { width?: number; height?: number; zIndex?: number }): Promise<void> {
+    const currentNodes = graphCanvasData?.nodes ?? [];
+    const zValues = currentNodes
+      .map((node) => node.zIndex ?? 0)
+      .filter((value) => Number.isFinite(value));
+    const maxZIndex = zValues.length > 0 ? Math.max(...zValues) : 0;
+    const minZIndex = zValues.length > 0 ? Math.min(...zValues) : 0;
+
+    const resolvedLayout = {
+      width: layout.width,
+      height: layout.height,
+      zIndex: layout.zIndex === Number.MAX_SAFE_INTEGER
+        ? maxZIndex + 1
+        : layout.zIndex === Number.MIN_SAFE_INTEGER
+          ? minZIndex - 1
+          : layout.zIndex,
+    };
+
+    const basePosition = graphCanvasPositionsRef.current[documentId]
+      ?? graphCanvasData?.nodes.find((node) => node.id === documentId)?.position;
+    if (basePosition === undefined) {
+      return;
+    }
+
+    updateGraphCanvasNodeLayout(documentId, resolvedLayout);
+
+    try {
+      setGraphCanvasError("");
+      const flowNodes = graphCanvasNodesRef.current;
+      const layoutByID = new Map(flowNodes.map((node) => [node.id, {
+        width: node.id === documentId ? (resolvedLayout.width ?? node.data.width) : node.data.width,
+        height: node.id === documentId ? (resolvedLayout.height ?? node.data.height) : node.data.height,
+        zIndex: node.id === documentId ? (resolvedLayout.zIndex ?? node.data.zIndex) : node.data.zIndex,
+      }]));
+
+      const snapshotPositions = Object.entries(graphCanvasPositionsRef.current).map(([currentDocumentId, currentPosition]) => {
+        const currentLayout = layoutByID.get(currentDocumentId);
+        return {
+          documentId: currentDocumentId,
+          x: currentPosition.x,
+          y: currentPosition.y,
+          width: currentLayout?.width,
+          height: currentLayout?.height,
+          zIndex: currentLayout?.zIndex,
+        };
+      });
+
+      const targetLayout = layoutByID.get(documentId);
+      const targetPayload = {
+        documentId,
+        x: basePosition.x,
+        y: basePosition.y,
+        width: targetLayout?.width,
+        height: targetLayout?.height,
+        zIndex: targetLayout?.zIndex,
+      };
+
+      const next = snapshotPositions.length > 0
+        ? snapshotPositions.some((item) => item.documentId === documentId)
+          ? snapshotPositions
+          : [...snapshotPositions, targetPayload]
+        : [targetPayload];
       await persistGraphCanvasPositions(next);
     } catch (saveError) {
       setGraphCanvasError(toErrorMessage(saveError));
@@ -3311,6 +3455,8 @@ function FlowApp() {
     handleGraphCanvasOverlayPointerDown,
     handleConnectionHandlePointerDown,
     handleGraphCanvasNodeDescriptionSave,
+    previewGraphCanvasNodeLayout: updateGraphCanvasNodeLayout,
+    persistGraphCanvasNodeLayout,
     handleMergeDocuments,
     handleCreateGraphDocument,
     handleGraphCanvasFilesDrop,

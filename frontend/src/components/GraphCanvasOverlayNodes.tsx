@@ -1,6 +1,6 @@
-import type { CSSProperties, KeyboardEvent } from "react";
-import { useEffect, useState } from "react";
-import { File as FileIcon, Download, ExternalLink } from "lucide-react";
+import type { CSSProperties, KeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowDownToLine, ArrowUpToLine, File as FileIcon, Download, ExternalLink } from "lucide-react";
 
 import { graphDirectoryColorHex } from "../lib/graphColors";
 import { graphCanvasTypeClassName, graphCanvasTypeLabel } from "../lib/graphCanvasUtils";
@@ -22,8 +22,32 @@ export function GraphCanvasOverlayNodes({
     intersectingNodeIds,
     intersectingSourceNodeId,
   } = controller.state;
-  const { onNodeClick, onNodeDoubleClick, onNodePointerDown, onHandlePointerDown, onNodeDescriptionSave, onMerge } = controller.actions;
+  const {
+    onNodeClick,
+    onNodeDoubleClick,
+    onNodePointerDown,
+    onHandlePointerDown,
+    onNodeDescriptionSave,
+    onNodeResizePreview,
+    onNodeResizeCommit,
+    onBringNodeToFront,
+    onSendNodeToBack,
+    onMerge,
+  } = controller.actions;
   const [draftDescriptions, setDraftDescriptions] = useState<Record<string, string>>({});
+  const resizeSessionRef = useRef<{
+    nodeId: string;
+    startClientX: number;
+    startClientY: number;
+    startWidth: number;
+    startHeight: number;
+    axis: "horizontal" | "vertical" | "both";
+    zoom: number;
+    minWidth: number;
+    minHeight: number;
+    nextWidth: number;
+    nextHeight: number;
+  } | null>(null);
 
   useEffect(() => {
     setDraftDescriptions((current) => {
@@ -72,6 +96,67 @@ export function GraphCanvasOverlayNodes({
     }
   }
 
+  function beginResize(
+    event: ReactPointerEvent<HTMLDivElement>,
+    nodeId: string,
+    width: number,
+    height: number,
+    axis: "horizontal" | "vertical" | "both",
+    shape?: string,
+  ): void {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const zoom = rfViewport.zoom > 0 ? rfViewport.zoom : 1;
+    const isCircle = shape === "circle";
+    resizeSessionRef.current = {
+      nodeId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startWidth: width,
+      startHeight: height,
+      axis,
+      zoom,
+      minWidth: isCircle ? 132 : 132,
+      minHeight: isCircle ? 132 : 96,
+      nextWidth: width,
+      nextHeight: height,
+    };
+
+    const handlePointerMove = (moveEvent: PointerEvent): void => {
+      const session = resizeSessionRef.current;
+      if (session === null) {
+        return;
+      }
+
+      const deltaX = (moveEvent.clientX - session.startClientX) / session.zoom;
+      const deltaY = (moveEvent.clientY - session.startClientY) / session.zoom;
+      const nextWidth = session.axis === "vertical"
+        ? session.startWidth
+        : Math.max(session.minWidth, Math.round(session.startWidth + deltaX));
+      const nextHeight = session.axis === "horizontal"
+        ? session.startHeight
+        : Math.max(session.minHeight, Math.round(session.startHeight + deltaY));
+      session.nextWidth = nextWidth;
+      session.nextHeight = nextHeight;
+      onNodeResizePreview(session.nodeId, nextWidth, nextHeight);
+    };
+
+    const finishResize = (): void => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", finishResize);
+
+      const session = resizeSessionRef.current;
+      if (session !== null) {
+        onNodeResizeCommit(session.nodeId, session.nextWidth, session.nextHeight);
+      }
+      resizeSessionRef.current = null;
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", finishResize);
+  }
+
   return (
     <>
       {graphCanvasNodes.map((node) => {
@@ -82,6 +167,14 @@ export function GraphCanvasOverlayNodes({
         const draftDescription = draftDescriptions[node.id] ?? node.data.description ?? "";
         const isIntersecting = intersectingNodeIds.includes(node.id);
         const isIntersectionSource = intersectingSourceNodeId === node.id && intersectingNodeIds.length > 0;
+        const nodeWidth = node.data.width ?? 288;
+        const nodeHeight = node.data.height ?? 130;
+        const nodeStyle = {
+          ...(graphColor ? ({ "--graph-node-color": graphColor } as CSSProperties) : {}),
+          width: `${nodeWidth}px`,
+          height: `${nodeHeight}px`,
+          minHeight: `${nodeHeight}px`,
+        } as CSSProperties;
         return (
           <div
             key={node.id}
@@ -97,7 +190,7 @@ export function GraphCanvasOverlayNodes({
               .join(" ")}
             onClick={(event) => onNodeClick(event, node.id)}
             onDoubleClick={(event) => onNodeDoubleClick(event, node.id)}
-            style={{ transform: `translate(${screenX}px, ${screenY}px) scale(${rfViewport.zoom})`, transformOrigin: "top left" }}
+            style={{ transform: `translate(${screenX}px, ${screenY}px) scale(${rfViewport.zoom})`, transformOrigin: "top left", zIndex: node.data.zIndex ?? 0 }}
           >
             <div
               className="canvas-node-drag-zone"
@@ -114,7 +207,7 @@ export function GraphCanvasOverlayNodes({
                 ]
                   .filter(Boolean)
                   .join(" ")}
-                style={graphColor ? ({ "--graph-node-color": graphColor } as CSSProperties) : undefined}
+                style={nodeStyle}
               >
                 {node.data.shape === "circle" ? (
                   <>
@@ -197,6 +290,25 @@ export function GraphCanvasOverlayNodes({
                     ) : null}
                   </>
                 )}
+                {node.data.isCanvasSelected ? (
+                  <>
+                    <div
+                      className="graph-canvas-node-resize-edge graph-canvas-node-resize-edge-right"
+                      onPointerDown={(event) => beginResize(event, node.id, nodeWidth, nodeHeight, "horizontal", node.data.shape)}
+                      role="presentation"
+                    />
+                    <div
+                      className="graph-canvas-node-resize-edge graph-canvas-node-resize-edge-bottom"
+                      onPointerDown={(event) => beginResize(event, node.id, nodeWidth, nodeHeight, "vertical", node.data.shape)}
+                      role="presentation"
+                    />
+                    <div
+                      className="graph-canvas-node-resize-edge graph-canvas-node-resize-edge-corner"
+                      onPointerDown={(event) => beginResize(event, node.id, nodeWidth, nodeHeight, "both", node.data.shape)}
+                      role="presentation"
+                    />
+                  </>
+                ) : null}
               </article>
             </div>
             {shiftSelectedNodes.includes(node.id) && (
@@ -230,6 +342,39 @@ export function GraphCanvasOverlayNodes({
             }}
           >
             Merge
+          </button>
+        </div>
+      )}
+      {shiftSelectedNodes.length < 2 && controller.state.selectedCanvasNodeId !== "" && intersectingNodeIds.length > 0 && (
+        <div className="canvas-action-bar">
+          <span className="canvas-action-bar-count">{intersectingNodeIds.length + 1} overlapping</span>
+          <button
+            type="button"
+            className="canvas-action-bar-btn"
+            onPointerDown={(event) => {
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              onBringNodeToFront(controller.state.selectedCanvasNodeId);
+            }}
+            aria-label="Bring selected node to front"
+          >
+            <ArrowUpToLine size={12} /> Bring to front
+          </button>
+          <button
+            type="button"
+            className="canvas-action-bar-btn"
+            onPointerDown={(event) => {
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              onSendNodeToBack(controller.state.selectedCanvasNodeId);
+            }}
+            aria-label="Send selected node to back"
+          >
+            <ArrowDownToLine size={12} /> Send to back
           </button>
         </div>
       )}

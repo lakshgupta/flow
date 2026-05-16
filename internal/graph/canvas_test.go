@@ -64,7 +64,7 @@ func TestBuildGraphCanvasViewProjectsScopedNodesEdgesAndPositions(t *testing.T) 
 				},
 			},
 		},
-	}, "execution", map[string]GraphCanvasPosition{"note-1": {X: 512, Y: 128}})
+	}, "execution", map[string]GraphCanvasNodeLayout{"note-1": {Position: GraphCanvasPosition{X: 512, Y: 128}}})
 	if err != nil {
 		t.Fatalf("BuildGraphCanvasView() error = %v", err)
 	}

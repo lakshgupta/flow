@@ -88,16 +88,37 @@ function graphCanvasNodeShape(value?: string): string {
   return value === "circle" ? "circle" : "card";
 }
 
-function graphCanvasNodeDimensions(shape?: string, previewKind?: string): { width: number; height: number } {
+const MIN_CANVAS_NODE_WIDTH = 132;
+const MIN_CANVAS_NODE_HEIGHT = 96;
+
+function normalizeCanvasNodeDimension(value: number | undefined, fallback: number, minimum: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+
+  return Math.max(minimum, Math.round(value));
+}
+
+function graphCanvasNodeDimensions(shape?: string, previewKind?: string, width?: number, height?: number): { width: number; height: number } {
+  let fallback: { width: number; height: number };
   if (graphCanvasNodeShape(shape) === "circle") {
-    return { width: 132, height: 132 };
+    fallback = { width: 132, height: 132 };
+    return {
+      width: normalizeCanvasNodeDimension(width, fallback.width, 132),
+      height: normalizeCanvasNodeDimension(height, fallback.height, 132),
+    };
   }
 
   if (previewKind === "image" || previewKind === "pdf" || previewKind === "file") {
-    return { width: CANVAS_NODE_W, height: CANVAS_NODE_PREVIEW_H };
+    fallback = { width: CANVAS_NODE_W, height: CANVAS_NODE_PREVIEW_H };
+  } else {
+    fallback = { width: CANVAS_NODE_W, height: CANVAS_NODE_H };
   }
 
-  return { width: CANVAS_NODE_W, height: CANVAS_NODE_H };
+  return {
+    width: normalizeCanvasNodeDimension(width, fallback.width, MIN_CANVAS_NODE_WIDTH),
+    height: normalizeCanvasNodeDimension(height, fallback.height, MIN_CANVAS_NODE_HEIGHT),
+  };
 }
 
 export function renderGraphCanvasNodeLabel(data: GraphCanvasFlowNodeInput): React.ReactNode {
@@ -149,7 +170,7 @@ export function buildGraphCanvasFlowNodes(
 
   return graphCanvasData.nodes.map((item) => {
     const shape = graphCanvasNodeShape(item.shape);
-    const dimensions = graphCanvasNodeDimensions(shape, item.previewKind);
+    const dimensions = graphCanvasNodeDimensions(shape, item.previewKind, item.width, item.height);
     const graphColor = resolveParentGraphDirectoryColor(item.graph, graphDirectoryColorsByPath);
     const data: GraphCanvasFlowNodeData = {
       label: renderGraphCanvasNodeLabel({
@@ -184,6 +205,9 @@ export function buildGraphCanvasFlowNodes(
       featureSlug: item.featureSlug,
       fileName: fileNameFromPath(item.path),
       positionPersisted: item.positionPersisted,
+      width: dimensions.width,
+      height: dimensions.height,
+      zIndex: item.zIndex ?? 0,
       isCanvasSelected: item.id === selectedCanvasNodeId,
       isPanelDocument: item.id === selectedDocumentId,
     };
@@ -197,6 +221,7 @@ export function buildGraphCanvasFlowNodes(
       width: dimensions.width,
       height: dimensions.height,
       style: {
+        zIndex: item.zIndex ?? 0,
         width: `${dimensions.width}px`,
         height: `${dimensions.height}px`,
         padding: 0,
@@ -346,7 +371,7 @@ export async function applyElkHorizontalLayout(
       "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
     },
     children: nodes.map((node) => {
-      const dimensions = graphCanvasNodeDimensions(node.shape, node.previewKind);
+      const dimensions = graphCanvasNodeDimensions(node.shape, node.previewKind, node.width, node.height);
       return {
         id: node.id,
         width: dimensions.width,

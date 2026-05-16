@@ -121,9 +121,12 @@ type graphLayoutViewportRequest struct {
 }
 
 type graphLayoutPositionRequest struct {
-	DocumentID string  `json:"documentId"`
-	X          float64 `json:"x"`
-	Y          float64 `json:"y"`
+	DocumentID string   `json:"documentId"`
+	X          float64  `json:"x"`
+	Y          float64  `json:"y"`
+	Width      *float64 `json:"width,omitempty"`
+	Height     *float64 `json:"height,omitempty"`
+	ZIndex     *int     `json:"zIndex,omitempty"`
 }
 
 type graphLayoutRequest struct {
@@ -1051,9 +1054,14 @@ func (handler *apiHandler) handleGraphCanvas(writer http.ResponseWriter, request
 		return
 	}
 
-	persistedPositions := make(map[string]graph.GraphCanvasPosition, len(layoutPositions))
+	persistedLayouts := make(map[string]graph.GraphCanvasNodeLayout, len(layoutPositions))
 	for _, position := range layoutPositions {
-		persistedPositions[position.DocumentID] = graph.GraphCanvasPosition{X: position.X, Y: position.Y}
+		persistedLayouts[position.DocumentID] = graph.GraphCanvasNodeLayout{
+			Position: graph.GraphCanvasPosition{X: position.X, Y: position.Y},
+			Width:    position.Width,
+			Height:   position.Height,
+			ZIndex:   position.ZIndex,
+		}
 	}
 
 	viewport, hasViewport, err := index.ReadGraphLayoutViewportWorkspace(handler.options.Root.IndexPath, handler.options.Root.FlowPath, selectedGraph)
@@ -1067,7 +1075,7 @@ func (handler *apiHandler) handleGraphCanvas(writer http.ResponseWriter, request
 		return
 	}
 
-	view, err := graph.BuildGraphCanvasView(documents, selectedGraph, persistedPositions)
+	view, err := graph.BuildGraphCanvasView(documents, selectedGraph, persistedLayouts)
 	if err != nil {
 		// If the graph exists as an empty directory (no documents yet), return an empty canvas
 		// rather than an error so the frontend can show create actions.
@@ -1160,11 +1168,17 @@ func (handler *apiHandler) handleGraphLayout(writer http.ResponseWriter, request
 			DocumentID: documentID,
 			X:          position.X,
 			Y:          position.Y,
+			Width:      position.Width,
+			Height:     position.Height,
+			ZIndex:     position.ZIndex,
 		})
 		responsePositions = append(responsePositions, graphLayoutPositionRequest{
 			DocumentID: documentID,
 			X:          position.X,
 			Y:          position.Y,
+			Width:      position.Width,
+			Height:     position.Height,
+			ZIndex:     position.ZIndex,
 		})
 	}
 

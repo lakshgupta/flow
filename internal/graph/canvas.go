@@ -26,6 +26,14 @@ type GraphCanvasPosition struct {
 	Y float64 `json:"y"`
 }
 
+// GraphCanvasNodeLayout stores persisted node layout state.
+type GraphCanvasNodeLayout struct {
+	Position GraphCanvasPosition
+	Width    *float64
+	Height   *float64
+	ZIndex   *int
+}
+
 // GraphCanvasLayerGuide marks one seeded vertical layer band that the UI can use for subtle drag guidance.
 type GraphCanvasLayerGuide struct {
 	Layer int     `json:"layer"`
@@ -57,6 +65,9 @@ type GraphCanvasNode struct {
 	PreviewAssetCount int                 `json:"previewAssetCount,omitempty"`
 	Position          GraphCanvasPosition `json:"position"`
 	PositionPersisted bool                `json:"positionPersisted"`
+	Width             float64             `json:"width,omitempty"`
+	Height            float64             `json:"height,omitempty"`
+	ZIndex            int                 `json:"zIndex,omitempty"`
 	links             []markdown.NodeLink
 	references        []graphCanvasReference
 	orderIndex        int
@@ -91,7 +102,7 @@ type GraphCanvasView struct {
 
 // BuildGraphCanvasView computes the canvas payload for one selected graph scope.
 // Persisted positions are keyed by document id within the selected graph canvas scope.
-func BuildGraphCanvasView(documents []markdown.WorkspaceDocument, selectedGraph string, persistedPositions map[string]GraphCanvasPosition) (GraphCanvasView, error) {
+func BuildGraphCanvasView(documents []markdown.WorkspaceDocument, selectedGraph string, persistedLayouts map[string]GraphCanvasNodeLayout) (GraphCanvasView, error) {
 	trimmedSelectedGraph := strings.TrimSpace(selectedGraph)
 	if trimmedSelectedGraph == "" {
 		return GraphCanvasView{}, fmt.Errorf("selected graph must not be empty")
@@ -175,9 +186,18 @@ func BuildGraphCanvasView(documents []markdown.WorkspaceDocument, selectedGraph 
 	seedPlan := seedGraphCanvasPositions(nodesByID, orderedIDs)
 	for _, id := range orderedIDs {
 		node := nodesByID[id]
-		if position, ok := persistedPositions[id]; ok {
-			node.Position = position
+		if layout, ok := persistedLayouts[id]; ok {
+			node.Position = layout.Position
 			node.PositionPersisted = true
+			if layout.Width != nil && *layout.Width > 0 {
+				node.Width = *layout.Width
+			}
+			if layout.Height != nil && *layout.Height > 0 {
+				node.Height = *layout.Height
+			}
+			if layout.ZIndex != nil {
+				node.ZIndex = *layout.ZIndex
+			}
 		} else {
 			node.Position = seedPlan.Positions[id]
 		}

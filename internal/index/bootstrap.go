@@ -108,6 +108,9 @@ CREATE TABLE graph_layout_positions (
 	document_id TEXT NOT NULL,
 	x REAL NOT NULL,
 	y REAL NOT NULL,
+	width REAL,
+	height REAL,
+	z_index INTEGER,
 	updated_at TEXT NOT NULL,
 	PRIMARY KEY (graph_path, document_id)
 );

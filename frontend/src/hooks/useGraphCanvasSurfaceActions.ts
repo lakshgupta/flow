@@ -44,6 +44,8 @@ type UseGraphCanvasSurfaceActionsArgs = {
   handleGraphCanvasOverlayPointerDown: (event: ReactPointerEvent<HTMLDivElement>, nodeId: string) => void;
   handleConnectionHandlePointerDown: (event: ReactPointerEvent<HTMLDivElement>, nodeId: string) => void;
   handleGraphCanvasNodeDescriptionSave: (nodeId: string, description: string) => Promise<void> | void;
+  previewGraphCanvasNodeLayout: (nodeId: string, layout: { width?: number; height?: number; zIndex?: number }) => void;
+  persistGraphCanvasNodeLayout: (nodeId: string, layout: { width?: number; height?: number; zIndex?: number }) => Promise<void> | void;
   handleMergeDocuments: () => Promise<void> | void;
   handleCreateGraphDocument: (type: GraphCreateType) => Promise<void> | void;
   handleGraphCanvasFilesDrop: (files: FileList | File[]) => Promise<void> | void;
@@ -82,6 +84,8 @@ export function useGraphCanvasSurfaceActions({
   handleGraphCanvasOverlayPointerDown,
   handleConnectionHandlePointerDown,
   handleGraphCanvasNodeDescriptionSave,
+  previewGraphCanvasNodeLayout,
+  persistGraphCanvasNodeLayout,
   handleMergeDocuments,
   handleCreateGraphDocument,
   handleGraphCanvasFilesDrop,
@@ -122,6 +126,8 @@ export function useGraphCanvasSurfaceActions({
     handleGraphCanvasOverlayPointerDown,
     handleConnectionHandlePointerDown,
     handleGraphCanvasNodeDescriptionSave,
+    previewGraphCanvasNodeLayout,
+    persistGraphCanvasNodeLayout,
     handleMergeDocuments,
     handleCreateGraphDocument,
     handleGraphCanvasFilesDrop,
@@ -177,6 +183,22 @@ export function useGraphCanvasSurfaceActions({
 
   const handleGraphCanvasNodeDescriptionSaveBridge = useCallback((nodeId: string, description: string) => {
     void actionRefs.current.handleGraphCanvasNodeDescriptionSave(nodeId, description);
+  }, []);
+
+  const handleGraphCanvasNodeResizePreviewBridge = useCallback((nodeId: string, width: number, height: number) => {
+    actionRefs.current.previewGraphCanvasNodeLayout(nodeId, { width, height });
+  }, []);
+
+  const handleGraphCanvasNodeResizeCommitBridge = useCallback((nodeId: string, width: number, height: number) => {
+    void actionRefs.current.persistGraphCanvasNodeLayout(nodeId, { width, height });
+  }, []);
+
+  const handleBringNodeToFrontBridge = useCallback((nodeId: string) => {
+    void actionRefs.current.persistGraphCanvasNodeLayout(nodeId, { zIndex: Number.MAX_SAFE_INTEGER });
+  }, []);
+
+  const handleSendNodeToBackBridge = useCallback((nodeId: string) => {
+    void actionRefs.current.persistGraphCanvasNodeLayout(nodeId, { zIndex: Number.MIN_SAFE_INTEGER });
   }, []);
 
   const handleGraphCanvasMergeDocumentsBridge = useCallback(() => {
@@ -239,7 +261,7 @@ export function useGraphCanvasSurfaceActions({
 
   const handleGraphCanvasNodeDragStopSurface = useCallback((nodeId: string, position: GraphCanvasPosition) => {
     actionRefs.current.updateGraphCanvasNodePosition(nodeId, position);
-    actionRefs.current.clearIntersectingNodes();
+    actionRefs.current.updateIntersectingNodes(nodeId, position);
     void actionRefs.current.persistGraphCanvasPosition(nodeId, position);
   }, []);
 
@@ -293,6 +315,10 @@ export function useGraphCanvasSurfaceActions({
     onNodePointerDown: handleGraphCanvasOverlayNodePointerDownBridge,
     onHandlePointerDown: handleGraphCanvasOverlayHandlePointerDownBridge,
     onNodeDescriptionSave: handleGraphCanvasNodeDescriptionSaveBridge,
+    onNodeResizePreview: handleGraphCanvasNodeResizePreviewBridge,
+    onNodeResizeCommit: handleGraphCanvasNodeResizeCommitBridge,
+    onBringNodeToFront: handleBringNodeToFrontBridge,
+    onSendNodeToBack: handleSendNodeToBackBridge,
     onMerge: handleGraphCanvasMergeDocumentsBridge,
     closeCanvasContextMenu,
     createGraphDocument: handleGraphCanvasCreateDocumentBridge,
@@ -307,11 +333,15 @@ export function useGraphCanvasSurfaceActions({
     handleGraphCanvasEdgeHoverBridge,
     handleGraphCanvasMergeDocumentsBridge,
     handleGraphCanvasNodeDescriptionSaveBridge,
+    handleGraphCanvasNodeResizeCommitBridge,
+    handleGraphCanvasNodeResizePreviewBridge,
     handleGraphCanvasOverlayHandlePointerDownBridge,
     handleGraphCanvasOverlayNodeClickBridge,
     handleGraphCanvasOverlayNodeDoubleClickBridge,
     handleGraphCanvasOverlayNodePointerDownBridge,
     handleGraphCanvasPersistEdgeToolbar,
+    handleBringNodeToFrontBridge,
+    handleSendNodeToBackBridge,
     setEdgeToolbar,
     setSelectedEdgeId,
   ]);

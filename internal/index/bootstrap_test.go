@@ -332,6 +332,9 @@ func TestGraphLayoutPositionsRoundTrip(t *testing.T) {
 		DocumentID: "note-1",
 		X:          120.5,
 		Y:          340.25,
+		Width:      ptrFloat64(420),
+		Height:     ptrFloat64(260),
+		ZIndex:     ptrInt(7),
 	}}); err != nil {
 		t.Fatalf("WriteGraphLayoutPositions() error = %v", err)
 	}
@@ -353,9 +356,27 @@ func TestGraphLayoutPositionsRoundTrip(t *testing.T) {
 		t.Fatalf("positions[0] coordinates = (%v, %v), want (120.5, 340.25)", positions[0].X, positions[0].Y)
 	}
 
+	if positions[0].Width == nil || *positions[0].Width != 420 {
+		t.Fatalf("positions[0].Width = %#v, want 420", positions[0].Width)
+	}
+	if positions[0].Height == nil || *positions[0].Height != 260 {
+		t.Fatalf("positions[0].Height = %#v, want 260", positions[0].Height)
+	}
+	if positions[0].ZIndex == nil || *positions[0].ZIndex != 7 {
+		t.Fatalf("positions[0].ZIndex = %#v, want 7", positions[0].ZIndex)
+	}
+
 	if positions[0].UpdatedAt == "" {
 		t.Fatal("positions[0].UpdatedAt = empty, want timestamp")
 	}
+}
+
+func ptrFloat64(value float64) *float64 {
+	return &value
+}
+
+func ptrInt(value int) *int {
+	return &value
 }
 
 func TestGraphLayoutViewportRoundTrip(t *testing.T) {

@@ -63,14 +63,29 @@ func TestNewMuxServesWorkspaceAndReadQueryAPIs(t *testing.T) {
 			"documentId": "cmd-1",
 			"x":          512,
 			"y":          224,
+			"width":      420,
+			"height":     260,
+			"zIndex":     5,
 		}},
 	})
 	if layoutUpdate.Graph != "release" || len(layoutUpdate.Positions) != 1 {
 		t.Fatalf("layoutUpdate = %#v, want release update payload", layoutUpdate)
 	}
+	if layoutUpdate.Positions[0].Width == nil || *layoutUpdate.Positions[0].Width != 420 {
+		t.Fatalf("layoutUpdate.Positions[0].Width = %#v, want 420", layoutUpdate.Positions[0].Width)
+	}
+	if layoutUpdate.Positions[0].Height == nil || *layoutUpdate.Positions[0].Height != 260 {
+		t.Fatalf("layoutUpdate.Positions[0].Height = %#v, want 260", layoutUpdate.Positions[0].Height)
+	}
+	if layoutUpdate.Positions[0].ZIndex == nil || *layoutUpdate.Positions[0].ZIndex != 5 {
+		t.Fatalf("layoutUpdate.Positions[0].ZIndex = %#v, want 5", layoutUpdate.Positions[0].ZIndex)
+	}
 	graphCanvas = performJSONRequest[graph.GraphCanvasView](t, handler, http.MethodGet, "/api/graph-canvas?graph=release")
 	if !graphCanvas.Nodes[0].PositionPersisted || graphCanvas.Nodes[0].Position.X != 512 || graphCanvas.Nodes[0].Position.Y != 224 {
 		t.Fatalf("graphCanvas.Nodes[0] = %#v, want persisted release layout", graphCanvas.Nodes[0])
+	}
+	if graphCanvas.Nodes[0].Width != 420 || graphCanvas.Nodes[0].Height != 260 || graphCanvas.Nodes[0].ZIndex != 5 {
+		t.Fatalf("graphCanvas.Nodes[0] layout = %#v, want width=420 height=260 zIndex=5", graphCanvas.Nodes[0])
 	}
 
 	document := performJSONRequest[documentResponse](t, handler, http.MethodGet, "/api/documents/note-1")
