@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-REPO_SLUG="${FLOW_RELEASE_REPO:-lex/flow}"
+REPO_SLUG="${FLOW_RELEASE_REPO:-lakshgupta/flow}"
 INSTALL_DIR="${FLOW_INSTALL_DIR:-$HOME/.local/bin}"
 VERSION_ARG="${1:-}"
 TMP_DIR=""
@@ -38,12 +38,12 @@ Installs the latest Flow release for the current OS and architecture.
 Pass an explicit version such as 0.1.0 or v0.1.0 to install an older release.
 
 Environment overrides:
-  FLOW_INSTALL_DIR   Destination directory for the flow binary
-  FLOW_RELEASE_REPO  GitHub repository in owner/name format
-	FLOW_RELEASE_BASE_URL Base URL for release downloads (advanced)
-	FLOW_TARGET_OS     Override detected OS (linux or darwin)
-	FLOW_TARGET_ARCH   Override detected architecture (amd64 or arm64)
-	FLOW_INSTALL_DRY_RUN Set to 1 to print selected asset names and exit
+  FLOW_INSTALL_DIR      Destination directory for the flow binary
+  FLOW_RELEASE_REPO     GitHub repository in owner/name format
+  FLOW_RELEASE_BASE_URL Base URL for release downloads (advanced)
+  FLOW_TARGET_OS        Override detected OS (linux or darwin)
+  FLOW_TARGET_ARCH      Override detected architecture (amd64 or arm64)
+  FLOW_INSTALL_DRY_RUN  Set to 1 to print selected asset names and exit
 EOF
 }
 
@@ -61,12 +61,12 @@ download() {
 
 	if command -v curl >/dev/null 2>&1; then
 		curl -fsSL "$url" -o "$destination"
-		return 0
+		return
 	fi
 
 	if command -v wget >/dev/null 2>&1; then
 		wget -qO "$destination" "$url"
-		return 0
+		return
 	fi
 
 	echo "curl or wget is required to download Flow releases." >&2
@@ -78,12 +78,12 @@ download_text() {
 
 	if command -v curl >/dev/null 2>&1; then
 		curl -fsSL "$url"
-		return 0
+		return
 	fi
 
 	if command -v wget >/dev/null 2>&1; then
 		wget -qO- "$url"
-		return 0
+		return
 	fi
 
 	echo "curl or wget is required to download Flow releases." >&2
