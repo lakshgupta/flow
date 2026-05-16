@@ -169,11 +169,13 @@ export function GraphCanvasOverlayNodes({
         const isIntersectionSource = intersectingSourceNodeId === node.id && intersectingNodeIds.length > 0;
         const nodeWidth = node.data.width ?? 288;
         const nodeHeight = node.data.height ?? 130;
+        const splitExpandedNode = node.data.shape !== "circle" && node.data.isExpanded;
         const nodeStyle = {
           ...(graphColor ? ({ "--graph-node-color": graphColor } as CSSProperties) : {}),
           width: `${nodeWidth}px`,
           height: `${nodeHeight}px`,
           minHeight: `${nodeHeight}px`,
+          ...(splitExpandedNode ? ({ "--graph-node-core-height": `${node.data.baseHeight}px` } as CSSProperties) : {}),
         } as CSSProperties;
         return (
           <div
@@ -202,6 +204,8 @@ export function GraphCanvasOverlayNodes({
                   `graph-canvas-node-${graphCanvasTypeClassName(node.data.type)}`,
                   graphColor ? "graph-canvas-node-tinted" : "",
                   node.data.shape === "circle" ? "graph-canvas-node-circle" : "",
+                  node.data.isExpanded ? "graph-canvas-node-expanded" : "",
+                  splitExpandedNode ? "graph-canvas-node-split" : "",
                   node.data.isCanvasSelected ? "graph-canvas-node-selected" : "",
                   node.data.isPanelDocument ? "graph-canvas-node-panel" : "",
                 ]
@@ -214,6 +218,83 @@ export function GraphCanvasOverlayNodes({
                     <span className="graph-canvas-node-badge">{graphCanvasTypeLabel(node.data.type)}</span>
                     <strong className="graph-canvas-node-title">{node.data.title}</strong>
                     <span className="graph-canvas-node-graph">{node.data.graph}</span>
+                  </>
+                ) : splitExpandedNode ? (
+                  <>
+                    <section className="graph-canvas-node-core">
+                      <div className="graph-canvas-node-topline">
+                        <span className="graph-canvas-node-badge">{graphCanvasTypeLabel(node.data.type)}</span>
+                        <span className="graph-canvas-node-graph">{node.data.graph}</span>
+                      </div>
+                      <strong className="graph-canvas-node-title">{node.data.title}</strong>
+                      {node.data.previewKind === "image" && node.data.previewURL ? (
+                        <div className="graph-canvas-node-preview graph-canvas-node-preview-image graph-canvas-node-preview-resizable">
+                          <img src={node.data.previewURL} alt={node.data.previewName ?? node.data.title} loading="lazy" />
+                        </div>
+                      ) : null}
+                      {node.data.previewKind === "pdf" && node.data.previewURL ? (
+                        <div className="graph-canvas-node-preview graph-canvas-node-preview-pdf">
+                          <iframe
+                            src={`${node.data.previewURL}#page=1&view=FitH`}
+                            title={node.data.previewName ?? node.data.title}
+                            loading="lazy"
+                          />
+                        </div>
+                      ) : null}
+                      {node.data.previewKind === "file" ? (
+                        <div className="graph-canvas-node-preview graph-canvas-node-preview-file">
+                          <span className="graph-canvas-node-preview-file-icon" aria-hidden="true">
+                            <FileIcon size={14} />
+                          </span>
+                          <span className="graph-canvas-node-preview-file-name">{node.data.previewName ?? "Attached file"}</span>
+                        </div>
+                      ) : null}
+                      <input
+                        type="text"
+                        className="graph-canvas-node-description-input"
+                        value={draftDescription}
+                        placeholder="Add a short description"
+                        onChange={(event) => {
+                          const nextValue = event.target.value;
+                          setDraftDescriptions((current) => ({ ...current, [node.id]: nextValue }));
+                        }}
+                        onBlur={() => handleDescriptionCommit(node.id, node.data.description ?? "")}
+                        onKeyDown={(event) => handleDescriptionKeyDown(event, node.id, node.data.description ?? "")}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => event.stopPropagation()}
+                        onDoubleClick={(event) => event.stopPropagation()}
+                        aria-label={`Description for ${node.data.title}`}
+                      />
+                      {(node.data.previewKind === "image" || node.data.previewKind === "pdf" || node.data.previewKind === "file") && node.data.previewURL ? (
+                        <div className="graph-canvas-node-preview-actions" onClick={(e) => e.stopPropagation()}>
+                          {node.data.previewKind === "pdf" && (
+                            <button
+                              type="button"
+                              className="graph-canvas-node-preview-open"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                window.open(node.data.previewURL, "_blank", "noopener,noreferrer");
+                              }}
+                              aria-label={`Open PDF ${node.data.previewName ?? node.data.title}`}
+                            >
+                              <ExternalLink size={12} /> Open PDF
+                            </button>
+                          )}
+                          {(node.data.previewAssetCount ?? 1) <= 1 ? (
+                            <a
+                              className="graph-canvas-node-preview-open"
+                              href={node.data.previewURL}
+                              download={node.data.previewName ?? true}
+                              onClick={(event) => event.stopPropagation()}
+                              aria-label={`Download ${node.data.previewName ?? node.data.title}`}
+                            >
+                              <Download size={12} /> Download
+                            </a>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </section>
+                    <section className="graph-canvas-node-expansion" aria-hidden="true" />
                   </>
                 ) : (
                   <>

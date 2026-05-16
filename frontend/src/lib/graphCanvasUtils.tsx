@@ -170,7 +170,9 @@ export function buildGraphCanvasFlowNodes(
 
   return graphCanvasData.nodes.map((item) => {
     const shape = graphCanvasNodeShape(item.shape);
+    const baseDimensions = graphCanvasNodeDimensions(shape, item.previewKind);
     const dimensions = graphCanvasNodeDimensions(shape, item.previewKind, item.width, item.height);
+    const isExpanded = dimensions.width > baseDimensions.width || dimensions.height > baseDimensions.height;
     const graphColor = resolveParentGraphDirectoryColor(item.graph, graphDirectoryColorsByPath);
     const data: GraphCanvasFlowNodeData = {
       label: renderGraphCanvasNodeLabel({
@@ -189,6 +191,7 @@ export function buildGraphCanvasFlowNodes(
         fileName: fileNameFromPath(item.path),
         positionPersisted: item.positionPersisted,
         isCanvasSelected: item.id === selectedCanvasNodeId,
+        isExpanded,
         isPanelDocument: item.id === selectedDocumentId,
       }),
       id: item.id,
@@ -207,7 +210,9 @@ export function buildGraphCanvasFlowNodes(
       positionPersisted: item.positionPersisted,
       width: dimensions.width,
       height: dimensions.height,
+      baseHeight: baseDimensions.height,
       zIndex: item.zIndex ?? 0,
+      isExpanded,
       isCanvasSelected: item.id === selectedCanvasNodeId,
       isPanelDocument: item.id === selectedDocumentId,
     };

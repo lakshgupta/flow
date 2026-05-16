@@ -292,7 +292,9 @@ export type GraphCanvasFlowNodeData = {
   positionPersisted: boolean;
   width: number;
   height: number;
+  baseHeight: number;
   zIndex: number;
+  isExpanded: boolean;
   isCanvasSelected: boolean;
   isPanelDocument: boolean;
 };
