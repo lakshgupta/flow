@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+/* Force dialog content and all children to be fully opaque */
+[data-slot="dialog-content"] {
+  background-color: var(--card) !important;
+  color: var(--card-foreground) !important;
+}
+
+[data-slot="dialog-content"] [data-slot="sidebar-wrapper"] {
+  background-color: var(--card) !important;
+  min-height: unset !important;
+}
+
+[data-slot="dialog-content"] [data-slot="sidebar"] {
+  background-color: color-mix(in srgb, var(--card) 92%, var(--muted)) !important;
+}
+
 @font-face {
   font-family: 'Major Mono Display';
   font-style: normal;
