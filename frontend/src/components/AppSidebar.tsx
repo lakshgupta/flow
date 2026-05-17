@@ -1,4 +1,3 @@
-import { GalleryVerticalEnd } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHeader, useSidebar } from "./ui/sidebar";
@@ -19,19 +18,12 @@ export function AppSidebar({
   return (
     <Sidebar className="app-left-sidebar">
       <SidebarHeader className="sidebar-header shell-card-header-tight shell-sidebar-header">
-        <div className="shell-sidebar-header-row">
-          <div className="shell-sidebar-brand-block">
-            <div className="shell-sidebar-brand-icon">
-              <GalleryVerticalEnd size={16} />
-            </div>
-            {open ? (
-              <div className="shell-sidebar-brand-copy">
-                <h2 className="shell-sidebar-brand">Flow</h2>
-              </div>
-            ) : (
-              <span className="sr-only">Flow</span>
-            )}
-          </div>
+        <div className="shell-sidebar-brand-hero">
+          {open ? (
+            <h2 className="shell-sidebar-brand">Flow</h2>
+          ) : (
+            <span className="sr-only">Flow</span>
+          )}
         </div>
       </SidebarHeader>
       <SidebarContent className="shell-rail-tabs-content">
