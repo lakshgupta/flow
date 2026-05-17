@@ -5213,6 +5213,12 @@ pre {
   background: transparent;
 }
 
+.graph-canvas-node-expanded.graph-canvas-node-split {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 .graph-canvas-node-core {
   min-height: var(--graph-node-core-height, 8.125rem);
   display: grid;
@@ -5231,15 +5237,15 @@ pre {
 .graph-canvas-node-expansion {
   flex: 1;
   min-height: 4rem;
-  background: color-mix(in srgb, white 58%, transparent);
-  border-top: 1px solid color-mix(in srgb, white 68%, var(--border));
-  box-shadow: inset 0 1px 0 color-mix(in srgb, white 64%, transparent);
-  backdrop-filter: blur(18px) saturate(120%);
-  -webkit-backdrop-filter: blur(18px) saturate(120%);
+  background: color-mix(in srgb, white 2.5%, transparent);
+  border-top: 1px solid color-mix(in srgb, white 9%, var(--border));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 7%, transparent);
+  backdrop-filter: blur(30px) saturate(132%);
+  -webkit-backdrop-filter: blur(30px) saturate(132%);
 }
 
 .graph-canvas-node-split.graph-canvas-node-tinted .graph-canvas-node-expansion {
-  background: color-mix(in srgb, white 58%, transparent);
+  background: color-mix(in srgb, white 2%, transparent);
 }
 
 .dark .graph-canvas-node-core {
@@ -5247,11 +5253,11 @@ pre {
 }
 
 .dark .graph-canvas-node-expansion {
-  background: color-mix(in srgb, white 14%, transparent);
-  border-top-color: color-mix(in srgb, white 26%, var(--border));
-  box-shadow: inset 0 1px 0 color-mix(in srgb, white 22%, transparent);
-  backdrop-filter: blur(16px) saturate(108%);
-  -webkit-backdrop-filter: blur(16px) saturate(108%);
+  background: color-mix(in srgb, white 6%, transparent);
+  border-top-color: color-mix(in srgb, white 16%, var(--border));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 12%, transparent);
+  backdrop-filter: blur(28px) saturate(116%);
+  -webkit-backdrop-filter: blur(28px) saturate(116%);
 }
 
 .graph-canvas-node-note:not(.graph-canvas-node-tinted) {
