@@ -51,6 +51,7 @@ Layout rules:
 - Search returns a mixed list with explicit type labels such as `Home`, `Note`, `Task`, and `Command`.
 - The middle panel shows Home by default and switches to the selected graph canvas when you choose a graph.
 - Switching to a different workspace (including from the global workspace selector) resets the middle panel to Home for that workspace and refreshes the index before loading tree/canvas data, so on-disk graph and node changes are reflected.
+- While a workspace switch is in flight, the bottom of the left sidebar shows `Loading workspace...` until the refreshed workspace snapshot is applied.
 - The right panel opens as the contextual editor for the selected document.
 - The left and right split bars are draggable, and their width ratios persist in `.flow/config/flow.yaml`.
 - The settings dialog includes an export action to download the entire current workspace data as a zip archive.

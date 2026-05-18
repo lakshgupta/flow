@@ -6,11 +6,12 @@ title: Home
 
 ## Backlog
 
-- [x] when I switch the workspace in the global view, then I don't see the home page getting switched to the home page of the new workspace
-- [x] the icon in the ubuntu toolbar shows the cog wheel instead of frontend/src/assets/flow_logo_linux.png
-- [x] License is "Apache License 2.0".update the about page.
+- [x] while the new workspace is loading, show the loading status at the bottom of the left sidebar
+- [ ] the icon in the ubuntu toolbar still shows the cog wheel instead of frontend/src/assets/flow_logo_linux.png
+- [ ] fix any errors found in the frontend or internal code. 
 
 ## Thinking
+- [ ] feature to move a sub-graph to a top level graph, or a top level graph to a sub-graph of an another graph. 
 - [ ] finish implementing command type of nodes
 - [ ] enable status tracking on the tasks
 - [ ] refine skills- summarize, link with related work

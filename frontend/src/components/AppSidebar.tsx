@@ -1,16 +1,18 @@
 import type { ReactNode } from "react";
 
-import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHeader, useSidebar } from "./ui/sidebar";
+import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarHeader, useSidebar } from "./ui/sidebar";
 
 type AppSidebarProps = {
   topContent?: ReactNode;
   navigationContent: ReactNode;
+  footerContent?: ReactNode;
   onResizeMouseDown?: (e: React.MouseEvent<HTMLDivElement>) => void;
 };
 
 export function AppSidebar({
   topContent,
   navigationContent,
+  footerContent,
   onResizeMouseDown,
 }: AppSidebarProps) {
   const { open } = useSidebar();
@@ -36,6 +38,9 @@ export function AppSidebar({
           {navigationContent}
         </SidebarGroup>
       </SidebarContent>
+      {footerContent ? (
+        <SidebarFooter className="shell-sidebar-footer">{footerContent}</SidebarFooter>
+      ) : null}
       <div
         className="sidebar-resize-handle"
         onMouseDown={onResizeMouseDown}

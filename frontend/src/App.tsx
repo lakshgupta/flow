@@ -3970,6 +3970,12 @@ function FlowApp() {
         onResizeMouseDown={handleLeftSidebarMouseDown}
         topContent={<WorkspaceSelectorPanel workspace={workspace} switchingWorkspace={switchingWorkspace} actions={sidebarNavigationActions} />}
         navigationContent={<GraphTreePanel graphTree={graphTree} activeSurface={activeSurface} selectedDocumentId={selectedDocumentId} actions={sidebarNavigationActions} />}
+        footerContent={
+          <p className="sidebar-loading-status" role="status" aria-live="polite">
+            {/* Keep footer spacing stable to avoid sidebar layout jumps. */}
+            {switchingWorkspace ? "Loading workspace..." : "\u00a0"}
+          </p>
+        }
       />
       <SidebarInset>
         <header className="workspace-shell-header">

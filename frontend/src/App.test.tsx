@@ -2255,6 +2255,7 @@ describe("App graph canvas flows", () => {
       ],
     };
     let currentGraphTree = graphTreeResponse;
+    const workspaceSelectDeferred = createDeferredValue<typeof persistedWorkspace>();
 
     const fetchMock = installFetchMock((url, init) => {
       if (url === "/api/workspace") {
@@ -2340,6 +2341,8 @@ describe("App graph canvas flows", () => {
               },
             ],
           };
+          // Keep the request pending so we can assert loading UI while switching.
+          return workspaceSelectDeferred.promise;
         }
         return persistedWorkspace;
       }
@@ -2364,6 +2367,12 @@ describe("App graph canvas flows", () => {
 
     await user.selectOptions(workspaceSelect, localPath);
 
+    expect(await screen.findByText("Loading workspace...")).toBeInTheDocument();
+
+    await act(async () => {
+      workspaceSelectDeferred.resolve(persistedWorkspace);
+    });
+
     await waitFor(() => {
       expect(getRequestBody(fetchMock, "/api/workspace/select", "PUT")).toEqual({ workspacePath: localPath });
     });
@@ -2371,6 +2380,7 @@ describe("App graph canvas flows", () => {
     await waitFor(() => {
       expect((screen.getByLabelText("Workspace") as HTMLSelectElement).value).toBe(localPath);
     });
+    expect(screen.queryByText("Loading workspace...")).not.toBeInTheDocument();
 
     expect(await screen.findByText("Operations")).toBeInTheDocument();
     expect(screen.queryByText("Execution")).not.toBeInTheDocument();
