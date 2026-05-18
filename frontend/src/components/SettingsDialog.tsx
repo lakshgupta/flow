@@ -1,4 +1,4 @@
-import { Info, PaintbrushVertical, Trash2, TriangleAlert } from "lucide-react";
+import { FolderTree, Info, PaintbrushVertical, Trash2, TriangleAlert } from "lucide-react";
 import { memo } from "react";
 
 import {
@@ -30,7 +30,7 @@ import {
 
 import type { WorkspaceResponse } from "../types";
 
-type SettingsTab = "general" | "theme" | "stop";
+type SettingsTab = "general" | "workspaces" | "theme" | "stop";
 
 type SettingsDialogActions = {
   setOpen: (open: boolean) => void;
@@ -56,6 +56,7 @@ export type SettingsDialogProps = {
 
 const SETTINGS_ITEMS = [
   { value: "general" as const, label: "General", icon: Info },
+  { value: "workspaces" as const, label: "Workspaces", icon: FolderTree },
   { value: "theme" as const, label: "Appearance", icon: PaintbrushVertical },
   { value: "stop" as const, label: "Danger Zone", icon: TriangleAlert },
 ];
@@ -108,7 +109,13 @@ function SettingsDialogComponent({
                   <BreadcrumbSeparator />
                   <BreadcrumbItem>
                     <BreadcrumbPage>
-                      {settingsTab === "general" ? "General" : settingsTab === "theme" ? "Appearance" : "Danger Zone"}
+                      {settingsTab === "general"
+                        ? "General"
+                        : settingsTab === "workspaces"
+                          ? "Workspaces"
+                          : settingsTab === "theme"
+                            ? "Appearance"
+                            : "Danger Zone"}
                     </BreadcrumbPage>
                   </BreadcrumbItem>
                 </BreadcrumbList>
@@ -160,43 +167,49 @@ function SettingsDialogComponent({
                         </Button>
                       </div>
                     </div>
-                    <div className="flex flex-col gap-3 rounded-lg border p-4">
-                      <div className="flex flex-col gap-1">
-                        <Label>Local workspaces</Label>
-                        <p className="text-sm text-muted-foreground">
-                          De-register local workspaces from this global workspace list. This does not delete files.
-                        </p>
-                      </div>
-                      {trackedLocalWorkspaces.length > 0 ? (
-                        <div className="max-h-56 space-y-2 overflow-y-auto pr-1" aria-label="Registered local workspaces">
-                          {trackedLocalWorkspaces.map((entry) => {
-                            const isActive = workspace.scope === "local" && workspace.workspacePath === entry.workspacePath;
-                            return (
-                              <div key={`local-workspace-${entry.workspacePath}`} className="flex items-center justify-between gap-2 rounded-md border p-2">
-                                <div className="min-w-0">
-                                  <div className="truncate text-sm" title={entry.workspacePath}>{entry.workspacePath}</div>
-                                  {isActive ? <div className="text-xs text-muted-foreground">Currently active</div> : null}
-                                </div>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  className="gap-2"
-                                  onClick={() => actions.deregisterWorkspace(entry.workspacePath)}
-                                  disabled={switchingWorkspace}
-                                  aria-label={`De-register ${entry.workspacePath}`}
-                                >
-                                  <Trash2 size={14} />
-                                  De-register
-                                </Button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">No local workspaces are currently registered.</p>
-                      )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No workspace loaded.</p>
+                )
+              )}
+              {settingsTab === "workspaces" && (
+                workspace ? (
+                  <div className="flex flex-col gap-3 rounded-lg border p-4">
+                    <div className="flex flex-col gap-1">
+                      <Label>Registered local workspaces</Label>
+                      <p className="text-sm text-muted-foreground">
+                        De-register local workspaces from this global workspace list. This does not delete files.
+                      </p>
                     </div>
+                    {trackedLocalWorkspaces.length > 0 ? (
+                      <div className="max-h-56 space-y-2 overflow-y-auto pr-1" aria-label="Registered local workspaces">
+                        {trackedLocalWorkspaces.map((entry) => {
+                          const isActive = workspace.scope === "local" && workspace.workspacePath === entry.workspacePath;
+                          return (
+                            <div key={`local-workspace-${entry.workspacePath}`} className="flex items-center justify-between gap-2 rounded-md border p-2">
+                              <div className="min-w-0">
+                                <div className="truncate text-sm" title={entry.workspacePath}>{entry.workspacePath}</div>
+                                {isActive ? <div className="text-xs text-muted-foreground">Currently active</div> : null}
+                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="gap-2"
+                                onClick={() => actions.deregisterWorkspace(entry.workspacePath)}
+                                disabled={switchingWorkspace}
+                                aria-label={`De-register ${entry.workspacePath}`}
+                              >
+                                <Trash2 size={14} />
+                                De-register
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No local workspaces are currently registered.</p>
+                    )}
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">No workspace loaded.</p>

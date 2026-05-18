@@ -11,7 +11,7 @@ title: Home
 - [x] options to fold/unfold a nested list
 - [x] option to download graph as a zip from the graph option in the content tree. 
 - [x] option to download all of the data of a workspace as a zip from the setting dialog box.
-- [ ] add a different section in the setting dialog box for listing the registered workspace. move the registered workspace list from the general section to the new 'Workspaces' section. 
+- [x] add a different section in the setting dialog box for listing the registered workspace. move the registered workspace list from the general section to the new 'Workspaces' section. 
 - [ ] add an about page in the settings dialog box. show the flow version, license and the copyright text.
 
 ## Thinking

@@ -2692,6 +2692,8 @@ describe("App graph canvas flows", () => {
 
     await screen.findByText("Content");
     await user.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.queryByRole("button", { name: `De-register ${localPath}` })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Workspaces" }));
 
     const deregisterButton = await screen.findByRole("button", { name: `De-register ${localPath}` });
     await user.click(deregisterButton);
