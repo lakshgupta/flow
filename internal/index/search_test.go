@@ -3,6 +3,7 @@ package index
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -148,5 +149,55 @@ func TestSearchWithFiltersMatchesCombinedFields(t *testing.T) {
 
 	if len(contentResults) != 1 || contentResults[0].ID != "note-1" {
 		t.Fatalf("contentResults = %#v, want note-1", contentResults)
+	}
+}
+
+// TestEnsureIndexExistsConcurrentRebuildIsSerialised verifies that multiple goroutines
+// calling ensureIndexExists simultaneously (as happens when the frontend fires
+// /api/workspace and /api/graphs in parallel on startup) do not race on writing
+// the temporary index file and always produce a fully-populated result.
+func TestEnsureIndexExistsConcurrentRebuildIsSerialised(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	flowPath := filepath.Join(rootDir, ".flow")
+	indexPath := filepath.Join(flowPath, "config", "flow.index")
+
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "notes", "node.md"),
+		"---\nid: note-1\ntype: note\ngraph: notes\ntitle: Architecture\n---\n\nContent.\n")
+
+	const goroutines = 8
+	errs := make([]error, goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := range goroutines {
+		go func(idx int) {
+			defer wg.Done()
+			errs[idx] = ensureIndexExists(indexPath, flowPath)
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("goroutine %d: ensureIndexExists() error = %v", i, err)
+		}
+	}
+
+	// The index must be present and fully populated after concurrent rebuilds.
+	nodes, err := ReadGraphNodes(indexPath)
+	if err != nil {
+		t.Fatalf("ReadGraphNodes() error = %v", err)
+	}
+	if len(nodes) == 0 {
+		t.Fatal("ReadGraphNodes() = empty, want at least one node after concurrent ensureIndexExists")
+	}
+
+	files, err := ReadGraphTreeFiles(indexPath)
+	if err != nil {
+		t.Fatalf("ReadGraphTreeFiles() error = %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatal("ReadGraphTreeFiles() = empty, want at least one file after concurrent ensureIndexExists")
 	}
 }

@@ -341,6 +341,18 @@ func NewMux(options Options) (http.Handler, error) {
 		return nil, err
 	}
 
+	// Pre-warm the index before the handler starts serving. Without this the
+	// first requests (e.g. /api/workspace and /api/graphs fired in parallel by
+	// the frontend on startup) race on the lazy rebuild inside ensureIndexExists
+	// and can produce an empty or partially-populated content tree. Rebuilding
+	// here is safe: NewMux is called once at startup, before any request arrives,
+	// and mirrors what handleSelectWorkspace does on every workspace switch.
+	if options.Root.IndexPath != "" && options.Root.FlowPath != "" {
+		if err := index.Rebuild(options.Root.IndexPath, options.Root.FlowPath); err != nil {
+			return nil, fmt.Errorf("build workspace index: %w", err)
+		}
+	}
+
 	api := &apiHandler{options: options}
 	staticHandler := http.FileServer(http.FS(assets))
 

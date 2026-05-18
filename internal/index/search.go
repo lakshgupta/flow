@@ -6,9 +6,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	_ "modernc.org/sqlite"
 )
+
+// rebuildMu serializes concurrent calls to ensureIndexExists so that two
+// goroutines arriving at the same time (e.g. /api/workspace and /api/graphs
+// fired in parallel by the frontend on startup) cannot race on writing the
+// same temporary index file.
+var rebuildMu sync.Mutex
 
 // SearchResult holds one indexed document match.
 type SearchResult struct {
@@ -411,6 +418,23 @@ func snippetQueryForFilters(filters SearchFilters) string {
 }
 
 func ensureIndexExists(indexPath string, flowPath string) error {
+	// Fast path: if the index already exists, no rebuild is needed.
+	// This check avoids taking the mutex on every read in the steady state.
+	if _, err := os.Stat(indexPath); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat index file: %w", err)
+	}
+
+	// Serialize concurrent rebuilds. Two goroutines (e.g. /api/workspace and
+	// /api/graphs arriving in parallel on startup) would otherwise both find the
+	// file absent, both write to the same .tmp path, and corrupt or lose each
+	// other's work.
+	rebuildMu.Lock()
+	defer rebuildMu.Unlock()
+
+	// Re-check inside the lock: a concurrent goroutine may have rebuilt while we
+	// were waiting.
 	if _, err := os.Stat(indexPath); err == nil {
 		return nil
 	} else if !os.IsNotExist(err) {
