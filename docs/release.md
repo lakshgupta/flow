@@ -2,6 +2,8 @@
 
 This document is for maintainers preparing a tagged Flow release.
 
+For local build and packaging steps (including Linux `.deb` and macOS `.dmg`), see `docs/build.md`.
+
 ## Supported Release Artifacts
 
 The release workflow publishes these assets for each version:
@@ -12,6 +14,9 @@ The release workflow publishes these assets for each version:
 - `flow-<version>-darwin-amd64.sha256`
 - `flow-<version>-darwin-arm64.tar.gz`
 - `flow-<version>-darwin-arm64.sha256`
+- `flow_<version>_amd64.deb`
+- `flow_<version>_darwin_amd64.dmg`
+- `flow_<version>_darwin_arm64.dmg`
 - `install.sh`
 
 `install.sh` auto-detects `linux/amd64`, `darwin/amd64`, and `darwin/arm64`.
@@ -20,12 +25,12 @@ The release workflow publishes these assets for each version:
 
 1. Set the release version in `internal/buildinfo/VERSION`.
 2. Build and validate the frontend and Go packages locally.
-3. Build all release archives locally.
+3. Build all release archives and installable desktop packages locally.
 4. Review the worktree and keep only tracked release-source changes.
 5. Commit the version change and any generated release updates.
 6. Create and push the matching git tag.
 7. Let GitHub Actions publish the release assets.
-8. Verify the uploaded archives, checksums, and installer asset on the GitHub release page.
+8. Verify the uploaded archives, checksums, installable desktop packages, and installer asset on the GitHub release page.
 
 ## What To Commit
 
@@ -39,6 +44,7 @@ Keep these changes if they changed as part of the release prep:
 - `docs/release.md`
 - `README.md`
 - `docs/reference.md`
+- `packaging/`
 - `scripts/`
 
 Do not commit disposable local build output:
@@ -84,6 +90,22 @@ FLOW_SKIP_FRONTEND_BUILD=1 bash ./scripts/build-release.sh darwin amd64
 FLOW_SKIP_FRONTEND_BUILD=1 bash ./scripts/build-release.sh darwin arm64
 ```
 
+Build installable desktop packages locally:
+
+```bash
+# Linux .deb
+bash ./scripts/build-package-linux.sh amd64
+
+# macOS .dmg (run on macOS)
+bash ./scripts/build-package-macos.sh amd64
+bash ./scripts/build-package-macos.sh arm64
+```
+
+Packaging assets used by these scripts:
+
+- Linux icon: `frontend/src/assets/flow_logo_linux.png`
+- macOS icon: `frontend/src/assets/flow_logo_macos.png`
+
 Optional local install from the archive built for the current machine:
 
 ```bash
@@ -109,7 +131,10 @@ The workflow at `.github/workflows/release.yml`:
 - accepts either `${version}` or `v${version}` tags,
 - verifies the tag matches `internal/buildinfo/VERSION`,
 - builds Linux and macOS archives in order,
+- builds a Linux `.deb` package,
+- builds macOS `.dmg` packages for `amd64` and `arm64`,
 - uploads the per-target `.tar.gz` and `.sha256` files,
+- uploads `.deb` and `.dmg` package assets,
 - uploads one shared `install.sh` asset.
 
 ## Installer Commands

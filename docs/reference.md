@@ -185,8 +185,8 @@ The graph tree is derived from canonical files under `.flow/data/content` rather
 
 Core commands:
 
-- `flow --mode cli`
-  - Runs standard CLI behavior (default mode when `--mode` is omitted).
+- `flow`
+  - Runs standard CLI behavior.
 - `flow init`
   - Initializes local workspace files and folders.
 - `flow configure --gui-port <port>`
@@ -233,7 +233,7 @@ Node subcommands:
 - `flow node disconnect --from <node-id> --to <node-id> --graph <graph>`
   - Removes a directed node link.
 
-Global mode is supported by prefixing commands with `-g`, for example `flow -g init` and `flow -g gui`.
+Global mode is supported by prefixing commands with `-g`, for example `flow -g init` and `flow -g service`.
 
 Agent-oriented usage patterns:
 

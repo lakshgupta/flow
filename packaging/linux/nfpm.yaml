@@ -1,0 +1,27 @@
+# nfpm package manifest for the Flow Linux .deb package.
+# Environment variables required when invoking nfpm:
+#   VERSION  — release version string, e.g. 1.2.3
+#   GOARCH   — target architecture, e.g. amd64 or arm64
+
+name: "flow"
+arch: "${GOARCH}"
+platform: linux
+version: "${VERSION}"
+maintainer: "Flow Contributors"
+description: "Flow workspace tool — local-first task and knowledge graph"
+license: MIT
+
+contents:
+  # Main binary
+  - src: dist/linux-${GOARCH}/flow
+    dst: /usr/local/bin/flow
+    file_info:
+      mode: 0755
+
+  # Application launcher entry
+  - src: packaging/linux/flow.desktop
+    dst: /usr/share/applications/flow.desktop
+
+  # Application icon (256×256 PNG)
+  - src: frontend/src/assets/flow_logo_linux.png
+    dst: /usr/share/icons/hicolor/256x256/apps/flow.png

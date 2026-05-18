@@ -231,40 +231,11 @@ If running installer from a repository checkout:
 bash ./scripts/install-local-release.sh
 ```
 
-### From Local Source
+### Build From Source And Packages
 
-Flow has three build modes, each producing the same `flow` binary with different capabilities enabled:
+For detailed build steps (local app builds, release binaries, Linux `.deb`, and macOS `.dmg` packaging), see:
 
-#### CLI + Web server (default)
-
-No extra dependencies. The binary runs the CLI and serves the web GUI over HTTP.
-
-```bash
-cd frontend
-npm ci
-npm run build
-
-cd ..
-go build ./cmd/flow
-```
-
-#### Desktop app (Wails window)
-
-The standard release build already includes desktop mode. To build locally on Linux, first install the webkit2gtk development headers:
-
-```bash
-sudo apt install libwebkit2gtk-4.1-dev build-essential
-```
-
-Then run the same release build script:
-
-```bash
-cd frontend && npm ci && npm run build && cd ..
-bash scripts/build-release.sh linux amd64
-bash scripts/install-linux-amd64.sh
-```
-
-On macOS, WebKit.framework is built into the OS — no extra install needed. Just run the build script on a macOS machine.
+- [docs/build.md](docs/build.md)
 
 ## Running Flow
 
@@ -297,7 +268,7 @@ flow configure --gui-port 4318
 
 ### Desktop app
 
-Build the desktop binary first (see above), then launch it from a desktop terminal (not a VS Code snap terminal):
+Build the desktop binary first (see [docs/build.md](docs/build.md)), then launch it from a desktop terminal (not a VS Code snap terminal):
 
 ```bash
 flow desktop
@@ -305,12 +276,11 @@ flow desktop
 
 The desktop app uses the same embedded frontend assets as the web server, so only one frontend build is needed regardless of which mode you run.
 
-The canonical project version is stored in `internal/buildinfo/VERSION`. Frontend builds and release scripts sync from that file so the Go binary version and frontend package metadata stay aligned.
-
 
 
 ## Learn More
 
 - [docs/architecture.md](docs/architecture.md)
 - [docs/reference.md](docs/reference.md)
+- [docs/build.md](docs/build.md)
 - [docs/release.md](docs/release.md)

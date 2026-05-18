@@ -1,6 +1,6 @@
 # Architecture
 
-Flow is a local-first planning system for software work. Canonical data is stored as Markdown in the workspace. Query, graph, and UI read models are derived into a rebuildable SQLite index and exposed through a shared backend used by both CLI and GUI.
+Flow is a local-first planning system for software work. Canonical data is stored as Markdown in the workspace. Query, graph, and UI read models are derived into a rebuildable SQLite index and exposed through a shared backend used by CLI, service, and desktop surfaces.
 
 This document is intentionally high level and describes the architecture currently implemented in code.
 
@@ -9,12 +9,12 @@ This document is intentionally high level and describes the architecture current
 - Markdown is the source of truth.
 - The index is derived state and can be rebuilt from disk.
 - Local and global workspace modes share the same domain model and behavior.
-- CLI and GUI are two interfaces over the same backend workflows.
+- CLI, service, and desktop are interfaces over the same backend workflows.
 - Mutations write canonical Markdown first, then refresh derived index state.
 
 ## System Context
 
-Flow ships as a Go application with two user-facing interfaces today, with a third in progress:
+Flow ships as a Go application with three user-facing interfaces:
 
 - CLI (`cmd/flow`) for initialization, query, mutation, graph operations, and command execution.
 - Web service (`flow service`) served by an embedded HTTP server on loopback, with a React frontend consuming JSON APIs.
@@ -22,7 +22,7 @@ Flow ships as a Go application with two user-facing interfaces today, with a thi
 
 High-level runtime shape:
 
-1. User acts through CLI or GUI.
+1. User acts through CLI, service UI, or desktop UI.
 2. Backend reads/writes Markdown under `.flow/data`.
 3. Backend rebuilds or updates the SQLite index under `.flow/config/flow.index`.
 4. Query and visualization responses are returned from index-backed read models.
@@ -81,7 +81,7 @@ It provides:
 - layered task/command views,
 - node-centric read models,
 - inline reference resolution and reverse lookups,
-- persisted GUI projection state (graph layout positions/viewports and workspace GUI settings).
+- persisted UI projection state (graph layout positions/viewports and workspace UI settings).
 
 The index schema is designed so rebuild from Markdown is always possible without hidden canonical data in SQLite.
 
@@ -98,7 +98,7 @@ Backend components:
 - `internal/execution`: command execution planning and environment overlay
 - `internal/config`: workspace config read/write and defaults
 - `internal/core`: shared surface-independent orchestration and mode parsing (`cli`, `server`, `desktop`)
-- `internal/desktop`: desktop adapter entrypoint (Wails wiring scaffold)
+- `internal/desktop`: desktop transport adapter and Wails runtime integration
 
 Frontend components:
 
@@ -117,16 +117,16 @@ CLI interface:
 - document and graph mutation,
 - search and node-oriented queries,
 - command execution,
-- GUI lifecycle commands.
+- service and desktop lifecycle commands.
 
 HTTP API interface (`internal/httpapi`):
 
 - workspace/home/document/graph read and mutation endpoints,
 - graph canvas and layout persistence endpoints,
 - search and node view endpoints,
-- reference target lookup and GUI control endpoints.
+- reference target lookup and UI control endpoints.
 
-The GUI exclusively uses this API surface; no direct frontend filesystem access exists.
+Both the service frontend and desktop frontend use this API surface; no direct frontend filesystem access exists.
 
 ## Multi-Surface Runtime (CLI, Service, Desktop)
 
@@ -160,14 +160,14 @@ Initialization and startup:
 2. Ensure required directories/files exist.
 3. Build or verify index availability.
 
-Mutation flow (CLI and GUI):
+Mutation flow (CLI and UI surfaces):
 
 1. Validate request and current document shape.
 2. Write canonical Markdown/filesystem changes.
 3. Refresh affected derived index state.
 4. Return updated read models.
 
-GUI flow:
+Service/Desktop UI flow:
 
 1. Start loopback HTTP server on configured per-workspace port.
 2. Serve embedded static frontend.
@@ -186,7 +186,7 @@ Execution flow:
 - Missing index files are recoverable by rebuild.
 - Workspace behavior is deterministic across local/global modes.
 - API and CLI mutations must preserve Markdown schema validity.
-- GUI state persistence (layout/appearance) is auxiliary and non-canonical.
+- UI state persistence (layout/appearance) is auxiliary and non-canonical.
 
 ## Quality Strategy
 
@@ -202,6 +202,8 @@ This keeps canonical-state correctness and projection correctness testable in is
 ## Related Documents
 
 - [docs/DESIGN.md](DESIGN.md)
+- [docs/build.md](build.md)
 - [docs/reference.md](reference.md)
+- [docs/release.md](release.md)
 - [README.md](../README.md)
 

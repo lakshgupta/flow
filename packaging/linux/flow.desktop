@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Flow
+Exec=/usr/local/bin/flow desktop
+Icon=flow
+Type=Application
+Terminal=false
+Categories=Productivity;Development;
+Comment=Flow workspace tool
