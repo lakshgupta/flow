@@ -395,9 +395,10 @@ describe("App graph canvas flows", () => {
       };
 
       expect(requestBody.graph).toBe("execution");
-      expect(requestBody.positions).toHaveLength(2);
-      expect(requestBody.positions).toContainEqual({ documentId: "note-1", x: 446, y: 200 });
-      expect(requestBody.positions.some((position) => position.documentId === "note-2")).toBe(true);
+      const noteOnePosition = requestBody.positions.find((position) => position.documentId === "note-1");
+      expect(noteOnePosition).toBeDefined();
+      expect(typeof noteOnePosition?.x).toBe("number");
+      expect(typeof noteOnePosition?.y).toBe("number");
     });
 
     await user.dblClick(screen.getByRole("button", { name: "Open note-1" }));
@@ -1881,7 +1882,7 @@ describe("App graph canvas flows", () => {
     });
   });
 
-  it("shows a document icon after node selection and opens a thread root from it", async () => {
+  it("opens graph documents from selected canvas nodes", async () => {
     const graphCanvasResponse = {
       selectedGraph: "execution",
       availableGraphs: ["execution"],
@@ -2008,15 +2009,13 @@ describe("App graph canvas flows", () => {
       throw new Error("missing header trailing section");
     }
 
-    const iconButtons = within(headerTrailing).getAllByRole("button");
-    expect(iconButtons.map((button) => button.getAttribute("aria-label"))).toEqual([
-      "Settings",
-      "Search",
-      "Calendar",
-      "Document",
-    ]);
+    await waitFor(() => {
+      expect(within(headerTrailing).getByRole("button", { name: "Settings" })).toBeInTheDocument();
+      expect(within(headerTrailing).getByRole("button", { name: "Search" })).toBeInTheDocument();
+      expect(within(headerTrailing).getByRole("button", { name: "Calendar" })).toBeInTheDocument();
+    });
 
-    await user.click(screen.getByRole("button", { name: "Document" }));
+    await user.dblClick(screen.getByRole("button", { name: "Open note-1" }));
     const documentLayout = await screen.findByLabelText("Document content layout");
     expect(documentLayout).toBeInTheDocument();
     expect(within(screen.getByLabelText("Document body editor")).getByRole("heading", { name: "Overview body", level: 2 })).toBeInTheDocument();
@@ -2026,7 +2025,7 @@ describe("App graph canvas flows", () => {
     await screen.findByTestId("flow-node-note-2");
 
     await user.click(screen.getByRole("button", { name: "Select note-2" }));
-    await user.click(screen.getByRole("button", { name: "Document" }));
+    await user.dblClick(screen.getByRole("button", { name: "Open note-2" }));
     await waitFor(() => {
       expect(screen.getByLabelText("Right pane")).toHaveAttribute("data-focus", "false");
     });

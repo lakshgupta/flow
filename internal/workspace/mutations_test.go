@@ -396,7 +396,9 @@ func createMutationWorkspace(t *testing.T) Root {
 	})
 	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "demo", "execution", "parser.md"), markdown.TaskDocument{
 		Metadata: markdown.TaskMetadata{
-			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "wrong", Title: "Parser", Description: "Parser description"},
+			// Keep graph metadata aligned with file-system graph so rename-file
+			// tests exercise rename behavior rather than cross-graph move guards.
+			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "demo/execution", Title: "Parser", Description: "Parser description"},
 			Status:       "Running",
 			Links:        []markdown.NodeLink{{Node: "note-1"}},
 		},

@@ -8,7 +8,7 @@ title: Home
 
 - [x] while the new workspace is loading, show the loading status at the bottom of the left sidebar
 - [x] the icon in the ubuntu toolbar still shows the cog wheel instead of frontend/src/assets/flow_logo_linux.png
-- [ ] fix any errors found in the frontend or internal code. 
+- [x] fix any errors found in the frontend or internal code. 
 
 ## Thinking
 - [ ] feature to move a sub-graph to a top level graph, or a top level graph to a sub-graph of an another graph. 
