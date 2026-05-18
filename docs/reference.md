@@ -74,6 +74,7 @@ Editing behavior:
 - Typing `/` opens the slash-command menu for supported block actions.
 - Selecting text opens a floating toolbar for inline formatting such as bold, italic, links, and highlight.
 - Highlight is persisted as inline HTML `<mark>` inside the canonical Markdown body.
+- Rendered markdown views include fold/unfold toggles for nested list branches.
 
 ## Markdown Frontmatter
 

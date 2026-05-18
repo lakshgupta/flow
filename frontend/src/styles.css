@@ -3583,6 +3583,25 @@ pre {
   max-width: none;
 }
 
+.thread-panel-rendered-markdown li {
+  position: relative;
+}
+
+.flow-nested-list-toggle {
+  margin-right: 0.35rem;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.flow-nested-list-toggle:hover {
+  color: var(--foreground);
+}
+
 .flow-mermaid-diagram {
   margin: 1rem 0;
   padding: 0.9rem;
