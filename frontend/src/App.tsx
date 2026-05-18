@@ -2573,6 +2573,42 @@ function FlowApp() {
     }
   }
 
+  async function handleDownloadWorkspaceData(): Promise<void> {
+    try {
+      clearMutationFeedback();
+      const response = await fetch("/api/workspace/download", {
+        method: "GET",
+        headers: { Accept: "application/zip" },
+      });
+
+      if (!response.ok) {
+        let message = `${response.status} ${response.statusText}`;
+        try {
+          const payload = (await response.json()) as { error?: string };
+          if (payload.error) {
+            message = payload.error;
+          }
+        } catch {
+          // Ignore non-JSON error bodies.
+        }
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const objectURL = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectURL;
+      anchor.download = "workspace.zip";
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectURL);
+      setMutationSuccess("Workspace zip downloaded.");
+    } catch (downloadError) {
+      setMutationError(toErrorMessage(downloadError));
+    }
+  }
+
   async function handleWorkspaceSelection(nextWorkspacePath: string): Promise<void> {
     const currentWorkspacePath = workspace?.workspacePath ?? "";
     const normalizedNextPath = nextWorkspacePath.trim();
@@ -3583,6 +3619,7 @@ function FlowApp() {
     setSettingsDialogOpen,
     setSettingsTab,
     handleRebuildIndex,
+    handleDownloadWorkspaceData,
     handleWorkspaceDeregister,
     handleAppearanceChange,
     handleStopGUI,
@@ -3591,6 +3628,7 @@ function FlowApp() {
   settingsDialogActionRefs.current.setSettingsDialogOpen = setSettingsDialogOpen;
   settingsDialogActionRefs.current.setSettingsTab = setSettingsTab;
   settingsDialogActionRefs.current.handleRebuildIndex = handleRebuildIndex;
+  settingsDialogActionRefs.current.handleDownloadWorkspaceData = handleDownloadWorkspaceData;
   settingsDialogActionRefs.current.handleWorkspaceDeregister = handleWorkspaceDeregister;
   settingsDialogActionRefs.current.handleAppearanceChange = handleAppearanceChange;
   settingsDialogActionRefs.current.handleStopGUI = handleStopGUI;
@@ -3605,6 +3643,10 @@ function FlowApp() {
 
   const handleSettingsDialogRebuildIndex = useCallback(() => {
     void settingsDialogActionRefs.current.handleRebuildIndex();
+  }, []);
+
+  const handleSettingsDialogDownloadWorkspaceData = useCallback(() => {
+    void settingsDialogActionRefs.current.handleDownloadWorkspaceData();
   }, []);
 
   const handleSettingsDialogDeregisterWorkspace = useCallback((workspacePath: string) => {
@@ -3623,11 +3665,13 @@ function FlowApp() {
     setOpen: handleSettingsDialogOpenChange,
     setTab: handleSettingsDialogTabChange,
     rebuildIndex: handleSettingsDialogRebuildIndex,
+    downloadWorkspaceData: handleSettingsDialogDownloadWorkspaceData,
     deregisterWorkspace: handleSettingsDialogDeregisterWorkspace,
     changeAppearance: handleSettingsDialogAppearanceChange,
     stopGUI: handleSettingsDialogStopGUI,
   }), [
     handleSettingsDialogAppearanceChange,
+    handleSettingsDialogDownloadWorkspaceData,
     handleSettingsDialogDeregisterWorkspace,
     handleSettingsDialogOpenChange,
     handleSettingsDialogRebuildIndex,

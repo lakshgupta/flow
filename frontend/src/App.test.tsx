@@ -2853,6 +2853,56 @@ describe("App graph canvas flows", () => {
     expect(await screen.findByText("Index refreshed.")).toBeInTheDocument();
   });
 
+  it("downloads workspace data as a zip from settings", async () => {
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/graphs/note") return noteGraphs("execution");
+      if (url === "/api/graphs/task") return emptyGraphLists.tasks;
+      if (url === "/api/graphs/command") return emptyGraphLists.commands;
+
+      if (url === "/api/workspace/download" && (init?.method ?? "GET") === "GET") {
+        return new Response("zip-bytes", {
+          status: 200,
+          headers: { "Content-Type": "application/zip" },
+        });
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const createObjectURLMock = vi.fn(() => "blob:flow-workspace");
+    const revokeObjectURLMock = vi.fn(() => undefined);
+    Object.defineProperty(URL, "createObjectURL", { value: createObjectURLMock, configurable: true });
+    Object.defineProperty(URL, "revokeObjectURL", { value: revokeObjectURLMock, configurable: true });
+    const anchorClickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Content");
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("button", { name: "Download workspace zip" }));
+
+    await waitFor(() => {
+      const downloadCall = fetchMock.mock.calls.find(([requestURL, requestInit]) => {
+        const value = String(requestURL);
+        return value === "/api/workspace/download" && (requestInit?.method ?? "GET") === "GET";
+      });
+      expect(downloadCall).toBeDefined();
+    });
+
+    expect(createObjectURLMock).toHaveBeenCalled();
+    expect(anchorClickSpy).toHaveBeenCalled();
+    expect(revokeObjectURLMock).toHaveBeenCalled();
+  });
+
   it("shows a document table of contents on the Home surface and persists resize", async () => {
     const customHomeResponse = {
       ...homeResponse,

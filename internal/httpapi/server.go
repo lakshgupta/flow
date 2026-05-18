@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
 	"io"
+	"io/fs"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -373,6 +373,8 @@ func (handler *apiHandler) ServeHTTP(writer http.ResponseWriter, request *http.R
 		handler.handleCalendarDocuments(writer, request)
 	case request.URL.Path == "/api/workspace" && request.Method == http.MethodPut:
 		handler.handleUpdateWorkspace(writer, request)
+	case request.URL.Path == "/api/workspace/download" && request.Method == http.MethodGet:
+		handler.handleDownloadWorkspaceArchive(writer, request)
 	case request.URL.Path == "/api/workspace/select" && request.Method == http.MethodPut:
 		handler.handleSelectWorkspace(writer, request)
 	case request.URL.Path == "/api/workspace/local" && request.Method == http.MethodDelete:
@@ -1908,6 +1910,92 @@ func buildGraphArchive(root workspace.Root, graphPath string) ([]byte, error) {
 
 	if err := zipWriter.Close(); err != nil {
 		return nil, fmt.Errorf("finalize graph archive: %w", err)
+	}
+
+	return buffer.Bytes(), nil
+}
+
+func (handler *apiHandler) handleDownloadWorkspaceArchive(writer http.ResponseWriter, _ *http.Request) {
+	archive, err := buildWorkspaceArchive(handler.options.Root)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	workspaceName := filepath.Base(handler.options.Root.WorkspacePath)
+	if workspaceName == "" || workspaceName == "." || workspaceName == string(filepath.Separator) {
+		workspaceName = "workspace"
+	}
+
+	writer.Header().Set("Content-Type", "application/zip")
+	writer.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s-workspace.zip\"", workspaceName))
+	writer.Header().Set("Content-Length", strconv.Itoa(len(archive)))
+	_, _ = writer.Write(archive)
+}
+
+func buildWorkspaceArchive(root workspace.Root) ([]byte, error) {
+	workspaceDir := root.FlowPath
+	info, err := os.Stat(workspaceDir)
+	if err != nil {
+		return nil, fmt.Errorf("read workspace: %w", err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("workspace path is not a directory")
+	}
+
+	var buffer bytes.Buffer
+	zipWriter := zip.NewWriter(&buffer)
+
+	err = filepath.WalkDir(workspaceDir, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+
+		relativePath, relErr := filepath.Rel(workspaceDir, path)
+		if relErr != nil {
+			return relErr
+		}
+		zipPath := filepath.ToSlash(filepath.Join(workspace.DirName, relativePath))
+
+		fileInfo, infoErr := entry.Info()
+		if infoErr != nil {
+			return infoErr
+		}
+
+		header, headerErr := zip.FileInfoHeader(fileInfo)
+		if headerErr != nil {
+			return headerErr
+		}
+		header.Name = zipPath
+		header.Method = zip.Deflate
+
+		archiveEntry, createErr := zipWriter.CreateHeader(header)
+		if createErr != nil {
+			return createErr
+		}
+
+		source, openErr := os.Open(path)
+		if openErr != nil {
+			return openErr
+		}
+		defer source.Close()
+
+		if _, copyErr := io.Copy(archiveEntry, source); copyErr != nil {
+			return copyErr
+		}
+
+		return nil
+	})
+	if err != nil {
+		_ = zipWriter.Close()
+		return nil, fmt.Errorf("build workspace archive: %w", err)
+	}
+
+	if err := zipWriter.Close(); err != nil {
+		return nil, fmt.Errorf("finalize workspace archive: %w", err)
 	}
 
 	return buffer.Bytes(), nil

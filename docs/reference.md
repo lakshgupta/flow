@@ -53,6 +53,7 @@ Layout rules:
 - Switching to a different workspace resets the middle panel to Home for that workspace and refreshes the index before loading tree/canvas data, so on-disk graph and node changes are reflected.
 - The right panel opens as the contextual editor for the selected document.
 - The left and right split bars are draggable, and their width ratios persist in `.flow/config/flow.yaml`.
+- The settings dialog includes an export action to download the entire current workspace data as a zip archive.
 
 Graph canvas behavior:
 

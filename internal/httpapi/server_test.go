@@ -670,6 +670,44 @@ func TestNewMuxDownloadsGraphAsZip(t *testing.T) {
 	}
 }
 
+func TestNewMuxDownloadsWorkspaceAsZip(t *testing.T) {
+	t.Parallel()
+
+	root := createGraphTreeHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/workspace/download", nil)
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		responseBody, _ := io.ReadAll(recorder.Body)
+		t.Fatalf("status = %d, want 200, body = %s", recorder.Code, string(responseBody))
+	}
+	if got := recorder.Header().Get("Content-Type"); !strings.Contains(got, "application/zip") {
+		t.Fatalf("Content-Type = %q, want application/zip", got)
+	}
+
+	zipReader, err := zip.NewReader(bytes.NewReader(recorder.Body.Bytes()), int64(recorder.Body.Len()))
+	if err != nil {
+		t.Fatalf("zip.NewReader() error = %v", err)
+	}
+
+	entryNames := make([]string, 0, len(zipReader.File))
+	for _, file := range zipReader.File {
+		entryNames = append(entryNames, file.Name)
+	}
+	if !slices.Contains(entryNames, ".flow/data/home.md") {
+		t.Fatalf("zip entries = %#v, want .flow/data/home.md", entryNames)
+	}
+	if !slices.Contains(entryNames, ".flow/config/flow.yaml") {
+		t.Fatalf("zip entries = %#v, want .flow/config/flow.yaml", entryNames)
+	}
+}
+
 func TestNewMuxGraphTreeRebuildsMissingIndex(t *testing.T) {
 	t.Parallel()
 

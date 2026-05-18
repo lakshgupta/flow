@@ -36,6 +36,7 @@ type SettingsDialogActions = {
   setOpen: (open: boolean) => void;
   setTab: (tab: SettingsTab) => void;
   rebuildIndex: () => void;
+  downloadWorkspaceData: () => void;
   deregisterWorkspace: (workspacePath: string) => void;
   changeAppearance: (appearance: "light" | "dark" | "system") => void;
   stopGUI: () => void;
@@ -143,6 +144,19 @@ function SettingsDialogComponent({
                       <div>
                         <Button disabled={rebuildingIndex} onClick={actions.rebuildIndex} type="button" variant="outline">
                           {rebuildingIndex ? "Refreshing index..." : "Refresh index"}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-3 rounded-lg border p-4">
+                      <div className="flex flex-col gap-1">
+                        <Label>Export workspace data</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Download this workspace as a zip archive, including `.flow/data` and workspace config files.
+                        </p>
+                      </div>
+                      <div>
+                        <Button onClick={actions.downloadWorkspaceData} type="button" variant="outline">
+                          Download workspace zip
                         </Button>
                       </div>
                     </div>
