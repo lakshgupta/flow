@@ -19,6 +19,7 @@ export type WorkspaceResponse = {
   appVersion?: string;
   licenseText?: string;
   copyrightText?: string;
+};
 
 export type HomeResponse = {
   id: string;

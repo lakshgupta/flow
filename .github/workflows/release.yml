@@ -119,31 +119,31 @@ jobs:
             dist/flow-${{ steps.project-version.outputs.value }}-${{ matrix.target_os }}-${{ matrix.target_arch }}.sha256
           retention-days: 1
 
-        - name: Install nfpm (Linux only)
-          if: matrix.target_os == 'linux'
-          run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+      - name: Install nfpm (Linux only)
+        if: matrix.target_os == 'linux'
+        run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
 
-        - name: Build .deb package (Linux only)
-          if: matrix.target_os == 'linux'
-          env:
-            FLOW_VERSION: ${{ steps.project-version.outputs.value }}
-          run: bash ./scripts/build-package-linux.sh ${{ matrix.target_arch }}
+      - name: Build .deb package (Linux only)
+        if: matrix.target_os == 'linux'
+        env:
+          FLOW_VERSION: ${{ steps.project-version.outputs.value }}
+        run: bash ./scripts/build-package-linux.sh ${{ matrix.target_arch }}
 
-        - name: Build .dmg package (macOS only)
-          if: matrix.target_os == 'darwin'
-          env:
-            FLOW_VERSION: ${{ steps.project-version.outputs.value }}
-          run: bash ./scripts/build-package-macos.sh ${{ matrix.target_arch }}
+      - name: Build .dmg package (macOS only)
+        if: matrix.target_os == 'darwin'
+        env:
+          FLOW_VERSION: ${{ steps.project-version.outputs.value }}
+        run: bash ./scripts/build-package-macos.sh ${{ matrix.target_arch }}
 
-        - name: Upload installable package artifact
-          uses: actions/upload-artifact@v4
-          with:
-            name: package-${{ matrix.target_os }}-${{ matrix.target_arch }}
-            path: |
-              dist/flow_${{ steps.project-version.outputs.value }}_${{ matrix.target_arch }}.deb
-              dist/flow_${{ steps.project-version.outputs.value }}_darwin_${{ matrix.target_arch }}.dmg
-            if-no-files-found: ignore
-            retention-days: 1
+      - name: Upload installable package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.target_os }}-${{ matrix.target_arch }}
+          path: |
+            dist/flow_${{ steps.project-version.outputs.value }}_${{ matrix.target_arch }}.deb
+            dist/flow_${{ steps.project-version.outputs.value }}_darwin_${{ matrix.target_arch }}.dmg
+          if-no-files-found: ignore
+          retention-days: 1
 
   # Collect all platform artifacts and publish a single GitHub release.
   publish-release:
@@ -167,7 +167,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: dist/
-           pattern: '{release-*,package-*}'
+          pattern: '{release-*,package-*}'
           merge-multiple: true
 
       - name: Publish GitHub release
@@ -184,6 +184,6 @@ jobs:
             dist/flow-${{ steps.project-version.outputs.value }}-darwin-arm64.tar.gz
             dist/flow-${{ steps.project-version.outputs.value }}-darwin-arm64.sha256
             dist/install.sh
-             dist/flow_${{ steps.project-version.outputs.value }}_amd64.deb
-             dist/flow_${{ steps.project-version.outputs.value }}_darwin_amd64.dmg
-             dist/flow_${{ steps.project-version.outputs.value }}_darwin_arm64.dmg
+            dist/flow_${{ steps.project-version.outputs.value }}_amd64.deb
+            dist/flow_${{ steps.project-version.outputs.value }}_darwin_amd64.dmg
+            dist/flow_${{ steps.project-version.outputs.value }}_darwin_arm64.dmg

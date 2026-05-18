@@ -2,6 +2,7 @@ import { ThemeProvider } from "./lib/theme";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { DocumentResponse } from "./types";
 
 vi.mock("./WysiwygEditor", () => ({
   WysiwygEditor: ({ ariaLabel, value, onChange }: { ariaLabel: string; value: string; onChange: (value: string) => void }) => (
@@ -3155,7 +3156,7 @@ describe("App graph canvas flows", () => {
       ],
       edges: [],
     };
-    let persistedDocument = {
+    let persistedDocument: DocumentResponse = {
       id: "note-1",
       type: "note",
       featureSlug: "execution",
@@ -3286,7 +3287,7 @@ describe("App graph canvas flows", () => {
       ],
       edges: [],
     };
-    let persistedDocument = {
+    let persistedDocument: DocumentResponse = {
       id: "note-1",
       type: "note",
       featureSlug: "execution",
@@ -3358,7 +3359,7 @@ describe("App graph canvas flows", () => {
 
     await screen.findByText("Content");
 
-    const fileButton = (await screen.findByText("overview.md")).closest('[data-sidebar="menu-sub-button"]');
+    const fileButton = (await screen.findByText("overview.md")).closest('[data-sidebar="menu-sub-button"]') as HTMLElement | null;
     if (fileButton === null) {
       throw new Error("missing overview file button");
     }
