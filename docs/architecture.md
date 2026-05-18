@@ -14,10 +14,11 @@ This document is intentionally high level and describes the architecture current
 
 ## System Context
 
-Flow ships as a Go application with two user-facing interfaces:
+Flow ships as a Go application with two user-facing interfaces today, with a third in progress:
 
 - CLI (`cmd/flow`) for initialization, query, mutation, graph operations, and command execution.
-- GUI (`flow gui`) served by an embedded HTTP server on loopback, with a React frontend consuming JSON APIs.
+- Web service (`flow service`) served by an embedded HTTP server on loopback, with a React frontend consuming JSON APIs.
+- Desktop (`flow desktop`) powered by Wails, reusing the same backend workflows.
 
 High-level runtime shape:
 
@@ -96,6 +97,8 @@ Backend components:
 - `internal/httpapi`: loopback JSON API and static asset serving
 - `internal/execution`: command execution planning and environment overlay
 - `internal/config`: workspace config read/write and defaults
+- `internal/core`: shared surface-independent orchestration and mode parsing (`cli`, `server`, `desktop`)
+- `internal/desktop`: desktop adapter entrypoint (Wails wiring scaffold)
 
 Frontend components:
 
@@ -124,6 +127,30 @@ HTTP API interface (`internal/httpapi`):
 - reference target lookup and GUI control endpoints.
 
 The GUI exclusively uses this API surface; no direct frontend filesystem access exists.
+
+## Multi-Surface Runtime (CLI, Service, Desktop)
+
+Flow ships with three user-facing surfaces sharing one backend logic layer:
+
+- CLI: `flow` runs command-oriented UX.
+- Service: `flow service` / `flow service stop` manages the embedded HTTP server and opens the browser.
+- Desktop: `flow desktop` / `flow desktop stop` manages the Wails-based desktop app window.
+
+Current implementation status:
+
+- A shared mode dispatcher lives in `internal/core/mode.go` and is used by `cmd/flow/main.go`.
+- `service` launches a background child process with `--serve-internal` and opens the browser on startup.
+- `desktop` resolves local/global workspace scope, ensures workspace baseline files/index through shared `internal/workspace` bootstrap, and prepares a shared `desktop.Backend` runtime context with reusable read/write methods.
+- Build-tag seams in `internal/desktop` separate default stub behavior from the Wails runtime.
+
+Target package split for shared business logic:
+
+- `internal/core`: use-case orchestration and contracts (transport-agnostic)
+- `internal/httpapi`: HTTP transport adapters only
+- `cmd/flow`: CLI transport adapters only
+- `internal/desktop`: Wails transport adapters only
+
+This keeps mutations and read workflows centralized and prevents business-logic duplication across surfaces.
 
 ## Core Flows
 

@@ -13,10 +13,61 @@ on:
       - '[0-9]+.[0-9]+.[0-9]+'
 
 jobs:
-  publish-release:
+  # Build the React frontend once and share it across all platform jobs.
+  # This avoids re-running `npm ci && npm run build` on every runner.
+  build-frontend:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Read project version
+        id: project-version
+        run: echo "value=$(tr -d '[:space:]' < internal/buildinfo/VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        run: |
+          bash ./scripts/sync-frontend-version.sh "${{ steps.project-version.outputs.value }}"
+          cd frontend
+          npm ci
+          npm run build
+
+      - name: Upload frontend assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-assets
+          path: internal/httpapi/static/
+          retention-days: 1
+
+  # Build platform-specific binaries. Each job downloads the pre-built
+  # frontend assets instead of rebuilding them.
+  build-binary:
+    needs: build-frontend
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux: webkit2gtk-4.1 is installed below for Wails/desktop support.
+          - runner: ubuntu-latest
+            target_os: linux
+            target_arch: amd64
+          # macOS: WebKit.framework is always available; no extra install needed.
+          - runner: macos-latest
+            target_os: darwin
+            target_arch: amd64
+          - runner: macos-latest
+            target_os: darwin
+            target_arch: arm64
+
+    runs-on: ${{ matrix.runner }}
 
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
@@ -38,25 +89,60 @@ jobs:
             exit 1
           fi
 
+      - name: Download frontend assets
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-assets
+          path: internal/httpapi/static/
+
+      - name: Install webkit2gtk (Linux only)
+        if: matrix.target_os == 'linux'
+        run: sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Build release artifacts
+      - name: Build release binary
         env:
           FLOW_VERSION: ${{ steps.project-version.outputs.value }}
-        run: |
-          bash ./scripts/build-release.sh linux amd64
-          FLOW_SKIP_FRONTEND_BUILD=1 bash ./scripts/build-release.sh darwin amd64
-          FLOW_SKIP_FRONTEND_BUILD=1 bash ./scripts/build-release.sh darwin arm64
+          FLOW_SKIP_FRONTEND_BUILD: "1"
+        run: bash ./scripts/build-release.sh ${{ matrix.target_os }} ${{ matrix.target_arch }}
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target_os }}-${{ matrix.target_arch }}
+          path: |
+            dist/flow-${{ steps.project-version.outputs.value }}-${{ matrix.target_os }}-${{ matrix.target_arch }}.tar.gz
+            dist/flow-${{ steps.project-version.outputs.value }}-${{ matrix.target_os }}-${{ matrix.target_arch }}.sha256
+          retention-days: 1
+
+  # Collect all platform artifacts and publish a single GitHub release.
+  publish-release:
+    needs: build-binary
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Read project version
+        id: project-version
+        run: echo "value=$(tr -d '[:space:]' < internal/buildinfo/VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          pattern: release-*
+          merge-multiple: true
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2

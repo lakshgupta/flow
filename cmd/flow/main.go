@@ -21,6 +21,8 @@ import (
 	flow "github.com/lex/flow"
 	"github.com/lex/flow/internal/buildinfo"
 	"github.com/lex/flow/internal/config"
+	"github.com/lex/flow/internal/core"
+	"github.com/lex/flow/internal/desktop"
 	"github.com/lex/flow/internal/execution"
 	"github.com/lex/flow/internal/httpapi"
 	"github.com/lex/flow/internal/index"
@@ -32,7 +34,6 @@ var version = buildinfo.ProjectVersion()
 
 const defaultGUIPort = 4317
 const guiLogRetentionWindow = 7 * 24 * time.Hour
-const workspaceGitignoreContent = "config/flow.index\nconfig/flow.index.tmp\nconfig/gui-server.json\nlogs/\n"
 
 type commandEnv struct {
 	stdout           io.Writer
@@ -51,6 +52,38 @@ type commandEnv struct {
 }
 
 var processGUIRuntime = execution.NewGUIRuntime()
+
+type subcommandRunner func(bool, []string, commandEnv) error
+type nodeSubcommandRunner func(bool, []string, commandEnv) error
+
+// subcommandRunners maps CLI subcommands to their execution handlers.
+// Keeping this centralized avoids repetitive switch-case dispatch code.
+var subcommandRunners = map[string]subcommandRunner{
+	"init":      runInit,
+	"workspace": runWorkspace,
+	"configure": runConfigure,
+	"skill":     runSkill,
+	"run":       runRun,
+	"search":    runSearch,
+	"service":   runService,
+	"desktop":   runDesktopCommand,
+	"create":    runCreate,
+	"update":    runUpdate,
+	"delete":    runDelete,
+	"node":      runNode,
+}
+
+// nodeSubcommandRunners maps `flow node` subcommands to handlers.
+var nodeSubcommandRunners = map[string]nodeSubcommandRunner{
+	"read":       runNodeRead,
+	"content":    runNodeContent,
+	"list":       runNodeList,
+	"edges":      runNodeEdges,
+	"neighbors":  runNodeNeighbors,
+	"update":     runNodeUpdate,
+	"connect":    runNodeConnect,
+	"disconnect": runNodeDisconnect,
+}
 
 type stringListFlag []string
 
@@ -106,8 +139,15 @@ func main() {
 
 func run(args []string, env commandEnv) int {
 	env = withDefaultCommandEnv(env)
+	modeRequest, err := core.ParseModeRequest(args)
+	if err != nil {
+		fmt.Fprintf(env.stderr, "error: %v\n", err)
+		return 1
+	}
 
-	if err := runCommand(args, env); err != nil {
+	err = runSurface(modeRequest, env)
+
+	if err != nil {
 		fmt.Fprintf(env.stderr, "error: %v\n", err)
 		return 1
 	}
@@ -115,9 +155,22 @@ func run(args []string, env commandEnv) int {
 	return 0
 }
 
+// runSurface dispatches into the selected UX surface. ModeServer is used
+// internally by the service command's --serve-internal flag; ModeDesktop is
+// kept for backward compatibility with scripts that use --mode desktop.
+func runSurface(modeRequest core.ModeRequest, env commandEnv) error {
+	switch modeRequest.Mode {
+	case core.ModeServer:
+		return runGUIServe(modeRequest.Global, env)
+	case core.ModeDesktop:
+		return desktop.Run(desktop.Options{Global: modeRequest.Global})
+	default:
+		return runCommand(modeRequest.Args, env)
+	}
+}
+
 func runCommand(args []string, env commandEnv) error {
-	if len(args) > 0 && isHelpOption(args[0]) {
-		writeRootHelp(env.stdout)
+	if writeHelpIfRequested(args, env.stdout, writeRootHelp) {
 		return nil
 	}
 
@@ -126,14 +179,9 @@ func runCommand(args []string, env commandEnv) error {
 		return nil
 	}
 
-	global := false
-	if len(args) > 0 && args[0] == "-g" {
-		global = true
-		args = args[1:]
-		if len(args) > 0 && isHelpOption(args[0]) {
-			writeRootHelp(env.stdout)
-			return nil
-		}
+	global, args := parseGlobalFlag(args)
+	if global && writeHelpIfRequested(args, env.stdout, writeRootHelp) {
+		return nil
 	}
 
 	if len(args) == 0 {
@@ -145,36 +193,35 @@ func runCommand(args []string, env commandEnv) error {
 		return nil
 	}
 
-	switch args[0] {
-	case "init":
-		return runInit(global, args[1:], env)
-	case "workspace":
-		return runWorkspace(global, args[1:], env)
-	case "configure":
-		return runConfigure(global, args[1:], env)
-	case "skill":
-		return runSkill(global, args[1:], env)
-	case "run":
-		return runRun(global, args[1:], env)
-	case "search":
-		return runSearch(global, args[1:], env)
-	case "gui":
-		return runGUI(global, args[1:], env)
-	case "create":
-		return runCreate(global, args[1:], env)
-	case "update":
-		return runUpdate(global, args[1:], env)
-	case "delete":
-		return runDelete(global, args[1:], env)
-	case "node":
-		return runNode(global, args[1:], env)
-	default:
+	runner, found := subcommandRunners[args[0]]
+	if !found {
 		return fmt.Errorf("unknown command %q; use `flow --help`", args[0])
 	}
+
+	return runner(global, args[1:], env)
+}
+
+func parseGlobalFlag(args []string) (bool, []string) {
+	if len(args) == 0 || args[0] != "-g" {
+		return false, args
+	}
+
+	return true, args[1:]
 }
 
 func isHelpOption(value string) bool {
 	return value == "-h" || value == "--help"
+}
+
+// writeHelpIfRequested writes command help and reports whether execution
+// should short-circuit based on common help flags.
+func writeHelpIfRequested(args []string, writer io.Writer, writeHelp func(io.Writer)) bool {
+	if len(args) == 0 || !isHelpOption(args[0]) {
+		return false
+	}
+
+	writeHelp(writer)
+	return true
 }
 
 func parseFlagSetWithHelp(flagSet *flag.FlagSet, args []string, env commandEnv, writeHelp func(io.Writer)) (bool, error) {
@@ -197,7 +244,8 @@ func writeRootHelp(w io.Writer) {
 	fmt.Fprintln(w, "  version        Print Flow version")
 	fmt.Fprintln(w, "  init           Initialize workspace files")
 	fmt.Fprintln(w, "  configure      Configure workspace settings")
-	fmt.Fprintln(w, "  gui            Start/stop GUI server")
+	fmt.Fprintln(w, "  service        Start/stop the web service (browser UI)")
+	fmt.Fprintln(w, "  desktop        Open/close the desktop app window")
 	fmt.Fprintln(w, "  create         Create note/task/command documents")
 	fmt.Fprintln(w, "  update         Update a document by path")
 	fmt.Fprintln(w, "  delete         Delete a document by path")
@@ -237,9 +285,21 @@ func writeSkillContentHelp(w io.Writer) {
 	fmt.Fprintln(w, "  --graph <graph>   Development graph root label (default: development)")
 }
 
-func writeGUIHelp(w io.Writer) {
-	fmt.Fprintln(w, "Usage: flow [-g] gui [stop] [--serve-internal]")
-	fmt.Fprintln(w, "Start the GUI server, stop it, or run internal serve mode.")
+func writeServiceHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow [-g] service [start|stop]")
+	fmt.Fprintln(w, "Start or stop the web service that serves the browser UI.")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "  flow service          Start the service and open it in the browser")
+	fmt.Fprintln(w, "  flow service start    Start the service and open it in the browser")
+	fmt.Fprintln(w, "  flow service stop     Stop the running service")
+}
+
+func writeDesktopHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow [-g] desktop [stop]")
+	fmt.Fprintln(w, "Open or close the desktop app window.")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "  flow desktop          Open the desktop window")
+	fmt.Fprintln(w, "  flow desktop stop     Close the desktop window (stop the running process)")
 }
 
 func writeCreateHelp(w io.Writer) {
@@ -357,8 +417,7 @@ func withDefaultCommandEnv(env commandEnv) commandEnv {
 }
 
 func runSkill(_ bool, args []string, env commandEnv) error {
-	if len(args) > 0 && isHelpOption(args[0]) {
-		writeSkillHelp(env.stdout)
+	if writeHelpIfRequested(args, env.stdout, writeSkillHelp) {
 		return nil
 	}
 
@@ -402,8 +461,7 @@ func runSkillContent(args []string, env commandEnv) error {
 }
 
 func runInit(global bool, args []string, env commandEnv) error {
-	if len(args) > 0 && isHelpOption(args[0]) {
-		writeInitHelp(env.stdout)
+	if writeHelpIfRequested(args, env.stdout, writeInitHelp) {
 		return nil
 	}
 
@@ -460,8 +518,7 @@ func runInit(global bool, args []string, env commandEnv) error {
 }
 
 func runWorkspace(global bool, args []string, env commandEnv) error {
-	if len(args) > 0 && isHelpOption(args[0]) {
-		writeWorkspaceHelp(env.stdout)
+	if writeHelpIfRequested(args, env.stdout, writeWorkspaceHelp) {
 		return nil
 	}
 
@@ -523,7 +580,7 @@ func runConfigure(global bool, args []string, env commandEnv) error {
 			return err
 		}
 
-		workspaceConfig, err := readOrDefaultConfig(root.ConfigPath)
+		workspaceConfig, err := workspace.ReadOrDefaultConfig(root.ConfigPath)
 		if err != nil {
 			return err
 		}
@@ -567,7 +624,7 @@ func runConfigure(global bool, args []string, env commandEnv) error {
 		return err
 	}
 
-	workspaceConfig, err := readOrDefaultConfig(root.ConfigPath)
+	workspaceConfig, err := workspace.ReadOrDefaultConfig(root.ConfigPath)
 	if err != nil {
 		return err
 	}
@@ -581,15 +638,17 @@ func runConfigure(global bool, args []string, env commandEnv) error {
 	return nil
 }
 
-func runGUI(global bool, args []string, env commandEnv) error {
-	flagSet := flag.NewFlagSet("gui", flag.ContinueOnError)
+func runService(global bool, args []string, env commandEnv) error {
+	flagSet := flag.NewFlagSet("service", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
 	flagSet.Usage = func() {
-		writeGUIHelp(env.stdout)
+		writeServiceHelp(env.stdout)
 	}
 
-	serveInternal := flagSet.Bool("serve-internal", false, "internal GUI server mode")
-	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeGUIHelp)
+	// --serve-internal is used by the process launcher to start the HTTP
+	// server in a background child process. It is intentionally undocumented.
+	serveInternal := flagSet.Bool("serve-internal", false, "internal: run the HTTP server in-process")
+	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeServiceHelp)
 	if err != nil {
 		return err
 	}
@@ -599,37 +658,72 @@ func runGUI(global bool, args []string, env commandEnv) error {
 
 	if *serveInternal {
 		if flagSet.NArg() != 0 {
-			return fmt.Errorf("flow gui --serve-internal does not accept positional arguments")
+			return fmt.Errorf("flow service --serve-internal does not accept positional arguments")
 		}
 
 		return runGUIServe(global, env)
 	}
 
 	if flagSet.NArg() > 0 {
-		if flagSet.Arg(0) == "stop" {
+		switch flagSet.Arg(0) {
+		case "start":
 			if flagSet.NArg() != 1 {
-				return fmt.Errorf("flow gui stop does not accept extra arguments")
+				return fmt.Errorf("flow service start does not accept extra arguments")
+			}
+
+			return runGUIStart(global, env)
+		case "stop":
+			if flagSet.NArg() != 1 {
+				return fmt.Errorf("flow service stop does not accept extra arguments")
 			}
 
 			return runGUIStop(global, env)
+		default:
+			return fmt.Errorf("unknown service subcommand %q; use `flow service --help`", flagSet.Arg(0))
 		}
-
-		return fmt.Errorf("unknown gui subcommand %q; use `flow gui --help`", flagSet.Arg(0))
 	}
 
 	return runGUIStart(global, env)
 }
 
-func runGUIStart(global bool, env commandEnv) error {
-	root, err := resolveGUIRoot(global, env)
-	if err != nil {
-		return err
+func runDesktopCommand(global bool, args []string, env commandEnv) error {
+	flagSet := flag.NewFlagSet("desktop", flag.ContinueOnError)
+	flagSet.SetOutput(io.Discard)
+	flagSet.Usage = func() {
+		writeDesktopHelp(env.stdout)
 	}
 
-	workspaceConfig, err := readOrDefaultConfig(root.ConfigPath)
+	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeDesktopHelp)
 	if err != nil {
 		return err
 	}
+	if helpShown {
+		return nil
+	}
+
+	if flagSet.NArg() > 0 {
+		switch flagSet.Arg(0) {
+		case "stop":
+			if flagSet.NArg() != 1 {
+				return fmt.Errorf("flow desktop stop does not accept extra arguments")
+			}
+
+			return runDesktopStop(global, env)
+		default:
+			return fmt.Errorf("unknown desktop subcommand %q; use `flow desktop --help`", flagSet.Arg(0))
+		}
+	}
+
+	return desktop.Run(desktop.Options{Global: global})
+}
+
+func runGUIStart(global bool, env commandEnv) error {
+	context, err := resolveGUIContext(global, env)
+	if err != nil {
+		return err
+	}
+	root := context.root
+	workspaceConfig := context.workspaceConfig
 
 	url := fmt.Sprintf("http://127.0.0.1:%d", workspaceConfig.GUI.Port)
 	restarted, err := stopRunningGUI(root, env)
@@ -679,20 +773,17 @@ func runGUIStart(global bool, env commandEnv) error {
 
 	scopeLabel := string(root.Scope)
 
-	fmt.Fprintf(env.stdout, "%s %s GUI server for %s at %s\n", action, scopeLabel, root.WorkspacePath, url)
+	fmt.Fprintf(env.stdout, "%s %s service for %s at %s\n", action, scopeLabel, root.WorkspacePath, url)
 	return nil
 }
 
 func runGUIServe(global bool, env commandEnv) error {
-	root, err := resolveGUIRoot(global, env)
+	context, err := resolveGUIContext(global, env)
 	if err != nil {
 		return err
 	}
-
-	workspaceConfig, err := readOrDefaultConfig(root.ConfigPath)
-	if err != nil {
-		return err
-	}
+	root := context.root
+	workspaceConfig := context.workspaceConfig
 
 	stopRequested := make(chan struct{})
 	var stopOnce sync.Once
@@ -744,13 +835,30 @@ func runGUIStop(global bool, env commandEnv) error {
 
 	scopeLabel := string(root.Scope)
 
-	fmt.Fprintf(env.stdout, "Stopped %s GUI server for %s\n", scopeLabel, root.WorkspacePath)
+	fmt.Fprintf(env.stdout, "Stopped %s service for %s\n", scopeLabel, root.WorkspacePath)
+	return nil
+}
+
+// runDesktopStop stops the running desktop process for the resolved workspace.
+// The desktop app writes the same GUI state file as the web service, so this
+// reuses the same stop mechanism.
+func runDesktopStop(global bool, env commandEnv) error {
+	root, err := resolveGUIRoot(global, env)
+	if err != nil {
+		return err
+	}
+
+	_, err = stopRunningGUI(root, env)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(env.stdout, "Stopped desktop app for %s\n", root.WorkspacePath)
 	return nil
 }
 
 func runCreate(global bool, args []string, env commandEnv) error {
-	if len(args) > 0 && isHelpOption(args[0]) {
-		writeCreateHelp(env.stdout)
+	if writeHelpIfRequested(args, env.stdout, writeCreateHelp) {
 		return nil
 	}
 
@@ -815,7 +923,7 @@ func runCreate(global bool, args []string, env commandEnv) error {
 
 	fileNameValue := ensureMarkdownFileName(*fileName)
 	idValue := deriveCreateDocumentID(*graph, fileNameValue)
-	workspaceDocument, err := workspace.CreateDocument(root, workspace.CreateDocumentInput{
+	workspaceDocument, err := workspace.CreateDocumentFromCoreRequest(root, core.CreateDocumentRequest{
 		Type:        documentType,
 		FeatureSlug: *featureSlug,
 		FileName:    fileNameValue,
@@ -894,7 +1002,7 @@ func runUpdate(global bool, args []string, env commandEnv) error {
 		return err
 	}
 
-	workspaceDocument, err := workspace.UpdateDocumentByPath(root, *pathValue, documentPatchFromFlags(visited, documentPatchValues{
+	workspaceDocument, err := workspace.UpdateDocumentByPathFromCorePatch(root, *pathValue, documentPatchFromFlags(visited, documentPatchValues{
 		id:          *id,
 		graph:       *graph,
 		title:       *title,
@@ -952,8 +1060,7 @@ func runDelete(global bool, args []string, env commandEnv) error {
 }
 
 func runNode(global bool, args []string, env commandEnv) error {
-	if len(args) > 0 && isHelpOption(args[0]) {
-		writeNodeHelp(env.stdout)
+	if writeHelpIfRequested(args, env.stdout, writeNodeHelp) {
 		return nil
 	}
 
@@ -961,26 +1068,33 @@ func runNode(global bool, args []string, env commandEnv) error {
 		return fmt.Errorf("flow node requires a subcommand: read, list, edges, neighbors, update, connect, or disconnect; use `flow node --help`")
 	}
 
-	switch args[0] {
-	case "read":
-		return runNodeRead(global, args[1:], env)
-	case "content":
-		return runNodeContent(global, args[1:], env)
-	case "list":
-		return runNodeList(global, args[1:], env)
-	case "edges":
-		return runNodeEdges(global, args[1:], env)
-	case "neighbors":
-		return runNodeNeighbors(global, args[1:], env)
-	case "update":
-		return runNodeUpdate(global, args[1:], env)
-	case "connect":
-		return runNodeConnect(global, args[1:], env)
-	case "disconnect":
-		return runNodeDisconnect(global, args[1:], env)
-	default:
+	runner, found := nodeSubcommandRunners[args[0]]
+	if !found {
 		return fmt.Errorf("unknown node subcommand %q; use `flow node --help`", args[0])
 	}
+
+	return runner(global, args[1:], env)
+}
+
+type guiContext struct {
+	root            workspace.Root
+	workspaceConfig config.Workspace
+}
+
+// resolveGUIContext resolves GUI workspace root and config once so GUI
+// command paths can share setup behavior.
+func resolveGUIContext(global bool, env commandEnv) (guiContext, error) {
+	root, err := resolveGUIRoot(global, env)
+	if err != nil {
+		return guiContext{}, err
+	}
+
+	workspaceConfig, err := workspace.ReadOrDefaultConfig(root.ConfigPath)
+	if err != nil {
+		return guiContext{}, err
+	}
+
+	return guiContext{root: root, workspaceConfig: workspaceConfig}, nil
 }
 
 func runNodeRead(global bool, args []string, env commandEnv) error {
@@ -1416,7 +1530,7 @@ func runNodeUpdate(global bool, args []string, env commandEnv) error {
 		return err
 	}
 
-	workspaceDocument, err := workspace.UpdateDocumentByID(root, *id, documentPatchFromFlags(visited, documentPatchValues{
+	workspaceDocument, err := workspace.UpdateDocumentByIDFromCorePatch(root, *id, documentPatchFromFlags(visited, documentPatchValues{
 		title:       *title,
 		description: *description,
 		createdAt:   *createdAt,
@@ -1977,8 +2091,8 @@ type documentPatchValues struct {
 	run         string
 }
 
-func documentPatchFromFlags(visited map[string]bool, values documentPatchValues) workspace.DocumentPatch {
-	patch := workspace.DocumentPatch{}
+func documentPatchFromFlags(visited map[string]bool, values documentPatchValues) core.UpdateDocumentPatch {
+	patch := core.UpdateDocumentPatch{}
 	if visited["id"] {
 		patch.ID = stringPointer(values.id)
 	}
@@ -2338,114 +2452,7 @@ func globalLocatorPath(env commandEnv) (string, error) {
 }
 
 func initializeWorkspace(root workspace.Root) error {
-	if err := os.MkdirAll(root.FlowPath, 0o755); err != nil {
-		return fmt.Errorf("create workspace metadata directory: %w", err)
-	}
-
-	for _, path := range []string{root.ConfigDirPath, root.DataPath, root.GraphsPath} {
-		if err := os.MkdirAll(path, 0o755); err != nil {
-			return fmt.Errorf("create workspace directory %s: %w", path, err)
-		}
-	}
-
-	if err := ensureWorkspaceGitignore(root); err != nil {
-		return err
-	}
-
-	workspaceConfig, err := readOrDefaultConfig(root.ConfigPath)
-	if err != nil {
-		return err
-	}
-
-	if err := config.Write(root.ConfigPath, workspaceConfig); err != nil {
-		return err
-	}
-
-	if err := ensureHomeDocument(root.HomePath); err != nil {
-		return err
-	}
-
-	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func ensureWorkspaceGitignore(root workspace.Root) error {
-	ignorePath := filepath.Join(root.FlowPath, ".gitignore")
-	requiredEntries := strings.Split(strings.TrimSpace(strings.ReplaceAll(workspaceGitignoreContent, "\r\n", "\n")), "\n")
-
-	existingContent, err := os.ReadFile(ignorePath)
-	if errors.Is(err, os.ErrNotExist) {
-		if err := os.WriteFile(ignorePath, []byte(workspaceGitignoreContent), 0o644); err != nil {
-			return fmt.Errorf("write workspace ignore file: %w", err)
-		}
-
-		return nil
-	}
-
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("read workspace ignore file: %w", err)
-	}
-
-	existingLines := []string{}
-	if err == nil {
-		existingLines = strings.Split(strings.ReplaceAll(string(existingContent), "\r\n", "\n"), "\n")
-	}
-
-	present := make(map[string]bool, len(existingLines))
-	for _, line := range existingLines {
-		present[strings.TrimSpace(line)] = true
-	}
-
-	updatedLines := append([]string(nil), existingLines...)
-	changed := false
-	for _, entry := range requiredEntries {
-		if present[entry] {
-			continue
-		}
-		updatedLines = append(updatedLines, entry)
-		changed = true
-	}
-
-	if err == nil && !changed {
-		return nil
-	}
-
-	content := strings.TrimRight(strings.Join(updatedLines, "\n"), "\n") + "\n"
-	if err := os.WriteFile(ignorePath, []byte(content), 0o644); err != nil {
-		return fmt.Errorf("write workspace ignore file: %w", err)
-	}
-
-	return nil
-}
-
-func readOrDefaultConfig(path string) (config.Workspace, error) {
-	workspaceConfig, err := config.Read(path)
-	if err == nil {
-		return workspaceConfig, nil
-	}
-
-	if !config.IsNotFound(err) {
-		return config.Workspace{}, err
-	}
-
-	return config.DefaultWorkspace(), nil
-}
-
-func ensureHomeDocument(path string) error {
-	if _, err := os.Stat(path); err == nil {
-		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("stat home document: %w", err)
-	}
-
-	if err := os.WriteFile(path, []byte("# Home\n"), 0o644); err != nil {
-		return fmt.Errorf("write home document: %w", err)
-	}
-
-	return nil
+	return workspace.EnsureInitialized(root)
 }
 
 func runExternalCommand(commandExecution execution.CommandExecution, stdout io.Writer, stderr io.Writer) error {
@@ -2482,9 +2489,9 @@ func launchGUIProcess(global bool, root workspace.Root) error {
 		return fmt.Errorf("resolve executable: %w", err)
 	}
 
-	args := []string{"gui", "--serve-internal"}
+	args := []string{"service", "--serve-internal"}
 	if global {
-		args = []string{"-g", "gui", "--serve-internal"}
+		args = []string{"-g", "service", "--serve-internal"}
 	}
 
 	command := exec.Command(executable, args...)

@@ -504,6 +504,34 @@ func TestNewMuxRebuildsIndexAfterExternalFileChange(t *testing.T) {
 	}
 }
 
+func TestNewMuxCreatesGraphsAndReindexes(t *testing.T) {
+	t.Parallel()
+
+	root := createGraphTreeHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	created := performJSONRequestWithBody[createGraphResponse](t, handler, http.MethodPost, "/api/graphs", map[string]any{
+		"name": "delivery/parser",
+	})
+	if created.Name != "delivery/parser" {
+		t.Fatalf("created = %#v, want delivery/parser", created)
+	}
+
+	if info, err := os.Stat(filepath.Join(root.FlowPath, "data", "content", "delivery", "parser")); err != nil || !info.IsDir() {
+		t.Fatalf("created graph dir stat error = %v, info = %#v", err, info)
+	}
+
+	tree := performJSONRequest[graphTreeResponse](t, handler, http.MethodGet, "/api/graphs")
+	if !slices.ContainsFunc(tree.Graphs, func(node graphTreeNodeResponse) bool {
+		return node.GraphPath == "delivery" || node.GraphPath == "delivery/parser"
+	}) {
+		t.Fatalf("graphTree.Graphs = %#v, want delivery graph entries after create", tree.Graphs)
+	}
+}
+
 func TestNewMuxGraphTreeRebuildsMissingIndex(t *testing.T) {
 	t.Parallel()
 
@@ -725,6 +753,32 @@ func TestNewMuxRenamesGraphsAndReindexes(t *testing.T) {
 	}
 	if !slices.Contains(paths, "delivery/execution") {
 		t.Fatalf("graph paths = %#v, want delivery/execution", paths)
+	}
+}
+
+func TestNewMuxDeletesGraphsAndReindexes(t *testing.T) {
+	t.Parallel()
+
+	root := createGraphTreeHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	deleted := performJSONRequest[deleteGraphResponse](t, handler, http.MethodDelete, "/api/graphs/execution")
+	if !deleted.Deleted || deleted.Name != "execution" {
+		t.Fatalf("deleted = %#v, want deleted execution graph", deleted)
+	}
+
+	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "content", "execution")); !os.IsNotExist(err) {
+		t.Fatalf("Stat(deleted graph dir) error = %v, want not exist", err)
+	}
+
+	tree := performJSONRequest[graphTreeResponse](t, handler, http.MethodGet, "/api/graphs")
+	if slices.ContainsFunc(tree.Graphs, func(node graphTreeNodeResponse) bool {
+		return node.GraphPath == "execution" || strings.HasPrefix(node.GraphPath, "execution/")
+	}) {
+		t.Fatalf("graphTree.Graphs = %#v, want execution graph removed", tree.Graphs)
 	}
 }
 

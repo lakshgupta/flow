@@ -35,8 +35,8 @@ flow init
 flow create note --file overview --graph design/20260502-001-FEAT-example --title "Feature overview"
 flow create task --file implement --graph development/20260502-001-FEAT-example --title "Implement feature" --status Ready
 
-# 3) Open the GUI
-flow gui
+# 3) Open the web service in the browser
+flow service
 ```
 
 ## Core Concepts
@@ -112,8 +112,8 @@ flow -g configure --workspace ~/flow-workspace
 # Initialize it (creates .flow/ files at the configured path)
 flow -g init
 
-# Open the global GUI
-flow -g gui
+# Open the global web service
+flow -g service
 ```
 
 ### Set Up a Local Workspace in a Project
@@ -126,16 +126,16 @@ cd /path/to/your-repo
 # Initialize a local workspace and register it with the global GUI
 flow init
 
-# Open the local GUI on its own port
+# Open the local web service on its own port
 flow configure --gui-port 4318
-flow gui
+flow service
 ```
 
 `flow init` in a project directory registers the project automatically with the global workspace, so it shows up in the **global GUI's workspace switcher** without any extra steps.
 
 ### Using the Global GUI as a Workspace Hub
 
-When you start the global GUI (`flow -g gui`), the sidebar shows a workspace selector listing the global workspace and every registered local workspace. Click any entry to switch context, browse its graphs, and edit its documents — all from the same browser tab.
+When you start the global web service (`flow -g service`), the sidebar shows a workspace selector listing the global workspace and every registered local workspace. Click any entry to switch context, browse its graphs, and edit its documents — all from the same browser tab.
 
 To see which workspaces are registered:
 
@@ -161,19 +161,25 @@ Recommended pattern:
 
 ## GUI
 
-Start GUI:
+Start the web service:
 
 ```bash
-flow gui
+flow service
 ```
 
-Stop GUI:
+Stop it:
 
 ```bash
-flow gui stop
+flow service stop
 ```
 
-In the GUI you can:
+Open the desktop app:
+
+```bash
+flow desktop
+```
+
+In both interfaces you can:
 
 - browse graph trees,
 - open and edit node content,
@@ -227,6 +233,12 @@ bash ./scripts/install-local-release.sh
 
 ### From Local Source
 
+Flow has three build modes, each producing the same `flow` binary with different capabilities enabled:
+
+#### CLI + Web server (default)
+
+No extra dependencies. The binary runs the CLI and serves the web GUI over HTTP.
+
 ```bash
 cd frontend
 npm ci
@@ -236,8 +248,66 @@ cd ..
 go build ./cmd/flow
 ```
 
-The canonical project version is stored in `internal/buildinfo/VERSION`.
-Frontend builds and release scripts sync from that file so the Go binary version and frontend package metadata stay aligned.
+#### Desktop app (Wails window)
+
+The standard release build already includes desktop mode. To build locally on Linux, first install the webkit2gtk development headers:
+
+```bash
+sudo apt install libwebkit2gtk-4.1-dev build-essential
+```
+
+Then run the same release build script:
+
+```bash
+cd frontend && npm ci && npm run build && cd ..
+bash scripts/build-release.sh linux amd64
+bash scripts/install-linux-amd64.sh
+```
+
+On macOS, WebKit.framework is built into the OS — no extra install needed. Just run the build script on a macOS machine.
+
+## Running Flow
+
+### CLI
+
+All Flow commands work without starting any server:
+
+```bash
+flow init
+flow create note --graph design/001 --file overview --title "Overview"
+flow node list
+flow search "my query"
+```
+
+### Web service
+
+```bash
+# Start the service (opens a browser tab)
+flow service
+
+# Stop the service
+flow service stop
+```
+
+By default the server listens on port 4317. Change it with:
+
+```bash
+flow configure --gui-port 4318
+```
+
+### Desktop app
+
+Build the desktop binary first (see above), then launch it from a desktop terminal (not a VS Code snap terminal):
+
+```bash
+flow desktop
+```
+
+The desktop app uses the same embedded frontend assets as the web server, so only one frontend build is needed regardless of which mode you run.
+
+The canonical project version is stored in `internal/buildinfo/VERSION`. Frontend builds and release scripts sync from that file so the Go binary version and frontend package metadata stay aligned.
+
+
 
 ## Learn More
 

@@ -51,7 +51,19 @@ if [[ "${FLOW_SKIP_FRONTEND_BUILD:-0}" != "1" ]]; then
 fi
 
 pushd "$ROOT_DIR" >/dev/null
-	CGO_ENABLED=0 GOOS="$TARGET_OS" GOARCH="$TARGET_ARCH" go build \
+	# Desktop mode (Wails) requires CGO and platform-specific WebView libraries.
+	# - Linux: webkit2gtk-4.1 (install libwebkit2gtk-4.1-dev before building)
+	# - macOS: WebKit.framework is always available; no extra install needed
+	# The webkit2_41 tag switches Wails from webkit2gtk-4.0 to webkit2gtk-4.1,
+	# required on Ubuntu 24.04+ and other modern distros.
+	if [[ "$TARGET_OS" == "linux" ]]; then
+		WAILS_TAGS="wails,production,webkit2_41"
+	else
+		WAILS_TAGS="wails,production"
+	fi
+
+	CGO_ENABLED=1 GOOS="$TARGET_OS" GOARCH="$TARGET_ARCH" go build \
+		-tags="$WAILS_TAGS" \
 		-trimpath \
 		-ldflags "-s -w -X main.version=${VERSION}" \
 		-o "$STAGING_DIR/flow" \

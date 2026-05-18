@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/lex/flow/internal/config"
+	"github.com/lex/flow/internal/core"
 	"github.com/lex/flow/internal/graph"
 	"github.com/lex/flow/internal/index"
 	"github.com/lex/flow/internal/markdown"
@@ -423,25 +424,7 @@ func (handler *apiHandler) handleCreateDocument(writer http.ResponseWriter, requ
 		return
 	}
 
-	documentType := markdown.DocumentType(strings.TrimSpace(payload.Type))
-	workspaceDocument, err := workspace.CreateDocument(handler.options.Root, workspace.CreateDocumentInput{
-		Type:        documentType,
-		FeatureSlug: strings.TrimSpace(payload.FeatureSlug),
-		FileName:    strings.TrimSpace(payload.FileName),
-		ID:          strings.TrimSpace(payload.ID),
-		Graph:       strings.TrimSpace(payload.Graph),
-		Title:       payload.Title,
-		Description: payload.Description,
-		Tags:        payload.Tags,
-		CreatedAt:   payload.CreatedAt,
-		UpdatedAt:   payload.UpdatedAt,
-		Body:        payload.Body,
-		Status:      payload.Status,
-		Links:       nodeLinksFromPayload(payload.Links),
-		Name:        payload.Name,
-		Env:         payload.Env,
-		Run:         payload.Run,
-	})
+	workspaceDocument, err := core.CreateDocument(createDocumentRequestFromPayload(payload), handler.createDocument)
 	if err != nil {
 		writeMutationError(writer, err)
 		return
@@ -653,7 +636,7 @@ func (handler *apiHandler) handleUpdateWorkspace(writer http.ResponseWriter, req
 }
 
 func (handler *apiHandler) handleRebuildIndex(writer http.ResponseWriter, _ *http.Request) {
-	if err := index.Rebuild(handler.options.Root.IndexPath, handler.options.Root.FlowPath); err != nil {
+	if err := core.RebuildIndex(core.RebuildIndexRequest{IndexPath: handler.options.Root.IndexPath, FlowPath: handler.options.Root.FlowPath}); err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -709,12 +692,19 @@ func (handler *apiHandler) handleCreateGraph(writer http.ResponseWriter, request
 		return
 	}
 
-	if err := workspace.CreateGraph(handler.options.Root, workspace.CreateGraphInput{Name: payload.Name}); err != nil {
-		writeError(writer, http.StatusBadRequest, err.Error())
-		return
-	}
+	if err := core.CreateGraph(core.CreateGraphRequest{
+		Name:      payload.Name,
+		IndexPath: handler.options.Root.IndexPath,
+		FlowPath:  handler.options.Root.FlowPath,
+	}, func(name string) error {
+		return workspace.CreateGraph(handler.options.Root, workspace.CreateGraphInput{Name: name})
+	}); err != nil {
+		var invalidMutation workspace.InvalidMutationError
+		if errors.As(err, &invalidMutation) {
+			writeError(writer, http.StatusBadRequest, err.Error())
+			return
+		}
 
-	if err := index.Rebuild(handler.options.Root.IndexPath, handler.options.Root.FlowPath); err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -808,7 +798,7 @@ func (handler *apiHandler) createGraphFileNote(graphName string, header *multipa
 	assetURL := "/api/files?path=" + url.QueryEscape(assetRelativePath)
 	body := noteBodyForAsset(assetURL, title, filepath.Ext(assetFileName))
 
-	createdDocument, err := workspace.CreateDocument(handler.options.Root, workspace.CreateDocumentInput{
+	createdDocument, err := core.CreateDocument(core.CreateDocumentRequest{
 		Type:        markdown.NoteType,
 		FeatureSlug: graphName,
 		FileName:    noteSlug,
@@ -817,12 +807,47 @@ func (handler *apiHandler) createGraphFileNote(graphName string, header *multipa
 		Title:       title,
 		Description: "",
 		Body:        body,
-	})
+	}, handler.createDocument)
 	if err != nil {
 		return documentResponse{}, err
 	}
 
 	return loadDocumentResponse(handler.options.Root, documentIDForResponse(createdDocument.Document))
+}
+
+// createDocumentRequestFromPayload keeps HTTP-specific decoding at the edge
+// before handing the canonical create request to shared core workflows.
+func createDocumentRequestFromPayload(payload createDocumentRequest) core.CreateDocumentRequest {
+	return core.CreateDocumentRequest{
+		Type:        markdown.DocumentType(strings.TrimSpace(payload.Type)),
+		FeatureSlug: strings.TrimSpace(payload.FeatureSlug),
+		FileName:    strings.TrimSpace(payload.FileName),
+		ID:          strings.TrimSpace(payload.ID),
+		Graph:       strings.TrimSpace(payload.Graph),
+		Title:       payload.Title,
+		Description: payload.Description,
+		Tags:        payload.Tags,
+		CreatedAt:   payload.CreatedAt,
+		UpdatedAt:   payload.UpdatedAt,
+		Body:        payload.Body,
+		Status:      payload.Status,
+		Links:       nodeLinksFromPayload(payload.Links),
+		Name:        payload.Name,
+		Env:         payload.Env,
+		Run:         payload.Run,
+	}
+}
+
+// createDocument adapts shared document-create requests onto canonical
+// workspace mutations so HTTP stays a thin transport layer.
+func (handler *apiHandler) createDocument(request core.CreateDocumentRequest) (markdown.WorkspaceDocument, error) {
+	return workspace.CreateDocumentFromCoreRequest(handler.options.Root, request)
+}
+
+// updateDocument adapts shared document-update requests onto canonical
+// workspace mutations so HTTP stays a thin transport layer.
+func (handler *apiHandler) updateDocument(documentID string, patch core.UpdateDocumentPatch) (markdown.WorkspaceDocument, error) {
+	return workspace.UpdateDocumentByIDFromCorePatch(handler.options.Root, documentID, patch)
 }
 
 func (handler *apiHandler) handleWorkspaceFile(writer http.ResponseWriter, request *http.Request) {
@@ -1268,7 +1293,28 @@ func (handler *apiHandler) handleUpdateDocument(writer http.ResponseWriter, requ
 		return
 	}
 
-	workspaceDocument, err := workspace.UpdateDocumentByID(handler.options.Root, documentID, workspace.DocumentPatch{
+	workspaceDocument, err := core.UpdateDocument(core.UpdateDocumentRequest{
+		DocumentID: documentID,
+		Patch:      updateDocumentPatchFromPayload(payload),
+	}, handler.updateDocument)
+	if err != nil {
+		writeMutationError(writer, err)
+		return
+	}
+
+	response, err := loadDocumentResponse(handler.options.Root, documentIDForResponse(workspaceDocument.Document))
+	if err != nil {
+		writeMutationError(writer, err)
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, response)
+}
+
+// updateDocumentPatchFromPayload keeps HTTP decoding and pointer semantics at
+// the transport edge before passing a canonical patch into shared core logic.
+func updateDocumentPatchFromPayload(payload updateDocumentRequest) core.UpdateDocumentPatch {
+	return core.UpdateDocumentPatch{
 		ID:          payload.ID,
 		Graph:       payload.Graph,
 		FileName:    payload.FileName,
@@ -1283,19 +1329,7 @@ func (handler *apiHandler) handleUpdateDocument(writer http.ResponseWriter, requ
 		Name:        payload.Name,
 		Env:         payload.Env,
 		Run:         payload.Run,
-	})
-	if err != nil {
-		writeMutationError(writer, err)
-		return
 	}
-
-	response, err := loadDocumentResponse(handler.options.Root, documentIDForResponse(workspaceDocument.Document))
-	if err != nil {
-		writeMutationError(writer, err)
-		return
-	}
-
-	writeJSON(writer, http.StatusOK, response)
 }
 
 func (handler *apiHandler) handleRenameGraph(writer http.ResponseWriter, request *http.Request) {
@@ -1317,13 +1351,23 @@ func (handler *apiHandler) handleRenameGraph(writer http.ResponseWriter, request
 	}
 	payload.Name = strings.TrimSpace(payload.Name)
 
-	if err := workspace.RenameGraph(handler.options.Root, graphName, payload.Name); err != nil {
-		writeMutationError(writer, err)
-		return
-	}
-
-	if err := remapGraphDirectoryColors(handler.options.Root, graphName, payload.Name); err != nil {
-		writeError(writer, http.StatusInternalServerError, err.Error())
+	if err := core.RenameGraph(core.RenameGraphRequest{
+		CurrentName: graphName,
+		NextName:    payload.Name,
+		AfterRename: func() error {
+			return remapGraphDirectoryColors(handler.options.Root, graphName, payload.Name)
+		},
+	}, func(currentName string, nextName string) error {
+		return workspace.RenameGraph(handler.options.Root, currentName, nextName)
+	}); err != nil {
+		var invalidMutation workspace.InvalidMutationError
+		var documentNotFound workspace.DocumentNotFoundError
+		switch {
+		case errors.As(err, &invalidMutation), errors.As(err, &documentNotFound):
+			writeMutationError(writer, err)
+		default:
+			writeError(writer, http.StatusInternalServerError, err.Error())
+		}
 		return
 	}
 
@@ -1342,13 +1386,22 @@ func (handler *apiHandler) handleDeleteGraph(writer http.ResponseWriter, request
 		return
 	}
 
-	if err := workspace.DeleteGraph(handler.options.Root, graphName); err != nil {
-		writeMutationError(writer, err)
-		return
-	}
-
-	if err := deleteGraphDirectoryColors(handler.options.Root, graphName); err != nil {
-		writeError(writer, http.StatusInternalServerError, err.Error())
+	if err := core.DeleteGraph(core.DeleteGraphRequest{
+		Name: graphName,
+		AfterDelete: func() error {
+			return deleteGraphDirectoryColors(handler.options.Root, graphName)
+		},
+	}, func(name string) error {
+		return workspace.DeleteGraph(handler.options.Root, name)
+	}); err != nil {
+		var invalidMutation workspace.InvalidMutationError
+		var documentNotFound workspace.DocumentNotFoundError
+		switch {
+		case errors.As(err, &invalidMutation), errors.As(err, &documentNotFound):
+			writeMutationError(writer, err)
+		default:
+			writeError(writer, http.StatusInternalServerError, err.Error())
+		}
 		return
 	}
 
@@ -1461,7 +1514,9 @@ func (handler *apiHandler) handleDeleteDocument(writer http.ResponseWriter, requ
 		return
 	}
 
-	relativePath, err := workspace.DeleteDocumentByID(handler.options.Root, documentID)
+	relativePath, err := core.DeleteDocument(core.DeleteDocumentRequest{DocumentID: strings.TrimSpace(documentID)}, func(id string) (string, error) {
+		return workspace.DeleteDocumentByID(handler.options.Root, id)
+	})
 	if err != nil {
 		writeMutationError(writer, err)
 		return
@@ -1678,16 +1733,7 @@ func (handler *apiHandler) handleGUIStop(writer http.ResponseWriter, _ *http.Req
 }
 
 func readWorkspaceConfig(root workspace.Root) (config.Workspace, error) {
-	workspaceConfig, err := config.Read(root.ConfigPath)
-	if err == nil {
-		return workspaceConfig, nil
-	}
-
-	if config.IsNotFound(err) {
-		return config.DefaultWorkspace(), nil
-	}
-
-	return config.Workspace{}, err
+	return workspace.ReadOrDefaultConfig(root.ConfigPath)
 }
 
 func workspaceConfigGraphColors(root workspace.Root) map[string]string {
@@ -2475,7 +2521,7 @@ func writeHomeDocument(root workspace.Root, payload updateHomeRequest) error {
 		return fmt.Errorf("write home document: %w", err)
 	}
 
-	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {
+	if err := core.RebuildIndex(core.RebuildIndexRequest{IndexPath: root.IndexPath, FlowPath: root.FlowPath}); err != nil {
 		return fmt.Errorf("rebuild index: %w", err)
 	}
 

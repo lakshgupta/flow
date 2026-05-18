@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/lex/flow/internal/index"
+	"github.com/lex/flow/internal/core"
 	"github.com/lex/flow/internal/markdown"
 )
 
@@ -1066,7 +1066,7 @@ func rebuildIndex(root Root) error {
 		return fmt.Errorf("create workspace metadata directory: %w", err)
 	}
 
-	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {
+	if err := core.RebuildIndex(core.RebuildIndexRequest{IndexPath: root.IndexPath, FlowPath: root.FlowPath}); err != nil {
 		return err
 	}
 

@@ -45,7 +45,7 @@ Layout rules:
 
 ## Browser GUI Details
 
-`flow gui` opens a desktop-oriented three-panel workspace in the browser.
+`flow service` opens a desktop-oriented three-panel workspace in the browser.
 
 - The left rail contains search, Home, and the visible graph tree.
 - Search returns a mixed list with explicit type labels such as `Home`, `Note`, `Task`, and `Command`.
@@ -185,16 +185,22 @@ The graph tree is derived from canonical files under `.flow/data/content` rather
 
 Core commands:
 
+- `flow --mode cli`
+  - Runs standard CLI behavior (default mode when `--mode` is omitted).
 - `flow init`
   - Initializes local workspace files and folders.
 - `flow configure --gui-port <port>`
   - Sets the local GUI port.
 - `flow -g configure --workspace <absolute-path> [--gui-port <port>]`
   - Configures global workspace location and optionally GUI port.
-- `flow gui`
-  - Starts the GUI server and opens the browser.
-- `flow gui stop`
-  - Stops a running GUI server.
+- `flow service`
+  - Starts the service and opens the browser.
+- `flow service stop`
+  - Stops a running service.
+- `flow desktop`
+  - Opens the desktop app window.
+- `flow desktop stop`
+  - Closes the desktop app window.
 - `flow create <note|task|command> ...`
   - Creates documents (requires `--file --graph`; command also requires `--name --run`). IDs are auto-derived as `<graph>/<file>`.
 - `flow update --path <relative-path> ...`
@@ -276,7 +282,7 @@ go build ./cmd/flow
 go test ./internal/config ./internal/workspace ./internal/markdown ./internal/graph ./internal/execution ./internal/index ./internal/httpapi ./cmd/flow
 ```
 
-The frontend build emits bundled assets into `internal/httpapi/static/`, and the Go binary embeds those assets for `flow gui`.
+The frontend build emits bundled assets into `internal/httpapi/static/`, and the Go binary embeds those assets for `flow service`.
 These emitted files are generated each build and are not meant to be committed.
 Plain `go build` uses the project version from `internal/buildinfo/VERSION` as-is.
 Frontend builds sync `frontend/package.json` and `frontend/package-lock.json` from that same version via `scripts/sync-frontend-version.sh`, and release builds reuse the same source when stamping the CLI binary.

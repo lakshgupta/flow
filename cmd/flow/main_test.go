@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"syscall"
@@ -95,8 +96,8 @@ func TestFlowInitCreatesWorkspaceFilesWithoutChangingMarkdown(t *testing.T) {
 		t.Fatalf("ReadFile(.gitignore) error = %v", err)
 	}
 
-	if string(gitignoreData) != workspaceGitignoreContent {
-		t.Fatalf(".gitignore = %q, want %q", string(gitignoreData), workspaceGitignoreContent)
+	if string(gitignoreData) != workspace.WorkspaceGitignoreContent {
+		t.Fatalf(".gitignore = %q, want %q", string(gitignoreData), workspace.WorkspaceGitignoreContent)
 	}
 
 	if _, err := os.Stat(filepath.Join(rootDir, ".flow", workspace.ConfigDirName)); err != nil {
@@ -201,7 +202,8 @@ func TestFlowSubcommandHelpOptions(t *testing.T) {
 	}{
 		{name: "init", args: []string{"init", "--help"}, wantSnippet: "Usage: flow [-g] init"},
 		{name: "configure", args: []string{"configure", "--help"}, wantSnippet: "Usage: flow configure --gui-port <port>"},
-		{name: "gui", args: []string{"gui", "--help"}, wantSnippet: "Usage: flow [-g] gui [stop] [--serve-internal]"},
+		{name: "service", args: []string{"service", "--help"}, wantSnippet: "Usage: flow [-g] service [start|stop]"},
+		{name: "desktop", args: []string{"desktop", "--help"}, wantSnippet: "Usage: flow [-g] desktop [stop]"},
 		{name: "create", args: []string{"create", "--help"}, wantSnippet: "Usage: flow create <note|task|command> --file <name> --graph <graph> [options]"},
 		{name: "update", args: []string{"update", "--help"}, wantSnippet: "Usage: flow update --path <relative-path> [field options]"},
 		{name: "delete", args: []string{"delete", "--help"}, wantSnippet: "Usage: flow delete --path <relative-path>"},
@@ -223,6 +225,91 @@ func TestFlowSubcommandHelpOptions(t *testing.T) {
 
 			if !strings.Contains(stdout, testCase.wantSnippet) {
 				t.Fatalf("stdout = %q, want snippet %q", stdout, testCase.wantSnippet)
+			}
+		})
+	}
+}
+
+func TestParseGlobalFlag(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name       string
+		args       []string
+		wantGlobal bool
+		wantArgs   []string
+	}{
+		{
+			name:       "no args",
+			args:       []string{},
+			wantGlobal: false,
+			wantArgs:   []string{},
+		},
+		{
+			name:       "no global flag",
+			args:       []string{"search", "parser"},
+			wantGlobal: false,
+			wantArgs:   []string{"search", "parser"},
+		},
+		{
+			name:       "leading global flag",
+			args:       []string{"-g", "search", "parser"},
+			wantGlobal: true,
+			wantArgs:   []string{"search", "parser"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			gotGlobal, gotArgs := parseGlobalFlag(testCase.args)
+			if gotGlobal != testCase.wantGlobal {
+				t.Fatalf("parseGlobalFlag(%v) global = %v, want %v", testCase.args, gotGlobal, testCase.wantGlobal)
+			}
+
+			if !reflect.DeepEqual(gotArgs, testCase.wantArgs) {
+				t.Fatalf("parseGlobalFlag(%v) args = %#v, want %#v", testCase.args, gotArgs, testCase.wantArgs)
+			}
+		})
+	}
+}
+
+func TestWriteHelpIfRequested(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name        string
+		args        []string
+		wantHandled bool
+	}{
+		{name: "no args", args: []string{}, wantHandled: false},
+		{name: "non-help arg", args: []string{"search"}, wantHandled: false},
+		{name: "short help", args: []string{"-h"}, wantHandled: true},
+		{name: "long help", args: []string{"--help"}, wantHandled: true},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			var output bytes.Buffer
+			helped := writeHelpIfRequested(testCase.args, &output, func(writer io.Writer) {
+				_, _ = io.WriteString(writer, "help output")
+			})
+
+			if helped != testCase.wantHandled {
+				t.Fatalf("writeHelpIfRequested(%v) = %v, want %v", testCase.args, helped, testCase.wantHandled)
+			}
+
+			if testCase.wantHandled && output.String() != "help output" {
+				t.Fatalf("writeHelpIfRequested(%v) output = %q, want %q", testCase.args, output.String(), "help output")
+			}
+
+			if !testCase.wantHandled && output.Len() != 0 {
+				t.Fatalf("writeHelpIfRequested(%v) output = %q, want empty", testCase.args, output.String())
 			}
 		})
 	}
@@ -887,7 +974,7 @@ func TestFlowGUIStartsLocalServerAndOpensBrowser(t *testing.T) {
 
 	stdout, stderr := runForTest(
 		t,
-		[]string{"gui"},
+		[]string{"service"},
 		rootDir,
 		withLaunchGUIProcess(func(global bool, launchedRoot workspace.Root) error {
 			if global {
@@ -915,7 +1002,7 @@ func TestFlowGUIStartsLocalServerAndOpensBrowser(t *testing.T) {
 	wantURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 	assertBrowserLaunchURL(t, openedURL, wantURL)
 
-	if !strings.Contains(stdout, "Started local GUI server") {
+	if !strings.Contains(stdout, "Started local service") {
 		t.Fatalf("stdout = %q", stdout)
 	}
 
@@ -951,7 +1038,7 @@ func TestFlowGlobalGUIStartsServerAndOpensBrowser(t *testing.T) {
 
 	stdout, stderr := runForTest(
 		t,
-		[]string{"-g", "gui"},
+		[]string{"-g", "service"},
 		t.TempDir(),
 		withConfigHome(configHome),
 		withLaunchGUIProcess(func(global bool, launchedRoot workspace.Root) error {
@@ -980,7 +1067,7 @@ func TestFlowGlobalGUIStartsServerAndOpensBrowser(t *testing.T) {
 	wantURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 	assertBrowserLaunchURL(t, openedURL, wantURL)
 
-	if !strings.Contains(stdout, "Started global GUI server") {
+	if !strings.Contains(stdout, "Started global service") {
 		t.Fatalf("stdout = %q", stdout)
 	}
 
@@ -1016,7 +1103,7 @@ func TestFlowGUINonLocalCWDDefaultsToGlobalWorkspace(t *testing.T) {
 
 	stdout, stderr := runForTest(
 		t,
-		[]string{"gui"},
+		[]string{"service"},
 		nonWorkspaceDir,
 		withConfigHome(configHome),
 		withLaunchGUIProcess(func(global bool, launchedRoot workspace.Root) error {
@@ -1037,8 +1124,8 @@ func TestFlowGUINonLocalCWDDefaultsToGlobalWorkspace(t *testing.T) {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
 
-	if !strings.Contains(stdout, "Started global GUI server") {
-		t.Fatalf("stdout = %q, want global GUI startup", stdout)
+	if !strings.Contains(stdout, "Started global service") {
+		t.Fatalf("stdout = %q, want global service startup", stdout)
 	}
 
 	if err := stopSimulatedGUIProcess(runtime, root); err != nil {
@@ -1058,7 +1145,7 @@ func TestFlowGUICleansUpWhenBrowserOpenFails(t *testing.T) {
 
 	stderr := runExpectErrorForTest(
 		t,
-		[]string{"gui"},
+		[]string{"service"},
 		rootDir,
 		withLaunchGUIProcess(func(global bool, root workspace.Root) error {
 			return startSimulatedGUIProcess(t, runtime, root, port, 3303)
@@ -1120,7 +1207,7 @@ func TestFlowGUIReportsChildStartupErrorWhenStateFileIsMissing(t *testing.T) {
 
 	stderr := runExpectErrorForTest(
 		t,
-		[]string{"gui"},
+		[]string{"service"},
 		rootDir,
 		withLaunchGUIProcess(func(global bool, launchedRoot workspace.Root) error {
 			if global {
@@ -1264,7 +1351,7 @@ func TestFlowGUIStopStopsLocalServer(t *testing.T) {
 
 	stdout, stderr := runForTest(
 		t,
-		[]string{"gui", "stop"},
+		[]string{"service", "stop"},
 		rootDir,
 		withSignalProcess(func(pid int, signal syscall.Signal) error {
 			if pid != 4404 {
@@ -1286,7 +1373,7 @@ func TestFlowGUIStopStopsLocalServer(t *testing.T) {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
 
-	if !strings.Contains(stdout, "Stopped local GUI server") {
+	if !strings.Contains(stdout, "Stopped local service") {
 		t.Fatalf("stdout = %q", stdout)
 	}
 
@@ -1321,7 +1408,7 @@ func TestFlowGlobalGUIStopStopsServer(t *testing.T) {
 
 	stdout, stderr := runForTest(
 		t,
-		[]string{"-g", "gui", "stop"},
+		[]string{"-g", "service", "stop"},
 		t.TempDir(),
 		withConfigHome(configHome),
 		withSignalProcess(func(pid int, signal syscall.Signal) error {
@@ -1344,7 +1431,7 @@ func TestFlowGlobalGUIStopStopsServer(t *testing.T) {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
 
-	if !strings.Contains(stdout, "Stopped global GUI server") {
+	if !strings.Contains(stdout, "Stopped global service") {
 		t.Fatalf("stdout = %q", stdout)
 	}
 }
