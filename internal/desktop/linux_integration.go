@@ -3,18 +3,22 @@ package desktop
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"strings"
 )
 
+// linuxDesktopEntryBody is the template for the freedesktop .desktop entry.
+// Icon uses an absolute path so GNOME can resolve it immediately without
+// waiting for gtk-update-icon-cache to register the themed name.
 const linuxDesktopEntryBody = `[Desktop Entry]
 Version=1.0
 Type=Application
 Name=Flow
 Comment=Flow workspace tool
 Exec=%s --mode desktop
-Icon=flow
+Icon=%s
 Terminal=false
 Categories=Productivity;Development;
 StartupWMClass=flow
@@ -53,7 +57,9 @@ func writeLinuxDesktopIntegration(homePath string, executablePath string, iconPN
 	}
 
 	applicationsDir := filepath.Join(homePath, ".local", "share", "applications")
-	iconsDir := filepath.Join(homePath, ".local", "share", "icons", "hicolor", "1024x1024", "apps")
+	// 256x256 is a standard size registered in the hicolor theme index.
+	// The 1024x1024 directory is non-standard and is never scanned by GNOME.
+	iconsDir := filepath.Join(homePath, ".local", "share", "icons", "hicolor", "256x256", "apps")
 	desktopPath := filepath.Join(applicationsDir, "flow.desktop")
 	iconPath := filepath.Join(iconsDir, "flow.png")
 
@@ -64,8 +70,11 @@ func writeLinuxDesktopIntegration(homePath string, executablePath string, iconPN
 		return err
 	}
 
+	// Use an absolute path for Icon= so GNOME resolves it immediately without
+	// requiring a gtk-update-icon-cache run. This is fully supported by the
+	// freedesktop spec and takes effect as soon as the .desktop file is written.
 	execValue := strings.ReplaceAll(executablePath, " ", `\ `)
-	desktopData := fmt.Sprintf(linuxDesktopEntryBody, execValue)
+	desktopData := fmt.Sprintf(linuxDesktopEntryBody, execValue, iconPath)
 
 	if err := os.WriteFile(desktopPath, []byte(desktopData), 0o644); err != nil {
 		return err
@@ -74,6 +83,12 @@ func writeLinuxDesktopIntegration(homePath string, executablePath string, iconPN
 	if err := os.WriteFile(iconPath, iconPNG, 0o644); err != nil {
 		return err
 	}
+
+	// Refresh caches best-effort so the themed name "flow" also resolves for
+	// launchers that use icon-theme lookup rather than the absolute path.
+	_ = exec.Command("gtk-update-icon-cache", "-qtf",
+		filepath.Join(homePath, ".local", "share", "icons", "hicolor")).Run()
+	_ = exec.Command("update-desktop-database", "-q", applicationsDir).Run()
 
 	return nil
 }

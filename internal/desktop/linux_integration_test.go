@@ -19,7 +19,7 @@ func TestWriteLinuxDesktopIntegrationWritesDesktopEntryAndIcon(t *testing.T) {
 	}
 
 	desktopPath := filepath.Join(homePath, ".local", "share", "applications", "flow.desktop")
-	iconPath := filepath.Join(homePath, ".local", "share", "icons", "hicolor", "1024x1024", "apps", "flow.png")
+	iconPath := filepath.Join(homePath, ".local", "share", "icons", "hicolor", "256x256", "apps", "flow.png")
 
 	desktopData, err := os.ReadFile(desktopPath)
 	if err != nil {
@@ -41,8 +41,9 @@ func TestWriteLinuxDesktopIntegrationWritesDesktopEntryAndIcon(t *testing.T) {
 	if !strings.Contains(desktopContent, "StartupWMClass=flow") {
 		t.Fatalf("desktop entry missing StartupWMClass=flow: %q", desktopContent)
 	}
-	if !strings.Contains(desktopContent, "Icon=flow") {
-		t.Fatalf("desktop entry missing Icon=flow: %q", desktopContent)
+	expectedIconField := "Icon=" + filepath.Join(homePath, ".local", "share", "icons", "hicolor", "256x256", "apps", "flow.png")
+	if !strings.Contains(desktopContent, expectedIconField) {
+		t.Fatalf("desktop entry missing absolute Icon path: %q", desktopContent)
 	}
 }
 
