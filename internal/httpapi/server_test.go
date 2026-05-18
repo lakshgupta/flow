@@ -484,6 +484,52 @@ func TestNewMuxSelectWorkspaceRebuildsIndexForExternalChanges(t *testing.T) {
 	}
 }
 
+func TestNewMuxSelectWorkspaceRefreshesGraphCanvasNodes(t *testing.T) {
+	t.Parallel()
+
+	globalRoot := createGraphTreeHTTPAPITestWorkspace(t)
+	globalRoot.Scope = workspace.GlobalScope
+	localRoot := createGraphTreeHTTPAPITestWorkspace(t)
+
+	writeWorkspaceDocument(t, filepath.Join(localRoot.FlowPath, "data", "content", "operations", "local.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-local", Type: markdown.NoteType, Graph: "operations", Title: "Local note"},
+		},
+		Body: "Local workspace body\n",
+	})
+
+	locatorPath := filepath.Join(t.TempDir(), "config", workspace.GlobalLocatorFileName)
+	if err := workspace.WriteGlobalLocator(locatorPath, workspace.GlobalLocator{
+		WorkspacePath:   globalRoot.WorkspacePath,
+		LocalWorkspaces: []string{localRoot.WorkspacePath},
+	}); err != nil {
+		t.Fatalf("WriteGlobalLocator() error = %v", err)
+	}
+
+	handler, err := NewMux(Options{
+		Root:              globalRoot,
+		LaunchScope:       workspace.GlobalScope,
+		GlobalLocatorPath: locatorPath,
+	})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	performJSONRequestWithBody[workspaceResponse](t, handler, http.MethodPut, "/api/workspace/select", map[string]any{
+		"workspacePath": localRoot.WorkspacePath,
+	})
+
+	canvas := performJSONRequest[graph.GraphCanvasView](t, handler, http.MethodGet, "/api/graph-canvas?graph=operations")
+	if canvas.SelectedGraph != "operations" {
+		t.Fatalf("canvas.SelectedGraph = %q, want operations", canvas.SelectedGraph)
+	}
+	if !slices.ContainsFunc(canvas.Nodes, func(node graph.GraphCanvasNode) bool {
+		return node.ID == "note-local"
+	}) {
+		t.Fatalf("canvas.Nodes = %#v, want note-local after workspace switch", canvas.Nodes)
+	}
+}
+
 func TestNewMuxDeregisterLocalWorkspaceRejectsGlobalWorkspace(t *testing.T) {
 	t.Parallel()
 

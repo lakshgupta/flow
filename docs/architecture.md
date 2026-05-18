@@ -141,6 +141,7 @@ Current implementation status:
 - A shared mode dispatcher lives in `internal/core/mode.go` and is used by `cmd/flow/main.go`.
 - `service` launches a background child process with `--serve-internal` and opens the browser on startup.
 - `desktop` resolves local/global workspace scope, ensures workspace baseline files/index through shared `internal/workspace` bootstrap, and prepares a shared `desktop.Backend` runtime context with reusable read/write methods.
+- workspace switching rebuilds the selected workspace index before returning workspace/graph responses, so service and desktop surfaces both reflect external on-disk graph and node changes.
 - Build-tag seams in `internal/desktop` separate default stub behavior from the Wails runtime.
 
 Target package split for shared business logic:
