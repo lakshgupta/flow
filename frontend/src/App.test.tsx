@@ -132,6 +132,9 @@ const workspaceResponse = {
   guiPort: 4812,
   appearance: "system" as const,
   panelWidths: { leftRatio: 0.31, rightRatio: 0.22, documentTOCRatio: 0.18 },
+  appVersion: "0.4.0-dev",
+  licenseText: "MIT License",
+  copyrightText: "Copyright (c) Flow contributors",
 };
 
 const homeResponse = {
@@ -2632,6 +2635,31 @@ describe("App graph canvas flows", () => {
       expect(document.documentElement.classList.contains("dark")).toBe(true);
       expect(document.documentElement.dataset.theme).toBe("dark");
     });
+  });
+
+  it("shows version, license, and copyright in the settings About tab", async () => {
+    installFetchMock((url) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      throw new Error(`Unhandled request: GET ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Content");
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("button", { name: "About" }));
+
+    expect(await screen.findByText("0.4.0-dev")).toBeInTheDocument();
+    expect(screen.getByText("MIT License")).toBeInTheDocument();
+    expect(screen.getByText("Copyright (c) Flow contributors")).toBeInTheDocument();
   });
 
   it("de-registers a local workspace from settings", async () => {

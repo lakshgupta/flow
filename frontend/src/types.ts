@@ -16,7 +16,9 @@ export type WorkspaceResponse = {
     rightRatio: number;
     documentTOCRatio: number;
   };
-};
+  appVersion?: string;
+  licenseText?: string;
+  copyrightText?: string;
 
 export type HomeResponse = {
   id: string;

@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/lex/flow/internal/buildinfo"
 	"github.com/lex/flow/internal/config"
 	"github.com/lex/flow/internal/core"
 	"github.com/lex/flow/internal/graph"
@@ -49,6 +50,9 @@ type workspaceResponse struct {
 	GUIPort                   int                       `json:"guiPort"`
 	Appearance                string                    `json:"appearance"`
 	PanelWidths               panelWidths               `json:"panelWidths"`
+	AppVersion                string                    `json:"appVersion"`
+	LicenseText               string                    `json:"licenseText"`
+	CopyrightText             string                    `json:"copyrightText"`
 	Workspaces                []workspaceChoiceResponse `json:"workspaces,omitempty"`
 	WorkspaceSelectionEnabled bool                      `json:"workspaceSelectionEnabled"`
 }
@@ -471,6 +475,9 @@ func (handler *apiHandler) handleWorkspace(writer http.ResponseWriter, _ *http.R
 			RightRatio:       workspaceConfig.GUI.PanelWidths.RightRatio,
 			DocumentTOCRatio: workspaceConfig.GUI.PanelWidths.DocumentTOCRatio,
 		},
+		AppVersion:                buildinfo.ProjectVersion(),
+		LicenseText:               "MIT License",
+		CopyrightText:             "Copyright (c) Flow contributors",
 		Workspaces:                workspaceChoicesForResponse(handler.options.Root, handler.options.GlobalLocatorPath),
 		WorkspaceSelectionEnabled: workspaceSelectionEnabled(handler.options),
 	})

@@ -359,7 +359,7 @@ function FlowApp() {
   const [rebuildingIndex, setRebuildingIndex] = useState<boolean>(false);
   const [switchingWorkspace, setSwitchingWorkspace] = useState<boolean>(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState<boolean>(false);
-  const [settingsTab, setSettingsTab] = useState<"general" | "workspaces" | "theme" | "stop">("general");
+  const [settingsTab, setSettingsTab] = useState<"general" | "workspaces" | "about" | "theme" | "stop">("general");
   const [formState, setFormState] = useState<DocumentFormState>(emptyDocumentFormState);
   const [editableLinkDetails, setEditableLinkDetails] = useState<Record<string, { context: string; linkType: string }>>({});
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false);
@@ -3637,7 +3637,7 @@ function FlowApp() {
     settingsDialogActionRefs.current.setSettingsDialogOpen(open);
   }, []);
 
-  const handleSettingsDialogTabChange = useCallback((tab: "general" | "workspaces" | "theme" | "stop") => {
+  const handleSettingsDialogTabChange = useCallback((tab: "general" | "workspaces" | "about" | "theme" | "stop") => {
     settingsDialogActionRefs.current.setSettingsTab(tab);
   }, []);
 

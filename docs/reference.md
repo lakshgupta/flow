@@ -55,6 +55,7 @@ Layout rules:
 - The left and right split bars are draggable, and their width ratios persist in `.flow/config/flow.yaml`.
 - The settings dialog includes an export action to download the entire current workspace data as a zip archive.
 - The settings dialog includes a dedicated `Workspaces` section for viewing and de-registering tracked local workspaces.
+- The settings dialog includes an `About` section that shows Flow version, license, and copyright information.
 
 Graph canvas behavior:
 

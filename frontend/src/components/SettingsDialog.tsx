@@ -30,7 +30,7 @@ import {
 
 import type { WorkspaceResponse } from "../types";
 
-type SettingsTab = "general" | "workspaces" | "theme" | "stop";
+type SettingsTab = "general" | "workspaces" | "about" | "theme" | "stop";
 
 type SettingsDialogActions = {
   setOpen: (open: boolean) => void;
@@ -57,6 +57,7 @@ export type SettingsDialogProps = {
 const SETTINGS_ITEMS = [
   { value: "general" as const, label: "General", icon: Info },
   { value: "workspaces" as const, label: "Workspaces", icon: FolderTree },
+  { value: "about" as const, label: "About", icon: Info },
   { value: "theme" as const, label: "Appearance", icon: PaintbrushVertical },
   { value: "stop" as const, label: "Danger Zone", icon: TriangleAlert },
 ];
@@ -113,6 +114,8 @@ function SettingsDialogComponent({
                         ? "General"
                         : settingsTab === "workspaces"
                           ? "Workspaces"
+                          : settingsTab === "about"
+                            ? "About"
                           : settingsTab === "theme"
                             ? "Appearance"
                             : "Danger Zone"}
@@ -230,6 +233,26 @@ function SettingsDialogComponent({
                     <Label htmlFor="r3">System</Label>
                   </div>
                 </RadioGroup>
+              )}
+              {settingsTab === "about" && (
+                workspace ? (
+                  <div className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-1">
+                      <Label>Flow version</Label>
+                      <div className="text-sm text-muted-foreground">{workspace.appVersion ?? "unknown"}</div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label>License</Label>
+                      <div className="text-sm text-muted-foreground">{workspace.licenseText ?? "MIT License"}</div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label>Copyright</Label>
+                      <div className="text-sm text-muted-foreground">{workspace.copyrightText ?? "Copyright (c) Flow contributors"}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No workspace loaded.</p>
+                )
               )}
               {settingsTab === "stop" && (
                 <div className="flex flex-col gap-4">

@@ -49,6 +49,15 @@ func TestNewMuxServesWorkspaceAndReadQueryAPIs(t *testing.T) {
 	if workspaceResponse.HomePath != "data/home.md" {
 		t.Fatalf("workspaceResponse.HomePath = %q, want data/home.md", workspaceResponse.HomePath)
 	}
+	if workspaceResponse.AppVersion == "" {
+		t.Fatal("workspaceResponse.AppVersion = empty, want non-empty")
+	}
+	if workspaceResponse.LicenseText != "MIT License" {
+		t.Fatalf("workspaceResponse.LicenseText = %q, want MIT License", workspaceResponse.LicenseText)
+	}
+	if workspaceResponse.CopyrightText == "" {
+		t.Fatal("workspaceResponse.CopyrightText = empty, want non-empty")
+	}
 
 	graphCanvas := performJSONRequest[graph.GraphCanvasView](t, handler, http.MethodGet, "/api/graph-canvas?graph=release")
 	if graphCanvas.SelectedGraph != "release" {
