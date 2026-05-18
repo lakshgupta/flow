@@ -139,6 +139,11 @@ macOS package metadata and icon source:
 - app bundle template: `packaging/macos/Info.plist`
 - icon source: `frontend/src/assets/flow_logo_macos.png`
 
+Linux desktop runtime icon:
+
+- Wails Linux window icon is embedded from `internal/desktop/assets/flow_logo_linux.png`
+- source image tracked in frontend: `frontend/src/assets/flow_logo_linux.png`
+
 Install/uninstall behavior on macOS:
 
 - Open `.dmg`, drag `Flow.app` to Applications

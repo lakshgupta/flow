@@ -62,6 +62,10 @@ func runDesktopMode(runtimeContext RuntimeContext) error {
 		// here future-proofs for native Wails RPC if needed.
 		Bind: []interface{}{&app},
 		Linux: &linux.Options{
+			// Provide a branded app icon for Ubuntu/Linux window managers.
+			Icon: linuxWindowIcon(),
+			// ProgramName helps GNOME/KDE match window grouping and launcher icons.
+			ProgramName: "flow",
 			// OnDemand avoids GPU driver issues on headless CI while still
 			// using hardware acceleration on real desktops.
 			WebviewGpuPolicy: linux.WebviewGpuPolicyOnDemand,
