@@ -4,6 +4,7 @@ package desktop
 
 import (
 	"context"
+	"runtime"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -39,6 +40,12 @@ func runDesktopMode(runtimeContext RuntimeContext) error {
 	})
 	if err != nil {
 		return err
+	}
+
+	if runtime.GOOS == "linux" {
+		// GNOME/Wayland often resolves taskbar icons from .desktop metadata.
+		// Best-effort local desktop integration keeps command-line launches branded.
+		_ = ensureLinuxDesktopIntegration(linuxWindowIcon())
 	}
 
 	return wails.Run(&options.App{

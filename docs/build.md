@@ -143,6 +143,7 @@ Linux desktop runtime icon:
 
 - Wails Linux window icon is embedded from `internal/desktop/assets/flow_logo_linux.png`
 - source image tracked in frontend: `frontend/src/assets/flow_logo_linux.png`
+- Desktop startup also writes user-local launcher metadata at `~/.local/share/applications/flow.desktop` and `~/.local/share/icons/hicolor/1024x1024/apps/flow.png` so GNOME/Wayland can resolve the taskbar icon via desktop entry matching.
 
 Install/uninstall behavior on macOS:
 
