@@ -515,6 +515,13 @@ func (handler *apiHandler) handleSelectWorkspace(writer http.ResponseWriter, req
 		return
 	}
 
+	// Switching workspaces must reflect external file-system changes immediately.
+	// Rebuild the selected workspace index before returning workspace/graph views.
+	if err := core.RebuildIndex(core.RebuildIndexRequest{IndexPath: resolved.IndexPath, FlowPath: resolved.FlowPath}); err != nil {
+		writeError(writer, http.StatusInternalServerError, fmt.Sprintf("rebuild selected workspace index: %v", err))
+		return
+	}
+
 	handler.options.Root = resolved
 	handler.handleWorkspace(writer, request)
 }

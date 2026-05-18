@@ -2372,7 +2372,7 @@ describe("App graph canvas flows", () => {
     expect(await screen.findByText("Operations")).toBeInTheDocument();
     expect(screen.queryByText("Execution")).not.toBeInTheDocument();
     expect(screen.queryByTestId("flow-node-note-1")).not.toBeInTheDocument();
-    expect(await screen.findByText("Local workspace home")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Home content layout")).toBeInTheDocument();
 
     const operationsButton = screen.getByText("Operations").closest('[data-sidebar="menu-sub-button"]');
     if (operationsButton === null) {

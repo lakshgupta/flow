@@ -434,6 +434,56 @@ func TestNewMuxDeregistersLocalWorkspaceAndFallsBackToGlobal(t *testing.T) {
 	}
 }
 
+func TestNewMuxSelectWorkspaceRebuildsIndexForExternalChanges(t *testing.T) {
+	t.Parallel()
+
+	globalRoot := createGraphTreeHTTPAPITestWorkspace(t)
+	globalRoot.Scope = workspace.GlobalScope
+	localRoot := createGraphTreeHTTPAPITestWorkspace(t)
+
+	// Simulate an external file-system change that has not yet been indexed.
+	writeWorkspaceDocument(t, filepath.Join(localRoot.FlowPath, "data", "content", "operations", "local.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-local", Type: markdown.NoteType, Graph: "operations", Title: "Local note"},
+		},
+		Body: "Local workspace body\n",
+	})
+
+	locatorsDir := filepath.Join(t.TempDir(), "config")
+	locatorPath := filepath.Join(locatorsDir, workspace.GlobalLocatorFileName)
+	if err := workspace.WriteGlobalLocator(locatorPath, workspace.GlobalLocator{
+		WorkspacePath:   globalRoot.WorkspacePath,
+		LocalWorkspaces: []string{localRoot.WorkspacePath},
+	}); err != nil {
+		t.Fatalf("WriteGlobalLocator() error = %v", err)
+	}
+
+	handler, err := NewMux(Options{
+		Root:              globalRoot,
+		LaunchScope:       workspace.GlobalScope,
+		GlobalLocatorPath: locatorPath,
+	})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	performJSONRequestWithBody[workspaceResponse](t, handler, http.MethodPut, "/api/workspace/select", map[string]any{
+		"workspacePath": localRoot.WorkspacePath,
+	})
+
+	graphTree := performJSONRequest[graphTreeResponse](t, handler, http.MethodGet, "/api/graphs")
+	if !slices.ContainsFunc(graphTree.Graphs, func(node graphTreeNodeResponse) bool {
+		if node.GraphPath != "operations" {
+			return false
+		}
+		return slices.ContainsFunc(node.Files, func(file graphTreeFileResponse) bool {
+			return file.ID == "note-local"
+		})
+	}) {
+		t.Fatalf("graphTree.Graphs = %#v, want operations graph with note-local after workspace switch", graphTree.Graphs)
+	}
+}
+
 func TestNewMuxDeregisterLocalWorkspaceRejectsGlobalWorkspace(t *testing.T) {
 	t.Parallel()
 

@@ -50,6 +50,7 @@ Layout rules:
 - The left rail contains search, Home, and the visible graph tree.
 - Search returns a mixed list with explicit type labels such as `Home`, `Note`, `Task`, and `Command`.
 - The middle panel shows Home by default and switches to the selected graph canvas when you choose a graph.
+- Switching to a different workspace resets the middle panel to Home for that workspace and refreshes the index before loading tree/canvas data, so on-disk graph and node changes are reflected.
 - The right panel opens as the contextual editor for the selected document.
 - The left and right split bars are draggable, and their width ratios persist in `.flow/config/flow.yaml`.
 
