@@ -509,8 +509,7 @@ func TestFlowUpdateCommandWritesMarkdownAndReindexes(t *testing.T) {
 				Graph: "release",
 				Title: "Build",
 			},
-			Name:  "build",
-			Links: []markdown.NodeLink{{Node: "note-1"}},
+			Name: "build",
 			Env: map[string]string{
 				"GOOS": "linux",
 			},
