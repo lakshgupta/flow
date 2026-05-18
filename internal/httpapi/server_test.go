@@ -52,8 +52,8 @@ func TestNewMuxServesWorkspaceAndReadQueryAPIs(t *testing.T) {
 	if workspaceResponse.AppVersion == "" {
 		t.Fatal("workspaceResponse.AppVersion = empty, want non-empty")
 	}
-	if workspaceResponse.LicenseText != "MIT License" {
-		t.Fatalf("workspaceResponse.LicenseText = %q, want MIT License", workspaceResponse.LicenseText)
+	if workspaceResponse.LicenseText != "Apache License 2.0" {
+		t.Fatalf("workspaceResponse.LicenseText = %q, want Apache License 2.0", workspaceResponse.LicenseText)
 	}
 	if workspaceResponse.CopyrightText == "" {
 		t.Fatal("workspaceResponse.CopyrightText = empty, want non-empty")

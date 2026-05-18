@@ -8,7 +8,7 @@ title: Home
 
 - [x] when I switch the workspace in the global view, then I don't see the home page getting switched to the home page of the new workspace
 - [x] the icon in the ubuntu toolbar shows the cog wheel instead of frontend/src/assets/flow_logo_linux.png
-- [ ] License is "Apache License 2.0".update the about page.
+- [x] License is "Apache License 2.0".update the about page.
 
 ## Thinking
 - [ ] finish implementing command type of nodes

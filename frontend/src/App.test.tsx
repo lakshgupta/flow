@@ -133,7 +133,7 @@ const workspaceResponse = {
   appearance: "system" as const,
   panelWidths: { leftRatio: 0.31, rightRatio: 0.22, documentTOCRatio: 0.18 },
   appVersion: "0.4.0-dev",
-  licenseText: "MIT License",
+  licenseText: "Apache License 2.0",
   copyrightText: "Copyright (c) Flow contributors",
 };
 
@@ -2661,7 +2661,7 @@ describe("App graph canvas flows", () => {
     await user.click(screen.getByRole("button", { name: "About" }));
 
     expect(await screen.findByText("0.4.0-dev")).toBeInTheDocument();
-    expect(screen.getByText("MIT License")).toBeInTheDocument();
+    expect(screen.getByText("Apache License 2.0")).toBeInTheDocument();
     expect(screen.getByText("Copyright (c) Flow contributors")).toBeInTheDocument();
   });
 

@@ -243,7 +243,7 @@ function SettingsDialogComponent({
                     </div>
                     <div className="flex flex-col gap-1">
                       <Label>License</Label>
-                      <div className="text-sm text-muted-foreground">{workspace.licenseText ?? "MIT License"}</div>
+                      <div className="text-sm text-muted-foreground">{workspace.licenseText ?? "Apache License 2.0"}</div>
                     </div>
                     <div className="flex flex-col gap-1">
                       <Label>Copyright</Label>

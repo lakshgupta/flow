@@ -63,6 +63,11 @@ type panelWidths struct {
 	DocumentTOCRatio float64 `json:"documentTOCRatio"`
 }
 
+const (
+	appLicenseText   = "Apache License 2.0"
+	appCopyrightText = "Copyright (c) Flow contributors"
+)
+
 type updatePanelWidthsRequest struct {
 	LeftRatio        *float64 `json:"leftRatio"`
 	RightRatio       *float64 `json:"rightRatio"`
@@ -476,8 +481,8 @@ func (handler *apiHandler) handleWorkspace(writer http.ResponseWriter, _ *http.R
 			DocumentTOCRatio: workspaceConfig.GUI.PanelWidths.DocumentTOCRatio,
 		},
 		AppVersion:                buildinfo.ProjectVersion(),
-		LicenseText:               "MIT License",
-		CopyrightText:             "Copyright (c) Flow contributors",
+		LicenseText:               appLicenseText,
+		CopyrightText:             appCopyrightText,
 		Workspaces:                workspaceChoicesForResponse(handler.options.Root, handler.options.GlobalLocatorPath),
 		WorkspaceSelectionEnabled: workspaceSelectionEnabled(handler.options),
 	})
