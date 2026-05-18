@@ -2995,6 +2995,42 @@ function FlowApp() {
     }
   }
 
+  async function handleSidebarDownloadGraph(graphPath: string): Promise<void> {
+    try {
+      clearMutationFeedback();
+      const response = await fetch(`/api/graphs/${encodeURIComponent(graphPath)}/download`, {
+        method: "GET",
+        headers: { Accept: "application/zip" },
+      });
+
+      if (!response.ok) {
+        let message = `${response.status} ${response.statusText}`;
+        try {
+          const payload = (await response.json()) as { error?: string };
+          if (payload.error) {
+            message = payload.error;
+          }
+        } catch {
+          // Ignore non-JSON error bodies.
+        }
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const objectURL = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectURL;
+      anchor.download = `${graphPath.replaceAll("/", "-") || "graph"}.zip`;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectURL);
+      setMutationSuccess(`Downloaded ${graphPath} as zip.`);
+    } catch (downloadError) {
+      setMutationError(toErrorMessage(downloadError));
+    }
+  }
+
   function handleGraphCanvasOverlayPointerDown(event: React.PointerEvent<HTMLDivElement>, documentId: string): void {
     if (!isPrimaryMouseButton(event.button)) {
       return;
@@ -3437,6 +3473,7 @@ function FlowApp() {
     handleSidebarMoveNode,
     handleSidebarDeleteNode,
     handleSidebarDeleteGraph,
+    handleSidebarDownloadGraph,
     handleSidebarSetGraphColor,
     handleSidebarSetGraphCanvasDisabled,
   });

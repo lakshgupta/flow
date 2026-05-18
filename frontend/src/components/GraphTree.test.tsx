@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { GraphTree } from "./GraphTree";
@@ -90,6 +91,7 @@ describe("GraphTree", () => {
           onMoveNode={onMoveNode}
           onDeleteNode={() => undefined}
           onDeleteGraph={() => undefined}
+          onDownloadGraph={() => undefined}
           onSetGraphColor={() => undefined}
           onSetGraphCanvasDisabled={() => undefined}
         />
@@ -134,6 +136,7 @@ describe("GraphTree", () => {
           onMoveNode={onMoveNode}
           onDeleteNode={() => undefined}
           onDeleteGraph={() => undefined}
+          onDownloadGraph={() => undefined}
           onSetGraphColor={() => undefined}
           onSetGraphCanvasDisabled={() => undefined}
         />
@@ -160,5 +163,38 @@ describe("GraphTree", () => {
     fireEvent.drop(targetGraphRow!, { dataTransfer });
 
     expect(screen.getByRole("button", { name: /ship\.md/i })).toBeInTheDocument();
+  });
+
+  it("triggers graph zip download from graph row actions", async () => {
+    const onDownloadGraph = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <SidebarProvider>
+        <GraphTree
+          graphTree={graphTree}
+          activeSurface={{ kind: "graph", graphPath: "execution" }}
+          selectedDocumentId=""
+          onSelectHome={() => undefined}
+          onSelectGraph={() => undefined}
+          onOpenDocument={() => undefined}
+          onCreateGraph={() => undefined}
+          onCreateNode={() => undefined}
+          onRenameGraph={() => undefined}
+          onRenameNode={() => undefined}
+          onMoveNode={() => undefined}
+          onDeleteNode={() => undefined}
+          onDeleteGraph={() => undefined}
+          onDownloadGraph={onDownloadGraph}
+          onSetGraphColor={() => undefined}
+          onSetGraphCanvasDisabled={() => undefined}
+        />
+      </SidebarProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "More actions for Execution" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Download as zip" }));
+
+    expect(onDownloadGraph).toHaveBeenCalledWith("execution");
   });
 });

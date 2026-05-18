@@ -65,6 +65,7 @@ Graph canvas behavior:
 - Dragged positions are stored as derived GUI state in `.flow/config/flow.index`, not in canonical Markdown.
 - If a node has no saved position, Flow seeds placement from graph relationships using layered columns derived from incoming and downstream links.
 - Cycles use a stable pseudo-topological fallback based on creation time so unsaved layouts stay predictable.
+- Graph rows in the content tree include a menu action to download that graph directory as a zip archive.
 
 Editing behavior:
 

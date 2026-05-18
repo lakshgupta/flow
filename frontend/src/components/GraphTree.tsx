@@ -73,6 +73,7 @@ type FileTreeRowProps = {
   onMoveNode: (file: GraphTreeFileData, sourceGraphPath: string, targetGraphPath: string) => void;
   onDeleteNode: (file: GraphTreeFileData, graphPath: string) => void;
   onDeleteGraph: (graphPath: string) => void;
+  onDownloadGraph: (graphPath: string) => void;
   onSetGraphColor: (graphPath: string, color: string | null) => void;
   onSetGraphCanvasDisabled: (graphPath: string, disabled: boolean) => void;
   collapsed: Set<string>;
@@ -110,6 +111,7 @@ function FileTreeRow({
   onMoveNode,
   onDeleteNode,
   onDeleteGraph,
+  onDownloadGraph,
   onSetGraphColor,
   onSetGraphCanvasDisabled,
   collapsed,
@@ -280,6 +282,11 @@ function FileTreeRow({
               Add command
             </DropdownMenuItem>
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => { onDownloadGraph(node.data.graphPath); }}>
+              <Layers size={12} />
+              Download as zip
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"
               onClick={() => { onDeleteGraph(node.data.graphPath); }}
@@ -404,6 +411,7 @@ function FileTreeRow({
             onMoveNode={onMoveNode}
             onDeleteNode={onDeleteNode}
             onDeleteGraph={onDeleteGraph}
+            onDownloadGraph={onDownloadGraph}
             onSetGraphColor={onSetGraphColor}
             onSetGraphCanvasDisabled={onSetGraphCanvasDisabled}
             collapsed={collapsed}
@@ -436,11 +444,12 @@ type GraphTreeProps = {
   onMoveNode: (file: GraphTreeFileData, sourceGraphPath: string, targetGraphPath: string) => void;
   onDeleteNode: (file: GraphTreeFileData, graphPath: string) => void;
   onDeleteGraph: (graphPath: string) => void;
+  onDownloadGraph: (graphPath: string) => void;
   onSetGraphColor: (graphPath: string, color: string | null) => void;
   onSetGraphCanvasDisabled: (graphPath: string, disabled: boolean) => void;
 };
 
-export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSelectHome, onSelectGraph, onOpenDocument, onCreateGraph, onCreateNode, onRenameGraph, onRenameNode, onMoveNode, onDeleteNode, onDeleteGraph, onSetGraphColor, onSetGraphCanvasDisabled }: GraphTreeProps) {
+export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSelectHome, onSelectGraph, onOpenDocument, onCreateGraph, onCreateNode, onRenameGraph, onRenameNode, onMoveNode, onDeleteNode, onDeleteGraph, onDownloadGraph, onSetGraphColor, onSetGraphCanvasDisabled }: GraphTreeProps) {
   const { toggleFavorite, isFavorite } = useFavorites();
   const [contentExpanded, setContentExpanded] = useState(true);
   const [favoritesExpanded, setFavoritesExpanded] = useState(true);
@@ -612,6 +621,7 @@ export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSele
                     onMoveNode={onMoveNode}
                     onDeleteNode={onDeleteNode}
                     onDeleteGraph={onDeleteGraph}
+                    onDownloadGraph={onDownloadGraph}
                     onSetGraphColor={onSetGraphColor}
                     onSetGraphCanvasDisabled={onSetGraphCanvasDisabled}
                     collapsed={collapsed}

@@ -1,9 +1,12 @@
 package httpapi
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -380,6 +383,8 @@ func (handler *apiHandler) ServeHTTP(writer http.ResponseWriter, request *http.R
 		handler.handleCreateGraph(writer, request)
 	case strings.HasPrefix(request.URL.Path, "/api/graphs/") && strings.HasSuffix(request.URL.Path, "/files") && request.Method == http.MethodPost:
 		handler.handleCreateGraphFiles(writer, request)
+	case strings.HasPrefix(request.URL.Path, "/api/graphs/") && strings.HasSuffix(request.URL.Path, "/download") && request.Method == http.MethodGet:
+		handler.handleDownloadGraphArchive(writer, request)
 	case strings.HasPrefix(request.URL.Path, "/api/graphs/") && strings.HasSuffix(request.URL.Path, "/color") && request.Method == http.MethodPut:
 		handler.handleUpdateGraphColor(writer, request)
 	case strings.HasPrefix(request.URL.Path, "/api/graphs/") && strings.HasSuffix(request.URL.Path, "/canvas-disabled") && request.Method == http.MethodPut:
@@ -1794,6 +1799,118 @@ func graphNameFromGraphFilesRequestPath(path string) (string, bool) {
 
 	trimmed := strings.TrimSuffix(path, "/files")
 	return graphNameFromGraphRequestPath(trimmed)
+}
+
+func graphNameFromGraphDownloadRequestPath(path string) (string, bool) {
+	if !strings.HasSuffix(path, "/download") {
+		return "", false
+	}
+
+	trimmed := strings.TrimSuffix(path, "/download")
+	return graphNameFromGraphRequestPath(trimmed)
+}
+
+func (handler *apiHandler) handleDownloadGraphArchive(writer http.ResponseWriter, request *http.Request) {
+	graphName, ok := graphNameFromGraphDownloadRequestPath(request.URL.Path)
+	if !ok {
+		writeError(writer, http.StatusBadRequest, "graph path is required")
+		return
+	}
+
+	archive, err := buildGraphArchive(handler.options.Root, graphName)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			writeError(writer, http.StatusNotFound, "graph not found")
+			return
+		}
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	archiveName := strings.ReplaceAll(strings.TrimSpace(graphName), "/", "-")
+	if archiveName == "" {
+		archiveName = "graph"
+	}
+
+	writer.Header().Set("Content-Type", "application/zip")
+	writer.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.zip\"", archiveName))
+	writer.Header().Set("Content-Length", strconv.Itoa(len(archive)))
+	_, _ = writer.Write(archive)
+}
+
+func buildGraphArchive(root workspace.Root, graphPath string) ([]byte, error) {
+	cleanGraphPath := filepath.Clean(filepath.FromSlash(strings.TrimSpace(graphPath)))
+	if cleanGraphPath == "." || strings.HasPrefix(cleanGraphPath, "..") {
+		return nil, fmt.Errorf("invalid graph path")
+	}
+
+	baseGraphsDir := filepath.Join(root.FlowPath, workspace.DataDirName, workspace.GraphsDirName)
+	targetGraphDir := filepath.Join(baseGraphsDir, cleanGraphPath)
+
+	info, err := os.Stat(targetGraphDir)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, os.ErrNotExist
+	}
+
+	var buffer bytes.Buffer
+	zipWriter := zip.NewWriter(&buffer)
+
+	err = filepath.WalkDir(targetGraphDir, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+
+		relativePath, relErr := filepath.Rel(baseGraphsDir, path)
+		if relErr != nil {
+			return relErr
+		}
+		zipPath := filepath.ToSlash(relativePath)
+
+		fileInfo, infoErr := entry.Info()
+		if infoErr != nil {
+			return infoErr
+		}
+
+		header, headerErr := zip.FileInfoHeader(fileInfo)
+		if headerErr != nil {
+			return headerErr
+		}
+		header.Name = zipPath
+		header.Method = zip.Deflate
+
+		archiveEntry, createErr := zipWriter.CreateHeader(header)
+		if createErr != nil {
+			return createErr
+		}
+
+		source, openErr := os.Open(path)
+		if openErr != nil {
+			return openErr
+		}
+		defer source.Close()
+
+		if _, copyErr := io.Copy(archiveEntry, source); copyErr != nil {
+			return copyErr
+		}
+
+		return nil
+	})
+	if err != nil {
+		_ = zipWriter.Close()
+		return nil, fmt.Errorf("build graph archive: %w", err)
+	}
+
+	if err := zipWriter.Close(); err != nil {
+		return nil, fmt.Errorf("finalize graph archive: %w", err)
+	}
+
+	return buffer.Bytes(), nil
 }
 
 func sanitizeAssetFileName(name string) string {

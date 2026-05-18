@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -625,6 +626,47 @@ func TestNewMuxCreatesGraphsAndReindexes(t *testing.T) {
 		return node.GraphPath == "delivery" || node.GraphPath == "delivery/parser"
 	}) {
 		t.Fatalf("graphTree.Graphs = %#v, want delivery graph entries after create", tree.Graphs)
+	}
+}
+
+func TestNewMuxDownloadsGraphAsZip(t *testing.T) {
+	t.Parallel()
+
+	root := createGraphTreeHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/graphs/execution/download", nil)
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		responseBody, _ := io.ReadAll(recorder.Body)
+		t.Fatalf("status = %d, want 200, body = %s", recorder.Code, string(responseBody))
+	}
+	if got := recorder.Header().Get("Content-Type"); !strings.Contains(got, "application/zip") {
+		t.Fatalf("Content-Type = %q, want application/zip", got)
+	}
+	if got := recorder.Header().Get("Content-Disposition"); !strings.Contains(got, "attachment") || !strings.Contains(got, "execution.zip") {
+		t.Fatalf("Content-Disposition = %q, want attachment filename for execution.zip", got)
+	}
+
+	zipReader, err := zip.NewReader(bytes.NewReader(recorder.Body.Bytes()), int64(recorder.Body.Len()))
+	if err != nil {
+		t.Fatalf("zip.NewReader() error = %v", err)
+	}
+
+	entryNames := make([]string, 0, len(zipReader.File))
+	for _, file := range zipReader.File {
+		entryNames = append(entryNames, file.Name)
+	}
+	if !slices.Contains(entryNames, "execution/build.md") {
+		t.Fatalf("zip entries = %#v, want execution/build.md", entryNames)
+	}
+	if !slices.Contains(entryNames, "execution/parser/parse.md") {
+		t.Fatalf("zip entries = %#v, want execution/parser/parse.md", entryNames)
 	}
 }
 

@@ -15,6 +15,7 @@ export type SidebarNavigationActions = {
   moveNode: (file: GraphTreeFileData, sourceGraphPath: string, targetGraphPath: string) => void;
   deleteNode: (file: GraphTreeFileData, graphPath: string) => void;
   deleteGraph: (graphPath: string) => void;
+  downloadGraph: (graphPath: string) => void;
   setGraphColor: (graphPath: string, color: string | null) => void;
   setGraphCanvasDisabled: (graphPath: string, disabled: boolean) => void;
 };
@@ -31,6 +32,7 @@ type UseSidebarNavigationActionsArgs = {
   handleSidebarMoveNode: (file: GraphTreeFileData, sourceGraphPath: string, targetGraphPath: string) => Promise<void> | void;
   handleSidebarDeleteNode: (file: GraphTreeFileData, graphPath: string) => void;
   handleSidebarDeleteGraph: (graphPath: string) => Promise<void> | void;
+  handleSidebarDownloadGraph: (graphPath: string) => Promise<void> | void;
   handleSidebarSetGraphColor: (graphPath: string, color: string | null) => Promise<void> | void;
   handleSidebarSetGraphCanvasDisabled: (graphPath: string, disabled: boolean) => Promise<void> | void;
 };
@@ -47,6 +49,7 @@ export function useSidebarNavigationActions({
   handleSidebarMoveNode,
   handleSidebarDeleteNode,
   handleSidebarDeleteGraph,
+  handleSidebarDownloadGraph,
   handleSidebarSetGraphColor,
   handleSidebarSetGraphCanvasDisabled,
 }: UseSidebarNavigationActionsArgs): SidebarNavigationActions {
@@ -62,6 +65,7 @@ export function useSidebarNavigationActions({
     handleSidebarMoveNode,
     handleSidebarDeleteNode,
     handleSidebarDeleteGraph,
+    handleSidebarDownloadGraph,
     handleSidebarSetGraphColor,
     handleSidebarSetGraphCanvasDisabled,
   });
@@ -110,6 +114,10 @@ export function useSidebarNavigationActions({
     void actionRefs.current.handleSidebarDeleteGraph(graphPath);
   }, []);
 
+  const downloadGraph = useCallback((graphPath: string) => {
+    void actionRefs.current.handleSidebarDownloadGraph(graphPath);
+  }, []);
+
   const setGraphColor = useCallback((graphPath: string, color: string | null) => {
     void actionRefs.current.handleSidebarSetGraphColor(graphPath, color);
   }, []);
@@ -130,6 +138,7 @@ export function useSidebarNavigationActions({
     moveNode,
     deleteNode,
     deleteGraph,
+    downloadGraph,
     setGraphColor,
     setGraphCanvasDisabled,
   }), [
@@ -144,6 +153,7 @@ export function useSidebarNavigationActions({
     selectGraph,
     selectHome,
     selectWorkspace,
+    downloadGraph,
     setGraphColor,
     setGraphCanvasDisabled,
   ]);
