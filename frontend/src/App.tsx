@@ -412,6 +412,7 @@ function FlowApp() {
   const rightRailDocumentEditorRef = useRef<RichTextEditorHandle | null>(null);
   const connectingTargetRef = useRef<string | null>(null);
   const homeFormStateRef = useRef<HomeFormState>(emptyHomeFormState);
+  const homeFormWorkspacePathRef = useRef<string>("");
   const homeAutoSaveTimerRef = useRef<number | null>(null);
   const documentAutoSaveTimerRef = useRef<number | null>(null);
   const homeSavePromiseRef = useRef<Promise<void> | null>(null);
@@ -1424,7 +1425,12 @@ function FlowApp() {
 
   useEffect(() => {
     const next = createHomeFormState(graphTree?.home ?? null);
+    const currentWorkspacePath = workspace?.workspacePath ?? "";
+    const workspaceChanged = homeFormWorkspacePathRef.current !== currentWorkspacePath;
+    homeFormWorkspacePathRef.current = currentWorkspacePath;
+
     if (
+      !workspaceChanged &&
       homeDocumentEditorRef.current !== null &&
       homeFormStateRef.current.body !== "" &&
       homeFormStateRef.current.body !== next.body
@@ -1441,7 +1447,7 @@ function FlowApp() {
       homeFormStateRef.current = next;
       setHomeFormState(next);
     }
-  }, [graphTree]);
+  }, [graphTree, workspace?.workspacePath]);
 
   useEffect(() => {
     if (workspace !== null) {

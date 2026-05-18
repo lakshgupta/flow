@@ -6,13 +6,9 @@ title: Home
 
 ## Backlog
 
-- [x] when switching the workspace the home page should open for the new workspace. the index should refresh for the new workspace. also in case there is a new node or a graph created on disk then it should also get reflected in the UI.
-- [x] in the desktop mode, on switching the workspace I don't see the node pages under the graph directory. I think on switching the workspace the index should get refreshed so that all the pages show up. also in case there is a new node or a graph created on disk then it should also get reflected in the UI.
-- [x] options to fold/unfold a nested list
-- [x] option to download graph as a zip from the graph option in the content tree. 
-- [x] option to download all of the data of a workspace as a zip from the setting dialog box.
-- [x] add a different section in the setting dialog box for listing the registered workspace. move the registered workspace list from the general section to the new 'Workspaces' section. 
-- [x] add an about page in the settings dialog box. show the flow version, license and the copyright text.
+- [x] when I switch the workspace in the global view, then I don't see the home page getting switched to the home page of the new workspace
+- [ ] the icon in the ubuntu toolbar shows the cog wheel instead of frontend/src/assets/flow_logo_linux.png
+- [ ] License is "Apache License 2.0". da
 
 ## Thinking
 - [ ] finish implementing command type of nodes
