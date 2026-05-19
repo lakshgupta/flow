@@ -14,3 +14,7 @@ var linuxWindowIconPNG []byte
 func linuxWindowIcon() []byte {
 	return linuxWindowIconPNG
 }
+
+// applyMacOSDockIcon is a no-op on Linux; dock icon is set via the .desktop
+// file and the Icon provided to Wails linux.Options.
+func applyMacOSDockIcon() {}

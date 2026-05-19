@@ -7,3 +7,6 @@ package desktop
 func linuxWindowIcon() []byte {
 	return nil
 }
+
+// applyMacOSDockIcon is a no-op on Windows.
+func applyMacOSDockIcon() {}

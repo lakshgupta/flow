@@ -63,6 +63,12 @@ func runDesktopMode(runtimeContext RuntimeContext) error {
 		// the frontend once the window is ready.
 		OnStartup: func(ctx context.Context) {
 			app.startup(ctx)
+			// Set the macOS Dock / window-switcher icon from the embedded PNG.
+			// This is required when the app runs as a raw binary (not a .app
+			// bundle), where macOS has no Info.plist / .icns to source the icon
+			// from. It is harmless when running inside a bundle — the bundle
+			// icon remains the canonical source and this call just reinforces it.
+			applyMacOSDockIcon()
 		},
 		// Bind exposes App methods to the frontend via the Wails JS bridge.
 		// The React app currently uses HTTP calls exclusively, but binding App
