@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/lex/flow/internal/markdown"
-	_ "modernc.org/sqlite"
 )
 
 const schemaSQL = `
@@ -188,7 +187,7 @@ func Rebuild(indexPath string, flowPaths ...string) error {
 		return fmt.Errorf("remove stale temporary index: %w", err)
 	}
 
-	database, err := sql.Open("sqlite", tmpPath)
+	database, err := openIndexDB(tmpPath)
 	if err != nil {
 		return fmt.Errorf("open index database: %w", err)
 	}
@@ -870,7 +869,7 @@ func defaultMalformedDocumentID(relativePath string, graphPath string) string {
 
 // ReadGraphNodes returns the graph projection derived in the SQLite index.
 func ReadGraphNodes(indexPath string) ([]GraphNode, error) {
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return nil, fmt.Errorf("open index database: %w", err)
 	}

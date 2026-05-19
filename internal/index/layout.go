@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite"
 )
 
 // GraphLayoutPosition stores a persisted graph node position for one workspace graph.
@@ -38,7 +37,7 @@ func ReadGraphLayoutPositions(indexPath string, graphPath string) ([]GraphLayout
 		return nil, fmt.Errorf("graph path must not be empty")
 	}
 
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return nil, fmt.Errorf("open index database: %w", err)
 	}
@@ -91,7 +90,7 @@ func WriteGraphLayoutPositions(indexPath string, positions []GraphLayoutPosition
 		return nil
 	}
 
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return fmt.Errorf("open index database: %w", err)
 	}
@@ -126,7 +125,7 @@ func WriteGraphLayoutPositions(indexPath string, positions []GraphLayoutPosition
 }
 
 func loadExistingGraphLayoutPositions(indexPath string) ([]GraphLayoutPosition, error) {
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +183,7 @@ func ReadGraphLayoutViewport(indexPath string, graphPath string) (GraphLayoutVie
 		return GraphLayoutViewport{}, false, fmt.Errorf("graph path must not be empty")
 	}
 
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return GraphLayoutViewport{}, false, fmt.Errorf("open index database: %w", err)
 	}
@@ -215,7 +214,7 @@ func WriteGraphLayoutViewport(indexPath string, viewport GraphLayoutViewport) er
 		return err
 	}
 
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return fmt.Errorf("open index database: %w", err)
 	}
@@ -241,7 +240,7 @@ func WriteGraphLayoutViewport(indexPath string, viewport GraphLayoutViewport) er
 }
 
 func loadExistingGraphLayoutViewports(indexPath string) ([]GraphLayoutViewport, error) {
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return nil, err
 	}

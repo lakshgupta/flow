@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	_ "modernc.org/sqlite"
 )
 
 // NodeView is a self-describing representation of a single graph node, including
@@ -62,7 +61,7 @@ func ReadNodeView(indexPath, id, graph string) (NodeView, error) {
 		return NodeView{}, fmt.Errorf("node id must not be empty")
 	}
 
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return NodeView{}, fmt.Errorf("open index database: %w", err)
 	}
@@ -122,7 +121,7 @@ func ReadAllNodeViews(indexPath, graph string) ([]NodeView, error) {
 		return nil, fmt.Errorf("graph must not be empty")
 	}
 
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return nil, fmt.Errorf("open index database: %w", err)
 	}
@@ -139,7 +138,7 @@ func ReadNodeSummariesByIDs(indexPath string, ids []string) ([]NodeSummary, erro
 		return []NodeSummary{}, nil
 	}
 
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return nil, fmt.Errorf("open index database: %w", err)
 	}

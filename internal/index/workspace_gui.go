@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite"
 )
 
 // WorkspaceGUISettings stores GUI preferences persisted in the workspace index.
@@ -20,7 +19,7 @@ type WorkspaceGUISettings struct {
 
 // ReadWorkspaceGUISettings returns the singleton GUI settings row.
 func ReadWorkspaceGUISettings(indexPath string) (WorkspaceGUISettings, bool, error) {
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return WorkspaceGUISettings{}, false, fmt.Errorf("open index database: %w", err)
 	}
@@ -50,7 +49,7 @@ func WriteWorkspaceGUISettings(indexPath string, settings WorkspaceGUISettings) 
 		return err
 	}
 
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return fmt.Errorf("open index database: %w", err)
 	}
@@ -83,7 +82,7 @@ func WriteWorkspaceGUISettings(indexPath string, settings WorkspaceGUISettings) 
 
 // ReadWorkspaceGraphDirectoryColors returns persisted graph directory colors keyed by graph path.
 func ReadWorkspaceGraphDirectoryColors(indexPath string) (map[string]string, error) {
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return nil, fmt.Errorf("open index database: %w", err)
 	}
@@ -118,7 +117,7 @@ func ReadWorkspaceGraphDirectoryColors(indexPath string) (map[string]string, err
 
 // ReplaceWorkspaceGraphDirectoryColors atomically replaces persisted graph directory colors.
 func ReplaceWorkspaceGraphDirectoryColors(indexPath string, colors map[string]string) error {
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return fmt.Errorf("open index database: %w", err)
 	}
@@ -173,7 +172,7 @@ func ensureWorkspaceGUISchema(database *sql.DB) error {
 }
 
 func loadExistingWorkspaceGUISettings(indexPath string) (WorkspaceGUISettings, bool, error) {
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return WorkspaceGUISettings{}, false, err
 	}
@@ -197,7 +196,7 @@ func loadExistingWorkspaceGUISettings(indexPath string) (WorkspaceGUISettings, b
 }
 
 func loadExistingWorkspaceGraphDirectoryColors(indexPath string) (map[string]string, error) {
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return nil, err
 	}

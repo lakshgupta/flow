@@ -201,3 +201,63 @@ func TestEnsureIndexExistsConcurrentRebuildIsSerialised(t *testing.T) {
 		t.Fatal("ReadGraphTreeFiles() = empty, want at least one file after concurrent ensureIndexExists")
 	}
 }
+
+// TestConcurrentWriteAndReadDoNotDeadlock reproduces the startup race between
+// /api/workspace (which writes GUI settings via WriteWorkspaceGUISettingsWorkspace)
+// and /api/graphs (which reads graph nodes via ReadGraphNodesWorkspace).
+//
+// Without busy_timeout on every sql.Open call, the writer holds a SQLite lock
+// and the reader receives SQLITE_BUSY immediately. handleGraphTree swallows the
+// error and returns an empty tree, causing the content tree to appear empty on
+// startup. With busy_timeout=5000 the reader waits and both operations succeed.
+func TestConcurrentWriteAndReadDoNotDeadlock(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	flowPath := filepath.Join(rootDir, ".flow")
+	indexPath := filepath.Join(flowPath, "config", "flow.index")
+
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "notes", "node.md"),
+		"---\nid: note-1\ntype: note\ngraph: notes\ntitle: Test Note\n---\n\nBody.\n")
+
+	// Build the index first, mirroring the NewMux pre-warm.
+	if err := Rebuild(indexPath, flowPath); err != nil {
+		t.Fatalf("Rebuild() error = %v", err)
+	}
+
+	const iterations = 20
+	errs := make([]error, iterations*2)
+	var wg sync.WaitGroup
+	wg.Add(iterations * 2)
+
+	for i := range iterations {
+		// Writer: simulate /api/workspace syncing GUI settings.
+		go func(idx int) {
+			defer wg.Done()
+			errs[idx] = WriteWorkspaceGUISettingsWorkspace(indexPath, flowPath, WorkspaceGUISettings{
+				Appearance: "light",
+			})
+		}(i)
+
+		// Reader: simulate /api/graphs reading graph nodes.
+		go func(idx int) {
+			defer wg.Done()
+			nodes, err := ReadGraphNodesWorkspace(indexPath, flowPath)
+			if err != nil {
+				errs[iterations+idx] = err
+				return
+			}
+			if len(nodes) == 0 {
+				t.Errorf("iteration %d: ReadGraphNodesWorkspace returned empty nodes under concurrent write", idx)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("operation %d: unexpected error = %v", i, err)
+		}
+	}
+}

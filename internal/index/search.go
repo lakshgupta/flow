@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 
-	_ "modernc.org/sqlite"
 )
 
 // rebuildMu serializes concurrent calls to ensureIndexExists so that two
@@ -188,7 +187,7 @@ func ReadGraphTreeFilesWorkspace(indexPath string, flowPath string) ([]GraphTree
 }
 
 func ReadGraphTreeFiles(indexPath string) ([]GraphTreeFile, error) {
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return nil, fmt.Errorf("open index database: %w", err)
 	}
@@ -235,7 +234,7 @@ func ReadDocumentParseFailure(indexPath string, id string) (DocumentParseFailure
 		return DocumentParseFailure{}, false, fmt.Errorf("document id must not be empty")
 	}
 
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return DocumentParseFailure{}, false, fmt.Errorf("open index database: %w", err)
 	}
@@ -272,7 +271,7 @@ func SearchWithFilters(indexPath string, filters SearchFilters, limit int) ([]Se
 		limit = 10
 	}
 
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return nil, fmt.Errorf("open index database: %w", err)
 	}
@@ -504,7 +503,7 @@ type EdgeRow struct {
 
 // ReadEdgesByGraph returns all edge rows for a given graph.
 func ReadEdgesByGraph(indexPath string, graph string) ([]EdgeRow, error) {
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return nil, fmt.Errorf("open index database: %w", err)
 	}
@@ -524,7 +523,7 @@ func ReadEdgesByGraph(indexPath string, graph string) ([]EdgeRow, error) {
 
 // ReadEdgesByEndpoint returns all edge rows where from_id or to_id equals the given document ID.
 func ReadEdgesByEndpoint(indexPath string, documentID string) ([]EdgeRow, error) {
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return nil, fmt.Errorf("open index database: %w", err)
 	}
@@ -545,7 +544,7 @@ func ReadEdgesByEndpoint(indexPath string, documentID string) ([]EdgeRow, error)
 
 // ReadEdgeByID returns a single edge row by ID.
 func ReadEdgeByID(indexPath string, edgeID string) (EdgeRow, bool, error) {
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return EdgeRow{}, false, fmt.Errorf("open index database: %w", err)
 	}
@@ -568,7 +567,7 @@ func ReadEdgeByID(indexPath string, edgeID string) (EdgeRow, bool, error) {
 
 // EdgeExistsByEndpoints returns true when an edge with the given (graph, from, to) already exists.
 func EdgeExistsByEndpoints(indexPath string, graph string, fromID string, toID string) (bool, error) {
-	database, err := sql.Open("sqlite", indexPath)
+	database, err := openIndexDB(indexPath)
 	if err != nil {
 		return false, fmt.Errorf("open index database: %w", err)
 	}
