@@ -63,10 +63,13 @@ pushd "$ROOT_DIR" >/dev/null
 	fi
 
 	# UniformTypeIdentifiers (UTType) requires macOS 11+. Set the deployment
-	# target explicitly so cross-compilation (arm64 runner → amd64) resolves
-	# the symbol for the correct minimum SDK version.
+	# target to match the installed SDK version so that:
+	#   (a) UTType is available for both amd64 and arm64, and
+	#   (b) the linker does not warn about a mismatch between Go objects
+	#       (compiled for the host macOS version) and the CGO link target.
 	if [[ "$TARGET_OS" == "darwin" ]]; then
-		export MACOSX_DEPLOYMENT_TARGET=11.0
+		_sdk_ver=$(xcrun --sdk macosx --show-sdk-version 2>/dev/null || true)
+		export MACOSX_DEPLOYMENT_TARGET="${_sdk_ver:-11.0}"
 	fi
 
 	CGO_ENABLED=1 GOOS="$TARGET_OS" GOARCH="$TARGET_ARCH" go build \
