@@ -62,6 +62,13 @@ pushd "$ROOT_DIR" >/dev/null
 		WAILS_TAGS="wails,production"
 	fi
 
+	# UniformTypeIdentifiers (UTType) requires macOS 11+. Set the deployment
+	# target explicitly so cross-compilation (arm64 runner → amd64) resolves
+	# the symbol for the correct minimum SDK version.
+	if [[ "$TARGET_OS" == "darwin" ]]; then
+		export MACOSX_DEPLOYMENT_TARGET=11.0
+	fi
+
 	CGO_ENABLED=1 GOOS="$TARGET_OS" GOARCH="$TARGET_ARCH" go build \
 		-tags="$WAILS_TAGS" \
 		-trimpath \

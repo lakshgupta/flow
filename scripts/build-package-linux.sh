@@ -26,9 +26,11 @@ mkdir -p "$ROOT_DIR/dist"
 
 DEB_PATH="$ROOT_DIR/dist/flow_${VERSION}_${GOARCH}.deb"
 
-nfpm package \
-	--config "$ROOT_DIR/packaging/linux/nfpm.yaml" \
-	--packager deb \
-	--target "$DEB_PATH"
+# Expand $GOARCH and $VERSION in the nfpm config before passing it in, because
+# older nfpm releases do not interpolate environment variables in content src paths.
+NFPM_CONF="$(mktemp /tmp/nfpm-XXXXXX.yaml)"
+trap 'rm -f "$NFPM_CONF"' EXIT
+envsubst < "$ROOT_DIR/packaging/linux/nfpm.yaml" > "$NFPM_CONF"
 
-echo "Built: $DEB_PATH"
+nfpm package \
+        --config "$NFPM_CONF" \
