@@ -62,14 +62,18 @@ pushd "$ROOT_DIR" >/dev/null
 		WAILS_TAGS="wails,production"
 	fi
 
-	# UniformTypeIdentifiers (UTType) requires macOS 11+. Set the deployment
-	# target to match the installed SDK version so that:
-	#   (a) UTType is available for both amd64 and arm64, and
-	#   (b) the linker does not warn about a mismatch between Go objects
-	#       (compiled for the host macOS version) and the CGO link target.
+	# UniformTypeIdentifiers (UTType) requires macOS 11+.
+	# (a) MACOSX_DEPLOYMENT_TARGET tells the linker the minimum supported OS so
+	#     that symbols introduced in macOS 11+ are considered valid for the target.
+	#     Set it to the actual installed SDK version to avoid a mismatch warning
+	#     between Go objects (compiled for host macOS) and the CGO link target.
+	# (b) Wails' WailsContext.m references UTType but its #cgo LDFLAGS do not
+	#     include -framework UniformTypeIdentifiers, so the linker cannot find
+	#     _OBJC_CLASS_$_UTType without an explicit flag here.
 	if [[ "$TARGET_OS" == "darwin" ]]; then
 		_sdk_ver=$(xcrun --sdk macosx --show-sdk-version 2>/dev/null || true)
 		export MACOSX_DEPLOYMENT_TARGET="${_sdk_ver:-11.0}"
+		export CGO_LDFLAGS="-framework UniformTypeIdentifiers"
 	fi
 
 	CGO_ENABLED=1 GOOS="$TARGET_OS" GOARCH="$TARGET_ARCH" go build \
