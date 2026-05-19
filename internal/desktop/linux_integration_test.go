@@ -19,19 +19,28 @@ func TestWriteLinuxDesktopIntegrationWritesDesktopEntryAndIcon(t *testing.T) {
 	}
 
 	desktopPath := filepath.Join(homePath, ".local", "share", "applications", "flow.desktop")
-	iconPath := filepath.Join(homePath, ".local", "share", "icons", "hicolor", "256x256", "apps", "flow.png")
+	// Icon= uses the 256x256 path; 512x512 is written for HiDPI coverage.
+	iconPath256 := filepath.Join(homePath, ".local", "share", "icons", "hicolor", "256x256", "apps", "flow.png")
+	iconPath512 := filepath.Join(homePath, ".local", "share", "icons", "hicolor", "512x512", "apps", "flow.png")
 
 	desktopData, err := os.ReadFile(desktopPath)
 	if err != nil {
 		t.Fatalf("read desktop entry: %v", err)
 	}
-	iconData, err := os.ReadFile(iconPath)
+	iconData256, err := os.ReadFile(iconPath256)
 	if err != nil {
-		t.Fatalf("read icon file: %v", err)
+		t.Fatalf("read 256x256 icon file: %v", err)
+	}
+	iconData512, err := os.ReadFile(iconPath512)
+	if err != nil {
+		t.Fatalf("read 512x512 icon file: %v", err)
 	}
 
-	if string(iconData) != string(iconPNG) {
-		t.Fatalf("icon bytes mismatch: got %v want %v", iconData, iconPNG)
+	if string(iconData256) != string(iconPNG) {
+		t.Fatalf("256x256 icon bytes mismatch: got %v want %v", iconData256, iconPNG)
+	}
+	if string(iconData512) != string(iconPNG) {
+		t.Fatalf("512x512 icon bytes mismatch: got %v want %v", iconData512, iconPNG)
 	}
 
 	desktopContent := string(desktopData)
@@ -41,7 +50,8 @@ func TestWriteLinuxDesktopIntegrationWritesDesktopEntryAndIcon(t *testing.T) {
 	if !strings.Contains(desktopContent, "StartupWMClass=flow") {
 		t.Fatalf("desktop entry missing StartupWMClass=flow: %q", desktopContent)
 	}
-	expectedIconField := "Icon=" + filepath.Join(homePath, ".local", "share", "icons", "hicolor", "256x256", "apps", "flow.png")
+	// Icon= must point to the 256x256 absolute path so GNOME resolves it immediately.
+	expectedIconField := "Icon=" + iconPath256
 	if !strings.Contains(desktopContent, expectedIconField) {
 		t.Fatalf("desktop entry missing absolute Icon path: %q", desktopContent)
 	}

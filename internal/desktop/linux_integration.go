@@ -57,16 +57,32 @@ func writeLinuxDesktopIntegration(homePath string, executablePath string, iconPN
 	}
 
 	applicationsDir := filepath.Join(homePath, ".local", "share", "applications")
-	// 256x256 is a standard size registered in the hicolor theme index.
-	// The 1024x1024 directory is non-standard and is never scanned by GNOME.
-	iconsDir := filepath.Join(homePath, ".local", "share", "icons", "hicolor", "256x256", "apps")
+
+	// Write the icon into two standard hicolor sizes. 256x256 is the most
+	// common size used by GNOME's icon-theme name resolver. 512x512 is
+	// registered in the hicolor index for HiDPI (2× scaled) displays.
+	// Both directories share the same high-resolution source PNG; the desktop
+	// environment scales from whichever entry is the closest match.
+	iconSizes := []string{"256x256", "512x512"}
+	var primaryIconPath string // path used in Icon= (first / 256x256 entry)
+
+	for i, size := range iconSizes {
+		iconsDir := filepath.Join(homePath, ".local", "share", "icons", "hicolor", size, "apps")
+		if err := os.MkdirAll(iconsDir, 0o755); err != nil {
+			return err
+		}
+		iconPath := filepath.Join(iconsDir, "flow.png")
+		if err := os.WriteFile(iconPath, iconPNG, 0o644); err != nil {
+			return err
+		}
+		if i == 0 {
+			primaryIconPath = iconPath
+		}
+	}
+
 	desktopPath := filepath.Join(applicationsDir, "flow.desktop")
-	iconPath := filepath.Join(iconsDir, "flow.png")
 
 	if err := os.MkdirAll(applicationsDir, 0o755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(iconsDir, 0o755); err != nil {
 		return err
 	}
 
@@ -74,13 +90,9 @@ func writeLinuxDesktopIntegration(homePath string, executablePath string, iconPN
 	// requiring a gtk-update-icon-cache run. This is fully supported by the
 	// freedesktop spec and takes effect as soon as the .desktop file is written.
 	execValue := strings.ReplaceAll(executablePath, " ", `\ `)
-	desktopData := fmt.Sprintf(linuxDesktopEntryBody, execValue, iconPath)
+	desktopData := fmt.Sprintf(linuxDesktopEntryBody, execValue, primaryIconPath)
 
 	if err := os.WriteFile(desktopPath, []byte(desktopData), 0o644); err != nil {
-		return err
-	}
-
-	if err := os.WriteFile(iconPath, iconPNG, 0o644); err != nil {
 		return err
 	}
 
