@@ -69,6 +69,7 @@ function GraphTreePanelComponent({ graphTree, activeSurface, selectedDocumentId,
       onDownloadGraph={actions.downloadGraph}
       onSetGraphColor={actions.setGraphColor}
       onSetGraphCanvasDisabled={actions.setGraphCanvasDisabled}
+      onSetNodeColor={actions.setNodeColor}
     />
   );
 }

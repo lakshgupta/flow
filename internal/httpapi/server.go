@@ -171,6 +171,9 @@ type documentResponse struct {
 	Name             string                    `json:"name,omitempty"`
 	Env              map[string]string         `json:"env,omitempty"`
 	Run              string                    `json:"run,omitempty"`
+	// Color is the per-node color override (a GraphDirectoryColorId such as "rose" or "sky").
+	// An empty string means no override; the node inherits its graph directory's color.
+	Color            string                    `json:"color,omitempty"`
 	RelatedNoteIDs   []string                  `json:"relatedNoteIds,omitempty"`
 	InlineReferences []inlineReferenceResponse `json:"inlineReferences,omitempty"`
 }
@@ -233,6 +236,9 @@ type updateDocumentRequest struct {
 	Name        *string                  `json:"name"`
 	Env         *map[string]string       `json:"env"`
 	Run         *string                  `json:"run"`
+	// Color is a pointer so that a missing JSON field leaves the color unchanged,
+	// while an explicit null or empty string clears the per-node color override.
+	Color       *string                  `json:"color"`
 }
 
 type updateHomeRequest struct {
@@ -1367,6 +1373,7 @@ func updateDocumentPatchFromPayload(payload updateDocumentRequest) core.UpdateDo
 		Name:        payload.Name,
 		Env:         payload.Env,
 		Run:         payload.Run,
+		Color:       payload.Color,
 	}
 }
 
@@ -2268,6 +2275,7 @@ func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteG
 			UpdatedAt:        document.Metadata.UpdatedAt,
 			Body:             document.Body,
 			Links:            convertLinks(document.Metadata.Links),
+			Color:            document.Metadata.Color,
 			RelatedNoteIDs:   cloneStrings(node.RelatedNoteIDs),
 			InlineReferences: inlineReferences,
 		}, true, nil
@@ -2291,6 +2299,7 @@ func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteG
 			Body:             document.Body,
 			Status:           document.Metadata.Status,
 			Links:            convertLinks(document.Metadata.Links),
+			Color:            document.Metadata.Color,
 			InlineReferences: inlineReferences,
 		}, true, nil
 	case markdown.CommandDocument:
@@ -2315,6 +2324,7 @@ func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteG
 			Name:             document.Metadata.Name,
 			Env:              cloneMap(document.Metadata.Env),
 			Run:              document.Metadata.Run,
+			Color:            document.Metadata.Color,
 			InlineReferences: inlineReferences,
 		}, true, nil
 	default:

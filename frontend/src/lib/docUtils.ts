@@ -18,6 +18,7 @@ export const emptyDocumentFormState: DocumentFormState = {
   name: "",
   env: "",
   run: "",
+  color: "",
 };
 
 export const emptyHomeFormState: HomeFormState = {
@@ -163,6 +164,7 @@ export function createDocumentFormState(document: DocumentResponse | null): Docu
     name: document.name ?? "",
     env: serializeEnv(document.env),
     run: document.run ?? "",
+    color: document.color ?? "",
   };
 }
 

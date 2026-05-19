@@ -1,6 +1,7 @@
-import { CheckSquare, FileText, Terminal, X } from "lucide-react";
+import { CheckSquare, FileText, Paintbrush, Terminal, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { GraphCanvasOverlayController } from "./graphCanvasOverlayController";
+import { GRAPH_DIRECTORY_COLOR_OPTIONS } from "../lib/graphColors";
 
 function normalizeRelationshipTag(value: string): string {
   return value.trim();
@@ -28,6 +29,7 @@ export function GraphCanvasOverlayInteraction({
 }: GraphCanvasOverlayInteractionProps) {
   const {
     canvasContextMenu,
+    nodeContextMenu,
     connectingFrom,
     connectingPointerPos,
     connectingStartPos,
@@ -35,7 +37,7 @@ export function GraphCanvasOverlayInteraction({
     edgeToolbar,
     relationshipTagCatalog,
   } = controller.state;
-  const { closeCanvasContextMenu, createGraphDocument, setEdgeToolbarState, persistEdgeToolbar } = controller.actions;
+  const { closeCanvasContextMenu, createGraphDocument, setEdgeToolbarState, persistEdgeToolbar, closeNodeContextMenu, setNodeColor } = controller.actions;
   const [relationshipTagInput, setRelationshipTagInput] = useState<string>("");
 
   useEffect(() => {
@@ -80,6 +82,45 @@ export function GraphCanvasOverlayInteraction({
           >
             <Terminal size={13} /> Add command
           </button>
+        </div>
+      )}
+
+      {nodeContextMenu && (
+        <div
+          className="canvas-context-menu canvas-node-context-menu"
+          style={{ left: nodeContextMenu.x, top: nodeContextMenu.y }}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <div className="canvas-context-menu-header">
+            <span><Paintbrush size={12} /> Node color</span>
+            <button
+              type="button"
+              className="canvas-node-context-menu-close"
+              onClick={closeNodeContextMenu}
+              aria-label="Close color picker"
+            >
+              <X size={12} />
+            </button>
+          </div>
+          <button
+            type="button"
+            className="flow-dropdown-item"
+            onClick={() => setNodeColor(nodeContextMenu.nodeId, null)}
+          >
+            <span className="graph-color-swatch graph-color-swatch-none" aria-hidden="true" />
+            Use graph color
+          </button>
+          {GRAPH_DIRECTORY_COLOR_OPTIONS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              className="flow-dropdown-item"
+              onClick={() => setNodeColor(nodeContextMenu.nodeId, option.id)}
+            >
+              <span className="graph-color-swatch" style={{ backgroundColor: option.hex }} aria-hidden="true" />
+              {option.label}
+            </button>
+          ))}
         </div>
       )}
 

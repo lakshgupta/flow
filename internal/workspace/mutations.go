@@ -70,6 +70,9 @@ type DocumentPatch struct {
 	Name        *string
 	Env         *map[string]string
 	Run         *string
+	// Color is a pointer so that nil means "leave unchanged" and a non-nil pointer to an
+	// empty string explicitly clears the per-node color override.
+	Color *string
 }
 
 // CreateGraphInput describes the inputs for creating a new graph directory.
@@ -790,7 +793,7 @@ func applyDocumentPatch(document markdown.Document, patch DocumentPatch) (markdo
 }
 
 func (patch DocumentPatch) isEmpty() bool {
-	return patch.ID == nil && patch.Graph == nil && patch.FileName == nil && patch.Title == nil && patch.Description == nil && patch.Tags == nil && patch.CreatedAt == nil && patch.UpdatedAt == nil && patch.Body == nil && patch.Status == nil && patch.Links == nil && patch.Name == nil && patch.Env == nil && patch.Run == nil
+	return patch.ID == nil && patch.Graph == nil && patch.FileName == nil && patch.Title == nil && patch.Description == nil && patch.Tags == nil && patch.CreatedAt == nil && patch.UpdatedAt == nil && patch.Body == nil && patch.Status == nil && patch.Links == nil && patch.Name == nil && patch.Env == nil && patch.Run == nil && patch.Color == nil
 }
 
 func patchCommonFields(fields *markdown.CommonFields, patch DocumentPatch) {
@@ -814,6 +817,9 @@ func patchCommonFields(fields *markdown.CommonFields, patch DocumentPatch) {
 	}
 	if patch.Tags != nil {
 		fields.Tags = cloneStrings(*patch.Tags)
+	}
+	if patch.Color != nil {
+		fields.Color = *patch.Color
 	}
 }
 

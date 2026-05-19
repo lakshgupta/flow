@@ -58,6 +58,8 @@ export type GraphTreeFileData = {
   title: string;
   path: string;
   fileName: string;
+  /** Per-node color override (a GraphDirectoryColorId such as "rose" or "sky"). Empty string means no override. */
+  color?: string;
 };
 
 export type GraphTreeResponse = {
@@ -108,6 +110,8 @@ export type DocumentResponse = {
   name?: string;
   env?: Record<string, string>;
   run?: string;
+  /** Per-node color override (a GraphDirectoryColorId such as "rose" or "sky"). Empty string means no override. */
+  color?: string;
   relatedNoteIds?: string[];
   inlineReferences?: InlineReference[];
 };
@@ -134,6 +138,8 @@ export type DocumentFormState = {
   name: string;
   env: string;
   run: string;
+  /** Per-node color override (a GraphDirectoryColorId such as "rose" or "sky"). Empty string means no override. */
+  color: string;
 };
 
 export type HomeFormState = {
@@ -194,6 +200,8 @@ export type GraphCanvasNodePayload = {
   tags?: string[];
   createdAt?: string;
   updatedAt?: string;
+  /** Per-node color override (a GraphDirectoryColorId such as "rose" or "sky"). Empty string means no override. */
+  nodeColor?: string;
   position: GraphCanvasPosition;
   positionPersisted: boolean;
   width?: number;
@@ -286,6 +294,8 @@ export type GraphCanvasFlowNodeData = {
   description: string;
   graph: string;
   graphColor?: string;
+  /** Per-node color override; takes precedence over graphColor when set. */
+  nodeColor?: string;
   previewKind?: "image" | "pdf" | "file";
   previewURL?: string;
   previewName?: string;

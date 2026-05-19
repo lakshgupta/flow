@@ -239,6 +239,7 @@ function buildGraphTreeFile(document: DocumentResponse): GraphTreeFileData {
     title: document.title,
     path: document.path,
     fileName: fileNameFromPath(document.path),
+    color: document.color,
   };
 }
 
@@ -395,6 +396,7 @@ function FlowApp() {
   const [isResizingLeft, setIsResizingLeft] = useState<boolean>(false);
   const [isResizingRight, setIsResizingRight] = useState<boolean>(false);
   const [canvasContextMenu, setCanvasContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [nodeContextMenu, setNodeContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
   const [shiftSelectedNodes, setShiftSelectedNodes] = useState<string[]>([]);
   const [graphCanvasIntersectingNodeIds, setGraphCanvasIntersectingNodeIds] = useState<string[]>([]);
   const [graphCanvasIntersectionSourceId, setGraphCanvasIntersectionSourceId] = useState<string | null>(null);
@@ -2825,6 +2827,26 @@ function FlowApp() {
     }
   }
 
+  /** Sets or clears the per-node color override for a document. Null or empty string removes the override. */
+  async function handleSetNodeColor(nodeId: string, colorId: string | null): Promise<void> {
+    try {
+      clearMutationFeedback();
+      const colorValue = colorId ?? "";
+      const updatedDocument = await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(nodeId)}`, {
+        method: "PUT",
+        body: JSON.stringify({ color: colorValue }),
+      });
+
+      if (selectedDocumentRef.current?.id === updatedDocument.id) {
+        syncSelectedDocumentState(updatedDocument, { preserveFormState: false });
+      }
+      setGraphTree((current) => updateGraphTreeDocumentEntry(current, updatedDocument, updatedDocument));
+      setGraphCanvasData((current) => updateGraphCanvasDocumentEntry(current, updatedDocument, updatedDocument));
+    } catch (err) {
+      setMutationError(toErrorMessage(err));
+    }
+  }
+
   async function handleSidebarSetGraphCanvasDisabled(graphPath: string, disabled: boolean): Promise<void> {
     try {
       clearMutationFeedback();
@@ -3225,6 +3247,9 @@ function FlowApp() {
           payload.env = parseEnv(state.env);
         }
 
+        // Always include color so clearing the override (empty string) is persisted.
+        payload.color = state.color;
+
         const updatedDocument = await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(doc.id)}`, {
           method: "PUT",
           body: JSON.stringify(payload),
@@ -3518,6 +3543,7 @@ function FlowApp() {
     handleSidebarDownloadGraph,
     handleSidebarSetGraphColor,
     handleSidebarSetGraphCanvasDisabled,
+    handleSidebarSetNodeColor: handleSetNodeColor,
   });
 
   const { graphCanvasOverlayActions, graphCanvasSurfaceActions } = useGraphCanvasSurfaceActions({
@@ -3556,6 +3582,8 @@ function FlowApp() {
     graphCanvasFlowRef,
     setSelectedCanvasNodeId,
     setCanvasContextMenu,
+    setNodeContextMenu,
+    handleSetNodeColor,
     setShiftSelectedNodes,
     rfViewportRef,
   });
@@ -3575,6 +3603,7 @@ function FlowApp() {
       shiftSelectedNodes,
       connectingTarget,
       canvasContextMenu,
+      nodeContextMenu,
       connectingFrom,
       connectingPointerPos,
       connectingStartPos,
@@ -3582,6 +3611,7 @@ function FlowApp() {
     actions: graphCanvasOverlayActions,
   }), [
     canvasContextMenu,
+    nodeContextMenu,
     connectingFrom,
     connectingPointerPos,
     connectingStartPos,

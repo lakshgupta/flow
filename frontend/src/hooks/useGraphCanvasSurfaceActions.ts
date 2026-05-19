@@ -66,6 +66,8 @@ type UseGraphCanvasSurfaceActionsArgs = {
   graphCanvasFlowRef: MutableRefObject<ReactFlowInstance<GraphCanvasFlowNodeData> | null>;
   setSelectedCanvasNodeId: (nodeId: string) => void;
   setCanvasContextMenu: (value: { x: number; y: number } | null) => void;
+  setNodeContextMenu: (value: { x: number; y: number; nodeId: string } | null) => void;
+  handleSetNodeColor: (nodeId: string, colorId: string | null) => Promise<void> | void;
   setShiftSelectedNodes: (nodeIds: string[]) => void;
   rfViewportRef: MutableRefObject<{ x: number; y: number; zoom: number }>;
 };
@@ -106,6 +108,8 @@ export function useGraphCanvasSurfaceActions({
   graphCanvasFlowRef,
   setSelectedCanvasNodeId,
   setCanvasContextMenu,
+  setNodeContextMenu,
+  handleSetNodeColor,
   setShiftSelectedNodes,
   rfViewportRef,
 }: UseGraphCanvasSurfaceActionsArgs): {
@@ -139,6 +143,7 @@ export function useGraphCanvasSurfaceActions({
     updateGraphCanvasNodePosition,
     persistGraphCanvasPosition,
     persistGraphCanvasViewport,
+    handleSetNodeColor,
   });
 
   const handleGraphCanvasClearHoveredTooltip = useCallback((edgeId: string) => {
@@ -277,8 +282,9 @@ export function useGraphCanvasSurfaceActions({
     setSelectedEdgeId("");
     setEdgeToolbar(null);
     setCanvasContextMenu(null);
+    setNodeContextMenu(null);
     setShiftSelectedNodes([]);
-  }, [setCanvasContextMenu, setEdgeToolbar, setHoveredEdgeTooltip, setSelectedCanvasNodeId, setSelectedEdgeId, setShiftSelectedNodes]);
+  }, [setCanvasContextMenu, setNodeContextMenu, setEdgeToolbar, setHoveredEdgeTooltip, setSelectedCanvasNodeId, setSelectedEdgeId, setShiftSelectedNodes]);
 
   const handleGraphCanvasPersistViewportSurface = useCallback(() => {
     const viewport = rfViewportRef.current;
@@ -299,6 +305,19 @@ export function useGraphCanvasSurfaceActions({
   const closeCanvasContextMenu = useCallback(() => {
     setCanvasContextMenu(null);
   }, [setCanvasContextMenu]);
+
+  const openNodeContextMenu = useCallback((x: number, y: number, nodeId: string) => {
+    setNodeContextMenu({ x, y, nodeId });
+  }, [setNodeContextMenu]);
+
+  const closeNodeContextMenu = useCallback(() => {
+    setNodeContextMenu(null);
+  }, [setNodeContextMenu]);
+
+  const setNodeColorBridge = useCallback((nodeId: string, colorId: string | null) => {
+    setNodeContextMenu(null);
+    void actionRefs.current.handleSetNodeColor(nodeId, colorId);
+  }, [setNodeContextMenu]);
 
   const graphCanvasOverlayActions = useMemo<GraphCanvasOverlayActions>(() => ({
     clearEdgeClickTimer,
@@ -321,10 +340,16 @@ export function useGraphCanvasSurfaceActions({
     onSendNodeToBack: handleSendNodeToBackBridge,
     onMerge: handleGraphCanvasMergeDocumentsBridge,
     closeCanvasContextMenu,
+    openNodeContextMenu,
+    closeNodeContextMenu,
+    setNodeColor: setNodeColorBridge,
     createGraphDocument: handleGraphCanvasCreateDocumentBridge,
   }), [
     clearEdgeClickTimer,
     closeCanvasContextMenu,
+    openNodeContextMenu,
+    closeNodeContextMenu,
+    setNodeColorBridge,
     handleGraphCanvasClearHoveredTooltip,
     handleGraphCanvasCreateDocumentBridge,
     handleGraphCanvasDeleteEdgeBridge,

@@ -89,6 +89,9 @@ type CommonFields struct {
 	Tags        []string     `yaml:"tags,omitempty"`
 	CreatedAt   string       `yaml:"createdAt,omitempty"`
 	UpdatedAt   string       `yaml:"updatedAt,omitempty"`
+	// Color is an optional per-node color override (a GraphDirectoryColorId value such as "rose" or "sky").
+	// When set, the node renders with this color on the canvas instead of inheriting the graph directory color.
+	Color string `yaml:"color,omitempty"`
 }
 
 // NoteMetadata describes note frontmatter fields.

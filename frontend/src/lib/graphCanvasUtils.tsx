@@ -173,7 +173,9 @@ export function buildGraphCanvasFlowNodes(
     const baseDimensions = graphCanvasNodeDimensions(shape, item.previewKind);
     const dimensions = graphCanvasNodeDimensions(shape, item.previewKind, item.width, item.height);
     const isExpanded = dimensions.width > baseDimensions.width || dimensions.height > baseDimensions.height;
-    const graphColor = resolveParentGraphDirectoryColor(item.graph, graphDirectoryColorsByPath);
+    // Per-node color overrides the inherited graph directory color when set.
+    const inheritedColor = resolveParentGraphDirectoryColor(item.graph, graphDirectoryColorsByPath);
+    const graphColor = item.nodeColor || inheritedColor;
     const data: GraphCanvasFlowNodeData = {
       label: renderGraphCanvasNodeLabel({
         id: item.id,
@@ -201,6 +203,7 @@ export function buildGraphCanvasFlowNodes(
       description: item.description,
       graph: item.graph,
       graphColor,
+      nodeColor: item.nodeColor,
       previewKind: item.previewKind,
       previewURL: item.previewURL,
       previewName: item.previewName,

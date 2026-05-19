@@ -52,6 +52,9 @@ type UpdateDocumentPatch struct {
 	Name        *string
 	Env         *map[string]string
 	Run         *string
+	// Color is a pointer so that nil means "leave unchanged" and a non-nil pointer to an
+	// empty string explicitly clears the per-node color override.
+	Color *string
 }
 
 // DocumentDeleter deletes one document selected by transport-specific identity

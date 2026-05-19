@@ -58,5 +58,6 @@ func documentPatchFromCorePatch(patch core.UpdateDocumentPatch) DocumentPatch {
 		Name:        patch.Name,
 		Env:         patch.Env,
 		Run:         patch.Run,
+		Color:       patch.Color,
 	}
 }

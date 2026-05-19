@@ -1,8 +1,9 @@
-import { ArrowDownLeft, ArrowUpRight, Plus, X } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Paintbrush, Plus, X } from "lucide-react";
 import { useState } from "react";
 
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
+import { GRAPH_DIRECTORY_COLOR_OPTIONS } from "../lib/graphColors";
 
 import type { DocumentFormState, DocumentResponse } from "../types";
 
@@ -97,6 +98,31 @@ export function DocumentPropertiesPanel({
             onChange={(event) => updateFormField("tags", event.target.value)}
           />
         </label>
+        <section className="center-document-properties-field editor-field" aria-label="Node color override">
+          <span><Paintbrush size={12} aria-hidden="true" /> Node color</span>
+          <div className="document-node-color-swatches">
+            <button
+              type="button"
+              title="Use graph color (no override)"
+              aria-label="Use graph color"
+              aria-pressed={formState.color === ""}
+              className={`document-node-color-swatch document-node-color-swatch-none ${formState.color === "" ? "document-node-color-swatch-active" : ""}`}
+              onClick={() => updateFormField("color", "")}
+            />
+            {GRAPH_DIRECTORY_COLOR_OPTIONS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                title={option.label}
+                aria-label={option.label}
+                aria-pressed={formState.color === option.id}
+                className={`document-node-color-swatch ${formState.color === option.id ? "document-node-color-swatch-active" : ""}`}
+                style={{ backgroundColor: option.hex }}
+                onClick={() => updateFormField("color", option.id)}
+              />
+            ))}
+          </div>
+        </section>
         <section className="center-document-properties-link-stats" aria-label="Document link stats">
           <div
             className="center-document-link-stat"

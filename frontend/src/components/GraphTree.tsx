@@ -75,6 +75,7 @@ type FileTreeRowProps = {
   onDeleteGraph: (graphPath: string) => void;
   onDownloadGraph: (graphPath: string) => void;
   onSetGraphColor: (graphPath: string, color: string | null) => void;
+  onSetNodeColor: (documentId: string, color: string | null) => void;
   onSetGraphCanvasDisabled: (graphPath: string, disabled: boolean) => void;
   collapsed: Set<string>;
   onToggleCollapse: (path: string) => void;
@@ -113,6 +114,7 @@ function FileTreeRow({
   onDeleteGraph,
   onDownloadGraph,
   onSetGraphColor,
+  onSetNodeColor,
   onSetGraphCanvasDisabled,
   collapsed,
   onToggleCollapse,
@@ -381,6 +383,26 @@ function FileTreeRow({
                   <Pencil size={12} />
                   Rename
                 </DropdownMenuItem>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <Paintbrush size={12} />
+                    Color
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuRadioGroup
+                      value={file.color && file.color.trim() !== "" ? file.color : "none"}
+                      onValueChange={(value) => onSetNodeColor(file.id, value === "none" ? null : value)}
+                    >
+                      <DropdownMenuRadioItem value="none">Graph color</DropdownMenuRadioItem>
+                      {GRAPH_DIRECTORY_COLOR_OPTIONS.map((option) => (
+                        <DropdownMenuRadioItem key={option.id} value={option.id}>
+                          <span className="graph-color-swatch" style={{ backgroundColor: option.hex }} aria-hidden="true" />
+                          {option.label}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   variant="destructive"
@@ -413,6 +435,7 @@ function FileTreeRow({
             onDeleteGraph={onDeleteGraph}
             onDownloadGraph={onDownloadGraph}
             onSetGraphColor={onSetGraphColor}
+            onSetNodeColor={onSetNodeColor}
             onSetGraphCanvasDisabled={onSetGraphCanvasDisabled}
             collapsed={collapsed}
             onToggleCollapse={onToggleCollapse}
@@ -446,10 +469,11 @@ type GraphTreeProps = {
   onDeleteGraph: (graphPath: string) => void;
   onDownloadGraph: (graphPath: string) => void;
   onSetGraphColor: (graphPath: string, color: string | null) => void;
+  onSetNodeColor: (documentId: string, color: string | null) => void;
   onSetGraphCanvasDisabled: (graphPath: string, disabled: boolean) => void;
 };
 
-export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSelectHome, onSelectGraph, onOpenDocument, onCreateGraph, onCreateNode, onRenameGraph, onRenameNode, onMoveNode, onDeleteNode, onDeleteGraph, onDownloadGraph, onSetGraphColor, onSetGraphCanvasDisabled }: GraphTreeProps) {
+export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSelectHome, onSelectGraph, onOpenDocument, onCreateGraph, onCreateNode, onRenameGraph, onRenameNode, onMoveNode, onDeleteNode, onDeleteGraph, onDownloadGraph, onSetGraphColor, onSetNodeColor, onSetGraphCanvasDisabled }: GraphTreeProps) {
   const { toggleFavorite, isFavorite } = useFavorites();
   const [contentExpanded, setContentExpanded] = useState(true);
   const [favoritesExpanded, setFavoritesExpanded] = useState(true);
@@ -623,6 +647,7 @@ export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSele
                     onDeleteGraph={onDeleteGraph}
                     onDownloadGraph={onDownloadGraph}
                     onSetGraphColor={onSetGraphColor}
+                    onSetNodeColor={onSetNodeColor}
                     onSetGraphCanvasDisabled={onSetGraphCanvasDisabled}
                     collapsed={collapsed}
                     onToggleCollapse={handleToggleCollapse}

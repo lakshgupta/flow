@@ -3408,6 +3408,7 @@ describe("App graph canvas flows", () => {
         title: "Overview",
         description: "Updated overview",
         graph: "execution",
+        color: "",
         tags: [],
         body: "# Intro Heading\n\nBody text\n\n## Deep Section\n\nMore detail\n",
         links: [

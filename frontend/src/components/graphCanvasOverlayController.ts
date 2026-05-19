@@ -38,6 +38,8 @@ export type GraphCanvasOverlayState = {
   shiftSelectedNodes: string[];
   connectingTarget: string | null;
   canvasContextMenu: { x: number; y: number } | null;
+  /** Context menu opened on a specific canvas node (e.g. via right-click), used to pick node color. */
+  nodeContextMenu: { x: number; y: number; nodeId: string } | null;
   connectingFrom: string | null;
   connectingPointerPos: { x: number; y: number } | null;
   connectingStartPos: { x: number; y: number } | null;
@@ -72,6 +74,11 @@ export type GraphCanvasOverlayActions = {
   onSendNodeToBack: (nodeId: string) => void;
   onMerge: () => void;
   closeCanvasContextMenu: () => void;
+  /** Opens the per-node color picker context menu at screen coordinates for the given node. */
+  openNodeContextMenu: (x: number, y: number, nodeId: string) => void;
+  closeNodeContextMenu: () => void;
+  /** Sets or clears the per-node color override; null or empty string clears the override. */
+  setNodeColor: (nodeId: string, colorId: string | null) => void;
   createGraphDocument: (type: GraphCreateType) => void;
 };
 

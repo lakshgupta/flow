@@ -33,6 +33,7 @@ export function GraphCanvasOverlayNodes({
     onBringNodeToFront,
     onSendNodeToBack,
     onMerge,
+    openNodeContextMenu,
   } = controller.actions;
   const [draftDescriptions, setDraftDescriptions] = useState<Record<string, string>>({});
   const resizeSessionRef = useRef<{
@@ -192,6 +193,11 @@ export function GraphCanvasOverlayNodes({
               .join(" ")}
             onClick={(event) => onNodeClick(event, node.id)}
             onDoubleClick={(event) => onNodeDoubleClick(event, node.id)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              openNodeContextMenu(event.clientX, event.clientY, node.id);
+            }}
             style={{ transform: `translate(${screenX}px, ${screenY}px) scale(${rfViewport.zoom})`, transformOrigin: "top left", zIndex: node.data.zIndex ?? 0 }}
           >
             <div

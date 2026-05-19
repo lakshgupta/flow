@@ -63,6 +63,10 @@ type GraphCanvasNode struct {
 	PreviewURL        string              `json:"previewURL,omitempty"`
 	PreviewName       string              `json:"previewName,omitempty"`
 	PreviewAssetCount int                 `json:"previewAssetCount,omitempty"`
+	// NodeColor is the per-node color override (a GraphDirectoryColorId value such as "rose" or
+	// "sky"). When non-empty, the canvas renders this node with the specified color instead of
+	// inheriting the graph directory color.
+	NodeColor         string              `json:"nodeColor,omitempty"`
 	Position          GraphCanvasPosition `json:"position"`
 	PositionPersisted bool                `json:"positionPersisted"`
 	Width             float64             `json:"width,omitempty"`
@@ -293,6 +297,7 @@ func buildGraphCanvasNode(item markdown.WorkspaceDocument) (GraphCanvasNode, str
 			PreviewURL:        previewURL,
 			PreviewName:       previewName,
 			PreviewAssetCount: previewAssetCount,
+			NodeColor:         document.Metadata.Color,
 			links:             cloneNodeLinks(document.Metadata.Links),
 		}, graphPath, true, nil
 	case markdown.TaskDocument:
@@ -312,6 +317,7 @@ func buildGraphCanvasNode(item markdown.WorkspaceDocument) (GraphCanvasNode, str
 			PreviewURL:        previewURL,
 			PreviewName:       previewName,
 			PreviewAssetCount: previewAssetCount,
+			NodeColor:         document.Metadata.Color,
 			links:             cloneNodeLinks(document.Metadata.Links),
 		}, graphPath, true, nil
 	case markdown.CommandDocument:
@@ -326,6 +332,7 @@ func buildGraphCanvasNode(item markdown.WorkspaceDocument) (GraphCanvasNode, str
 			Tags:        cloneStrings(document.Metadata.Tags),
 			CreatedAt:   document.Metadata.CreatedAt,
 			UpdatedAt:   document.Metadata.UpdatedAt,
+			NodeColor:   document.Metadata.Color,
 			links:       cloneNodeLinks(document.Metadata.Links),
 		}, graphPath, true, nil
 	default:

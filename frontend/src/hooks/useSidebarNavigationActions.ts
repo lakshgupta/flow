@@ -18,6 +18,7 @@ export type SidebarNavigationActions = {
   downloadGraph: (graphPath: string) => void;
   setGraphColor: (graphPath: string, color: string | null) => void;
   setGraphCanvasDisabled: (graphPath: string, disabled: boolean) => void;
+  setNodeColor: (documentId: string, color: string | null) => void;
 };
 
 type UseSidebarNavigationActionsArgs = {
@@ -35,6 +36,7 @@ type UseSidebarNavigationActionsArgs = {
   handleSidebarDownloadGraph: (graphPath: string) => Promise<void> | void;
   handleSidebarSetGraphColor: (graphPath: string, color: string | null) => Promise<void> | void;
   handleSidebarSetGraphCanvasDisabled: (graphPath: string, disabled: boolean) => Promise<void> | void;
+  handleSidebarSetNodeColor: (documentId: string, color: string | null) => Promise<void> | void;
 };
 
 export function useSidebarNavigationActions({
@@ -52,6 +54,7 @@ export function useSidebarNavigationActions({
   handleSidebarDownloadGraph,
   handleSidebarSetGraphColor,
   handleSidebarSetGraphCanvasDisabled,
+  handleSidebarSetNodeColor,
 }: UseSidebarNavigationActionsArgs): SidebarNavigationActions {
   const actionRefs = useLatestRef<UseSidebarNavigationActionsArgs>({
     handleWorkspaceSelection,
@@ -68,6 +71,7 @@ export function useSidebarNavigationActions({
     handleSidebarDownloadGraph,
     handleSidebarSetGraphColor,
     handleSidebarSetGraphCanvasDisabled,
+    handleSidebarSetNodeColor,
   });
 
   const selectWorkspace = useCallback((workspacePath: string) => {
@@ -126,6 +130,10 @@ export function useSidebarNavigationActions({
     void actionRefs.current.handleSidebarSetGraphCanvasDisabled(graphPath, disabled);
   }, []);
 
+  const setNodeColor = useCallback((documentId: string, color: string | null) => {
+    void actionRefs.current.handleSidebarSetNodeColor(documentId, color);
+  }, []);
+
   return useMemo(() => ({
     selectWorkspace,
     selectHome,
@@ -141,6 +149,7 @@ export function useSidebarNavigationActions({
     downloadGraph,
     setGraphColor,
     setGraphCanvasDisabled,
+    setNodeColor,
   }), [
     createGraph,
     createNode,
@@ -156,5 +165,6 @@ export function useSidebarNavigationActions({
     downloadGraph,
     setGraphColor,
     setGraphCanvasDisabled,
+    setNodeColor,
   ]);
 }
