@@ -298,6 +298,7 @@ function updateGraphCanvasDocumentEntry(graphCanvas: GraphCanvasResponse | null,
       path: nextDocument.path,
       featureSlug: nextDocument.featureSlug,
       tags: nextDocument.tags,
+      nodeColor: nextDocument.color,
       createdAt: nextDocument.createdAt,
       updatedAt: nextDocument.updatedAt,
     };

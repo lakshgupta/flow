@@ -12,9 +12,7 @@ const setCodeBlock = vi.fn()
 const insertCodeBlock = vi.fn()
 const insertText = vi.fn()
 
-vi.mock('prosekit/core', () => ({
-  canUseRegexLookbehind: () => false,
-}))
+
 
 vi.mock('prosekit/react', () => ({
   useEditor: () => ({

@@ -235,7 +235,7 @@ function GraphCanvasSurfaceComponent({
       <GraphCanvasOverlayInteraction controller={overlayController} />
       <div className="graph-canvas-overlay">
         <GraphCanvasOverlayEdges controller={overlayController} />
-        <GraphCanvasOverlayNodes controller={overlayController} />
+        <GraphCanvasOverlayNodes controller={overlayController} graphCanvasShellRef={graphCanvasShellRef} />
       </div>
     </div>
   );

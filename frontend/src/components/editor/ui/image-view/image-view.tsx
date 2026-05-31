@@ -4,6 +4,8 @@ import type { ReactNodeViewProps } from 'prosekit/react'
 import { ResizableHandle, ResizableRoot } from 'prosekit/react/resizable'
 import { useCallback, useEffect, useState, type SyntheticEvent } from 'react'
 
+const DEFAULT_IMAGE_WIDTH = 300
+
 export default function ImageView(props: ReactNodeViewProps) {
   const attrs = props.node.attrs as ImageAttrs
   const url = attrs.src || ''
@@ -44,7 +46,9 @@ export default function ImageView(props: ReactNodeViewProps) {
       setAspectRatio(ratio)
     }
     if (naturalWidth && naturalHeight && (!attrs.width || !attrs.height)) {
-      props.setAttrs({ width: naturalWidth, height: naturalHeight })
+      const width = Math.min(naturalWidth, DEFAULT_IMAGE_WIDTH)
+      const height = Math.round(width / ratio)
+      props.setAttrs({ width, height })
     }
   }
 

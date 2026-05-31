@@ -369,74 +369,12 @@ function normalizeMarkdownListSpacing(value: string): string {
   return normalizedLines.join("\n");
 }
 
-/** Wraps ISO date strings in rendered HTML (outside of existing anchors) as flow-date links. */
+/** Wraps ISO date strings in rendered HTML as flow-date links. */
 function linkifyDates(html: string): string {
-  // Parse the HTML, walk text nodes outside <a> tags, and wrap dates.
-  if (typeof document === "undefined") {
-    // SSR / test environments without DOM — apply a simple regex pass instead.
-    return html.replace(ISO_DATE_PATTERN, (date) => {
-      const params = new URLSearchParams({ date });
-      return `<a href="${FLOW_DATE_HASH_PREFIX}${params.toString()}" class="flow-date-link">${date}</a>`;
-    });
-  }
-
-  const template = document.createElement("template");
-  template.innerHTML = html;
-  const root = template.content;
-
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      // Skip text inside existing anchors.
-      let parent = node.parentElement;
-      while (parent !== null) {
-        if (parent.tagName === "A") return NodeFilter.FILTER_REJECT;
-        parent = parent.parentElement;
-      }
-      return NodeFilter.FILTER_ACCEPT;
-    },
+  return html.replace(ISO_DATE_PATTERN, (match, date) => {
+    const params = new URLSearchParams({ date });
+    return `<a href="${FLOW_DATE_HASH_PREFIX}${params.toString()}" class="flow-date-link">${date}</a>`;
   });
-
-  const textNodes: Text[] = [];
-  let current = walker.nextNode();
-  while (current !== null) {
-    textNodes.push(current as Text);
-    current = walker.nextNode();
-  }
-
-  for (const textNode of textNodes) {
-    const text = textNode.nodeValue ?? "";
-    if (!ISO_DATE_PATTERN.test(text)) {
-      ISO_DATE_PATTERN.lastIndex = 0;
-      continue;
-    }
-    ISO_DATE_PATTERN.lastIndex = 0;
-
-    const fragment = document.createDocumentFragment();
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-    ISO_DATE_PATTERN.lastIndex = 0;
-    while ((match = ISO_DATE_PATTERN.exec(text)) !== null) {
-      if (match.index > lastIndex) {
-        fragment.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
-      }
-      const anchor = document.createElement("a");
-      const params = new URLSearchParams({ date: match[1] });
-      anchor.setAttribute("href", `${FLOW_DATE_HASH_PREFIX}${params.toString()}`);
-      anchor.className = "flow-date-link";
-      anchor.textContent = match[1];
-      fragment.appendChild(anchor);
-      lastIndex = match.index + match[0].length;
-    }
-    ISO_DATE_PATTERN.lastIndex = 0;
-    if (lastIndex < text.length) {
-      fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
-    }
-    textNode.parentNode?.replaceChild(fragment, textNode);
-  }
-
-  const div = document.createElement("div");
-  div.appendChild(root);
-  return div.innerHTML;
 }
 
 function escapeHTML(value: string): string {

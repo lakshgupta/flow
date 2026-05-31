@@ -1,4 +1,4 @@
-import type { CSSProperties, KeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
+import type { CSSProperties, KeyboardEvent, PointerEvent as ReactPointerEvent, RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 import { ArrowDownToLine, ArrowUpToLine, File as FileIcon, Download, ExternalLink } from "lucide-react";
 
@@ -9,10 +9,12 @@ import type { GraphCanvasOverlayController } from "./graphCanvasOverlayControlle
 
 export interface GraphCanvasOverlayNodesProps {
   controller: GraphCanvasOverlayController;
+  graphCanvasShellRef: RefObject<HTMLDivElement | null>;
 }
 
 export function GraphCanvasOverlayNodes({
   controller,
+  graphCanvasShellRef,
 }: GraphCanvasOverlayNodesProps) {
   const {
     graphCanvasNodes,
@@ -196,7 +198,13 @@ export function GraphCanvasOverlayNodes({
             onContextMenu={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              openNodeContextMenu(event.clientX, event.clientY, node.id);
+              const shell = graphCanvasShellRef.current;
+              if (shell !== null) {
+                const rect = shell.getBoundingClientRect();
+                openNodeContextMenu(event.clientX - rect.left, event.clientY - rect.top, node.id);
+              } else {
+                openNodeContextMenu(event.clientX, event.clientY, node.id);
+              }
             }}
             style={{ transform: `translate(${screenX}px, ${screenY}px) scale(${rfViewport.zoom})`, transformOrigin: "top left", zIndex: node.data.zIndex ?? 0 }}
           >
