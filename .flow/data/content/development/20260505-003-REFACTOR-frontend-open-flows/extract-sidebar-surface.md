@@ -12,8 +12,8 @@ links:
       context: Continue extracting the remaining shell-owned control surfaces after the sidebar surface
       relationships:
         - depends-on
-
 ---
+
 - Added `frontend/src/hooks/useSidebarNavigationActions.ts` to own the stable workspace-selection and graph-tree action adapters that previously lived inline in `frontend/src/App.tsx`.
 - Added `frontend/src/components/WorkspaceSidebarPanels.tsx` to own the sidebar workspace selector and `GraphTree` wrapper surface so `App.tsx` no longer recreates that JSX and its wrapper callbacks inline.
 - Added a focused App regression covering the sidebar workspace selector so the extracted sidebar surface is validated for both graph-tree interactions and workspace switching behavior.

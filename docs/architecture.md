@@ -189,6 +189,49 @@ Execution flow:
 - API and CLI mutations must preserve Markdown schema validity.
 - UI state persistence (layout/appearance) is auxiliary and non-canonical.
 
+## Development Workflow & Agent Skills
+
+Flow's own development follows a stage-based workflow with behavior governed by skill files under `.agents/skills/`. The default workflow order is: design, plan, implement or fix or refactor, test, review, commit.
+
+### Skill Directory Structure
+
+```
+.agents/skills/
+  design/SKILL.md     — Feature design proposal and architecture.md update workflow
+  plan/SKILL.md       — Feature planning and Flow task-node creation
+  implement/SKILL.md  — Feature implementation from Flow task nodes
+  fix/SKILL.md        — Issue fixing workflow
+  refactor/SKILL.md   — Behavior-preserving structural cleanup
+  test/SKILL.md       — Validation and test execution
+  review/SKILL.md     — Code review workflow
+  commit/SKILL.md     — Commit creation and Flow record sync
+```
+
+Each skill file is a self-contained Markdown document with YAML frontmatter (`name`, `description`, `user-invocable`, `allowed-tools`, `argument-hint`) followed by the full stage-specific workflow instructions.
+
+Key related files:
+
+- `AGENTS.md` — Project-level routing table that maps work stages to skill files and defines persistent rules
+- `packaging/SKILL.md` — Flow CLI record-keeping protocol, embedded at build time into the flow binary via `skillcontent.go`
+- `skills-lock.json` — Lock file tracking installed skills with their source type and hash
+
+### Stage Routing
+
+`AGENTS.md` serves as the routing table. When a user request does not explicitly name a stage, the agent infers the correct stage and applies the matching skill file:
+
+- New feature design → design skill
+- Feature planning with task nodes → plan skill
+- Feature implementation from task nodes → implement skill
+- Bug fixes → fix skill
+- Structural cleanup without behavior change → refactor skill
+- Test execution and validation → test skill
+- Code review → review skill
+- Commit and Flow record sync → commit skill
+
+### Flow Record Keeping
+
+All phases of work are recorded in the Flow workspace itself — task and note nodes in `.flow/data/content/` serve as the system of record. The `packaging/SKILL.md` skill is embedded into the flow binary and provides the full CLI workflow and mandatory protocol for record keeping. Sub-graph naming follows the pattern `YYYYMMDD-NNN-<type>-<title>` with explicit `depends-on` dependency links between task nodes.
+
 ## Quality Strategy
 
 Validation is layered across:
@@ -207,4 +250,6 @@ This keeps canonical-state correctness and projection correctness testable in is
 - [docs/reference.md](reference.md)
 - [docs/release.md](release.md)
 - [README.md](../README.md)
+- [AGENTS.md](../AGENTS.md)
+- [packaging/SKILL.md](../packaging/SKILL.md)
 

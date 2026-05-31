@@ -13,6 +13,8 @@ const {
   defineHeadingExitKeymap,
   defineCodeBlockView,
   defineImageView,
+  defineImageUploadHandler,
+  createFlowImageUploader,
 } = vi.hoisted(() => ({
   defineBasicExtension: vi.fn(() => 'basic-extension'),
   union: vi.fn((...extensions: unknown[]) => extensions),
@@ -26,6 +28,8 @@ const {
   defineHeadingExitKeymap: vi.fn(() => 'heading-exit-keymap-extension'),
   defineCodeBlockView: vi.fn(() => 'code-block-view-extension'),
   defineImageView: vi.fn(() => 'image-view-extension'),
+  defineImageUploadHandler: vi.fn(() => 'image-upload-handler-extension'),
+  createFlowImageUploader: vi.fn(() => 'mock-uploader'),
 }))
 
 vi.mock('prosekit/basic', () => ({
@@ -46,6 +50,10 @@ vi.mock('prosekit/extensions/code-block', () => ({
 
 vi.mock('prosekit/extensions/horizontal-rule', () => ({
   defineHorizontalRule,
+}))
+
+vi.mock('prosekit/extensions/image', () => ({
+  defineImageUploadHandler,
 }))
 
 vi.mock('prosekit/extensions/math', () => ({
@@ -76,6 +84,10 @@ vi.mock('./ui/image-view', () => ({
   defineImageView,
 }))
 
+vi.mock('../../lib/imageUploader', () => ({
+  createFlowImageUploader,
+}))
+
 vi.mock('katex', () => ({
   render: vi.fn(),
 }))
@@ -83,7 +95,7 @@ vi.mock('katex', () => ({
 import { defineEditorExtension } from './define-editor-extension'
 
 describe('defineEditorExtension', () => {
-  it('registers the custom image node view in the production editor extension', () => {
+  it('registers the custom image node view and upload handler in the production editor extension', () => {
     const extension = defineEditorExtension('Image ready')
 
     expect(defineImageView).toHaveBeenCalledTimes(1)
@@ -101,6 +113,7 @@ describe('defineEditorExtension', () => {
       'horizontal-rule-extension',
       'image-view-extension',
       'code-block-view-extension',
+      'image-upload-handler-extension',
     )
     expect(extension).toEqual([
       'basic-extension',
@@ -114,6 +127,15 @@ describe('defineEditorExtension', () => {
       'horizontal-rule-extension',
       'image-view-extension',
       'code-block-view-extension',
+      'image-upload-handler-extension',
     ])
+
+    expect(createFlowImageUploader).toHaveBeenCalledTimes(1)
+    expect(defineImageUploadHandler).toHaveBeenCalledWith({
+      uploader: 'mock-uploader',
+      canDrop: expect.any(Function),
+      canPaste: expect.any(Function),
+      onError: expect.any(Function),
+    })
   })
 })

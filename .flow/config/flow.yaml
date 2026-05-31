@@ -5,6 +5,6 @@ gui:
         leftRatio: 0.25
         rightRatio: 0.24
         documentTOCRatio: 0.32
-    graphDirectoryColors:
-        graph1: rose
-        graph1/graph11: sage
+    graphCanvasEnabled:
+        design/20260506-001-FEAT-mermaid-diagrams: true
+        manual: true

@@ -12,8 +12,8 @@ links:
       context: Continue extracting always-mounted App.tsx UI branches after the empty-graph surface
       relationships:
         - depends-on
-
 ---
+
 - Added `frontend/src/components/GraphEmptyState.tsx` to own the empty-graph create actions, drag-drop state, and pending/error feedback.
 - Replaced the inline empty-graph branch in `frontend/src/App.tsx` with the memoized empty-graph component.
 - Reused the existing graph-canvas action bridges so create and drag-drop behavior do not depend on fresh inline handlers in the shell.

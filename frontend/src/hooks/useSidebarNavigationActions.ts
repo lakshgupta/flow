@@ -19,6 +19,7 @@ export type SidebarNavigationActions = {
   setGraphColor: (graphPath: string, color: string | null) => void;
   setGraphCanvasDisabled: (graphPath: string, disabled: boolean) => void;
   setNodeColor: (documentId: string, color: string | null) => void;
+  rebuildIndex: () => void;
 };
 
 type UseSidebarNavigationActionsArgs = {
@@ -37,6 +38,7 @@ type UseSidebarNavigationActionsArgs = {
   handleSidebarSetGraphColor: (graphPath: string, color: string | null) => Promise<void> | void;
   handleSidebarSetGraphCanvasDisabled: (graphPath: string, disabled: boolean) => Promise<void> | void;
   handleSidebarSetNodeColor: (documentId: string, color: string | null) => Promise<void> | void;
+  handleSidebarRebuildIndex: () => Promise<void> | void;
 };
 
 export function useSidebarNavigationActions({
@@ -55,6 +57,7 @@ export function useSidebarNavigationActions({
   handleSidebarSetGraphColor,
   handleSidebarSetGraphCanvasDisabled,
   handleSidebarSetNodeColor,
+  handleSidebarRebuildIndex,
 }: UseSidebarNavigationActionsArgs): SidebarNavigationActions {
   const actionRefs = useLatestRef<UseSidebarNavigationActionsArgs>({
     handleWorkspaceSelection,
@@ -72,6 +75,7 @@ export function useSidebarNavigationActions({
     handleSidebarSetGraphColor,
     handleSidebarSetGraphCanvasDisabled,
     handleSidebarSetNodeColor,
+    handleSidebarRebuildIndex,
   });
 
   const selectWorkspace = useCallback((workspacePath: string) => {
@@ -134,6 +138,10 @@ export function useSidebarNavigationActions({
     void actionRefs.current.handleSidebarSetNodeColor(documentId, color);
   }, []);
 
+  const rebuildIndex = useCallback(() => {
+    void actionRefs.current.handleSidebarRebuildIndex();
+  }, []);
+
   return useMemo(() => ({
     selectWorkspace,
     selectHome,
@@ -150,6 +158,7 @@ export function useSidebarNavigationActions({
     setGraphColor,
     setGraphCanvasDisabled,
     setNodeColor,
+    rebuildIndex,
   }), [
     createGraph,
     createNode,
@@ -157,6 +166,7 @@ export function useSidebarNavigationActions({
     deleteNode,
     moveNode,
     openDocument,
+    rebuildIndex,
     renameGraph,
     renameNode,
     selectGraph,

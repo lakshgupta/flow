@@ -10,6 +10,9 @@ tags:
 ---
 
 - Canonical authoring format remains a fenced code block with language mermaid.
+    
 - The slash-menu action should insert a mermaid code block without starter diagram content.
+    
 - Mermaid previews should render anywhere user-facing readonly markdown presents document excerpts, including thread panels and Home calendar mention previews.
+    
 - Diagram containers should avoid clipping right-edge label text when Mermaid SVG bounds are tight.

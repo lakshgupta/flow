@@ -5,6 +5,7 @@ import type { GraphCreateType } from "../types";
 type GraphEmptyStateActions = {
   setDragActive: (active: boolean) => void;
   handleFilesDrop: (files: FileList | File[]) => void;
+  handleFilesDropFromURIs: (dataTransfer: DataTransfer, graphPath: string) => void;
   createGraphDocument: (type: GraphCreateType) => void;
 };
 
@@ -55,11 +56,9 @@ function GraphEmptyStateComponent({
         if (selectedGraphPath === "") {
           return;
         }
-        const files = event.dataTransfer.files;
-        if (!files || files.length === 0) {
-          return;
-        }
-        actions.handleFilesDrop(files);
+        // In Wails desktop mode, always use the URI-based path because the
+        // HTTP multipart upload does not work through the Wails asset server.
+        actions.handleFilesDropFromURIs(event.dataTransfer, selectedGraphPath);
       }}
     >
       <div className="graph-empty-state-copy">

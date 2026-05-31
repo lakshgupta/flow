@@ -108,7 +108,7 @@ import type {
 } from "./types";
 import "./styles.css";
 
-type RightPanelTab = "calendar" | "search";
+type RightPanelTab = "calendar" | "search" | "home";
 type DocumentOpenMode = "center" | "right-rail";
 type CenterDocumentSidePanelMode = "hidden" | "toc" | "properties";
 type ThreadDensityMode = "comfortable" | "dense" | "ultra";
@@ -3544,6 +3544,7 @@ function FlowApp() {
     handleSidebarSetGraphColor,
     handleSidebarSetGraphCanvasDisabled,
     handleSidebarSetNodeColor: handleSetNodeColor,
+    handleSidebarRebuildIndex: handleRebuildIndex,
   });
 
   const { graphCanvasOverlayActions, graphCanvasSurfaceActions } = useGraphCanvasSurfaceActions({
@@ -3565,6 +3566,13 @@ function FlowApp() {
     handleMergeDocuments,
     handleCreateGraphDocument,
     handleGraphCanvasFilesDrop,
+    handleRefreshGraphTree: async () => {
+      const snapshot = await loadWorkspaceSnapshot();
+      setGraphTree(snapshot.graphTreeData);
+    },
+    reloadCanvas: () => {
+      setGraphCanvasReloadToken((t) => t + 1);
+    },
     handleToggleGraphCanvasLayout,
     handleGraphCanvasSearchNext,
     handleGraphCanvasSearchPrevious,
@@ -3645,6 +3653,7 @@ function FlowApp() {
   const graphEmptyStateActions = useMemo(() => ({
     setDragActive: graphCanvasSurfaceActions.setDragActive,
     handleFilesDrop: graphCanvasSurfaceActions.handleFilesDrop,
+    handleFilesDropFromURIs: graphCanvasSurfaceActions.handleFilesDropFromURIs,
     createGraphDocument: graphCanvasOverlayActions.createGraphDocument,
   }), [
     graphCanvasOverlayActions,
@@ -3719,6 +3728,14 @@ function FlowApp() {
     setSettingsDialogOpen,
     toggleRightPanel,
     handleSelectedNodeDocumentButtonClick,
+    handleNavigateHome: () => {
+      if (rightPanelTab === "home" && !rightRailCollapsed) {
+        setRightRailCollapsed(true);
+      } else {
+        setRightPanelTab("home");
+        setRightRailCollapsed(false);
+      }
+    },
   });
 
   const settingsDialogProps = useMemo(() => ({
@@ -4036,6 +4053,7 @@ function FlowApp() {
               <RightRailControls
                 searchActive={rightPanelTab === "search" && !rightRailCollapsed}
                 calendarActive={rightPanelTab === "calendar" && !rightRailCollapsed}
+                showHomeButton={activeSurface.kind === "graph"}
                 settingsDialog={settingsDialogProps}
                 actions={rightRailControlsActions}
               />
@@ -4125,7 +4143,26 @@ function FlowApp() {
             <div className="right-sidebar-resize-handle" onMouseDown={handleRightSidebarMouseDown} />
           )}
           <div className="right-sidebar-panel">
-            {!rightRailCollapsed && (rightPanelTab === "document" && hasRightRailDocument ? (
+            {!rightRailCollapsed && (rightPanelTab === "home" ? (
+              <div className="home-surface">
+                <div className="home-document-layout center-document-layout" data-side-panel="hidden" aria-label="Home content layout">
+                  <div className="center-document-main">
+                    <RichTextEditor
+                      ariaLabel="Home body editor"
+                      className="home-editor"
+                      inlineReferences={graphTree?.home.inlineReferences}
+                      ref={homeDocumentEditorRef}
+                      onChange={(value) => homeSurfaceActions.updateHomeFormField("body", value)}
+                      onReferenceOpen={homeSurfaceActions.openInlineReference}
+                      onDateOpen={homeSurfaceActions.openDate}
+                      onAssetOpenInThread={homeSurfaceActions.openThreadAsset}
+                      placeholder="Start writing…"
+                      value={homeFormState.body}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : rightPanelTab === "document" && hasRightRailDocument ? (
               rightRailMaximized ? (
                 renderCenterDocumentShell(true)
               ) : (

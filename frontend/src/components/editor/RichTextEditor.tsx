@@ -17,12 +17,47 @@ import { editorHTMLToMarkdown, markdownToHTML, parseFlowReferenceHref, parseFlow
 import { headingIdFromText } from '../../lib/docUtils'
 import { toISODateString } from '../../lib/dateEntries'
 import type { InlineReference } from '../../types'
+import { getWailsUpload, getWailsUploadFromPath } from '../../lib/imageUploader'
+import { hasImageExtension } from './image-utils'
 import { BlockHandle } from './ui/block-handle'
 import { defineEditorExtension } from './define-editor-extension'
+import { DropDiagBanner } from './ui/drop-diag-banner'
+import type { DropDiagEntry } from './ui/drop-diag-banner'
 import { DropIndicator } from './ui/drop-indicator'
 import { InlineMenu } from './ui/inline-menu'
 import ReferenceMenu from './ui/reference-menu/reference-menu'
 import { SlashMenu } from './ui/slash-menu'
+
+/** Extract file paths/URIs from a text/html string. Some Linux file
+ *  managers (e.g. Nautilus) provide the drop data as HTML. */
+function extractPathsFromHTML(html: string): string[] {
+  const paths: string[] = []
+  // file:// URIs embedded in href attributes or plain text
+  const uriMatches = html.matchAll(/file:\/\/[^\s"'<>]+/g)
+  for (const m of uriMatches) {
+    paths.push(m[0])
+  }
+  // Absolute paths that look like images (no scheme prefix)
+  if (paths.length === 0) {
+    const pathMatches = html.matchAll(/(?:href|src)=["']?(\/[^\s"'>]+)["']?/g)
+    for (const m of pathMatches) {
+      const p = m[1]
+      if (hasImageExtension(p)) {
+        paths.push('file://' + p)
+      }
+    }
+  }
+  // Bare absolute paths on separate lines
+  if (paths.length === 0) {
+    const lines = html.split('\n').map((l) => l.trim()).filter((l) => l.length > 0)
+    for (const line of lines) {
+      if (line.startsWith('/') && hasImageExtension(line)) {
+        paths.push('file://' + line)
+      }
+    }
+  }
+  return paths
+}
 
 export interface RichTextEditorProps {
   value: string
@@ -37,6 +72,9 @@ export interface RichTextEditorProps {
   onAssetOpenInThread?: (assetHref: string, assetName: string, kind: "pdf" | "text") => void
   scrollToHeadingSlug?: string | null
   onScrollCompleted?: () => void
+  /** The canonical relative path of the document being edited (e.g. data/content/design/note.md).
+   *  When set, uploaded images are saved alongside the document. */
+  documentPath?: string
 }
 
 export interface RichTextEditorHandle {
@@ -75,11 +113,13 @@ function DocChangeTracker({ onHtmlChange }: { onHtmlChange: () => void }) {
 }
 
 export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(function RichTextEditor(
-  { value, onChange, placeholder, ariaLabel, className, inlineReferences, referenceLookupGraph, onReferenceOpen, onDateOpen, onAssetOpenInThread, scrollToHeadingSlug, onScrollCompleted }: RichTextEditorProps,
+  { value, onChange, placeholder, ariaLabel, className, inlineReferences, referenceLookupGraph, onReferenceOpen, onDateOpen, onAssetOpenInThread, scrollToHeadingSlug, onScrollCompleted, documentPath }: RichTextEditorProps,
   ref,
 ) {
   const [datePickerOpen, setDatePickerOpen] = useState(false)
   const [selectedAssetForToolbar, setSelectedAssetForToolbar] = useState<{ href: string; name: string; left: number; top: number } | null>(null)
+  const [dropDiags, setDropDiags] = useState<DropDiagEntry[]>([])
+  const dropDiagIdRef = useRef(0)
   const editorContainerRef = useRef<HTMLDivElement | null>(null)
   const selectedAssetAnchorRef = useRef<HTMLAnchorElement | null>(null)
   // Track the last markdown value we emitted so we can skip re-syncing when
@@ -93,7 +133,12 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
   // suppress the resulting useDocChange callback.
   const isSettingRef = useRef(false)
 
-  const extension = useMemo(() => defineEditorExtension(placeholder), [placeholder])
+  // Keep a stable getter so image uploads always have the latest documentPath.
+  const documentPathRef = useRef(documentPath)
+  documentPathRef.current = documentPath
+  const getDocumentPath = useCallback(() => documentPathRef.current, [])
+
+  const extension = useMemo(() => defineEditorExtension(placeholder, getDocumentPath), [getDocumentPath, placeholder])
 
   const editor = useMemo(() => {
     const initialHTML = renderedHTML
@@ -312,6 +357,232 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
     }
   }, [positionAssetToolbar, selectedAssetForToolbar])
 
+  // Intercept file drops in the Wails desktop app. On Linux, WebKitGTK either
+  // does not populate dataTransfer.files (placing file URIs in text/uri-list or
+  // text/plain instead) or creates unreadable File objects. The capturing-phase
+  // listener fires before ProseKit's handleDrop, so we can handle the upload
+  // ourselves and stop propagation to prevent ProseKit from inserting the
+  // filename as plain text.
+  useEffect(() => {
+    const container = editorContainerRef.current
+    if (!container) return
+
+    const uriUpload = getWailsUploadFromPath()
+    const isWails = !!(uriUpload || getWailsUpload())
+
+    const handleDragOverCapture = (event: DragEvent) => {
+      if (!isWails) return
+      // Allow dropping on the editor in Wails mode so the drop event actually
+      // fires (some WebKitGTK builds skip the drop when dragover isn't
+      // prevented on the inner element).
+      event.preventDefault()
+      event.dataTransfer && (event.dataTransfer.dropEffect = 'copy')
+    }
+
+    const handleDragEnterCapture = (event: DragEvent) => {
+      if (!isWails) return
+      event.preventDefault()
+    }
+
+    const showDiag = (parts: string[]) => {
+      const id = ++dropDiagIdRef.current
+      setDropDiags((prev) => [...prev, { id, message: parts.join(' | '), timestamp: new Date() }])
+    }
+
+    const handleDropCapture = (event: DragEvent) => {
+
+      // Collect everything the browser gives us so we can diagnose without
+      // needing a dev console (Wails on Linux often has no accessible inspector).
+      const types = event.dataTransfer ? Array.from(event.dataTransfer.types) : []
+      const uriList = event.dataTransfer?.getData('text/uri-list') ?? ''
+      const plainText = event.dataTransfer?.getData('text/plain') ?? ''
+      const htmlText = event.dataTransfer?.getData('text/html') ?? ''
+      const files = event.dataTransfer?.files
+      const filesCount = files?.length ?? 0
+
+      // Build a visible diagnostic string (shown in a temporary UI banner).
+      const diagParts: string[] = []
+      diagParts.push(`types=[${types.join(', ')}]`)
+      diagParts.push(`uriList=${uriList ? '"' + uriList.slice(0, 200) + '"' : 'null'}`)
+      diagParts.push(`plain=${plainText ? '"' + plainText.slice(0, 200) + '"' : 'null'}`)
+      diagParts.push(`html=${htmlText ? '"' + htmlText.slice(0, 200) + '"' : 'null'}`)
+      diagParts.push(`files=${filesCount}`)
+      diagParts.push(`wails=${isWails}`)
+
+      if (!isWails) {
+        diagParts.push('action=non-Wails-skip')
+        showDiag(diagParts)
+        return
+      }
+
+      // --- Extract file:// URIs from data transfer formats ---
+      // This is the Linux/WebKitGTK path where file managers provide URIs
+      // instead of readable File objects.
+      let fileURIs: string[] = []
+
+      // 1. text/uri-list — the canonical GNOME/KDE format.
+      if (uriList.trim()) {
+        const uris = uriList
+          .split('\n')
+          .map((u) => u.trim())
+          .filter((u) => u.startsWith('file://'))
+        fileURIs.push(...uris)
+      }
+
+      // 2. raw paths from text/plain
+      if (!fileURIs.length && plainText.trim()) {
+        const lines = plainText
+          .split('\n')
+          .map((l) => l.trim())
+          .filter((l) => l.length > 0)
+        for (const line of lines) {
+          if (line.startsWith('/') && hasImageExtension(line)) {
+            fileURIs.push('file://' + line)
+          }
+        }
+      }
+
+      // 3. extract paths from text/html
+      if (!fileURIs.length && htmlText.trim()) {
+        fileURIs.push(...extractPathsFromHTML(htmlText))
+      }
+
+      // --- If we have file URIs, handle uploads via Wails binding ---
+      // On Linux, file managers provide file:// URIs instead of readable
+      // File objects, so ProseKit cannot handle them. We upload files
+      // ourselves and insert them as images or links.
+      if (fileURIs.length > 0 && uriUpload) {
+        const imageURIs = fileURIs.filter((uri) => {
+          try {
+            return hasImageExtension(decodeURIComponent(uri))
+          } catch {
+            return false
+          }
+        })
+        const nonImageURIs = fileURIs.filter((uri) => {
+          try {
+            return !hasImageExtension(decodeURIComponent(uri))
+          } catch {
+            return true
+          }
+        })
+
+        // Handle image URIs — insert as image nodes.
+        if (imageURIs.length > 0) {
+          event.preventDefault()
+          event.stopPropagation()
+
+          const view = editor.view
+          if (!view) {
+            diagParts.push('action=editor-view-null')
+            showDiag(diagParts)
+            return
+          }
+
+          const pos = view.posAtCoords({
+            left: event.clientX,
+            top: event.clientY,
+          })
+          if (!pos) {
+            diagParts.push('action=posAtCoords-null')
+            showDiag(diagParts)
+            return
+          }
+          const insertPos = pos.pos
+          const docPath = documentPathRef.current
+
+          diagParts.push(`action=upload-uri ${imageURIs.length} image(s)`)
+          showDiag(diagParts)
+
+          void (async () => {
+            for (const uri of imageURIs) {
+              try {
+                const url = await uriUpload(uri, docPath ?? '')
+                const node = view.state.schema.nodes.image?.create({ src: url })
+                if (!node) continue
+                view.dispatch(view.state.tr.insert(insertPos, node))
+                showDiag([...diagParts, `url=${url}`])
+              } catch (error) {
+                // eslint-disable-next-line no-console
+                console.error('[flow] Linux image drop failed', { uri, error })
+                showDiag([...diagParts, `upload-error=${String(error)}`])
+              }
+            }
+          })()
+          return
+        }
+
+        // Handle non-image URIs (PDFs, etc.) — upload and insert as links.
+        if (nonImageURIs.length > 0) {
+          event.preventDefault()
+          event.stopPropagation()
+
+          const view = editor.view
+          if (!view) {
+            diagParts.push('action=editor-view-null')
+            showDiag(diagParts)
+            return
+          }
+
+          const pos = view.posAtCoords({
+            left: event.clientX,
+            top: event.clientY,
+          })
+          if (!pos) {
+            diagParts.push('action=posAtCoords-null')
+            showDiag(diagParts)
+            return
+          }
+          const insertPos = pos.pos
+          const docPath = documentPathRef.current
+
+          diagParts.push(`action=upload-uri-link ${nonImageURIs.length} file(s)`)
+          showDiag(diagParts)
+
+          void (async () => {
+            for (const uri of nonImageURIs) {
+              try {
+                const url = await uriUpload(uri, docPath ?? '')
+                // Extract filename from the URI for display.
+                const decoded = decodeURIComponent(uri)
+                const fileName = decoded.split('/').pop() ?? decoded
+                // Insert a paragraph with a link to the uploaded file.
+                const linkMark = view.state.schema.marks.link?.create({ href: url })
+                const textNode = view.state.schema.text(fileName, linkMark ? [linkMark] : undefined)
+                const paragraph = view.state.schema.nodes.paragraph?.create(null, textNode)
+                if (!paragraph) continue
+                view.dispatch(view.state.tr.insert(insertPos, paragraph))
+                showDiag([...diagParts, `url=${url}`])
+              } catch (error) {
+                // eslint-disable-next-line no-console
+                console.error('[flow] Linux file drop failed', { uri, error })
+                showDiag([...diagParts, `upload-error=${String(error)}`])
+              }
+            }
+          })()
+          return
+        }
+
+        // No image or non-image URIs found — let ProseKit handle naturally.
+        return
+      }
+
+      // --- No file URIs: let ProseKit handle naturally ---
+      // This covers: browser drops with readable File objects, macOS drops,
+      // paste events, and non-image file drops. ProseKit's canDropImage
+      // predicate will filter for images; other files pass through normally.
+    }
+
+    container.addEventListener('dragover', handleDragOverCapture, { capture: true })
+    container.addEventListener('dragenter', handleDragEnterCapture, { capture: true })
+    container.addEventListener('drop', handleDropCapture, { capture: true })
+    return () => {
+      container.removeEventListener('dragover', handleDragOverCapture, { capture: true })
+      container.removeEventListener('dragenter', handleDragEnterCapture, { capture: true })
+      container.removeEventListener('drop', handleDropCapture, { capture: true })
+    }
+  }, [editor])
+
   useEffect(() => {
     if (selectedAssetForToolbar === null) {
       return
@@ -348,6 +619,11 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
   return (
     <ProseKit editor={editor}>
       <div className={className ?? 'box-border h-full w-full overflow-y-hidden overflow-x-hidden flex flex-col bg-background text-foreground'}>
+        <DropDiagBanner
+          messages={dropDiags}
+          onClose={(id) => setDropDiags((prev) => prev.filter((d) => d.id !== id))}
+          onCloseAll={() => setDropDiags([])}
+        />
         <div ref={editorContainerRef} className="relative w-full flex-1 box-border overflow-y-auto" onClickCapture={handleEditorClickCapture}>
           {selectedAssetForToolbar !== null ? (
             <div

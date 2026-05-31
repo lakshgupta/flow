@@ -2,6 +2,9 @@ package desktop
 
 import (
 	"fmt"
+	"net/url"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -234,4 +237,200 @@ func (backend Backend) DeleteDocument(request core.DeleteDocumentRequest) (strin
 	return core.DeleteDocument(request, func(documentID string) (string, error) {
 		return workspace.DeleteDocumentByID(backend.root, documentID)
 	})
+}
+
+// UploadFile saves uploaded file content to the workspace and returns the
+// public URL. When documentPath is provided the file is stored alongside the
+// note's Markdown file so images stay co-located with the document that
+// references them. Without it the file lands in data/uploads/.
+func (backend Backend) UploadFile(fileName string, content []byte, documentPath string) (string, error) {
+	return backend.writeUploadedFile(fileName, content, documentPath)
+}
+
+// UploadFileFromLocalPath reads a file from a local file:// URI and saves it to
+// the workspace, returning the public URL. This handles drag-and-drop on Linux
+// where WebKitGTK places file URIs in text/uri-list instead of populating
+// dataTransfer.files.
+func (backend Backend) UploadFileFromLocalPath(localURI string, documentPath string) (string, error) {
+	uri := strings.TrimSpace(localURI)
+	if uri == "" {
+		return "", fmt.Errorf("empty local URI")
+	}
+
+	parsedURI, parseErr := url.Parse(uri)
+	if parseErr != nil {
+		return "", fmt.Errorf("parse local URI %q: %w", uri, parseErr)
+	}
+	if parsedURI.Scheme != "file" {
+		return "", fmt.Errorf("unsupported URI scheme %q", parsedURI.Scheme)
+	}
+
+	// Decode URL-encoded characters (spaces as %20, etc.).
+	// Use EscapedPath() to get the raw form and avoid double-unescaping
+	// because url.Parse already unescapes Path during parsing.
+	filePath, decodeErr := url.PathUnescape(parsedURI.EscapedPath())
+	if decodeErr != nil {
+		return "", fmt.Errorf("decode local URI path %q: %w", parsedURI.EscapedPath(), decodeErr)
+	}
+
+	content, readErr := os.ReadFile(filePath)
+	if readErr != nil {
+		return "", fmt.Errorf("read local file %q: %w", filePath, readErr)
+	}
+
+	fileName := filepath.Base(filePath)
+
+	return backend.writeUploadedFile(fileName, content, documentPath)
+}
+
+// GraphFileNoteResponse mirrors the HTTP API's document response for graph file notes.
+type GraphFileNoteResponse struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Graph    string `json:"graph"`
+	Title    string `json:"title"`
+	Path     string `json:"path"`
+	FileName string `json:"fileName"`
+}
+
+// CreateGraphFileNoteFromPath reads a file from a local file:// URI, saves it
+// to the graph directory, and creates a note document with the file embedded.
+// This is the desktop-app equivalent of the HTTP POST /api/graphs/{name}/files
+// endpoint, working around the Wails asset server's inability to handle
+// multipart form data.
+func (backend Backend) CreateGraphFileNoteFromPath(localURI string, graphPath string) (GraphFileNoteResponse, error) {
+	uri := strings.TrimSpace(localURI)
+	if uri == "" {
+		return GraphFileNoteResponse{}, fmt.Errorf("empty local URI")
+	}
+
+	parsedURI, parseErr := url.Parse(uri)
+	if parseErr != nil {
+		return GraphFileNoteResponse{}, fmt.Errorf("parse local URI %q: %w", uri, parseErr)
+	}
+	if parsedURI.Scheme != "file" {
+		return GraphFileNoteResponse{}, fmt.Errorf("unsupported URI scheme %q", parsedURI.Scheme)
+	}
+
+	filePath, decodeErr := url.PathUnescape(parsedURI.EscapedPath())
+	if decodeErr != nil {
+		return GraphFileNoteResponse{}, fmt.Errorf("decode local URI path %q: %w", parsedURI.EscapedPath(), decodeErr)
+	}
+
+	content, readErr := os.ReadFile(filePath)
+	if readErr != nil {
+		return GraphFileNoteResponse{}, fmt.Errorf("read local file %q: %w", filePath, readErr)
+	}
+
+	originalFileName := filepath.Base(filePath)
+	if originalFileName == "" || originalFileName == "." {
+		return GraphFileNoteResponse{}, fmt.Errorf("invalid file name")
+	}
+
+	graphDir := filepath.Join(backend.root.GraphsPath, filepath.FromSlash(graphPath))
+	if info, err := os.Stat(graphDir); err != nil || !info.IsDir() {
+		return GraphFileNoteResponse{}, fmt.Errorf("graph %q not found", graphPath)
+	}
+
+	assetFileName := workspace.MakeUniqueFileName(graphDir, workspace.SanitizeAssetFileName(originalFileName))
+	assetRelativePath := filepath.ToSlash(filepath.Join(workspace.DataDirName, workspace.GraphsDirName, filepath.FromSlash(graphPath), assetFileName))
+	assetAbsolutePath := filepath.Join(backend.root.FlowPath, filepath.FromSlash(assetRelativePath))
+
+	if err := os.MkdirAll(filepath.Dir(assetAbsolutePath), 0o755); err != nil {
+		return GraphFileNoteResponse{}, fmt.Errorf("create file directory: %w", err)
+	}
+	if err := os.WriteFile(assetAbsolutePath, content, 0o644); err != nil {
+		return GraphFileNoteResponse{}, fmt.Errorf("write file: %w", err)
+	}
+
+	assetURL := "/api/files?path=" + url.QueryEscape(assetRelativePath)
+	extension := strings.ToLower(filepath.Ext(originalFileName))
+	title := titleFromFileName(originalFileName)
+	body := noteBodyForAsset(assetURL, title, extension)
+
+	// Derive note slug from the asset file name (strip extension).
+	slug := strings.TrimSuffix(assetFileName, filepath.Ext(assetFileName))
+	noteID := filepath.ToSlash(filepath.Join(graphPath, slug))
+
+	created, err := core.CreateDocument(core.CreateDocumentRequest{
+		Type:        markdown.NoteType,
+		FeatureSlug: graphPath,
+		FileName:    slug,
+		ID:          noteID,
+		Graph:       graphPath,
+		Title:       title,
+		Body:        body,
+	}, func(request core.CreateDocumentRequest) (markdown.WorkspaceDocument, error) {
+		return workspace.CreateDocumentFromCoreRequest(backend.root, request)
+	})
+	if err != nil {
+		return GraphFileNoteResponse{}, err
+	}
+
+	return GraphFileNoteResponse{
+		ID:       noteID,
+		Type:     string(created.Document.Kind()),
+		Graph:    graphPath,
+		Title:    title,
+		Path:     created.Path,
+		FileName: assetFileName,
+	}, nil
+}
+
+// titleFromFileName converts a file name to a title-cased display name.
+func titleFromFileName(name string) string {
+	base := strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
+	base = strings.ReplaceAll(base, "_", " ")
+	base = strings.ReplaceAll(base, "-", " ")
+	base = strings.TrimSpace(base)
+	if base == "" {
+		return "Untitled File"
+	}
+
+	words := strings.Fields(strings.ToLower(base))
+	for index, word := range words {
+		if word == "" {
+			continue
+		}
+		words[index] = strings.ToUpper(word[:1]) + word[1:]
+	}
+
+	return strings.Join(words, " ")
+}
+
+// noteBodyForAsset returns the markdown body for a note that embeds a file.
+func noteBodyForAsset(assetURL string, title string, extension string) string {
+	lowerExt := strings.ToLower(extension)
+	if lowerExt == ".png" || lowerExt == ".jpg" || lowerExt == ".jpeg" ||
+		lowerExt == ".gif" || lowerExt == ".webp" || lowerExt == ".svg" || lowerExt == ".bmp" {
+		return fmt.Sprintf("![%s](%s)\n", title, assetURL)
+	}
+	return fmt.Sprintf("[%s](%s)\n", title, assetURL)
+}
+
+// writeUploadedFile persists file content to the workspace asset directory and
+// returns the public URL. It is shared by UploadFile and UploadFileFromLocalPath.
+func (backend Backend) writeUploadedFile(fileName string, content []byte, documentPath string) (string, error) {
+	if err := workspace.ValidateFileName(fileName); err != nil {
+		return "", err
+	}
+
+	assetDir, assetRelativeDir, dirErr := workspace.ResolveAssetDir(backend.root.FlowPath, documentPath)
+	if dirErr != nil {
+		return "", dirErr
+	}
+
+	if err := os.MkdirAll(assetDir, 0o755); err != nil {
+		return "", fmt.Errorf("create asset directory: %w", err)
+	}
+
+	assetFileName := workspace.MakeUniqueFileName(assetDir, workspace.SanitizeAssetFileName(fileName))
+	assetAbsolutePath := filepath.Join(assetDir, assetFileName)
+
+	if err := os.WriteFile(assetAbsolutePath, content, 0o644); err != nil {
+		return "", fmt.Errorf("write file: %w", err)
+	}
+
+	assetRelativePath := filepath.Join(assetRelativeDir, assetFileName)
+	return workspace.BuildAssetURL(assetRelativePath), nil
 }

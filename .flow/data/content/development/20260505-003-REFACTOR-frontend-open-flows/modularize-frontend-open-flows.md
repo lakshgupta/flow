@@ -9,9 +9,9 @@ tags:
     - frontend
 status: Success
 links:
-  - node: development/20260505-003-REFACTOR-frontend-open-flows/narrow-right-rail-rerenders
-    context: Performance follow-up after consolidating document-open orchestration
-    relationships:
-      - depends-on
+    - node: development/20260505-003-REFACTOR-frontend-open-flows/narrow-right-rail-rerenders
+      context: Performance follow-up after consolidating document-open orchestration
+      relationships:
+        - depends-on
 ---
 

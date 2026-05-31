@@ -48,21 +48,21 @@ type GraphCanvasLayerGuidance struct {
 
 // GraphCanvasNode holds the metadata needed to render one canvas node.
 type GraphCanvasNode struct {
-	ID                string              `json:"id"`
-	Type              string              `json:"type"`
-	Shape             string              `json:"shape,omitempty"`
-	FeatureSlug       string              `json:"featureSlug"`
-	Graph             string              `json:"graph"`
-	Title             string              `json:"title"`
-	Description       string              `json:"description"`
-	Path              string              `json:"path"`
-	Tags              []string            `json:"tags,omitempty"`
-	CreatedAt         string              `json:"createdAt,omitempty"`
-	UpdatedAt         string              `json:"updatedAt,omitempty"`
-	PreviewKind       string              `json:"previewKind,omitempty"`
-	PreviewURL        string              `json:"previewURL,omitempty"`
-	PreviewName       string              `json:"previewName,omitempty"`
-	PreviewAssetCount int                 `json:"previewAssetCount,omitempty"`
+	ID                string   `json:"id"`
+	Type              string   `json:"type"`
+	Shape             string   `json:"shape,omitempty"`
+	FeatureSlug       string   `json:"featureSlug"`
+	Graph             string   `json:"graph"`
+	Title             string   `json:"title"`
+	Description       string   `json:"description"`
+	Path              string   `json:"path"`
+	Tags              []string `json:"tags,omitempty"`
+	CreatedAt         string   `json:"createdAt,omitempty"`
+	UpdatedAt         string   `json:"updatedAt,omitempty"`
+	PreviewKind       string   `json:"previewKind,omitempty"`
+	PreviewURL        string   `json:"previewURL,omitempty"`
+	PreviewName       string   `json:"previewName,omitempty"`
+	PreviewAssetCount int      `json:"previewAssetCount,omitempty"`
 	// NodeColor is the per-node color override (a GraphDirectoryColorId value such as "rose" or
 	// "sky"). When non-empty, the canvas renders this node with the specified color instead of
 	// inheriting the graph directory color.

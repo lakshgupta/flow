@@ -155,22 +155,22 @@ type graphLayoutResponse struct {
 }
 
 type documentResponse struct {
-	ID               string                    `json:"id"`
-	Type             string                    `json:"type"`
-	FeatureSlug      string                    `json:"featureSlug"`
-	Graph            string                    `json:"graph"`
-	Title            string                    `json:"title"`
-	Description      string                    `json:"description"`
-	Path             string                    `json:"path"`
-	Tags             []string                  `json:"tags,omitempty"`
-	CreatedAt        string                    `json:"createdAt,omitempty"`
-	UpdatedAt        string                    `json:"updatedAt,omitempty"`
-	Body             string                    `json:"body"`
-	Status           string                    `json:"status,omitempty"`
-	Links            []nodeReferenceResponse   `json:"links,omitempty"`
-	Name             string                    `json:"name,omitempty"`
-	Env              map[string]string         `json:"env,omitempty"`
-	Run              string                    `json:"run,omitempty"`
+	ID          string                  `json:"id"`
+	Type        string                  `json:"type"`
+	FeatureSlug string                  `json:"featureSlug"`
+	Graph       string                  `json:"graph"`
+	Title       string                  `json:"title"`
+	Description string                  `json:"description"`
+	Path        string                  `json:"path"`
+	Tags        []string                `json:"tags,omitempty"`
+	CreatedAt   string                  `json:"createdAt,omitempty"`
+	UpdatedAt   string                  `json:"updatedAt,omitempty"`
+	Body        string                  `json:"body"`
+	Status      string                  `json:"status,omitempty"`
+	Links       []nodeReferenceResponse `json:"links,omitempty"`
+	Name        string                  `json:"name,omitempty"`
+	Env         map[string]string       `json:"env,omitempty"`
+	Run         string                  `json:"run,omitempty"`
 	// Color is the per-node color override (a GraphDirectoryColorId such as "rose" or "sky").
 	// An empty string means no override; the node inherits its graph directory's color.
 	Color            string                    `json:"color,omitempty"`
@@ -238,7 +238,7 @@ type updateDocumentRequest struct {
 	Run         *string                  `json:"run"`
 	// Color is a pointer so that a missing JSON field leaves the color unchanged,
 	// while an explicit null or empty string clears the per-node color override.
-	Color       *string                  `json:"color"`
+	Color *string `json:"color"`
 }
 
 type updateHomeRequest struct {
@@ -305,6 +305,10 @@ type deleteDocumentResponse struct {
 type deleteGraphResponse struct {
 	Deleted bool   `json:"deleted"`
 	Name    string `json:"name"`
+}
+
+type uploadFileResponse struct {
+	URL string `json:"url"`
 }
 
 type rebuildIndexResponse struct {
@@ -434,6 +438,8 @@ func (handler *apiHandler) ServeHTTP(writer http.ResponseWriter, request *http.R
 		handler.handleSearch(writer, request)
 	case request.URL.Path == "/api/reference-targets" && request.Method == http.MethodGet:
 		handler.handleReferenceTargets(writer, request)
+	case request.URL.Path == "/api/files" && request.Method == http.MethodPost:
+		handler.handleUploadFile(writer, request)
 	case request.URL.Path == "/api/files" && request.Method == http.MethodGet:
 		handler.handleWorkspaceFile(writer, request)
 	case request.URL.Path == "/api/gui/stop" && request.Method == http.MethodPost:
@@ -811,7 +817,7 @@ func (handler *apiHandler) createGraphFileNote(graphName string, header *multipa
 		return documentResponse{}, fmt.Errorf("invalid file name")
 	}
 
-	assetFileName := makeUniqueFileName(handler.options.Root, graphName, sanitizeAssetFileName(originalFileName))
+	assetFileName := makeUniqueFileName(handler.options.Root, graphName, workspace.SanitizeAssetFileName(originalFileName))
 	assetRelativePath := filepath.ToSlash(filepath.Join(workspace.DataDirName, workspace.GraphsDirName, filepath.FromSlash(graphName), assetFileName))
 	assetAbsolutePath := filepath.Join(handler.options.Root.FlowPath, filepath.FromSlash(assetRelativePath))
 
@@ -894,6 +900,67 @@ func (handler *apiHandler) updateDocument(documentID string, patch core.UpdateDo
 	return workspace.UpdateDocumentByIDFromCorePatch(handler.options.Root, documentID, patch)
 }
 
+func (handler *apiHandler) handleUploadFile(writer http.ResponseWriter, request *http.Request) {
+	if err := request.ParseMultipartForm(128 << 20); err != nil {
+		writeError(writer, http.StatusBadRequest, fmt.Sprintf("parse multipart form: %v", err))
+		return
+	}
+
+	fileHeaders := request.MultipartForm.File["file"]
+	if len(fileHeaders) == 0 {
+		writeError(writer, http.StatusBadRequest, "no file was provided")
+		return
+	}
+
+	header := fileHeaders[0]
+	if err := workspace.ValidateFileName(header.Filename); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	documentPath := strings.TrimSpace(request.URL.Query().Get("documentPath"))
+	assetDir, assetRelativeDir, dirErr := workspace.ResolveAssetDir(handler.options.Root.FlowPath, documentPath)
+	if dirErr != nil {
+		writeError(writer, http.StatusBadRequest, dirErr.Error())
+		return
+	}
+
+	if err := os.MkdirAll(assetDir, 0o755); err != nil {
+		writeError(writer, http.StatusInternalServerError, fmt.Sprintf("create asset directory: %v", err))
+		return
+	}
+
+	assetFileName := workspace.MakeUniqueFileName(assetDir, workspace.SanitizeAssetFileName(header.Filename))
+	assetAbsolutePath := filepath.Join(assetDir, assetFileName)
+
+	source, err := header.Open()
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, fmt.Sprintf("open uploaded file: %v", err))
+		return
+	}
+	defer source.Close()
+
+	target, err := os.Create(assetAbsolutePath)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, fmt.Sprintf("create workspace file: %v", err))
+		return
+	}
+
+	if _, err := io.Copy(target, source); err != nil {
+		_ = target.Close()
+		writeError(writer, http.StatusInternalServerError, fmt.Sprintf("write workspace file: %v", err))
+		return
+	}
+
+	if err := target.Close(); err != nil {
+		writeError(writer, http.StatusInternalServerError, fmt.Sprintf("close workspace file: %v", err))
+		return
+	}
+
+	assetRelativePath := filepath.Join(assetRelativeDir, assetFileName)
+	writeJSON(writer, http.StatusCreated, uploadFileResponse{URL: workspace.BuildAssetURL(assetRelativePath)})
+}
+
 func (handler *apiHandler) handleWorkspaceFile(writer http.ResponseWriter, request *http.Request) {
 	pathValue := strings.TrimSpace(request.URL.Query().Get("path"))
 	if pathValue == "" {
@@ -914,19 +981,23 @@ func (handler *apiHandler) handleWorkspaceFile(writer http.ResponseWriter, reque
 		return
 	}
 
-	if _, err := os.Stat(absolutePath); err != nil {
+	data, err := os.ReadFile(absolutePath)
+	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			writeError(writer, http.StatusNotFound, "file not found")
 			return
 		}
-		writeError(writer, http.StatusInternalServerError, err.Error())
+		writeError(writer, http.StatusInternalServerError, fmt.Sprintf("read file: %v", err))
 		return
 	}
 
 	if contentType := mime.TypeByExtension(strings.ToLower(filepath.Ext(absolutePath))); contentType != "" {
 		writer.Header().Set("Content-Type", contentType)
 	}
-	http.ServeFile(writer, request, absolutePath)
+	writer.WriteHeader(http.StatusOK)
+	if _, writeErr := writer.Write(data); writeErr != nil {
+		// Best-effort write; the webview connection may have been closed.
+	}
 }
 
 func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.Request) {
@@ -2030,39 +2101,6 @@ func buildWorkspaceArchive(root workspace.Root) ([]byte, error) {
 	}
 
 	return buffer.Bytes(), nil
-}
-
-func sanitizeAssetFileName(name string) string {
-	trimmed := strings.TrimSpace(name)
-	if trimmed == "" {
-		return "file.bin"
-	}
-
-	base := filepath.Base(trimmed)
-	extension := strings.ToLower(filepath.Ext(base))
-	stem := strings.TrimSuffix(base, filepath.Ext(base))
-	stem = strings.ToLower(stem)
-	builder := strings.Builder{}
-	for _, r := range stem {
-		switch {
-		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
-			builder.WriteRune(r)
-		case r == '-' || r == '_':
-			builder.WriteRune(r)
-		case r == ' ' || r == '.':
-			builder.WriteRune('-')
-		}
-	}
-
-	cleanStem := strings.Trim(builder.String(), "-_")
-	if cleanStem == "" {
-		cleanStem = "file"
-	}
-
-	if extension == "" {
-		extension = ".bin"
-	}
-	return cleanStem + extension
 }
 
 func titleFromFileName(name string) string {

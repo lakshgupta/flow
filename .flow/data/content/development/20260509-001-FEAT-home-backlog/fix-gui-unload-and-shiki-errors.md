@@ -4,11 +4,11 @@ type: task
 graph: development/20260509-001-FEAT-home-backlog
 title: Fix GUI unload and Shiki errors
 description: Remove recurring GUI console errors from unload permissions policy violations and Shiki parser failures for diagram code blocks
-status: Success
 tags:
     - implementation
     - frontend
     - backend
+status: Success
 ---
 
 - Updated `frontend/src/components/editor/define-editor-extension.ts` so Shiki highlighting is scoped away from regular code blocks (`nodeTypes: ['mathBlock']`), which prevents parser resolution attempts for non-bundled diagram languages such as `excalidraw`.

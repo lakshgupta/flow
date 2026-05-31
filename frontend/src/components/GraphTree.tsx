@@ -1,4 +1,4 @@
-import { CheckSquare, ChevronDown, ChevronRight, EyeOff, FileText, FolderPlus, Home, Layers, Minus, MoreHorizontal, Paintbrush, Pencil, Plus, Star, Terminal, Trash2 } from "lucide-react";
+import { CheckSquare, ChevronDown, ChevronRight, EyeOff, FileText, FolderPlus, Home, Layers, Minus, MoreHorizontal, Paintbrush, Pencil, Plus, RefreshCw, Star, Terminal, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import {
@@ -77,6 +77,7 @@ type FileTreeRowProps = {
   onSetGraphColor: (graphPath: string, color: string | null) => void;
   onSetNodeColor: (documentId: string, color: string | null) => void;
   onSetGraphCanvasDisabled: (graphPath: string, disabled: boolean) => void;
+  onRebuildIndex: () => void;
   collapsed: Set<string>;
   onToggleCollapse: (path: string) => void;
   isFavorite: (path: string) => boolean;
@@ -116,6 +117,7 @@ function FileTreeRow({
   onSetGraphColor,
   onSetNodeColor,
   onSetGraphCanvasDisabled,
+  onRebuildIndex,
   collapsed,
   onToggleCollapse,
   isFavorite,
@@ -437,6 +439,7 @@ function FileTreeRow({
             onSetGraphColor={onSetGraphColor}
             onSetNodeColor={onSetNodeColor}
             onSetGraphCanvasDisabled={onSetGraphCanvasDisabled}
+            onRebuildIndex={onRebuildIndex}
             collapsed={collapsed}
             onToggleCollapse={onToggleCollapse}
             isFavorite={isFavorite}
@@ -471,9 +474,10 @@ type GraphTreeProps = {
   onSetGraphColor: (graphPath: string, color: string | null) => void;
   onSetNodeColor: (documentId: string, color: string | null) => void;
   onSetGraphCanvasDisabled: (graphPath: string, disabled: boolean) => void;
+  onRebuildIndex: () => void;
 };
 
-export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSelectHome, onSelectGraph, onOpenDocument, onCreateGraph, onCreateNode, onRenameGraph, onRenameNode, onMoveNode, onDeleteNode, onDeleteGraph, onDownloadGraph, onSetGraphColor, onSetNodeColor, onSetGraphCanvasDisabled }: GraphTreeProps) {
+export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSelectHome, onSelectGraph, onOpenDocument, onCreateGraph, onCreateNode, onRenameGraph, onRenameNode, onMoveNode, onDeleteNode, onDeleteGraph, onDownloadGraph, onSetGraphColor, onSetNodeColor, onSetGraphCanvasDisabled, onRebuildIndex }: GraphTreeProps) {
   const { toggleFavorite, isFavorite } = useFavorites();
   const [contentExpanded, setContentExpanded] = useState(true);
   const [favoritesExpanded, setFavoritesExpanded] = useState(true);
@@ -493,6 +497,16 @@ export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSele
   const allGraphs = graphTree?.graphs ?? [];
   const favoriteGraphs = allGraphs.filter((g) => isFavorite(g.graphPath));
   const fileTree = buildFileTree(allGraphs);
+
+  // Collapse all graphs on initial load so the sidebar starts tidy.
+  // Uses a ref to ensure this only runs once, even if allGraphs changes.
+  const collapsedInitializedRef = useRef(false);
+  useEffect(() => {
+    if (collapsedInitializedRef.current) return;
+    if (allGraphs.length === 0) return;
+    collapsedInitializedRef.current = true;
+    setCollapsed(new Set(allGraphs.map((g) => g.graphPath)));
+  }, [allGraphs]);
 
   function handleToggleCollapse(path: string) {
     setCollapsed((prev) => {
@@ -616,15 +630,29 @@ export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSele
                 <Plus className="graph-section-toggle-icon" size={14} />
               )}
             </SidebarMenuButton>
-            <button
-              type="button"
-              className="graph-add-content-btn"
-              onClick={() => { setAddingGraph(true); setContentExpanded(true); }}
-              aria-label="Add graph or directory"
-              title="Add graph or directory"
-            >
-              <FolderPlus size={14} />
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="graph-add-content-btn"
+                  aria-label="Content tree actions"
+                  title="Content tree actions"
+                >
+                  <MoreHorizontal size={14} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" side="bottom" className="min-w-[140px]">
+                <DropdownMenuItem onClick={() => { setAddingGraph(true); setContentExpanded(true); }}>
+                  <FolderPlus size={12} />
+                  Add graph
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => { onRebuildIndex(); }}>
+                  <RefreshCw size={12} />
+                  Refresh index
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
           {contentExpanded && (
             <SidebarMenuSub className="graph-section-content">
@@ -649,6 +677,7 @@ export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSele
                     onSetGraphColor={onSetGraphColor}
                     onSetNodeColor={onSetNodeColor}
                     onSetGraphCanvasDisabled={onSetGraphCanvasDisabled}
+                    onRebuildIndex={onRebuildIndex}
                     collapsed={collapsed}
                     onToggleCollapse={handleToggleCollapse}
                     isFavorite={isFavorite}

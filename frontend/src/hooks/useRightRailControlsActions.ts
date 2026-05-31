@@ -7,23 +7,27 @@ export type RightRailControlsActions = {
   toggleSearch: () => void;
   toggleCalendar: () => void;
   openDocument: () => void;
+  navigateHome: () => void;
 };
 
 type UseRightRailControlsActionsArgs = {
   setSettingsDialogOpen: (open: boolean) => void;
   toggleRightPanel: (tab: "calendar" | "search" | "document") => void;
   handleSelectedNodeDocumentButtonClick: () => void;
+  handleNavigateHome: () => void;
 };
 
 export function useRightRailControlsActions({
   setSettingsDialogOpen,
   toggleRightPanel,
   handleSelectedNodeDocumentButtonClick,
+  handleNavigateHome,
 }: UseRightRailControlsActionsArgs): RightRailControlsActions {
   const actionRefs = useLatestRef({
     setSettingsDialogOpen,
     toggleRightPanel,
     handleSelectedNodeDocumentButtonClick,
+    handleNavigateHome,
   });
 
   const openSettings = useCallback(() => {
@@ -42,10 +46,15 @@ export function useRightRailControlsActions({
     actionRefs.current.handleSelectedNodeDocumentButtonClick();
   }, []);
 
+  const navigateHome = useCallback(() => {
+    actionRefs.current.handleNavigateHome();
+  }, []);
+
   return useMemo(() => ({
     openSettings,
     toggleSearch,
     toggleCalendar,
     openDocument,
-  }), [openDocument, openSettings, toggleCalendar, toggleSearch]);
+    navigateHome,
+  }), [navigateHome, openDocument, openSettings, toggleCalendar, toggleSearch]);
 }

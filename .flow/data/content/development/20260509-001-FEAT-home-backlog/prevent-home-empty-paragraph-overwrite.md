@@ -4,10 +4,10 @@ type: task
 graph: development/20260509-001-FEAT-home-backlog
 title: Prevent Home empty paragraph overwrite
 description: Avoid persisting Home body as <p><br></p> when the editor only contains empty paragraphs
-status: Success
 tags:
     - implementation
     - frontend
+status: Success
 ---
 
 - Added `normalizeHomeBodyForSave` in `frontend/src/lib/docUtils.ts` to collapse Home bodies that are empty or only `<p><br></p>` blocks to an empty string.

@@ -12,8 +12,8 @@ links:
       context: Continue extracting large App.tsx editor and layout surfaces after stabilizing the graph canvas host
       relationships:
         - depends-on
-
 ---
+
 - Added `frontend/src/components/GraphCanvasSurface.tsx` to own the loaded graph canvas toolbar, ReactFlow host, and overlay render tree.
 - Replaced the inline graph-canvas host in `frontend/src/App.tsx` with the memoized surface component and moved the viewport persistence path onto a ref-backed callback.
 - Stabilized the graph-canvas action and overlay-controller boundary in `frontend/src/App.tsx` so ReactFlow and overlay consumers are not invalidated by new inline handler identities on unrelated shell renders.

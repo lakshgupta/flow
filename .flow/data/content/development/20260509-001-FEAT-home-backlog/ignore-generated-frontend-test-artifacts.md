@@ -4,10 +4,10 @@ type: task
 graph: development/20260509-001-FEAT-home-backlog
 title: Ignore generated frontend test artifacts
 description: Add ignore rules for generated Playwright report and test-result directories, and remove the tracked artifacts from the repository
-status: Success
 tags:
     - maintenance
     - frontend
+status: Success
 ---
 
 - Added `frontend/playwright-report/` and `frontend/test-results/` to `.gitignore`.

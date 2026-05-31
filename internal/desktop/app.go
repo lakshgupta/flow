@@ -78,3 +78,28 @@ func (app *App) UpdateDocument(request core.UpdateDocumentRequest) (markdown.Wor
 func (app *App) DeleteDocument(request core.DeleteDocumentRequest) (string, error) {
 	return app.backend.DeleteDocument(request)
 }
+
+// UploadFile saves uploaded file content to the workspace and returns the
+// public URL. This method is exposed to the Wails frontend via Go-JS binding,
+// bypassing the HTTP layer which does not support multipart form data uploads
+// through the Wails asset server.
+func (app *App) UploadFile(fileName string, content []byte, documentPath string) (string, error) {
+	return app.backend.UploadFile(fileName, content, documentPath)
+}
+
+// UploadFileFromLocalPath reads a file from a local file:// URI and saves it to
+// the workspace, returning the public URL. This handles drag-and-drop on Linux
+// where WebKitGTK places file URIs in text/uri-list instead of populating
+// dataTransfer.files.
+func (app *App) UploadFileFromLocalPath(localURI string, documentPath string) (string, error) {
+	return app.backend.UploadFileFromLocalPath(localURI, documentPath)
+}
+
+// CreateGraphFileNoteFromPath reads a file from a local file:// URI, saves it
+// to the graph directory, and creates a note document with the file embedded.
+// This is the desktop-app equivalent of the HTTP POST /api/graphs/{name}/files
+// endpoint for drag-and-drop on Linux where WebKitGTK provides file URIs
+// instead of readable File objects.
+func (app *App) CreateGraphFileNoteFromPath(localURI string, graphPath string) (GraphFileNoteResponse, error) {
+	return app.backend.CreateGraphFileNoteFromPath(localURI, graphPath)
+}

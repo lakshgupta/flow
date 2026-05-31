@@ -7,6 +7,7 @@ import {
 } from "react";
 import type { Node, NodeChange, ReactFlowInstance } from "@xyflow/react";
 
+import { getWailsCreateGraphFileNote } from "../lib/imageUploader";
 import type { GraphCanvasSurfaceProps } from "../components/GraphCanvasSurface";
 import type {
   EdgeToolbarState,
@@ -49,6 +50,8 @@ type UseGraphCanvasSurfaceActionsArgs = {
   handleMergeDocuments: () => Promise<void> | void;
   handleCreateGraphDocument: (type: GraphCreateType) => Promise<void> | void;
   handleGraphCanvasFilesDrop: (files: FileList | File[]) => Promise<void> | void;
+  handleRefreshGraphTree: () => Promise<void> | void;
+  reloadCanvas: () => void;
   handleToggleGraphCanvasLayout: () => Promise<void> | void;
   handleGraphCanvasSearchNext: () => void;
   handleGraphCanvasSearchPrevious: () => void;
@@ -91,6 +94,8 @@ export function useGraphCanvasSurfaceActions({
   handleMergeDocuments,
   handleCreateGraphDocument,
   handleGraphCanvasFilesDrop,
+  handleRefreshGraphTree,
+  reloadCanvas,
   handleToggleGraphCanvasLayout,
   handleGraphCanvasSearchNext,
   handleGraphCanvasSearchPrevious,
@@ -135,6 +140,8 @@ export function useGraphCanvasSurfaceActions({
     handleMergeDocuments,
     handleCreateGraphDocument,
     handleGraphCanvasFilesDrop,
+    handleRefreshGraphTree,
+    reloadCanvas,
     handleToggleGraphCanvasLayout,
     handleGraphCanvasSearchNext,
     handleGraphCanvasSearchPrevious,
@@ -220,6 +227,58 @@ export function useGraphCanvasSurfaceActions({
 
   const handleGraphCanvasFilesDropBridge = useCallback((files: FileList | File[]) => {
     void actionRefs.current.handleGraphCanvasFilesDrop(files);
+  }, []);
+
+  const handleGraphCanvasFilesDropFromURIsBridge = useCallback((dataTransfer: DataTransfer, graphPath: string) => {
+    // Try Wails binding first (desktop app).
+    const createNote = getWailsCreateGraphFileNote();
+    if (createNote) {
+      // Extract URIs synchronously — dataTransfer data is cleared after the
+      // event handler returns, so we cannot read it inside async callbacks.
+      const fileURIs: string[] = [];
+      const uriList = dataTransfer.getData("text/uri-list") ?? "";
+      if (uriList.trim()) {
+        fileURIs.push(...uriList.split("\n").map((u) => u.trim()).filter((u) => u.startsWith("file://")));
+      }
+      const plainText = dataTransfer.getData("text/plain") ?? "";
+      if (!fileURIs.length && plainText.trim()) {
+        const lines = plainText.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+        for (const line of lines) {
+          if (line.startsWith("/")) {
+            fileURIs.push("file://" + line);
+          }
+        }
+      }
+      const htmlText = dataTransfer.getData("text/html") ?? "";
+      if (!fileURIs.length && htmlText.trim()) {
+        const uriMatches = htmlText.matchAll(/file:\/\/[^\s"'<>]+/g);
+        for (const m of uriMatches) {
+          fileURIs.push(m[0]);
+        }
+      }
+
+      if (fileURIs.length > 0) {
+        const uris = [...fileURIs];
+        void (async () => {
+          for (const uri of uris) {
+            try {
+              await createNote(uri, graphPath);
+            } catch (error) {
+              console.error("[flow] Failed to create graph file note from URI", { uri, error });
+            }
+          }
+        void actionRefs.current.handleRefreshGraphTree();
+        actionRefs.current.reloadCanvas();
+        })();
+        return;
+      }
+    }
+
+    // Browser fallback: use dataTransfer.files with the HTTP upload path.
+    const files = dataTransfer.files;
+    if (files && files.length > 0) {
+      void actionRefs.current.handleGraphCanvasFilesDrop(files);
+    }
   }, []);
 
   const handleGraphCanvasSearchTermChange = useCallback((value: string) => {
@@ -374,6 +433,7 @@ export function useGraphCanvasSurfaceActions({
   const graphCanvasSurfaceActions = useMemo<GraphCanvasSurfaceProps["actions"]>(() => ({
     setDragActive: handleGraphCanvasSetDragActive,
     handleFilesDrop: handleGraphCanvasFilesDropBridge,
+    handleFilesDropFromURIs: handleGraphCanvasFilesDropFromURIsBridge,
     updateSearchTerm: handleGraphCanvasSearchTermChange,
     searchNext: handleGraphCanvasSearchNextBridge,
     searchPrevious: handleGraphCanvasSearchPreviousBridge,
@@ -392,6 +452,7 @@ export function useGraphCanvasSurfaceActions({
     handleGraphCanvasContextMenuSurface,
     handleGraphCanvasDeleteEdgeFromID,
     handleGraphCanvasFilesDropBridge,
+    handleGraphCanvasFilesDropFromURIsBridge,
     handleGraphCanvasLayoutToggleBridge,
     handleGraphCanvasNodeClickSurface,
     handleGraphCanvasNodeDoubleClickSurface,

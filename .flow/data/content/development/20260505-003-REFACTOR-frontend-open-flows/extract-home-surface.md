@@ -12,8 +12,8 @@ links:
       context: Continue extracting always-mounted App.tsx graph surfaces after the Home branch
       relationships:
         - depends-on
-
 ---
+
 - Added `frontend/src/components/HomeSurface.tsx` to own the Home editor, TOC toggle, TOC panel, and fresh-workspace guide rendering.
 - Replaced the inline Home surface branch in `frontend/src/App.tsx` with the memoized Home surface component.
 - Added stable Home action bridges in `frontend/src/App.tsx` for TOC toggling, editor updates, inline references, asset threading, TOC resizing, and TOC navigation.

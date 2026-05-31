@@ -4,10 +4,10 @@ type: task
 graph: development/20260509-001-FEAT-home-backlog
 title: Remove diagram section label
 description: Drop the visible Special section kicker from Mermaid and Excalidraw editor sections
-status: Success
 tags:
     - implementation
     - frontend
+status: Success
 ---
 
 - Removed the visible `Special section` kicker from the specialized Mermaid and Excalidraw code-block node view header in `frontend/src/components/editor/ui/code-block-view/code-block-view.tsx`.

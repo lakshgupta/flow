@@ -12,8 +12,8 @@ links:
       context: Continue moving remaining surface-specific App.tsx adapter blocks into hooks after the graph-canvas adapter
       relationships:
         - depends-on
-
 ---
+
 - Added `frontend/src/hooks/useGraphCanvasSurfaceActions.ts` to own the stable overlay-action and surface-action adapters that previously lived inline in `frontend/src/App.tsx`.
 - Replaced the large graph-canvas action-ref and callback block in `frontend/src/App.tsx` with a single hook call while preserving the `GraphCanvasSurface` and overlay-controller action contracts.
 - Rewired the empty-graph surface to reuse the extracted graph-canvas hook actions so create and drag-drop behavior continue sharing the same stable adapter boundary.

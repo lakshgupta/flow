@@ -12,8 +12,8 @@ links:
       context: Continue extracting large App.tsx editor surfaces after the thread panel stack
       relationships:
         - depends-on
-
 ---
+
 - Extracted the inline thread stack from `frontend/src/App.tsx` into `frontend/src/components/ThreadPanels.tsx` so the main shell no longer rebuilds the entire panel subtree inline.
 - Added stable callback bridges in `frontend/src/App.tsx` for thread activation, navigation, editor updates, TOC/properties toggles, and resize events so the memoized thread stack is not invalidated by new inline handler identities.
 - Kept thread state ownership in `App.tsx`, preserving the existing document/thread orchestration while narrowing the render surface.

@@ -71,9 +71,10 @@ describe("GraphTree", () => {
     window.localStorage.clear();
   });
 
-  it("moves a dragged file onto another graph row", () => {
+  it("moves a dragged file onto another graph row", async () => {
     const onMoveNode = vi.fn();
     const dataTransfer = createDataTransfer();
+    const user = userEvent.setup();
 
     render(
       <SidebarProvider>
@@ -94,9 +95,14 @@ describe("GraphTree", () => {
           onDownloadGraph={() => undefined}
           onSetGraphColor={() => undefined}
           onSetGraphCanvasDisabled={() => undefined}
+          onRebuildIndex={() => undefined}
         />
       </SidebarProvider>,
     );
+
+    // Graphs start collapsed — expand Execution to see its files.
+    const executionRow = screen.getByText("Execution").closest("li");
+    await user.click(within(executionRow!).getByRole("button", { name: "Expand" }));
 
     const fileButton = screen.getByRole("button", { name: /overview\.md/i });
     const fileRow = fileButton.closest("li");
@@ -116,9 +122,10 @@ describe("GraphTree", () => {
     );
   });
 
-  it("expands a collapsed target graph after drop", () => {
+  it("expands a collapsed target graph after drop", async () => {
     const onMoveNode = vi.fn();
     const dataTransfer = createDataTransfer();
+    const user = userEvent.setup();
 
     render(
       <SidebarProvider>
@@ -139,10 +146,16 @@ describe("GraphTree", () => {
           onDownloadGraph={() => undefined}
           onSetGraphColor={() => undefined}
           onSetGraphCanvasDisabled={() => undefined}
+          onRebuildIndex={() => undefined}
         />
       </SidebarProvider>,
     );
 
+    // Graphs start collapsed — expand both graphs to see their files.
+    const execRow = screen.getByText("Execution").closest("li");
+    await user.click(within(execRow!).getByRole("button", { name: "Expand" }));
+    const relRow = screen.getByText("Release").closest("li");
+    await user.click(within(relRow!).getByRole("button", { name: "Expand" }));
     expect(screen.getByRole("button", { name: /ship\.md/i })).toBeInTheDocument();
 
     const releaseRow = screen.getByText("Release").closest("li");
@@ -188,6 +201,7 @@ describe("GraphTree", () => {
           onDownloadGraph={onDownloadGraph}
           onSetGraphColor={() => undefined}
           onSetGraphCanvasDisabled={() => undefined}
+          onRebuildIndex={() => undefined}
         />
       </SidebarProvider>,
     );

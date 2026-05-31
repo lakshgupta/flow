@@ -15,9 +15,12 @@ links:
 ---
 
 - Marked the embedded Excalidraw shell as editor-interactive and taught the RichTextEditor pointer-down capture guard to leave those embedded diagram interactions alone.
+    
 - Added a focused RichTextEditor regression so future selection-restoration work does not steal pointer gestures from embedded Excalidraw canvases.
+    
 
 Validation
 
 - cd frontend && npm test -- --run src/components/editor/RichTextEditor.test.tsx src/components/editor/ui/code-block-view/code-block-view.test.tsx
+    
 - cd frontend && npm run build

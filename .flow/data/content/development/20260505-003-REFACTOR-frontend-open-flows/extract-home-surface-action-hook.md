@@ -12,8 +12,8 @@ links:
       context: Continue moving shell-owned sidebar and workspace wiring out of App.tsx after the Home surface adapter
       relationships:
         - depends-on
-
 ---
+
 - Added `frontend/src/hooks/useHomeSurfaceActions.ts` to own the stable action adapter that previously lived inline in `frontend/src/App.tsx` for `HomeSurface`.
 - Replaced the large Home surface action-ref and callback block in `frontend/src/App.tsx` with a single hook call while preserving TOC toggling, editor updates, inline references, asset threading, scroll-target clearing, TOC resize, and TOC navigation.
 - Kept the existing `HomeSurface` prop contract unchanged so the Home surface remains memoized without additional shell-owned handler churn.

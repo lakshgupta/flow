@@ -3,7 +3,7 @@ id: development/20260509-001-FEAT-home-backlog/fix-heading-enter-exits
 type: task
 graph: development/20260509-001-FEAT-home-backlog
 title: Fix heading Enter exit
-description: "Ensure Enter after an atx heading returns to normal paragraph text"
+description: Ensure Enter after an atx heading returns to normal paragraph text
 tags:
     - fix
     - frontend

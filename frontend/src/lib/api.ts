@@ -13,6 +13,7 @@ function normalizeGraphTreeResponse(response: GraphTreeResponse): GraphTreeRespo
 
 export async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
+    cache: "no-store",
     ...init,
     headers: {
       Accept: "application/json",

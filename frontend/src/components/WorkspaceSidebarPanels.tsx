@@ -70,6 +70,7 @@ function GraphTreePanelComponent({ graphTree, activeSurface, selectedDocumentId,
       onSetGraphColor={actions.setGraphColor}
       onSetGraphCanvasDisabled={actions.setGraphCanvasDisabled}
       onSetNodeColor={actions.setNodeColor}
+      onRebuildIndex={actions.rebuildIndex}
     />
   );
 }

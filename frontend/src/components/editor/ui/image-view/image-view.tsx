@@ -2,7 +2,7 @@ import { UploadTask } from 'prosekit/extensions/file'
 import type { ImageAttrs } from 'prosekit/extensions/image'
 import type { ReactNodeViewProps } from 'prosekit/react'
 import { ResizableHandle, ResizableRoot } from 'prosekit/react/resizable'
-import { useEffect, useState, type SyntheticEvent } from 'react'
+import { useCallback, useEffect, useState, type SyntheticEvent } from 'react'
 
 export default function ImageView(props: ReactNodeViewProps) {
   const attrs = props.node.attrs as ImageAttrs
@@ -48,6 +48,13 @@ export default function ImageView(props: ReactNodeViewProps) {
     }
   }
 
+  const handleDelete = useCallback(() => {
+    const pos = props.getPos?.()
+    if (pos === undefined || pos === null) return
+    const tr = props.view.state.tr.delete(pos, pos + props.node.nodeSize)
+    props.view.dispatch(tr)
+  }, [props])
+
   return (
     <ResizableRoot
       width={attrs.width ?? undefined}
@@ -78,6 +85,17 @@ export default function ImageView(props: ReactNodeViewProps) {
             Failed to upload image
           </div>
         </div>
+      )}
+      {/* Delete button — visible on hover */}
+      {!uploading && (
+        <button
+          type="button"
+          aria-label="Delete image"
+          onClick={handleDelete}
+          className="absolute top-0 right-0 m-1.5 p-1 rounded-sm bg-gray-900/60 text-white/70 hover:bg-red-600/80 hover:text-white transition opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+        >
+          <div className="i-lucide-trash-2 size-3.5 block"></div>
+        </button>
       )}
       <ResizableHandle
         className="absolute bottom-0 right-0 rounded-sm m-1.5 p-1 transition bg-gray-900/30 active:bg-gray-800/60 hover:bg-gray-800/60 text-white/50 active:text-white/80 active:translate-x-0.5 active:translate-y-0.5 opacity-0 hover:opacity-100 group-hover:opacity-100 group-data-resizing:opacity-100"

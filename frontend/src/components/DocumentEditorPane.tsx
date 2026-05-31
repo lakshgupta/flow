@@ -153,15 +153,25 @@ function DocumentEditorPaneComponent({
 								aria-label="Document description"
 							/>
 						</div>
-						<div className="home-document-body sidebar-document-body">
+						<div
+							className="home-document-body sidebar-document-body"
+							onDrop={(event) => {
+								// Prevent drops handled by ProseKit's internal image/file upload
+								// handler from bubbling up to sidebar-document-layout's drop
+								// handler, which would otherwise also process the file and
+								// create a duplicate graph document.
+								event.stopPropagation();
+							}}
+						>
 							<RichTextEditor
 								ariaLabel="Context document editor"
+								documentPath={selectedDocument.path}
 								inlineReferences={selectedDocument.inlineReferences}
 								onChange={(value) => actions.updateFormField("body", value)}
 								onReferenceOpen={(documentId, graphPath) => actions.openInlineReference(documentId, graphPath)}
 								onDateOpen={actions.openDate}
 								onAssetOpenInThread={(assetHref, assetName, kind) => {
-									actions.openThreadAsset(assetHref, assetName, kind);
+										actions.openThreadAsset(assetHref, assetName, kind);
 								}}
 								referenceLookupGraph={selectedDocument.graph}
 								ref={rightRailDocumentEditorRef}

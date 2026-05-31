@@ -1702,6 +1702,403 @@ func TestNewMuxUploadsGraphFilesAsNotesAndServesAssets(t *testing.T) {
 	}
 }
 
+func TestNewMuxUploadFileCreatesUniqueNamesAndRejectsInvalidInput(t *testing.T) {
+	t.Parallel()
+
+	root := createHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	t.Run("successful upload returns file URL and persists content", func(t *testing.T) {
+		recorder := postMultipartFile(t, handler, "file", "screenshot.png", []byte("fake-image-bytes"))
+		if recorder.Code != http.StatusCreated {
+			responseBody, _ := io.ReadAll(recorder.Body)
+			t.Fatalf("status = %d, want 201, body = %s", recorder.Code, string(responseBody))
+		}
+
+		var created uploadFileResponse
+		if err := json.NewDecoder(recorder.Body).Decode(&created); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		if !strings.HasPrefix(created.URL, "/api/files?path=") {
+			t.Fatalf("created.URL = %q, want /api/files?path=...", created.URL)
+		}
+
+		parsed, parseErr := url.Parse(created.URL)
+		if parseErr != nil {
+			t.Fatalf("url.Parse(%q) error = %v", created.URL, parseErr)
+		}
+		uploadedPath := filepath.Join(root.FlowPath, filepath.FromSlash(parsed.Query().Get("path")))
+		if data, readErr := os.ReadFile(uploadedPath); readErr != nil || string(data) != "fake-image-bytes" {
+			t.Fatalf("ReadFile(uploaded) error = %v, data = %q, want fake-image-bytes", readErr, string(data))
+		}
+
+		// Verify the file is reachable via GET /api/files.
+		fileRecorder := httptest.NewRecorder()
+		fileRequest := httptest.NewRequest(http.MethodGet, created.URL, nil)
+		handler.ServeHTTP(fileRecorder, fileRequest)
+		if fileRecorder.Code != http.StatusOK {
+			t.Fatalf("GET %s status = %d, want 200", created.URL, fileRecorder.Code)
+		}
+		if fileRecorder.Body.Len() == 0 {
+			t.Fatal("GET file body length = 0, want uploaded bytes")
+		}
+	})
+
+	t.Run("duplicate filename creates unique name without overwriting", func(t *testing.T) {
+		firstRecorder := postMultipartFile(t, handler, "file", "logo.png", []byte("first-image"))
+		if firstRecorder.Code != http.StatusCreated {
+			responseBody, _ := io.ReadAll(firstRecorder.Body)
+			t.Fatalf("first upload status = %d, want 201, body = %s", firstRecorder.Code, string(responseBody))
+		}
+
+		var first uploadFileResponse
+		if err := json.NewDecoder(firstRecorder.Body).Decode(&first); err != nil {
+			t.Fatalf("Decode(first) error = %v", err)
+		}
+		firstParsed, err := url.Parse(first.URL)
+		if err != nil {
+			t.Fatalf("url.Parse(first) error = %v", err)
+		}
+
+		secondRecorder := postMultipartFile(t, handler, "file", "logo.png", []byte("second-image"))
+		if secondRecorder.Code != http.StatusCreated {
+			responseBody, _ := io.ReadAll(secondRecorder.Body)
+			t.Fatalf("second upload status = %d, want 201, body = %s", secondRecorder.Code, string(responseBody))
+		}
+
+		var second uploadFileResponse
+		if err := json.NewDecoder(secondRecorder.Body).Decode(&second); err != nil {
+			t.Fatalf("Decode(second) error = %v", err)
+		}
+		secondParsed, err := url.Parse(second.URL)
+		if err != nil {
+			t.Fatalf("url.Parse(second) error = %v", err)
+		}
+
+		if first.URL == second.URL {
+			t.Fatalf("duplicate upload returned same URL: %q", first.URL)
+		}
+
+		firstPath := filepath.Join(root.FlowPath, filepath.FromSlash(firstParsed.Query().Get("path")))
+		secondPath := filepath.Join(root.FlowPath, filepath.FromSlash(secondParsed.Query().Get("path")))
+
+		firstData, err := os.ReadFile(firstPath)
+		if err != nil || string(firstData) != "first-image" {
+			t.Fatalf("first file content = %q, want first-image, err = %v", string(firstData), err)
+		}
+		secondData, err := os.ReadFile(secondPath)
+		if err != nil || string(secondData) != "second-image" {
+			t.Fatalf("second file content = %q, want second-image, err = %v", string(secondData), err)
+		}
+	})
+
+	t.Run("rejects request with no file field", func(t *testing.T) {
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		// Add a form field that is NOT named "file".
+		if err := writer.WriteField("other", "value"); err != nil {
+			t.Fatalf("WriteField() error = %v", err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatalf("Close(writer) error = %v", err)
+		}
+
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "/api/files", &body)
+		request.Header.Set("Content-Type", writer.FormDataContentType())
+		handler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusBadRequest {
+			responseBody, _ := io.ReadAll(recorder.Body)
+			t.Fatalf("status = %d, want 400, body = %s", recorder.Code, string(responseBody))
+		}
+
+		var payload errorResponse
+		if err := json.NewDecoder(recorder.Body).Decode(&payload); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		if !strings.Contains(payload.Error, "no file") {
+			t.Fatalf("payload.Error = %q, want 'no file' message", payload.Error)
+		}
+	})
+
+	t.Run("rejects request with invalid filename", func(t *testing.T) {
+		recorder := postMultipartFile(t, handler, "file", ".", []byte("dot-name"))
+		if recorder.Code != http.StatusBadRequest {
+			responseBody, _ := io.ReadAll(recorder.Body)
+			t.Fatalf("status = %d, want 400, body = %s", recorder.Code, string(responseBody))
+		}
+
+		var payload errorResponse
+		if err := json.NewDecoder(recorder.Body).Decode(&payload); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		if !strings.Contains(payload.Error, "invalid file name") {
+			t.Fatalf("payload.Error = %q, want 'invalid file name' message", payload.Error)
+		}
+	})
+
+	t.Run("rejects non-multipart request", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "/api/files", strings.NewReader("plain text body"))
+		request.Header.Set("Content-Type", "text/plain")
+		handler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusBadRequest {
+			responseBody, _ := io.ReadAll(recorder.Body)
+			t.Fatalf("status = %d, want 400, body = %s", recorder.Code, string(responseBody))
+		}
+	})
+
+	t.Run("sanitizes filename with special characters", func(t *testing.T) {
+		recorder := postMultipartFile(t, handler, "file", "My Document (final) v2.0.png", []byte("special-name-content"))
+		if recorder.Code != http.StatusCreated {
+			responseBody, _ := io.ReadAll(recorder.Body)
+			t.Fatalf("status = %d, want 201, body = %s", recorder.Code, string(responseBody))
+		}
+
+		var created uploadFileResponse
+		if err := json.NewDecoder(recorder.Body).Decode(&created); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+
+		// The sanitized filename should only contain alphanumeric, dash, underscore, and a dot for extension.
+		parsed, parseErr := url.Parse(created.URL)
+		if parseErr != nil {
+			t.Fatalf("url.Parse(%q) error = %v", created.URL, parseErr)
+		}
+		uploadedFile := filepath.Base(parsed.Query().Get("path"))
+		if strings.Contains(uploadedFile, "(") || strings.Contains(uploadedFile, ")") || strings.Contains(uploadedFile, " ") {
+			t.Fatalf("sanitized filename %q still contains special characters", uploadedFile)
+		}
+		if !strings.HasPrefix(uploadedFile, "my-document-final-v2-0") || !strings.HasSuffix(uploadedFile, ".png") {
+			t.Fatalf("sanitized filename = %q, want my-document-final-v2-0*.png", uploadedFile)
+		}
+	})
+
+	t.Run("uploads alongside document when documentPath is provided", func(t *testing.T) {
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		part, err := writer.CreateFormFile("file", "diagram.png")
+		if err != nil {
+			t.Fatalf("CreateFormFile() error = %v", err)
+		}
+		if _, err := part.Write([]byte("document-adjacent-image")); err != nil {
+			t.Fatalf("Write() error = %v", err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatalf("Close(writer) error = %v", err)
+		}
+
+		recorder := httptest.NewRecorder()
+		docPathQuery := url.QueryEscape("data/content/notes/architecture.md")
+		request := httptest.NewRequest(http.MethodPost, "/api/files?documentPath="+docPathQuery, &body)
+		request.Header.Set("Content-Type", writer.FormDataContentType())
+		handler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusCreated {
+			responseBody, _ := io.ReadAll(recorder.Body)
+			t.Fatalf("status = %d, want 201, body = %s", recorder.Code, string(responseBody))
+		}
+
+		var created uploadFileResponse
+		if err := json.NewDecoder(recorder.Body).Decode(&created); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		if !strings.HasPrefix(created.URL, "/api/files?path=") {
+			t.Fatalf("created.URL = %q, want /api/files?path=...", created.URL)
+		}
+
+		parsed, parseErr := url.Parse(created.URL)
+		if parseErr != nil {
+			t.Fatalf("url.Parse(%q) error = %v", created.URL, parseErr)
+		}
+		parsedPath := parsed.Query().Get("path")
+		if strings.HasPrefix(parsedPath, "data/uploads") {
+			t.Fatalf("path = %q, should NOT be in uploads/ directory when documentPath is provided", parsedPath)
+		}
+		if !strings.Contains(parsedPath, "content/notes") {
+			t.Fatalf("path = %q, should reference content/notes directory", parsedPath)
+		}
+
+		// Verify the file was persisted alongside the document.
+		noteDir := filepath.Join(root.FlowPath, "data", "content", "notes")
+		persisted, readErr := os.ReadFile(filepath.Join(noteDir, "diagram.png"))
+		if readErr != nil {
+			t.Fatalf("ReadFile(diagram.png) error = %v", readErr)
+		}
+		if string(persisted) != "document-adjacent-image" {
+			t.Fatalf("persisted content = %q, want document-adjacent-image", string(persisted))
+		}
+	})
+
+	t.Run("rejects invalid documentPath", func(t *testing.T) {
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		part, err := writer.CreateFormFile("file", "photo.png")
+		if err != nil {
+			t.Fatalf("CreateFormFile() error = %v", err)
+		}
+		if _, err := part.Write([]byte("content")); err != nil {
+			t.Fatalf("Write() error = %v", err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatalf("Close(writer) error = %v", err)
+		}
+
+		// Try path traversal.
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "/api/files?documentPath=../outside", &body)
+		request.Header.Set("Content-Type", writer.FormDataContentType())
+		handler.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusBadRequest {
+			responseBody, _ := io.ReadAll(recorder.Body)
+			t.Fatalf("status = %d, want 400, body = %s", recorder.Code, string(responseBody))
+		}
+
+		var payload errorResponse
+		if err := json.NewDecoder(recorder.Body).Decode(&payload); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		if !strings.Contains(payload.Error, "documentPath is invalid") {
+			t.Fatalf("payload.Error = %q, want 'documentPath is invalid'", payload.Error)
+		}
+	})
+
+	t.Run("persists binary content with null bytes correctly", func(t *testing.T) {
+		content := []byte{0x00, 0x01, 0x02, 0xFF, 0xFE, 0x7F, 'A', 'B', 'C'}
+		recorder := postMultipartFile(t, handler, "file", "binary.dat", content)
+		if recorder.Code != http.StatusCreated {
+			responseBody, _ := io.ReadAll(recorder.Body)
+			t.Fatalf("status = %d, want 201, body = %s", recorder.Code, string(responseBody))
+		}
+
+		var created uploadFileResponse
+		if err := json.NewDecoder(recorder.Body).Decode(&created); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+
+		parsed, parseErr := url.Parse(created.URL)
+		if parseErr != nil {
+			t.Fatalf("url.Parse(%q) error = %v", created.URL, parseErr)
+		}
+		uploadedPath := filepath.Join(root.FlowPath, filepath.FromSlash(parsed.Query().Get("path")))
+		persisted, readErr := os.ReadFile(uploadedPath)
+		if readErr != nil {
+			t.Fatalf("ReadFile(uploaded) error = %v", readErr)
+		}
+		if !bytes.Equal(persisted, content) {
+			t.Fatalf("persisted content = %v, want %v", persisted, content)
+		}
+	})
+}
+
+// postMultipartFile creates a multipart POST request to /api/files and returns the recorder.
+func TestSanitizeAssetFileNameHTTP(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{name: "normal", input: "Screenshot.png", expected: "screenshot.png"},
+		{name: "spaces", input: "My Photo.png", expected: "my-photo.png"},
+		{name: "special chars", input: "hello@world!.jpg", expected: "helloworld.jpg"},
+		{name: "empty", input: "", expected: "file.bin"},
+		{name: "dots", input: "file.name.with.dots.png", expected: "file-name-with-dots.png"},
+		{name: "mixed case", input: "MIXED_CASE-File.PNG", expected: "mixed_case-file.png"},
+		{name: "leading/trailing spaces", input: "  spaced.png  ", expected: "spaced.png"},
+		{name: "no extension", input: "README", expected: "readme.bin"},
+		{name: "only special chars", input: "!!!@@@", expected: "file.bin"},
+		{name: "all numbers", input: "12345.jpg", expected: "12345.jpg"},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := workspace.SanitizeAssetFileName(tt.input)
+			if result != tt.expected {
+				t.Fatalf("SanitizeAssetFileName(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestMakeUniqueUploadFileNameHTTP(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	name1 := workspace.MakeUniqueFileName(dir, "photo.png")
+	if name1 != "photo.png" {
+		t.Fatalf("first call = %q, want photo.png", name1)
+	}
+	os.WriteFile(filepath.Join(dir, name1), []byte("first"), 0o644)
+
+	name2 := workspace.MakeUniqueFileName(dir, "photo.png")
+	if name2 != "photo-2.png" {
+		t.Fatalf("second call = %q, want photo-2.png", name2)
+	}
+	os.WriteFile(filepath.Join(dir, name2), []byte("second"), 0o644)
+
+	name3 := workspace.MakeUniqueFileName(dir, "photo.png")
+	if name3 != "photo-3.png" {
+		t.Fatalf("third call = %q, want photo-3.png", name3)
+	}
+
+	name4 := workspace.MakeUniqueFileName(dir, "other.png")
+	if name4 != "other.png" {
+		t.Fatalf("different name call = %q, want other.png", name4)
+	}
+}
+
+func TestMakeUniqueUploadFileNameNoExtensionHTTP(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	name := workspace.MakeUniqueFileName(dir, "readme")
+	if name != "readme.bin" {
+		t.Fatalf("first call = %q, want readme.bin", name)
+	}
+	os.WriteFile(filepath.Join(dir, name), []byte("first"), 0o644)
+
+	name = workspace.MakeUniqueFileName(dir, "readme")
+	if name != "readme-2.bin" {
+		t.Fatalf("second call = %q, want readme-2.bin", name)
+	}
+}
+
+func postMultipartFile(t *testing.T, handler http.Handler, fieldName string, fileName string, content []byte) *httptest.ResponseRecorder {
+	t.Helper()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile(fieldName, fileName)
+	if err != nil {
+		t.Fatalf("CreateFormFile(%q, %q) error = %v", fieldName, fileName, err)
+	}
+	if _, err := part.Write(content); err != nil {
+		t.Fatalf("Write(content) error = %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close(multipart writer) error = %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/files", &body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	handler.ServeHTTP(recorder, request)
+
+	return recorder
+}
+
 func TestNewMuxGraphTreeDegradesGracefullyWhenIndexIsUnavailable(t *testing.T) {
 	t.Parallel()
 

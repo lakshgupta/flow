@@ -12,8 +12,8 @@ links:
       context: Continue extracting the remaining inline App.tsx modal workflows after the settings dialog
       relationships:
         - depends-on
-
 ---
+
 - Added `frontend/src/components/SettingsDialog.tsx` to own the settings navigation, general tab, appearance controls, and danger-zone content.
 - Replaced the inline settings modal in `frontend/src/App.tsx` with the memoized settings dialog component.
 - Added stable settings action bridges in `frontend/src/App.tsx` for open state, tab selection, index rebuild, local workspace deregistration, appearance changes, and stopping the GUI.

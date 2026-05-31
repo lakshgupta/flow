@@ -1,4 +1,4 @@
-import { CalendarDays, Search, Settings } from "lucide-react";
+import { CalendarDays, Home, Search, Settings } from "lucide-react";
 import { memo } from "react";
 
 import { SettingsDialog, type SettingsDialogProps } from "./SettingsDialog";
@@ -9,6 +9,7 @@ import type { RightRailControlsActions } from "../hooks/useRightRailControlsActi
 export type RightRailControlsProps = {
   searchActive: boolean;
   calendarActive: boolean;
+  showHomeButton: boolean;
   settingsDialog: SettingsDialogProps;
   actions: RightRailControlsActions;
 };
@@ -16,11 +17,27 @@ export type RightRailControlsProps = {
 function RightRailControlsComponent({
   searchActive,
   calendarActive,
+  showHomeButton,
   settingsDialog,
   actions,
 }: RightRailControlsProps) {
   return (
     <>
+      {showHomeButton && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="right-rail-icon-btn"
+                aria-label="Navigate to Home"
+                onClick={actions.navigateHome}
+              >
+                <Home size={17} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Home</TooltipContent>
+        </Tooltip>
+      )}
       <Tooltip>
         <TooltipTrigger asChild>
           <button

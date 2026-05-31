@@ -12,8 +12,8 @@ links:
       context: Continue moving large App.tsx bridge setup into dedicated hooks after the thread-panel adapter
       relationships:
         - depends-on
-
 ---
+
 - Added `frontend/src/hooks/useThreadPanelActions.ts` to own the stable thread-panel action adapter that previously lived inline in `frontend/src/App.tsx`.
 - Replaced the large thread-panel action-ref and callback block in `frontend/src/App.tsx` with a single hook call while preserving the existing `ThreadPanels` action surface.
 - Simplified the ref-backed thread adapter by updating one current ref object per render instead of mutating each handler slot individually.

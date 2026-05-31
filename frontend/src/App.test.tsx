@@ -262,6 +262,17 @@ function getSidebarTreeButton(label: string, kind: "graph" | "file" = "graph"): 
   return button;
 }
 
+async function expandSidebarGraph(graphLabel: string): Promise<void> {
+  const sidebar = document.querySelector('[data-sidebar="sidebar"]');
+  if (!(sidebar instanceof HTMLElement)) return;
+  const row = within(sidebar).getByText(graphLabel).closest("li");
+  if (!row) return;
+  const expandBtn = row.querySelector('button[aria-label="Expand"]');
+  if (expandBtn instanceof HTMLElement) {
+    await userEvent.click(expandBtn);
+  }
+}
+
 describe("App graph canvas flows", () => {
   beforeEach(() => {
     vi.spyOn(Date, "now").mockReturnValue(1_717_171_717_000);
@@ -1522,6 +1533,9 @@ describe("App graph canvas flows", () => {
     const user = userEvent.setup();
     render(<ThemeProvider><App /></ThemeProvider>);
 
+    await screen.findByText("Execution");
+    await expandSidebarGraph("Execution");
+
     const fileButton = (await screen.findByText("overview.md")).closest('[data-sidebar="menu-sub-button"]');
     if (fileButton === null) {
       throw new Error("missing overview file button");
@@ -1688,6 +1702,9 @@ describe("App graph canvas flows", () => {
     const user = userEvent.setup();
     render(<ThemeProvider><App /></ThemeProvider>);
 
+    await screen.findByText("Execution");
+    await expandSidebarGraph("Execution");
+
     const overviewButton = (await screen.findByText("overview.md")).closest('[data-sidebar="menu-sub-button"]');
     if (overviewButton === null) {
       throw new Error("missing overview file button");
@@ -1853,6 +1870,7 @@ describe("App graph canvas flows", () => {
 
     const executionButton = await findSidebarTreeButton("Execution");
     await user.click(executionButton);
+    await expandSidebarGraph("Execution");
     await screen.findByTestId("flow-node-note-1");
 
     const overviewButton = await findSidebarTreeButton("overview.md", "file");
@@ -2211,6 +2229,7 @@ describe("App graph canvas flows", () => {
 
     await user.click(executionButton);
     await screen.findByTestId("flow-node-note-1");
+    await expandSidebarGraph("Execution");
 
     const fileButton = (await screen.findByText("overview.md")).closest('[data-sidebar="menu-sub-button"]');
     if (fileButton === null) {
@@ -2421,6 +2440,7 @@ describe("App graph canvas flows", () => {
       throw new Error("missing execution graph row");
     }
 
+    await expandSidebarGraph("Execution");
     await screen.findByText("overview.md");
 
     await user.click(within(graphRow).getByRole("button", { name: "Collapse" }));
@@ -2533,6 +2553,9 @@ describe("App graph canvas flows", () => {
     const user = userEvent.setup();
     render(<ThemeProvider><App /></ThemeProvider>);
 
+    await screen.findByText("Execution");
+    await expandSidebarGraph("Execution");
+
     await screen.findByText("overview.md");
 
     await user.click(screen.getByRole("button", { name: "More actions for overview.md" }));
@@ -2586,6 +2609,9 @@ describe("App graph canvas flows", () => {
 
     const user = userEvent.setup();
     render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Execution");
+    await expandSidebarGraph("Execution");
 
     await screen.findByText("overview.md");
 
@@ -2873,6 +2899,7 @@ describe("App graph canvas flows", () => {
 
     await user.click(executionButton);
     await screen.findByTestId("flow-node-note-1");
+    await expandSidebarGraph("Execution");
 
     const fileButton = getSidebarTreeButton("overview.md", "file");
     await user.click(fileButton);
@@ -3100,6 +3127,7 @@ describe("App graph canvas flows", () => {
     render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByText("Content");
+    await expandSidebarGraph("Execution");
 
     const fileButton = (await screen.findByText("overview.md")).closest('[data-sidebar="menu-sub-button"]');
     if (fileButton === null) {
@@ -3227,6 +3255,7 @@ describe("App graph canvas flows", () => {
     render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByText("Content");
+    await expandSidebarGraph("Execution");
 
     const fileButton = (await screen.findByText("overview.md")).closest('[data-sidebar="menu-sub-button"]');
     if (fileButton === null) {
@@ -3358,6 +3387,7 @@ describe("App graph canvas flows", () => {
     render(<ThemeProvider><App /></ThemeProvider>);
 
     await screen.findByText("Content");
+    await expandSidebarGraph("Execution");
 
     const fileButton = (await screen.findByText("overview.md")).closest('[data-sidebar="menu-sub-button"]') as HTMLElement | null;
     if (fileButton === null) {
@@ -3486,6 +3516,9 @@ describe("App graph canvas flows", () => {
 
     const user = userEvent.setup();
     render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Execution");
+    await expandSidebarGraph("Execution");
 
     const fileButton = (await screen.findByText("overview.md")).closest('[data-sidebar="menu-sub-button"]');
     if (fileButton === null) {

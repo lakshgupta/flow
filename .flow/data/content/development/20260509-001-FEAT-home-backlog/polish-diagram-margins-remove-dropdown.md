@@ -4,10 +4,10 @@ type: task
 graph: development/20260509-001-FEAT-home-backlog
 title: Polish diagram sections and remove dropdown
 description: Tighten Mermaid/Excalidraw section spacing and remove unnecessary language selector controls from dedicated diagram sections
-status: Success
 tags:
     - implementation
     - frontend
+status: Success
 ---
 
 - Updated `frontend/src/components/editor/ui/code-block-view/code-block-view.tsx` to remove the language dropdown from dedicated Mermaid and Excalidraw section headers.

@@ -3,6 +3,7 @@ package workspace
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -234,6 +235,16 @@ func UpdateDocumentByPath(root Root, pathValue string, patch DocumentPatch) (mar
 	movedAcrossGraphs := documentGraph(document) != documentGraph(updatedDocument)
 	if movedAcrossGraphs && len(documentLinks(updatedDocument)) > 0 {
 		return markdown.WorkspaceDocument{}, InvalidMutationError{Err: errors.New("cannot move a node with outgoing links to another graph")}
+	}
+
+	// When the document is moving to a different directory, move any image
+	// assets referenced in the body alongside it so they stay co-located.
+	if targetRelativePath != relativePath {
+		var moveErr error
+		updatedDocument, moveErr = moveDocumentImageAssets(root.FlowPath, updatedDocument, relativePath, targetRelativePath)
+		if moveErr != nil {
+			return markdown.WorkspaceDocument{}, moveErr
+		}
 	}
 
 	sideEffectWrites, err := planDocumentUpdateSideEffectWrites(root.FlowPath, relativePath, targetRelativePath, document, updatedDocument, movedAcrossGraphs)
@@ -1448,6 +1459,145 @@ func sortedDocumentPaths(documents map[string]markdown.Document) []string {
 	}
 	sort.Strings(paths)
 	return paths
+}
+
+// moveDocumentImageAssets scans a document body for image file references that
+// live in the same directory as the document, moves each referenced file to the
+// target directory, and returns the document with updated image URLs.
+func moveDocumentImageAssets(flowPath string, document markdown.Document, currentRelativePath string, targetRelativePath string) (markdown.Document, error) {
+	currentDir := filepath.Dir(filepath.Join(flowPath, filepath.FromSlash(currentRelativePath)))
+	targetDir := filepath.Dir(filepath.Join(flowPath, filepath.FromSlash(targetRelativePath)))
+	if currentDir == targetDir {
+		return document, nil
+	}
+
+	body := documentBody(document)
+	if body == "" {
+		return document, nil
+	}
+
+	currentRelDir := filepath.ToSlash(filepath.Dir(currentRelativePath))
+	targetRelDir := filepath.ToSlash(filepath.Dir(targetRelativePath))
+	if currentRelDir == targetRelDir {
+		return document, nil
+	}
+
+	// Collect old→new URL replacements by scanning for /api/files?path= references.
+	replacements := map[string]string{}
+	remaining := body
+	for {
+		start := strings.Index(remaining, "/api/files?path=")
+		if start == -1 {
+			break
+		}
+
+		// Extract until the next delimiter (space, tab, newline, double-quote,
+		// single-quote, close-paren, close-bracket).
+		searchStart := start + len("/api/files?path=")
+		delim := strings.IndexAny(remaining[searchStart:], " \t\n\r\"')]")
+		if delim == -1 {
+			delim = len(remaining) - searchStart
+		}
+
+		fullMatch := remaining[start : searchStart+delim]
+		encodedPath := remaining[searchStart : searchStart+delim]
+		decodedPath, err := url.PathUnescape(encodedPath)
+		if err != nil {
+			remaining = remaining[searchStart+delim:]
+			continue
+		}
+
+		assetRelPath := filepath.ToSlash(decodedPath)
+		if !strings.HasPrefix(assetRelPath, currentRelDir+"/") {
+			remaining = remaining[searchStart+delim:]
+			continue
+		}
+
+		assetName := strings.TrimPrefix(assetRelPath, currentRelDir+"/")
+		if assetName == "" || strings.Contains(assetName, "/") {
+			remaining = remaining[searchStart+delim:]
+			continue
+		}
+
+		oldAssetPath := filepath.Join(currentDir, assetName)
+		if _, statErr := os.Stat(oldAssetPath); statErr != nil {
+			remaining = remaining[searchStart+delim:]
+			continue
+		}
+
+		if err := os.MkdirAll(targetDir, 0o755); err != nil {
+			return nil, fmt.Errorf("create target directory for image assets: %w", err)
+		}
+
+		uniqueName := uniqueAssetFileName(targetDir, assetName)
+		newAssetPath := filepath.Join(targetDir, uniqueName)
+
+		if err := os.Rename(oldAssetPath, newAssetPath); err != nil {
+			return nil, fmt.Errorf("move image asset %q: %w", assetName, err)
+		}
+
+		newRelativePath := filepath.ToSlash(filepath.Join(targetRelDir, uniqueName))
+		newURL := "/api/files?path=" + url.PathEscape(newRelativePath)
+		replacements[fullMatch] = newURL
+
+		remaining = remaining[searchStart+delim:]
+	}
+
+	if len(replacements) == 0 {
+		return document, nil
+	}
+
+	// Apply all replacements to the body.
+	finalBody := body
+	for oldRef, newRef := range replacements {
+		finalBody = strings.Replace(finalBody, oldRef, newRef, 1)
+	}
+
+	return setDocumentBody(document, finalBody), nil
+}
+
+// uniqueAssetFileName returns a unique file name in the target directory by
+// appending a numeric suffix when a file with the same name already exists.
+func uniqueAssetFileName(dir string, candidate string) string {
+	base := strings.TrimSuffix(candidate, filepath.Ext(candidate))
+	ext := strings.ToLower(filepath.Ext(candidate))
+	if base == "" {
+		base = "file"
+	}
+	if ext == "" {
+		ext = ".bin"
+	}
+
+	for index := 0; ; index++ {
+		name := base + ext
+		if index > 0 {
+			name = fmt.Sprintf("%s-%d%s", base, index+1, ext)
+		}
+
+		if _, err := os.Stat(filepath.Join(dir, name)); errors.Is(err, os.ErrNotExist) {
+			return name
+		}
+	}
+}
+
+// setDocumentBody returns a copy of the document with the body field replaced.
+func setDocumentBody(document markdown.Document, body string) markdown.Document {
+	switch d := document.(type) {
+	case markdown.NoteDocument:
+		d.Body = body
+		return d
+	case markdown.TaskDocument:
+		d.Body = body
+		return d
+	case markdown.CommandDocument:
+		d.Body = body
+		return d
+	case markdown.HomeDocument:
+		d.Body = body
+		return d
+	default:
+		return document
+	}
 }
 
 func cloneLinks(values []markdown.NodeLink) []markdown.NodeLink {

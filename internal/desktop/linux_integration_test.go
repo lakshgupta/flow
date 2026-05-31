@@ -134,4 +134,3 @@ func TestWriteLinuxDesktopIntegrationEscapesSpacesInExecPath(t *testing.T) {
 		t.Fatalf("desktop entry did not escape executable path spaces: %q", string(desktopData))
 	}
 }
-
