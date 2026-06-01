@@ -17,10 +17,9 @@ GOARCH="${1:-amd64}"
 export VERSION GOARCH
 VERSION="$(release_version)"
 
-if ! command -v nfpm >/dev/null 2>&1; then
-	echo "nfpm not found; installing via go install..." >&2
-	go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
-fi
+echo "Ensuring latest nfpm..." >&2
+go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+NFPM="$(go env GOPATH)/bin/nfpm"
 
 mkdir -p "$ROOT_DIR/dist"
 
@@ -32,7 +31,7 @@ NFPM_CONF="$(mktemp /tmp/nfpm-XXXXXX.yaml)"
 trap 'rm -f "$NFPM_CONF"' EXIT
 envsubst < "$ROOT_DIR/packaging/linux/nfpm.yaml" > "$NFPM_CONF"
 
-nfpm package \
+"$NFPM" package \
         --config "$NFPM_CONF" \
         --packager deb \
         --output "$DEB_PATH"
