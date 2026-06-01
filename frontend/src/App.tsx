@@ -18,7 +18,9 @@ import { DocumentEditorPane } from "./components/DocumentEditorPane";
 import { GraphEmptyState } from "./components/GraphEmptyState";
 import { GraphCanvasSurface } from "./components/GraphCanvasSurface";
 import { HomeSurface } from "./components/HomeSurface";
+import { MiddleContent } from "./components/MiddleContent";
 import { RightRailControls } from "./components/RightRailControls";
+import { WorkspaceHeader } from "./components/WorkspaceHeader";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { GraphTreePanel, WorkspaceSelectorPanel } from "./components/WorkspaceSidebarPanels";
 import { CreateNodeDialog, DeleteDocumentDialog, RenameDialog } from "./components/WorkflowDialogs";
@@ -476,18 +478,26 @@ function FlowApp() {
     }
     return next;
   }, [graphTree]);
-  const graphCanvasNodes = buildGraphCanvasFlowNodes(
+  const graphCanvasNodes = useMemo(() => buildGraphCanvasFlowNodes(
     graphCanvasData,
     graphCanvasPositions,
     selectedCanvasNodeId,
     selectedDocumentId,
     graphDirectoryColorsByPath,
-  );
+  ), [
+    graphCanvasData,
+    graphCanvasPositions,
+    selectedCanvasNodeId,
+    selectedDocumentId,
+    graphDirectoryColorsByPath,
+  ]);
   graphCanvasNodesRef.current = graphCanvasNodes;
-  const graphCanvasEdgesRaw = buildGraphCanvasFlowEdges(graphCanvasData, selectedCanvasNodeId);
-  const graphCanvasEdges = selectedEdgeId === ""
-    ? graphCanvasEdgesRaw
-    : graphCanvasEdgesRaw.map((e) => e.id === selectedEdgeId ? { ...e, selected: true } : e);
+  const graphCanvasEdges = useMemo(() => {
+    const raw = buildGraphCanvasFlowEdges(graphCanvasData, selectedCanvasNodeId);
+    return selectedEdgeId === ""
+      ? raw
+      : raw.map((e) => e.id === selectedEdgeId ? { ...e, selected: true } : e);
+  }, [graphCanvasData, selectedCanvasNodeId, selectedEdgeId]);
   const normalizedGraphCanvasNodeSearchTerm = graphCanvasNodeSearchTerm.trim().toLowerCase();
   const graphCanvasNodeSearchMatches = useMemo(() => {
     if (normalizedGraphCanvasNodeSearchTerm === "") {
@@ -499,19 +509,35 @@ function FlowApp() {
     );
   }, [graphCanvasNodes, normalizedGraphCanvasNodeSearchTerm]);
   const graphCanvasNodeSearchHasMatches = graphCanvasNodeSearchMatches.length > 0;
-  const graphCanvasNodeSearchSelectedIndex = graphCanvasNodeSearchMatches.findIndex((node) => node.id === selectedCanvasNodeId);
-  const selectedGraphNode = graphTree?.graphs.find((graphNode) => graphNode.graphPath === selectedGraphPath) ?? null;
-  const selectedCanvasNode = selectedGraphCanvasNode(graphCanvasData, selectedCanvasNodeId);
-  const selectedDocumentGraphColor = selectedDocument !== null
-    ? graphDirectoryColorHex(resolveGraphDirectoryColor(selectedDocument.graph, graphDirectoryColorsByPath))
-    : undefined;
-  const selectedDocumentTintStyle = selectedDocumentGraphColor
-    ? ({ "--document-graph-color": selectedDocumentGraphColor } as React.CSSProperties)
-    : undefined;
-  const selectedCanvasNodeEdgeCount = countConnectedGraphCanvasEdges(graphCanvasData, selectedCanvasNodeId);
+  const graphCanvasNodeSearchSelectedIndex = useMemo(() => {
+    return graphCanvasNodeSearchMatches.findIndex((node) => node.id === selectedCanvasNodeId);
+  }, [graphCanvasNodeSearchMatches, selectedCanvasNodeId]);
+  const selectedGraphNode = useMemo(() => {
+    return graphTree?.graphs.find((graphNode) => graphNode.graphPath === selectedGraphPath) ?? null;
+  }, [graphTree?.graphs, selectedGraphPath]);
+  const selectedCanvasNode = useMemo(() => {
+    return selectedGraphCanvasNode(graphCanvasData, selectedCanvasNodeId);
+  }, [graphCanvasData, selectedCanvasNodeId]);
+  const selectedDocumentGraphColor = useMemo(() => {
+    return selectedDocument !== null
+      ? graphDirectoryColorHex(resolveGraphDirectoryColor(selectedDocument.graph, graphDirectoryColorsByPath))
+      : undefined;
+  }, [selectedDocument, graphDirectoryColorsByPath]);
+  const selectedDocumentTintStyle = useMemo(() => {
+    return selectedDocumentGraphColor
+      ? ({ "--document-graph-color": selectedDocumentGraphColor } as React.CSSProperties)
+      : undefined;
+  }, [selectedDocumentGraphColor]);
+  const selectedCanvasNodeEdgeCount = useMemo(() => {
+    return countConnectedGraphCanvasEdges(graphCanvasData, selectedCanvasNodeId);
+  }, [graphCanvasData, selectedCanvasNodeId]);
   const workspaceSurfaceSection = activeSurface.kind === "graph" ? "Content" : "Home";
-  const workspaceSurfaceTitle = activeSurface.kind === "graph" ? selectedGraphNode?.displayName ?? selectedGraphPath : null;
-  const trackedLocalWorkspaces = (workspace?.workspaces ?? []).filter((entry) => entry.scope === "local");
+  const workspaceSurfaceTitle = useMemo(() => {
+    return activeSurface.kind === "graph" ? selectedGraphNode?.displayName ?? selectedGraphPath : null;
+  }, [activeSurface.kind, selectedGraphNode, selectedGraphPath]);
+  const trackedLocalWorkspaces = useMemo(() => {
+    return (workspace?.workspaces ?? []).filter((entry) => entry.scope === "local");
+  }, [workspace?.workspaces]);
   const isHomeThreadRoot = documentThread.length > 0 && documentThread[0]?.documentId === HOME_THREAD_DOCUMENT_ID;
   const activeThreadTailId = documentThread.length > 0 ? documentThread[documentThread.length - 1]?.documentId ?? "" : "";
   const hasAssetThreadTail = activeThreadTailId !== "" && threadAssetsById[activeThreadTailId] !== undefined;
@@ -1390,10 +1416,22 @@ function FlowApp() {
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
 
+    const providerEl = document.getElementById("flow-sidebar-provider");
+    let currentWidth = startWidth;
+
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const deltaX = moveEvent.clientX - startX;
       const nextWidth = direction === "left" ? startWidth + deltaX : startWidth - deltaX;
-      setWidth(Math.min(Math.max(nextWidth, minWidth), maxWidth));
+      const boundedWidth = Math.min(Math.max(nextWidth, minWidth), maxWidth);
+      currentWidth = boundedWidth;
+
+      if (providerEl !== null) {
+        if (direction === "left") {
+          providerEl.style.setProperty("--sidebar-width", `${boundedWidth}px`);
+        } else {
+          providerEl.style.setProperty("--right-sidebar-width", `${boundedWidth}px`);
+        }
+      }
     };
 
     const handleMouseUp = () => {
@@ -1402,6 +1440,7 @@ function FlowApp() {
       document.body.style.userSelect = "";
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
+      setWidth(currentWidth);
     };
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -4054,8 +4093,12 @@ function FlowApp() {
 
   return (
     <SidebarProvider
+      id="flow-sidebar-provider"
       className={isResizingLeft ? "is-resizing-sidebar" : undefined}
-      style={{ "--sidebar-width": `${leftSidebarWidth}px` } as React.CSSProperties}
+      style={{
+        "--sidebar-width": `${leftSidebarWidth}px`,
+        "--right-sidebar-width": `${rightSidebarWidth}px`,
+      } as React.CSSProperties}
     >
       {error !== "" ? <p className="status-line status-line-error">{error}</p> : null}
       <AppSidebar
@@ -4070,40 +4113,15 @@ function FlowApp() {
         }
       />
       <SidebarInset>
-        <header className="workspace-shell-header">
-            <div className="workspace-shell-header-leading">
-              <SidebarTrigger />
-              <Separator className="workspace-shell-header-separator" orientation="vertical" />
-              <Breadcrumb className="workspace-shell-breadcrumb">
-                <BreadcrumbList>
-                  <BreadcrumbItem>Workspace</BreadcrumbItem>
-                  <BreadcrumbSeparator />
-                  {workspaceSurfaceTitle === null ? (
-                    <BreadcrumbItem>
-                      <BreadcrumbPage>{workspaceSurfaceSection}</BreadcrumbPage>
-                    </BreadcrumbItem>
-                  ) : (
-                    <>
-                      <BreadcrumbItem>{workspaceSurfaceSection}</BreadcrumbItem>
-                      <BreadcrumbSeparator />
-                      <BreadcrumbItem>
-                        <BreadcrumbPage>{workspaceSurfaceTitle}</BreadcrumbPage>
-                      </BreadcrumbItem>
-                    </>
-                  )}
-                </BreadcrumbList>
-              </Breadcrumb>
-            </div>
-            <div className="workspace-shell-header-trailing">
-              <RightRailControls
-                searchActive={rightPanelTab === "search" && !rightRailCollapsed}
-                calendarActive={rightPanelTab === "calendar" && !rightRailCollapsed}
-                showHomeButton={activeSurface.kind === "graph"}
-                settingsDialog={settingsDialogProps}
-                actions={rightRailControlsActions}
-              />
-            </div>
-          </header>
+        <WorkspaceHeader
+          workspaceSurfaceTitle={workspaceSurfaceTitle}
+          workspaceSurfaceSection={workspaceSurfaceSection}
+          rightPanelTab={rightPanelTab}
+          rightRailCollapsed={rightRailCollapsed}
+          activeSurface={activeSurface}
+          settingsDialogProps={settingsDialogProps}
+          rightRailControlsActions={rightRailControlsActions}
+        />
           <DeleteDocumentDialog
             open={deleteDialogOpen}
             target={deleteDialogTarget}
@@ -4114,75 +4132,52 @@ function FlowApp() {
 
           <div className="workspace-shell-body">
         <section className="middle-shell">
-          {isThreadStackOpen ? (
-            renderCenterDocumentShell(false)
-          ) : activeSurface.kind === "home" ? (
-            <HomeSurface
-              homeMutationError={homeMutationError}
-              homeTOCVisible={homeTOCVisible}
-              showFreshStartGuide={showFreshStartGuide}
-              homeDocumentLayoutRef={homeDocumentLayoutRef}
-              homeDocumentEditorRef={homeDocumentEditorRef}
-              documentTOCRatio={documentTOCRatio}
-              homeInlineReferences={graphTree?.home.inlineReferences}
-              editorScrollTarget={editorScrollTarget}
-              homeFormState={homeFormState}
-              tocItems={tocItems}
-              actions={homeSurfaceActions}
-            />
-          ) : (
-            <div className="graph-canvas-outer">
-                    {graphCanvasError !== "" ? (
-                      <div className="detail-empty shell-inner-card">
-                        <p>Graph canvas data could not be loaded for this graph.</p>
-                      </div>
-                    ) : graphCanvasLoading ? (
-                      <div className="detail-empty shell-inner-card">
-                        <p>Loading graph canvas nodes and projected edges.</p>
-                      </div>
-                    ) : graphCanvasData !== null && graphCanvasData.nodes.length === 0 ? (
-                      <GraphEmptyState
-                        selectedGraphPath={selectedGraphPath}
-                        graphCanvasDragActive={graphCanvasDragActive}
-                        graphCreateError={graphCreateError}
-                        graphCreatePendingType={graphCreatePendingType}
-                        actions={graphEmptyStateActions}
-                      />
-                    ) : graphCanvasData === null ? (
-                      <div className="detail-empty shell-inner-card">
-                        <p>Graph canvas data is not available yet.</p>
-                      </div>
-                    ) : (
-                      <GraphCanvasSurface
-                        graphCanvasShellRef={graphCanvasShellRef}
-                        selectedGraphPath={selectedGraphPath}
-                        graphCanvasDragActive={graphCanvasDragActive}
-                        connectingFrom={connectingFrom}
-                        graphCanvasData={graphCanvasData}
-                        graphCanvasNodes={graphCanvasNodes}
-                        graphCanvasEdges={graphCanvasEdges}
-                        edgeTypes={EDGE_TYPES}
-                        graphCanvasNodeSearchTerm={graphCanvasNodeSearchTerm}
-                        graphCanvasNodeSearchHasMatches={graphCanvasNodeSearchHasMatches}
-                        graphCanvasNodeSearchSelectedIndex={graphCanvasNodeSearchSelectedIndex}
-                        graphCanvasNodeSearchMatchCount={graphCanvasNodeSearchMatches.length}
-                        normalizedGraphCanvasNodeSearchTerm={normalizedGraphCanvasNodeSearchTerm}
-                        graphCanvasResettingLayout={graphCanvasResettingLayout}
-                        graphCanvasLayoutMode={graphCanvasLayoutMode}
-                        overlayController={graphCanvasOverlayController}
-                        edgeDoubleClickAction={handleEdgeDoubleClickAction}
-                        actions={graphCanvasSurfaceActions}
-                      />
-                    )}
-            </div>
-          )}
+          <MiddleContent
+            activeSurface={activeSurface}
+            isThreadStackOpen={isThreadStackOpen}
+            renderCenterDocumentShell={renderCenterDocumentShell}
+            homeMutationError={homeMutationError}
+            homeTOCVisible={homeTOCVisible}
+            showFreshStartGuide={showFreshStartGuide}
+            homeDocumentLayoutRef={homeDocumentLayoutRef}
+            homeDocumentEditorRef={homeDocumentEditorRef}
+            documentTOCRatio={documentTOCRatio}
+            homeInlineReferences={graphTree?.home.inlineReferences}
+            editorScrollTarget={editorScrollTarget}
+            homeFormState={homeFormState}
+            tocItems={tocItems}
+            homeSurfaceActions={homeSurfaceActions}
+            graphCanvasShellRef={graphCanvasShellRef}
+            selectedGraphPath={selectedGraphPath}
+            graphCanvasDragActive={graphCanvasDragActive}
+            connectingFrom={connectingFrom}
+            graphCanvasData={graphCanvasData}
+            graphCanvasNodes={graphCanvasNodes}
+            graphCanvasEdges={graphCanvasEdges}
+            edgeTypes={EDGE_TYPES}
+            graphCanvasNodeSearchTerm={graphCanvasNodeSearchTerm}
+            graphCanvasNodeSearchHasMatches={graphCanvasNodeSearchHasMatches}
+            graphCanvasNodeSearchSelectedIndex={graphCanvasNodeSearchSelectedIndex}
+            graphCanvasNodeSearchMatchCount={graphCanvasNodeSearchMatches.length}
+            normalizedGraphCanvasNodeSearchTerm={normalizedGraphCanvasNodeSearchTerm}
+            graphCanvasResettingLayout={graphCanvasResettingLayout}
+            graphCanvasLayoutMode={graphCanvasLayoutMode}
+            overlayController={graphCanvasOverlayController}
+            handleEdgeDoubleClickAction={handleEdgeDoubleClickAction}
+            graphCanvasSurfaceActions={graphCanvasSurfaceActions}
+            graphCanvasError={graphCanvasError}
+            graphCanvasLoading={graphCanvasLoading}
+            graphCreateError={graphCreateError}
+            graphCreatePendingType={graphCreatePendingType}
+            graphEmptyStateActions={graphEmptyStateActions}
+          />
         </section>
         <aside
           className="app-right-sidebar"
           aria-label="Right pane"
           data-open={rightRailCollapsed ? "false" : "true"}
           data-focus={!rightRailCollapsed && rightRailMaximized ? "true" : "false"}
-          style={!rightRailCollapsed && !rightRailMaximized ? { width: `${rightSidebarWidth}px`, ...(isResizingRight ? { transition: "none" } : {}) } : undefined}
+          style={!rightRailCollapsed && !rightRailMaximized ? { width: "var(--right-sidebar-width)", ...(isResizingRight ? { transition: "none" } : {}) } : undefined}
         >
           {!rightRailCollapsed && !rightRailMaximized && (
             <div className="right-sidebar-resize-handle" onMouseDown={handleRightSidebarMouseDown} />
