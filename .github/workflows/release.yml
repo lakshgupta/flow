@@ -97,7 +97,9 @@ jobs:
 
       - name: Install webkit2gtk (Linux only)
         if: matrix.target_os == 'linux'
-        run: sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --fix-missing libwebkit2gtk-4.1-dev build-essential
 
       - name: Set up Go
         uses: actions/setup-go@v5
