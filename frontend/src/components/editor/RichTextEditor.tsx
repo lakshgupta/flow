@@ -17,7 +17,7 @@ import { editorHTMLToMarkdown, markdownToHTML, parseFlowReferenceHref, parseFlow
 import { headingIdFromText } from '../../lib/docUtils'
 import { toISODateString } from '../../lib/dateEntries'
 import type { InlineReference } from '../../types'
-import { getWailsUpload, getWailsUploadFromPath } from '../../lib/imageUploader'
+import { getWailsUpload, getWailsUploadFromPath, createFlowImageUploader } from '../../lib/imageUploader'
 import { hasImageExtension } from './image-utils'
 import { BlockHandle } from './ui/block-handle'
 import { defineEditorExtension } from './define-editor-extension'
@@ -650,7 +650,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
           />
           <InlineMenu />
           <ReferenceMenu graphPath={referenceLookupGraph} />
-          <SlashMenu onDateRequest={handleDateRequest} />
+          <SlashMenu onDateRequest={handleDateRequest} uploader={createFlowImageUploader(getDocumentPath)} />
           <BlockHandle />
           <DropIndicator />
           <DocChangeTracker onHtmlChange={handleDocChange} />

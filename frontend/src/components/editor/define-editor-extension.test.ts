@@ -11,6 +11,7 @@ const {
   defineTextColor,
   defineCodeBlockExitKeymap,
   defineHeadingExitKeymap,
+  defineImageIndentKeymap,
   defineCodeBlockView,
   defineImageView,
   defineImageUploadHandler,
@@ -26,6 +27,7 @@ const {
   defineTextColor: vi.fn(() => 'text-color-extension'),
   defineCodeBlockExitKeymap: vi.fn(() => 'code-block-exit-keymap-extension'),
   defineHeadingExitKeymap: vi.fn(() => 'heading-exit-keymap-extension'),
+  defineImageIndentKeymap: vi.fn(() => 'image-indent-keymap-extension'),
   defineCodeBlockView: vi.fn(() => 'code-block-view-extension'),
   defineImageView: vi.fn(() => 'image-view-extension'),
   defineImageUploadHandler: vi.fn(() => 'image-upload-handler-extension'),
@@ -76,6 +78,10 @@ vi.mock('./heading-exit-keymap', () => ({
   defineHeadingExitKeymap,
 }))
 
+vi.mock('./image-indent-keymap', () => ({
+  defineImageIndentKeymap,
+}))
+
 vi.mock('./ui/code-block-view', () => ({
   defineCodeBlockView,
 }))
@@ -110,6 +116,7 @@ describe('defineEditorExtension', () => {
       'math-extension',
       'code-block-exit-keymap-extension',
       'heading-exit-keymap-extension',
+      'image-indent-keymap-extension',
       'horizontal-rule-extension',
       'image-view-extension',
       'code-block-view-extension',
@@ -124,6 +131,7 @@ describe('defineEditorExtension', () => {
       'math-extension',
       'code-block-exit-keymap-extension',
       'heading-exit-keymap-extension',
+      'image-indent-keymap-extension',
       'horizontal-rule-extension',
       'image-view-extension',
       'code-block-view-extension',

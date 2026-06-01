@@ -4482,6 +4482,17 @@ pre {
   background: color-mix(in srgb, var(--accent) 46%, transparent);
 }
 
+.graph-section-content-drop-target {
+  outline: 1px dashed color-mix(in srgb, var(--foreground) 26%, transparent);
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.graph-section-content-drop-target .graph-section-header-row {
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
 .graph-color-swatch {
   width: 0.72rem;
   height: 0.72rem;

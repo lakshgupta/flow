@@ -180,6 +180,34 @@ Execution flow:
 2. Build effective environment from process + command overrides.
 3. Execute through shell command runtime.
 
+## Graph Operations
+
+### Graph Rename and Reparenting
+
+Graph rename and hierarchy reparenting share the same backend code path (`workspace.RenameGraph`). The `PATCH /api/graphs/<path>` endpoint accepts `{ name: "<new-full-path>" }` where the new path may add, remove, or reorder segments in the hierarchy.
+
+**How it works:**
+1. `workspace.RenameGraph` validates source and target paths.
+2. `os.Rename` moves the entire directory (all documents in the graph and sub-graphs).
+3. `planGraphReferenceRewriteWrites` computes old/new breadcrumb diffs for every document inside the moved graph, then scans all workspace documents and rewrites stale inline `[[breadcrumb]]` references.
+4. Graph directory colors are remapped via `remapGraphDirectoryColors`.
+5. The index is rebuilt to pick up path-derived graph fields.
+
+**Reference safety guarantees:**
+- `NodeLink` entries by document ID — unaffected (IDs are immutable).
+- Inline `[[doc-id]]` references — unaffected.
+- Inline `[[Breadcrumb > Path]]` references — auto-rewritten by step 3 above.
+- Inline `[[Title]]` references — may need disambiguation when "same-graph" resolution scope changes.
+
+### Graph Move (Frontend Drag-and-Drop)
+
+The sidebar Content tree supports dragging graph rows to reparent them:
+- Drop onto another graph row nests under it (e.g., `projects/backend` → `arch/backend`).
+- Drop onto the Content root area flattens to top-level (e.g., `projects/backend` → `backend`).
+- Drag state uses a `DraggedItem` union type (`DraggedTreeFile | DraggedGraph`).
+- On drop, the frontend calls the same `PATCH /api/graphs/<path>` rename endpoint with the computed new path.
+- The outgoing-links constraint (applied to individual document moves) does not apply to graph-level moves.
+
 ## Architectural Invariants
 
 - Canonical state is always Markdown on disk.

@@ -5,6 +5,9 @@ graph: manual
 title: Flow User Manual
 description: Index of the Flow user manual — a local-first Markdown workspace for notes, tasks, and commands.
 color: sky
+links:
+    - node: manual/sample-pdf-2
+    - node: manual/flow_logo_linux-2
 ---
 
 # Flow User Manual
@@ -51,6 +54,15 @@ Flow is a **local-first Markdown workspace** for capturing notes, tracking tasks
 
 <p><br></p>
 
-![](/api/files?path=data%2Fuploads%2Fflow_logo_linux.png)
+- Flow!
+    
+    <p><br></p>
+    
+    <p><br></p>
+    
+    ![](/api/files?path=data%2Fuploads%2Fflow_logo_linux.png)
+    
+    <p><br></p>
+    
 
 <p><br></p>

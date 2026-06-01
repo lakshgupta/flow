@@ -1,6 +1,8 @@
 import type { BasicExtension } from 'prosekit/basic'
+import type { Uploader } from 'prosekit/extensions/file'
 import { useEditor } from 'prosekit/react'
 import { AutocompleteList, AutocompletePopover } from 'prosekit/react/autocomplete'
+import { useCallback, useRef } from 'react'
 
 import SlashMenuEmpty from './slash-menu-empty'
 import SlashMenuItem from './slash-menu-item'
@@ -8,10 +10,25 @@ import SlashMenuItem from './slash-menu-item'
 // Match inputs like "/", "/table", "/heading 1" etc.
 const regex = /\/(\S.*)?$/u
 
-export default function SlashMenu({ onDateRequest }: { onDateRequest?: () => void }) {
+export default function SlashMenu({ onDateRequest, uploader }: { onDateRequest?: () => void; uploader?: Uploader<string> }) {
   const editor = useEditor<BasicExtension>()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleImageUpload = useCallback(() => {
+    fileInputRef.current?.click()
+  }, [])
+
+  const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file && uploader) {
+      editor.commands.uploadImage({ file, uploader })
+    }
+    // Reset input so the same file can be selected again
+    event.target.value = ''
+  }, [editor, uploader])
 
   return (
+    <>
     <AutocompletePopover regex={regex} className="relative block max-h-100 min-w-60 select-none overflow-auto whitespace-nowrap p-1 z-10 box-border rounded-lg border border-border bg-popover text-popover-foreground shadow-lg [&:not([data-state])]:hidden">
       <AutocompleteList>
         <SlashMenuItem
@@ -104,8 +121,24 @@ export default function SlashMenu({ onDateRequest }: { onDateRequest?: () => voi
           />
         )}
 
+        {uploader && (
+          <SlashMenuItem
+            label="Image"
+            kbd="📷"
+            onSelect={handleImageUpload}
+          />
+        )}
+
         <SlashMenuEmpty />
       </AutocompleteList>
     </AutocompletePopover>
+    <input
+      ref={fileInputRef}
+      type="file"
+      accept="image/*"
+      className="hidden"
+      onChange={handleFileChange}
+    />
+    </>
   )
 }

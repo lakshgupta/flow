@@ -64,6 +64,7 @@ function GraphTreePanelComponent({ graphTree, activeSurface, selectedDocumentId,
       onRenameGraph={actions.renameGraph}
       onRenameNode={actions.renameNode}
       onMoveNode={actions.moveNode}
+      onMoveGraph={actions.moveGraph}
       onDeleteNode={actions.deleteNode}
       onDeleteGraph={actions.deleteGraph}
       onDownloadGraph={actions.downloadGraph}

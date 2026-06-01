@@ -13,6 +13,7 @@ export type SidebarNavigationActions = {
   renameGraph: (graphPath: string) => void;
   renameNode: (documentId: string, fileName: string) => void;
   moveNode: (file: GraphTreeFileData, sourceGraphPath: string, targetGraphPath: string) => void;
+  moveGraph: (sourceGraphPath: string, targetGraphPath: string) => void;
   deleteNode: (file: GraphTreeFileData, graphPath: string) => void;
   deleteGraph: (graphPath: string) => void;
   downloadGraph: (graphPath: string) => void;
@@ -32,6 +33,7 @@ type UseSidebarNavigationActionsArgs = {
   handleSidebarRenameGraph: (graphPath: string) => void;
   handleSidebarRenameNode: (documentId: string, fileName: string) => void;
   handleSidebarMoveNode: (file: GraphTreeFileData, sourceGraphPath: string, targetGraphPath: string) => Promise<void> | void;
+  handleSidebarMoveGraph: (sourceGraphPath: string, targetGraphPath: string) => Promise<void> | void;
   handleSidebarDeleteNode: (file: GraphTreeFileData, graphPath: string) => void;
   handleSidebarDeleteGraph: (graphPath: string) => Promise<void> | void;
   handleSidebarDownloadGraph: (graphPath: string) => Promise<void> | void;
@@ -51,6 +53,7 @@ export function useSidebarNavigationActions({
   handleSidebarRenameGraph,
   handleSidebarRenameNode,
   handleSidebarMoveNode,
+  handleSidebarMoveGraph,
   handleSidebarDeleteNode,
   handleSidebarDeleteGraph,
   handleSidebarDownloadGraph,
@@ -69,6 +72,7 @@ export function useSidebarNavigationActions({
     handleSidebarRenameGraph,
     handleSidebarRenameNode,
     handleSidebarMoveNode,
+    handleSidebarMoveGraph,
     handleSidebarDeleteNode,
     handleSidebarDeleteGraph,
     handleSidebarDownloadGraph,
@@ -114,6 +118,10 @@ export function useSidebarNavigationActions({
     void actionRefs.current.handleSidebarMoveNode(file, sourceGraphPath, targetGraphPath);
   }, []);
 
+  const moveGraph = useCallback((sourceGraphPath: string, targetGraphPath: string) => {
+    void actionRefs.current.handleSidebarMoveGraph(sourceGraphPath, targetGraphPath);
+  }, []);
+
   const deleteNode = useCallback((file: GraphTreeFileData, graphPath: string) => {
     actionRefs.current.handleSidebarDeleteNode(file, graphPath);
   }, []);
@@ -152,6 +160,7 @@ export function useSidebarNavigationActions({
     renameGraph,
     renameNode,
     moveNode,
+    moveGraph,
     deleteNode,
     deleteGraph,
     downloadGraph,
@@ -164,6 +173,7 @@ export function useSidebarNavigationActions({
     createNode,
     deleteGraph,
     deleteNode,
+    moveGraph,
     moveNode,
     openDocument,
     rebuildIndex,

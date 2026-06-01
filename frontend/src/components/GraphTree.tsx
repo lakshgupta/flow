@@ -32,9 +32,18 @@ type FileTreeNode = {
 };
 
 type DraggedTreeFile = {
+  kind: "file";
   file: GraphTreeFileData;
   sourceGraphPath: string;
 };
+
+type DraggedGraph = {
+  kind: "graph";
+  sourceGraphPath: string;
+  sourceDisplayName: string;
+};
+
+type DraggedItem = DraggedTreeFile | DraggedGraph;
 
 function buildFileTree(graphs: GraphTreeNodeData[]): FileTreeNode[] {
   const nodeMap = new Map<string, FileTreeNode>();
@@ -71,6 +80,7 @@ type FileTreeRowProps = {
   onRenameGraph: (graphPath: string) => void;
   onRenameNode: (documentId: string, fileName: string) => void;
   onMoveNode: (file: GraphTreeFileData, sourceGraphPath: string, targetGraphPath: string) => void;
+  onMoveGraph: (sourceGraphPath: string, targetGraphPath: string) => void;
   onDeleteNode: (file: GraphTreeFileData, graphPath: string) => void;
   onDeleteGraph: (graphPath: string) => void;
   onDownloadGraph: (graphPath: string) => void;
@@ -82,10 +92,11 @@ type FileTreeRowProps = {
   onToggleCollapse: (path: string) => void;
   isFavorite: (path: string) => boolean;
   toggleFavorite: (path: string) => void;
-  draggedFile: DraggedTreeFile | null;
+  draggedItem: DraggedItem | null;
   dropTargetGraphPath: string;
   onDragStartFile: (file: GraphTreeFileData, sourceGraphPath: string) => void;
-  onDragEndFile: () => void;
+  onDragStartGraph: (sourceGraphPath: string, sourceDisplayName: string) => void;
+  onDragEndItem: () => void;
   onDropTargetGraphPathChange: (graphPath: string) => void;
   onEnsureExpanded: (graphPath: string) => void;
 };
@@ -111,6 +122,7 @@ function FileTreeRow({
   onRenameGraph,
   onRenameNode,
   onMoveNode,
+  onMoveGraph,
   onDeleteNode,
   onDeleteGraph,
   onDownloadGraph,
@@ -122,10 +134,11 @@ function FileTreeRow({
   onToggleCollapse,
   isFavorite,
   toggleFavorite,
-  draggedFile,
+  draggedItem,
   dropTargetGraphPath,
   onDragStartFile,
-  onDragEndFile,
+  onDragStartGraph,
+  onDragEndItem,
   onDropTargetGraphPathChange,
   onEnsureExpanded,
 }: FileTreeRowProps) {
@@ -137,9 +150,12 @@ function FileTreeRow({
   const hasExpandableContent = hasChildren || files.length > 0;
   const isCollapsed = collapsed.has(node.data.graphPath);
   const graphColorStyle = graphRowStyle(node.data.color);
-  const isDropTarget = draggedFile !== null
-    && draggedFile.sourceGraphPath !== node.data.graphPath
-    && dropTargetGraphPath === node.data.graphPath;
+  const isDropTarget = draggedItem !== null
+    && dropTargetGraphPath === node.data.graphPath
+    && !(draggedItem.kind === "graph"
+      ? (draggedItem.sourceGraphPath === node.data.graphPath
+        || node.data.graphPath.startsWith(draggedItem.sourceGraphPath + "/"))
+      : draggedItem.sourceGraphPath === node.data.graphPath);
   const [addingSubdir, setAddingSubdir] = useState(false);
   const [subdirName, setSubdirName] = useState("");
   const subdirInputRef = useRef<HTMLInputElement>(null);
@@ -155,18 +171,32 @@ function FileTreeRow({
       <SidebarMenuSubItem
         className={`graph-tree-row group ${graphColorStyle ? "graph-tree-row-colored" : ""}${isDropTarget ? " graph-tree-row-drop-target" : ""}`}
         style={{ paddingLeft: `${depth * 0.75}rem`, ...graphColorStyle }}
+        draggable
+        onDragStart={(event) => {
+          if (draggedItem !== null) return;
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", node.data.graphPath);
+          onDragStartGraph(node.data.graphPath, node.data.displayName);
+        }}
+        onDragEnd={() => {
+          onDragEndItem();
+        }}
         onDragEnter={(event) => {
-          if (draggedFile === null || draggedFile.sourceGraphPath === node.data.graphPath) {
-            return;
-          }
+          if (draggedItem === null) return;
+          const isSelfDrop = draggedItem.kind === "graph"
+            ? (draggedItem.sourceGraphPath === node.data.graphPath || node.data.graphPath.startsWith(draggedItem.sourceGraphPath + "/"))
+            : draggedItem.sourceGraphPath === node.data.graphPath;
+          if (isSelfDrop) return;
           event.preventDefault();
           event.dataTransfer.dropEffect = "move";
           onDropTargetGraphPathChange(node.data.graphPath);
         }}
         onDragOver={(event) => {
-          if (draggedFile === null || draggedFile.sourceGraphPath === node.data.graphPath) {
-            return;
-          }
+          if (draggedItem === null) return;
+          const isSelfDrop = draggedItem.kind === "graph"
+            ? (draggedItem.sourceGraphPath === node.data.graphPath || node.data.graphPath.startsWith(draggedItem.sourceGraphPath + "/"))
+            : draggedItem.sourceGraphPath === node.data.graphPath;
+          if (isSelfDrop) return;
           event.preventDefault();
           event.dataTransfer.dropEffect = "move";
           onDropTargetGraphPathChange(node.data.graphPath);
@@ -181,14 +211,21 @@ function FileTreeRow({
           }
         }}
         onDrop={(event) => {
-          if (draggedFile === null || draggedFile.sourceGraphPath === node.data.graphPath) {
-            return;
-          }
+          if (draggedItem === null) return;
+          const isSelfDrop = draggedItem.kind === "graph"
+            ? (draggedItem.sourceGraphPath === node.data.graphPath || node.data.graphPath.startsWith(draggedItem.sourceGraphPath + "/"))
+            : draggedItem.sourceGraphPath === node.data.graphPath;
+          if (isSelfDrop) return;
           event.preventDefault();
+          event.stopPropagation();
           onEnsureExpanded(node.data.graphPath);
           onDropTargetGraphPathChange("");
-          onMoveNode(draggedFile.file, draggedFile.sourceGraphPath, node.data.graphPath);
-          onDragEndFile();
+          if (draggedItem.kind === "file") {
+            onMoveNode(draggedItem.file, draggedItem.sourceGraphPath, node.data.graphPath);
+          } else {
+            onMoveGraph(draggedItem.sourceGraphPath, node.data.graphPath);
+          }
+          onDragEndItem();
         }}
       >
         {hasExpandableContent ? (
@@ -348,7 +385,7 @@ function FileTreeRow({
         files.map((file) => (
           <SidebarMenuSubItem
             key={file.id}
-            className={`graph-file-row group${draggedFile?.file.id === file.id ? " graph-file-row-dragging" : ""}`}
+            className={`graph-file-row group${draggedItem?.kind === "file" && draggedItem.file.id === file.id ? " graph-file-row-dragging" : ""}`}
             style={{ paddingLeft: `${depth * 0.75 + 1.85}rem` }}
             draggable
             onDragStart={(event) => {
@@ -357,7 +394,7 @@ function FileTreeRow({
               onDragStartFile(file, node.data.graphPath);
             }}
             onDragEnd={() => {
-              onDragEndFile();
+              onDragEndItem();
             }}
           >
             <SidebarMenuSubButton
@@ -433,6 +470,7 @@ function FileTreeRow({
             onRenameGraph={onRenameGraph}
             onRenameNode={onRenameNode}
             onMoveNode={onMoveNode}
+            onMoveGraph={onMoveGraph}
             onDeleteNode={onDeleteNode}
             onDeleteGraph={onDeleteGraph}
             onDownloadGraph={onDownloadGraph}
@@ -444,10 +482,11 @@ function FileTreeRow({
             onToggleCollapse={onToggleCollapse}
             isFavorite={isFavorite}
             toggleFavorite={toggleFavorite}
-            draggedFile={draggedFile}
+            draggedItem={draggedItem}
             dropTargetGraphPath={dropTargetGraphPath}
             onDragStartFile={onDragStartFile}
-            onDragEndFile={onDragEndFile}
+            onDragStartGraph={onDragStartGraph}
+            onDragEndItem={onDragEndItem}
             onDropTargetGraphPathChange={onDropTargetGraphPathChange}
             onEnsureExpanded={onEnsureExpanded}
           />
@@ -468,6 +507,7 @@ type GraphTreeProps = {
   onRenameGraph: (graphPath: string) => void;
   onRenameNode: (documentId: string, fileName: string) => void;
   onMoveNode: (file: GraphTreeFileData, sourceGraphPath: string, targetGraphPath: string) => void;
+  onMoveGraph: (sourceGraphPath: string, targetGraphPath: string) => void;
   onDeleteNode: (file: GraphTreeFileData, graphPath: string) => void;
   onDeleteGraph: (graphPath: string) => void;
   onDownloadGraph: (graphPath: string) => void;
@@ -477,16 +517,19 @@ type GraphTreeProps = {
   onRebuildIndex: () => void;
 };
 
-export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSelectHome, onSelectGraph, onOpenDocument, onCreateGraph, onCreateNode, onRenameGraph, onRenameNode, onMoveNode, onDeleteNode, onDeleteGraph, onDownloadGraph, onSetGraphColor, onSetNodeColor, onSetGraphCanvasDisabled, onRebuildIndex }: GraphTreeProps) {
+export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSelectHome, onSelectGraph, onOpenDocument, onCreateGraph, onCreateNode, onRenameGraph, onRenameNode, onMoveNode, onMoveGraph, onDeleteNode, onDeleteGraph, onDownloadGraph, onSetGraphColor, onSetNodeColor, onSetGraphCanvasDisabled, onRebuildIndex }: GraphTreeProps) {
   const { toggleFavorite, isFavorite } = useFavorites();
   const [contentExpanded, setContentExpanded] = useState(true);
   const [favoritesExpanded, setFavoritesExpanded] = useState(true);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [newGraphName, setNewGraphName] = useState("");
   const [addingGraph, setAddingGraph] = useState(false);
-  const [draggedFile, setDraggedFile] = useState<DraggedTreeFile | null>(null);
+  const [draggedItem, setDraggedItem] = useState<DraggedItem | null>(null);
   const [dropTargetGraphPath, setDropTargetGraphPath] = useState("");
+  const [isContentRootDropTarget, setIsContentRootDropTarget] = useState(false);
   const newGraphInputRef = useRef<HTMLInputElement>(null);
+  const scrollContainerRef = useRef<HTMLElement | null>(null);
+  const dragScrollRAFRef = useRef<number>(0);
 
   useEffect(() => {
     if (addingGraph) {
@@ -529,12 +572,23 @@ export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSele
   }
 
   function handleDragStartFile(file: GraphTreeFileData, sourceGraphPath: string): void {
-    setDraggedFile({ file, sourceGraphPath });
+    setDraggedItem({ kind: "file", file, sourceGraphPath });
   }
 
-  function handleDragEndFile(): void {
-    setDraggedFile(null);
+  function handleDragStartGraph(sourceGraphPath: string, sourceDisplayName: string): void {
+    setDraggedItem({ kind: "graph", sourceGraphPath, sourceDisplayName });
+    scrollContainerRef.current = document.querySelector<HTMLElement>('[data-slot="sidebar-content"]');
+  }
+
+  function handleDragEndItem(): void {
+    setDraggedItem(null);
     setDropTargetGraphPath("");
+    setIsContentRootDropTarget(false);
+    scrollContainerRef.current = null;
+    if (dragScrollRAFRef.current !== 0) {
+      cancelAnimationFrame(dragScrollRAFRef.current);
+      dragScrollRAFRef.current = 0;
+    }
   }
 
   return (
@@ -614,7 +668,49 @@ export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSele
           )}
         </SidebarMenuItem>
 
-        <SidebarMenuItem className="graph-section graph-section-mt">
+        <SidebarMenuItem
+          className={`graph-section graph-section-mt${isContentRootDropTarget ? " graph-section-content-drop-target" : ""}`}
+          onDragEnter={(event) => {
+            if (draggedItem?.kind !== "graph") return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            setIsContentRootDropTarget(true);
+          }}
+          onDragOver={(event) => {
+            if (draggedItem?.kind !== "graph") return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            const container = scrollContainerRef.current;
+            if (!container) return;
+            const rect = container.getBoundingClientRect();
+            const y = event.clientY;
+            const threshold = 60;
+            if (y < rect.top + threshold) {
+              const factor = 1 - Math.max(0, (y - rect.top) / threshold);
+              container.scrollTop -= Math.max(1, 10 * factor);
+            } else if (y > rect.bottom - threshold) {
+              const factor = 1 - Math.max(0, (rect.bottom - y) / threshold);
+              container.scrollTop += Math.max(1, 10 * factor);
+            }
+          }}
+          onDragLeave={(event) => {
+            const relatedTarget = event.relatedTarget;
+            if (relatedTarget instanceof Node && event.currentTarget.contains(relatedTarget)) {
+              return;
+            }
+            setIsContentRootDropTarget(false);
+          }}
+          onDrop={(event) => {
+            if (draggedItem?.kind !== "graph") return;
+            event.preventDefault();
+            setIsContentRootDropTarget(false);
+            const targetPath = draggedItem.sourceDisplayName;
+            if (targetPath !== draggedItem.sourceGraphPath) {
+              onMoveGraph(draggedItem.sourceGraphPath, "");
+            }
+            handleDragEndItem();
+          }}
+        >
           <div className="graph-section-header-row">
             <SidebarMenuButton
               className="graph-section-header"
@@ -671,6 +767,7 @@ export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSele
                     onRenameGraph={onRenameGraph}
                     onRenameNode={onRenameNode}
                     onMoveNode={onMoveNode}
+                    onMoveGraph={onMoveGraph}
                     onDeleteNode={onDeleteNode}
                     onDeleteGraph={onDeleteGraph}
                     onDownloadGraph={onDownloadGraph}
@@ -682,10 +779,11 @@ export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSele
                     onToggleCollapse={handleToggleCollapse}
                     isFavorite={isFavorite}
                     toggleFavorite={toggleFavorite}
-                    draggedFile={draggedFile}
+                    draggedItem={draggedItem}
                     dropTargetGraphPath={dropTargetGraphPath}
                     onDragStartFile={handleDragStartFile}
-                    onDragEndFile={handleDragEndFile}
+                    onDragStartGraph={handleDragStartGraph}
+                    onDragEndItem={handleDragEndItem}
                     onDropTargetGraphPathChange={setDropTargetGraphPath}
                     onEnsureExpanded={ensureExpanded}
                   />

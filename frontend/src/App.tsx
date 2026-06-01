@@ -2923,6 +2923,49 @@ function FlowApp() {
     }
   }
 
+  async function handleSidebarMoveGraph(sourceGraphPath: string, targetGraphPath: string): Promise<void> {
+    const sourceSegments = sourceGraphPath.split("/");
+    const sourceDisplayName = sourceSegments[sourceSegments.length - 1];
+    const nextPath = targetGraphPath !== "" ? `${targetGraphPath}/${sourceDisplayName}` : sourceDisplayName;
+
+    if (nextPath === sourceGraphPath) {
+      return;
+    }
+
+    try {
+      clearMutationFeedback();
+      await flushPendingActiveEditorSave();
+
+      await requestJSON<{ name: string }>(`/api/graphs/${encodeURIComponent(sourceGraphPath)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name: nextPath }),
+      });
+
+      const selectedDocumentGraphPath = selectedDocument?.graph ?? documentGraphById.get(selectedDocumentId) ?? "";
+      const selectedDocumentAffected =
+        selectedDocumentId !== "" &&
+        (selectedDocumentGraphPath === sourceGraphPath || selectedDocumentGraphPath.startsWith(sourceGraphPath + "/"));
+      const refreshedSelectedDocument = selectedDocumentAffected
+        ? await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(selectedDocumentId)}`)
+        : undefined;
+
+      await refreshShellViews(refreshedSelectedDocument !== undefined
+        ? { nextDocument: refreshedSelectedDocument, nextDocumentId: refreshedSelectedDocument.id }
+        : undefined);
+
+      if (activeSurface.kind === "graph") {
+        const nextGraphPath = remapGraphPath(activeSurface.graphPath, sourceGraphPath, nextPath);
+        if (nextGraphPath !== activeSurface.graphPath) {
+          startTransition(() => setActiveSurface({ kind: "graph", graphPath: nextGraphPath }));
+        }
+      }
+
+      setMutationSuccess(`Graph moved to ${nextPath}.`);
+    } catch (moveFailure) {
+      setMutationError(toErrorMessage(moveFailure));
+    }
+  }
+
   async function handleConfirmCreateNode(): Promise<void> {
     if (createNodeDialog === null) {
       return;
@@ -3539,6 +3582,7 @@ function FlowApp() {
     handleSidebarRenameGraph,
     handleSidebarRenameNode,
     handleSidebarMoveNode,
+    handleSidebarMoveGraph,
     handleSidebarDeleteNode,
     handleSidebarDeleteGraph,
     handleSidebarDownloadGraph,
