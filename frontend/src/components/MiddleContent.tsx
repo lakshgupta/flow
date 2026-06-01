@@ -124,8 +124,16 @@ export function MiddleContent({
           <p>Graph canvas data could not be loaded for this graph.</p>
         </div>
       ) : graphCanvasLoading ? (
-        <div className="detail-empty shell-inner-card">
-          <p>Loading graph canvas nodes and projected edges.</p>
+        <div className="skeleton-card">
+          <div className="skeleton-graph-canvas">
+            <div className="skeleton-line skeleton-line-lg" />
+            <div className="skeleton-line skeleton-line-md" />
+            <div className="skeleton-node" />
+            <div className="skeleton-line skeleton-line-sm" />
+            <div className="skeleton-node" />
+            <div className="skeleton-line skeleton-line-md" />
+            <div className="skeleton-node" />
+          </div>
         </div>
       ) : graphCanvasData !== null && graphCanvasData.nodes.length === 0 ? (
         <GraphEmptyState

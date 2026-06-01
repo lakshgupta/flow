@@ -1,6 +1,6 @@
 import { createRef } from 'react'
 
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -53,16 +53,37 @@ vi.mock('../../../MermaidDiagram', () => ({
 vi.mock('../../../../lib/excalidraw', () => ({
   DEFAULT_EXCALIDRAW_HEIGHT: 384,
   clampExcalidrawHeight: (height: number) => height,
-  parseExcalidrawSource: (source: string) => ({
+  parseExcalidrawSource: async (source: string) => ({
     status: source.trim() === '' ? 'empty' : 'ready',
     height: 512,
     initialData: { elements: [], appState: { viewBackgroundColor: 'transparent' }, files: {} },
     normalizedSource: source === '' ? '{"type":"excalidraw"}' : source,
   }),
-  serializeExcalidrawScene: (elements: Array<{ id: string }>) =>
+  serializeExcalidrawScene: async (elements: Array<{ id: string }>) =>
     elements.length === 0 ? '{"type":"excalidraw"}' : '{"type":"excalidraw","elements":[{"id":"drawn-element"}]}',
-  setExcalidrawSourceHeight: () => '{"type":"excalidraw","flow":{"height":552}}',
+  setExcalidrawSourceHeight: async () => '{"type":"excalidraw","flow":{"height":552}}',
 }))
+
+vi.mock('../../../LazyExcalidraw', () => {
+  function MockLazyExcalidraw(props: Record<string, unknown>) {
+    const { excalidrawAPI, onChange, ...rest } = props as {
+      excalidrawAPI?: (api: { updateScene: typeof excalidrawMockState.latestUpdateScene }) => void;
+      onChange?: (elements: unknown[], appState: unknown, files: unknown) => void;
+    }
+    excalidrawMockState.latestOnChange = onChange ?? null
+    excalidrawAPI?.({ updateScene: excalidrawMockState.latestUpdateScene })
+    return (
+      <button
+        data-testid="excalidraw-editor-preview"
+        onClick={() => onChange?.([{ id: 'drawn-element' }], { viewBackgroundColor: 'transparent' }, {})}
+        type="button"
+      >
+        excalidraw
+      </button>
+    )
+  }
+  return { LazyExcalidraw: MockLazyExcalidraw }
+})
 
 import CodeBlockView from './code-block-view'
 
@@ -172,7 +193,7 @@ describe('CodeBlockView', () => {
     expect(focus).toHaveBeenCalledTimes(1)
   })
 
-  it('renders an Excalidraw editor for excalidraw code blocks', () => {
+  it('renders an Excalidraw editor for excalidraw code blocks', async () => {
     const { dispatch, focus, transaction, view } = createViewMocks()
 
     render(
@@ -190,7 +211,9 @@ describe('CodeBlockView', () => {
     expect(screen.getByTestId('excalidraw-editor-preview')).toBeInTheDocument()
     expect(screen.getByLabelText('Resize Excalidraw diagram')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Delete Excalidraw diagram' })).toBeInTheDocument()
-    expect(screen.getByTestId('excalidraw-editor-preview').parentElement).toHaveStyle({ height: '512px' })
+    await waitFor(() => {
+      expect(screen.getByTestId('excalidraw-editor-preview').parentElement).toHaveStyle({ height: '512px' })
+    })
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete Excalidraw diagram' }))
 
@@ -219,7 +242,7 @@ describe('CodeBlockView', () => {
     expect(dispatch).not.toHaveBeenCalled()
   })
 
-  it('persists the first non-empty Excalidraw scene change without outer-shell interaction capture', () => {
+  it('persists the first non-empty Excalidraw scene change without outer-shell interaction capture', async () => {
     const { dispatch, transaction, view } = createViewMocks()
 
     render(
@@ -235,7 +258,9 @@ describe('CodeBlockView', () => {
 
     excalidrawMockState.latestOnChange?.([{ id: 'drawn-element' }], { viewBackgroundColor: 'transparent' }, {})
 
-    expect(transaction.replaceWith).toHaveBeenCalledWith(2, expect.any(Number), '{"type":"excalidraw","elements":[{"id":"drawn-element"}]}')
+    await waitFor(() => {
+      expect(transaction.replaceWith).toHaveBeenCalledWith(2, expect.any(Number), '{"type":"excalidraw","elements":[{"id":"drawn-element"}]}')
+    })
     expect(dispatch).toHaveBeenCalledTimes(1)
   })
 
@@ -275,11 +300,15 @@ describe('CodeBlockView', () => {
       />,
     )
 
-    expect(excalidrawMockState.latestUpdateScene).toHaveBeenCalledTimes(1)
+    await waitFor(() => {
+      expect(excalidrawMockState.latestUpdateScene).toHaveBeenCalledTimes(1)
+    })
 
     await user.click(screen.getByTestId('excalidraw-editor-preview'))
 
-    expect(transaction.replaceWith).toHaveBeenCalled()
+    await waitFor(() => {
+      expect(transaction.replaceWith).toHaveBeenCalled()
+    })
     expect(dispatch).toHaveBeenCalled()
 
     rendered.rerender(
@@ -296,7 +325,7 @@ describe('CodeBlockView', () => {
     expect(excalidrawMockState.latestUpdateScene).toHaveBeenCalledTimes(1)
   })
 
-  it('persists a resized Excalidraw editor height', () => {
+  it('persists a resized Excalidraw editor height', async () => {
     const { dispatch, transaction, view } = createViewMocks()
 
     render(
@@ -315,7 +344,9 @@ describe('CodeBlockView', () => {
     fireEvent.pointerMove(window, { clientY: 140 })
     fireEvent.pointerUp(window, { clientY: 140 })
 
-    expect(transaction.replaceWith).toHaveBeenCalled()
+    await waitFor(() => {
+      expect(transaction.replaceWith).toHaveBeenCalled()
+    })
     expect(dispatch).toHaveBeenCalled()
   })
 

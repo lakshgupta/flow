@@ -59,7 +59,7 @@ const SETTINGS_ITEMS = [
   { value: "workspaces" as const, label: "Workspaces", icon: FolderTree },
   { value: "about" as const, label: "About", icon: Info },
   { value: "theme" as const, label: "Appearance", icon: PaintbrushVertical },
-  { value: "stop" as const, label: "Danger Zone", icon: TriangleAlert },
+  { value: "stop" as const, label: "Advanced", icon: TriangleAlert },
 ];
 
 function SettingsDialogComponent({
@@ -75,10 +75,14 @@ function SettingsDialogComponent({
 }: SettingsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={actions.setOpen}>
-      <DialogContent className="overflow-hidden p-0 md:max-h-[500px] md:max-w-[700px] lg:max-w-[800px]">
+      <DialogContent
+        showCloseButton={false}
+        className="w-full p-0 gap-0 max-h-[85vh] overflow-hidden"
+        style={{ maxWidth: 'min(1200px, calc(100vw - 2rem))' }}
+      >
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <DialogDescription className="sr-only">Customize your settings here.</DialogDescription>
-        <SidebarProvider className="items-start bg-background">
+        <SidebarProvider className="items-start bg-background h-full min-h-[500px]">
           <Sidebar collapsible="none" className="hidden md:flex">
             <SidebarContent>
               <SidebarGroup>
@@ -100,8 +104,8 @@ function SettingsDialogComponent({
               </SidebarGroup>
             </SidebarContent>
           </Sidebar>
-          <main className="flex h-[480px] flex-1 flex-col overflow-hidden">
-            <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
+          <main className="flex h-full flex-1 flex-col overflow-hidden">
+            <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
               <Breadcrumb>
                 <BreadcrumbList>
                   <BreadcrumbItem className="hidden md:block">
@@ -118,7 +122,7 @@ function SettingsDialogComponent({
                             ? "About"
                           : settingsTab === "theme"
                             ? "Appearance"
-                            : "Danger Zone"}
+                            : "Advanced"}
                     </BreadcrumbPage>
                   </BreadcrumbItem>
                 </BreadcrumbList>

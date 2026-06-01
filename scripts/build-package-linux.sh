@@ -34,3 +34,5 @@ envsubst < "$ROOT_DIR/packaging/linux/nfpm.yaml" > "$NFPM_CONF"
 
 nfpm package \
         --config "$NFPM_CONF" \
+        --packager deb \
+        --output "$DEB_PATH"

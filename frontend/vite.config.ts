@@ -19,7 +19,14 @@ export default defineConfig({
   },
   build: {
     outDir: "../internal/httpapi/static",
-    emptyOutDir: true
+    emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "vendor-xyflow": ["@xyflow/react"],
+        },
+      },
+    },
   },
   server: {
     host: "127.0.0.1",

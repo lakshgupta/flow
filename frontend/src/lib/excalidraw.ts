@@ -1,11 +1,14 @@
-import {
-  exportToSvg,
-  getNonDeletedElements,
-  restore,
-  serializeAsJSON,
-} from "@excalidraw/excalidraw";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState, BinaryFiles, ExcalidrawInitialDataState } from "@excalidraw/excalidraw/types";
+
+let excalidrawModule: Promise<typeof import("@excalidraw/excalidraw")> | null = null;
+
+function loadExcalidraw(): Promise<typeof import("@excalidraw/excalidraw")> {
+  if (excalidrawModule === null) {
+    excalidrawModule = import("@excalidraw/excalidraw");
+  }
+  return excalidrawModule;
+}
 
 export const DEFAULT_EXCALIDRAW_HEIGHT = 384;
 export const MIN_EXCALIDRAW_HEIGHT = 240;
@@ -48,12 +51,13 @@ export function clampExcalidrawHeight(height?: number | null): number {
   return Math.min(MAX_EXCALIDRAW_HEIGHT, Math.max(MIN_EXCALIDRAW_HEIGHT, Math.round(height)));
 }
 
-function normalizeExcalidrawScene(
+async function normalizeExcalidrawScene(
   elements: readonly ExcalidrawElement[],
   appState?: Partial<AppState> | null,
   files?: BinaryFiles | null,
   height?: number | null,
-): string {
+): Promise<string> {
+  const { serializeAsJSON } = await loadExcalidraw();
   const serializedSource = serializeAsJSON(elements, getStoredAppState(appState), files ?? {}, "local");
   const serializedDocument = JSON.parse(serializedSource) as StoredExcalidrawDocument;
   const clampedHeight = clampExcalidrawHeight(height);
@@ -67,23 +71,23 @@ function normalizeExcalidrawScene(
   return JSON.stringify(serializedDocument);
 }
 
-export function createEmptyExcalidrawSource(): string {
+export async function createEmptyExcalidrawSource(): Promise<string> {
   return normalizeExcalidrawScene([], getStoredAppState(), {}, DEFAULT_EXCALIDRAW_HEIGHT);
 }
 
-export function serializeExcalidrawScene(
+export async function serializeExcalidrawScene(
   elements: readonly ExcalidrawElement[],
   appState?: Partial<AppState> | null,
   files?: BinaryFiles | null,
   options?: {
     height?: number | null;
   },
-): string {
+): Promise<string> {
   return normalizeExcalidrawScene(elements, appState, files, options?.height ?? DEFAULT_EXCALIDRAW_HEIGHT);
 }
 
-export function setExcalidrawSourceHeight(source: string, height: number): string {
-  const parsed = parseExcalidrawSource(source);
+export async function setExcalidrawSourceHeight(source: string, height: number): Promise<string> {
+  const parsed = await parseExcalidrawSource(source);
   if (parsed.status === "error") {
     throw new Error(parsed.error);
   }
@@ -96,7 +100,7 @@ export function setExcalidrawSourceHeight(source: string, height: number): strin
   );
 }
 
-export function parseExcalidrawSource(source: string): ParsedExcalidrawSource {
+export async function parseExcalidrawSource(source: string): Promise<ParsedExcalidrawSource> {
   if (source.trim() === "") {
     const initialData: ExcalidrawInitialDataState = {
       elements: [],
@@ -108,7 +112,7 @@ export function parseExcalidrawSource(source: string): ParsedExcalidrawSource {
       status: "empty",
       height: DEFAULT_EXCALIDRAW_HEIGHT,
       initialData,
-      normalizedSource: createEmptyExcalidrawSource(),
+      normalizedSource: await createEmptyExcalidrawSource(),
     };
   }
 
@@ -116,6 +120,7 @@ export function parseExcalidrawSource(source: string): ParsedExcalidrawSource {
     const parsed = JSON.parse(source) as StoredExcalidrawDocument;
     const height = clampExcalidrawHeight(parsed.flow?.height);
 
+    const { restore, getNonDeletedElements } = await loadExcalidraw();
     const restored = restore(
       {
         appState: parsed.appState,
@@ -137,7 +142,7 @@ export function parseExcalidrawSource(source: string): ParsedExcalidrawSource {
         appState,
         files,
       },
-      normalizedSource: normalizeExcalidrawScene(elements, appState, files, height),
+      normalizedSource: await normalizeExcalidrawScene(elements, appState, files, height),
     };
   } catch (error) {
     return {
@@ -148,11 +153,12 @@ export function parseExcalidrawSource(source: string): ParsedExcalidrawSource {
 }
 
 export async function renderExcalidrawDiagramSource(source: string): Promise<string> {
-  const parsed = parseExcalidrawSource(source);
+  const parsed = await parseExcalidrawSource(source);
   if (parsed.status === "error") {
     throw new Error(parsed.error);
   }
 
+  const { exportToSvg } = await loadExcalidraw();
   const svg = await exportToSvg({
     elements: parsed.initialData.elements ?? [],
     appState: parsed.initialData.appState,

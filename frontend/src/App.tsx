@@ -20,6 +20,7 @@ import { GraphCanvasSurface } from "./components/GraphCanvasSurface";
 import { HomeSurface } from "./components/HomeSurface";
 import { MiddleContent } from "./components/MiddleContent";
 import { RightRailControls } from "./components/RightRailControls";
+import { RightSidebarPanel } from "./components/RightSidebarPanel";
 import { WorkspaceHeader } from "./components/WorkspaceHeader";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { GraphTreePanel, WorkspaceSelectorPanel } from "./components/WorkspaceSidebarPanels";
@@ -4172,89 +4173,55 @@ function FlowApp() {
             graphEmptyStateActions={graphEmptyStateActions}
           />
         </section>
-        <aside
-          className="app-right-sidebar"
-          aria-label="Right pane"
-          data-open={rightRailCollapsed ? "false" : "true"}
-          data-focus={!rightRailCollapsed && rightRailMaximized ? "true" : "false"}
-          style={!rightRailCollapsed && !rightRailMaximized ? { width: "var(--right-sidebar-width)", ...(isResizingRight ? { transition: "none" } : {}) } : undefined}
-        >
-          {!rightRailCollapsed && !rightRailMaximized && (
-            <div className="right-sidebar-resize-handle" onMouseDown={handleRightSidebarMouseDown} />
-          )}
-          <div className="right-sidebar-panel">
-            {!rightRailCollapsed && (rightPanelTab === "home" ? (
-              <div className="home-surface">
-                <div className="home-document-layout center-document-layout" data-side-panel="hidden" aria-label="Home content layout">
-                  <div className="center-document-main">
-                    <RichTextEditor
-                      ariaLabel="Home body editor"
-                      className="home-editor"
-                      inlineReferences={graphTree?.home.inlineReferences}
-                      ref={homeDocumentEditorRef}
-                      onChange={(value) => homeSurfaceActions.updateHomeFormField("body", value)}
-                      onReferenceOpen={homeSurfaceActions.openInlineReference}
-                      onDateOpen={homeSurfaceActions.openDate}
-                      onAssetOpenInThread={homeSurfaceActions.openThreadAsset}
-                      placeholder="Start writing…"
-                      value={homeFormState.body}
-                    />
-                  </div>
-                </div>
-              </div>
-            ) : rightPanelTab === "document" && hasRightRailDocument ? (
-              rightRailMaximized ? (
-                renderCenterDocumentShell(true)
-              ) : (
-                <DocumentEditorPane
-                  selectedDocument={selectedDocument}
-                  formState={formState}
-                  panelError={panelError}
-                  mutationError={mutationError}
-                  mutationSuccess={mutationSuccess}
-                  savingDocument={savingDocument}
-                  deletingDocument={deletingDocument}
-                  isMaximized={rightRailMaximized}
-                  tintColor={selectedDocumentGraphColor}
-                  tintStyle={selectedDocumentTintStyle}
-                  documentTOCRatio={documentTOCRatio}
-                  tocItems={tocItems}
-                  outgoingLinks={selectedDocumentLinks.outgoing}
-                  incomingLinks={selectedDocumentLinks.incoming}
-                  rightRailDocumentLayoutRef={rightRailDocumentLayoutRef}
-                  rightRailDocumentEditorRef={rightRailDocumentEditorRef}
-                  editorScrollTarget={editorScrollTarget}
-                  actions={rightRailDocumentActions}
-                />
-              )
-            ) : rightPanelTab === "search" ? (
-              <RightRailSearchPanel
-                searchQuery={searchQuery}
-                searchTagQuery={searchTagQuery}
-                searchTitleQuery={searchTitleQuery}
-                searchDescriptionQuery={searchDescriptionQuery}
-                searchContentQuery={searchContentQuery}
-                searchError={searchError}
-                hasDeferredSearchFilter={hasDeferredSearchFilter}
-                searchResults={searchResults}
-                setSearchQuery={setSearchQuery}
-                setSearchTagQuery={setSearchTagQuery}
-                setSearchTitleQuery={setSearchTitleQuery}
-                setSearchDescriptionQuery={setSearchDescriptionQuery}
-                setSearchContentQuery={setSearchContentQuery}
-                onResultNavigate={handleRightRailSearchResultNavigate}
-              />
-            ) : rightPanelTab === "calendar" ? (
-              <RightRailCalendarPanel
-                documents={calendarDocumentsForDisplay}
-                selectedDate={calendarFocusDate}
-                onDateChange={setCalendarFocusDate}
-                onDocumentOpen={handleRightRailCalendarDocumentOpen}
-                error={calendarError}
-              />
-            ) : null)}
-          </div>
-        </aside>
+        <RightSidebarPanel
+          rightRailCollapsed={rightRailCollapsed}
+          rightRailMaximized={rightRailMaximized}
+          rightPanelTab={rightPanelTab}
+          isResizingRight={isResizingRight}
+          handleRightSidebarMouseDown={handleRightSidebarMouseDown}
+          graphTree={graphTree}
+          homeDocumentEditorRef={homeDocumentEditorRef}
+          homeFormState={homeFormState}
+          homeInlineReferences={graphTree?.home.inlineReferences}
+          homeSurfaceActions={homeSurfaceActions}
+          hasRightRailDocument={hasRightRailDocument}
+          renderCenterDocumentShell={renderCenterDocumentShell}
+          selectedDocument={selectedDocument}
+          formState={formState}
+          panelError={panelError}
+          mutationError={mutationError}
+          mutationSuccess={mutationSuccess}
+          savingDocument={savingDocument}
+          deletingDocument={deletingDocument}
+          selectedDocumentGraphColor={selectedDocumentGraphColor}
+          selectedDocumentTintStyle={selectedDocumentTintStyle}
+          documentTOCRatio={documentTOCRatio}
+          tocItems={tocItems}
+          selectedDocumentLinks={selectedDocumentLinks}
+          rightRailDocumentLayoutRef={rightRailDocumentLayoutRef}
+          rightRailDocumentEditorRef={rightRailDocumentEditorRef}
+          editorScrollTarget={editorScrollTarget}
+          rightRailDocumentActions={rightRailDocumentActions}
+          searchQuery={searchQuery}
+          searchTagQuery={searchTagQuery}
+          searchTitleQuery={searchTitleQuery}
+          searchDescriptionQuery={searchDescriptionQuery}
+          searchContentQuery={searchContentQuery}
+          searchError={searchError}
+          hasDeferredSearchFilter={hasDeferredSearchFilter}
+          searchResults={searchResults}
+          setSearchQuery={setSearchQuery}
+          setSearchTagQuery={setSearchTagQuery}
+          setSearchTitleQuery={setSearchTitleQuery}
+          setSearchDescriptionQuery={setSearchDescriptionQuery}
+          setSearchContentQuery={setSearchContentQuery}
+          handleRightRailSearchResultNavigate={handleRightRailSearchResultNavigate}
+          calendarDocumentsForDisplay={calendarDocumentsForDisplay}
+          calendarFocusDate={calendarFocusDate}
+          setCalendarFocusDate={setCalendarFocusDate}
+          handleRightRailCalendarDocumentOpen={handleRightRailCalendarDocumentOpen}
+          calendarError={calendarError}
+        />
         </div>
       </SidebarInset>
       <CreateNodeDialog

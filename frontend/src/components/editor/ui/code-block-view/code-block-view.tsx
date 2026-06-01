@@ -2,10 +2,10 @@ import type { CodeBlockAttrs } from 'prosekit/extensions/code-block'
 import { shikiBundledLanguagesInfo } from 'prosekit/extensions/code-block'
 import type { ReactNodeViewProps } from 'prosekit/react'
 import { TextSelection } from 'prosekit/pm/state'
-import { Excalidraw } from '@excalidraw/excalidraw'
 import { ArrowDownToLine, ArrowUpToLine, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
+import { LazyExcalidraw } from '../../../LazyExcalidraw'
 import { MermaidDiagram } from '../../../MermaidDiagram'
 import {
   DEFAULT_EXCALIDRAW_HEIGHT,
@@ -33,9 +33,7 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
   const attrs = props.node.attrs as CodeBlockAttrs
   const language = attrs.language
   const code = props.node.textContent
-  const excalidrawSource = useMemo(() => {
-    return language === 'excalidraw' ? parseExcalidrawSource(code) : null
-  }, [code, language])
+  const [excalidrawSource, setExcalidrawSource] = useState<Awaited<ReturnType<typeof parseExcalidrawSource>> | null>(null)
   const excalidrawAPIRef = useRef<{ updateScene: (scene: unknown) => void } | null>(null)
   const lastSerializedExcalidrawSourceRef = useRef(code)
   const skipNextExcalidrawSceneSyncRef = useRef(false)
@@ -50,6 +48,15 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
   const [isResizingExcalidraw, setIsResizingExcalidraw] = useState(false)
   const [mermaidHeight, setMermaidHeight] = useState(DEFAULT_MERMAID_HEIGHT)
   const [isResizingMermaid, setIsResizingMermaid] = useState(false)
+
+  useEffect(() => {
+    if (language !== 'excalidraw') {
+      setExcalidrawSource(null)
+      return
+    }
+    parseExcalidrawSource(code).then(setExcalidrawSource)
+  }, [code, language])
+
   const showMermaidSection = language === 'mermaid'
   const showMermaidPreview = language === 'mermaid' && code.trim() !== ''
   const showExcalidrawPreview = language === 'excalidraw'
@@ -109,11 +116,11 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
       setExcalidrawHeight(nextHeight)
     }
 
-    const handlePointerUp = (event: PointerEvent) => {
+    const handlePointerUp = async (event: PointerEvent) => {
       event.preventDefault()
       setIsResizingExcalidraw(false)
 
-      const nextSource = setExcalidrawSourceHeight(lastSerializedExcalidrawSourceRef.current, excalidrawHeightRef.current)
+      const nextSource = await setExcalidrawSourceHeight(lastSerializedExcalidrawSourceRef.current, excalidrawHeightRef.current)
       if (nextSource === lastSerializedExcalidrawSourceRef.current) {
         return
       }
@@ -361,12 +368,12 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
                       }}
                       style={{ height: `${excalidrawHeight}px` }}
                     >
-                      <Excalidraw
+                      <LazyExcalidraw
                         excalidrawAPI={(api) => {
                           excalidrawAPIRef.current = api
                         }}
                         initialData={excalidrawSource?.initialData}
-                        onChange={(elements, appState, files) => {
+                        onChange={async (elements, appState, files) => {
                           if (hasExcalidrawInteractionRef.current === false) {
                             if (elements.length === 0) {
                               return
@@ -379,7 +386,7 @@ export default function CodeBlockView(props: ReactNodeViewProps) {
                             return
                           }
 
-                          const nextSource = serializeExcalidrawScene(elements, appState, files, {
+                          const nextSource = await serializeExcalidrawScene(elements, appState, files, {
                             height: excalidrawHeightRef.current,
                           })
                           if (nextSource === lastSerializedExcalidrawSourceRef.current) {

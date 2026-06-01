@@ -22,23 +22,23 @@ import {
 } from "./excalidraw";
 
 describe("excalidraw helpers", () => {
-  it("uses the default height for empty Excalidraw sources", () => {
-    expect(parseExcalidrawSource("")).toMatchObject({
+  it("uses the default height for empty Excalidraw sources", async () => {
+    expect(await parseExcalidrawSource("")).toMatchObject({
       status: "empty",
       height: DEFAULT_EXCALIDRAW_HEIGHT,
     });
   });
 
-  it("persists a custom Excalidraw height in the serialized source", () => {
-    const source = serializeExcalidrawScene([], { viewBackgroundColor: "#fff" }, {}, { height: 520 });
+  it("persists a custom Excalidraw height in the serialized source", async () => {
+    const source = await serializeExcalidrawScene([], { viewBackgroundColor: "#fff" }, {}, { height: 520 });
 
     expect(JSON.parse(source)).toMatchObject({
       flow: { height: 520 },
     });
   });
 
-  it("updates the stored Excalidraw height without changing the scene payload", () => {
-    const updatedSource = setExcalidrawSourceHeight(
+  it("updates the stored Excalidraw height without changing the scene payload", async () => {
+    const updatedSource = await setExcalidrawSourceHeight(
       JSON.stringify({
         type: "excalidraw",
         elements: [{ id: "shape-1" }],
@@ -48,7 +48,7 @@ describe("excalidraw helpers", () => {
       640,
     );
 
-    expect(parseExcalidrawSource(updatedSource)).toMatchObject({
+    expect(await parseExcalidrawSource(updatedSource)).toMatchObject({
       status: "ready",
       height: 640,
       initialData: {
