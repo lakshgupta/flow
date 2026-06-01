@@ -23,15 +23,15 @@ NFPM="$(go env GOPATH)/bin/nfpm"
 
 mkdir -p "$ROOT_DIR/dist"
 
-DEB_PATH="$ROOT_DIR/dist/flow_${VERSION}_${GOARCH}.deb"
-
 # Expand $GOARCH and $VERSION in the nfpm config before passing it in, because
 # older nfpm releases do not interpolate environment variables in content src paths.
 NFPM_CONF="$(mktemp /tmp/nfpm-XXXXXX.yaml)"
 trap 'rm -f "$NFPM_CONF"' EXIT
 envsubst < "$ROOT_DIR/packaging/linux/nfpm.yaml" > "$NFPM_CONF"
 
+# --output flag requires nfpm >= 2.41; use --target (directory + auto-name)
+# for broader version compatibility.
 "$NFPM" package \
         --config "$NFPM_CONF" \
         --packager deb \
-        --output "$DEB_PATH"
+        --target "$ROOT_DIR/dist/"
