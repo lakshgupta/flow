@@ -4,6 +4,25 @@ Flow is a local-first planning system for software work. Canonical data is store
 
 This document is intentionally high level and describes the architecture currently implemented in code.
 
+## Index
+
+- [Design Principles](#design-principles)
+- [System Context](#system-context)
+- [Deployment Model](#deployment-model)
+- [Workspace Architecture](#workspace-architecture)
+- [Domain Model](#domain-model)
+- [Derived Index Architecture](#derived-index-architecture)
+- [Component Responsibilities](#component-responsibilities)
+- [External Interfaces](#external-interfaces)
+- [Multi-Surface Runtime (CLI, Service, Desktop)](#multi-surface-runtime-cli-service-desktop)
+- [Core Flows](#core-flows)
+- [Graph Operations](#graph-operations)
+- [Editor Interaction & Thread UI](#editor-interaction--thread-ui)
+- [Architectural Invariants](#architectural-invariants)
+- [Development Workflow & Agent Skills](#development-workflow--agent-skills)
+- [Quality Strategy](#quality-strategy)
+- [Related Documents](#related-documents)
+
 ## Design Principles
 
 - Markdown is the source of truth.
@@ -207,6 +226,25 @@ The sidebar Content tree supports dragging graph rows to reparent them:
 - Drag state uses a `DraggedItem` union type (`DraggedTreeFile | DraggedGraph`).
 - On drop, the frontend calls the same `PATCH /api/graphs/<path>` rename endpoint with the computed new path.
 - The outgoing-links constraint (applied to individual document moves) does not apply to graph-level moves.
+
+## Editor Interaction & Thread UI
+
+### Rich Text Editor Navigation (Obsidian-style)
+To improve rich-text editing usability, diagram views (such as Mermaid and Excalidraw sections) and code blocks allow transparent keyboard selection and cursor movement. 
+
+- **Button Removal**: Redundant "Write above" and "Write below" buttons are omitted from the UI of code editor, Mermaid, and Excalidraw sections.
+- **Adjacent Navigation**: Standard keyboard arrow-key navigation (pressing `ArrowDown` at the bottom of a block above a diagram, or `ArrowUp` at the top of a block below a diagram) programmatically transitions the selection to a ProseMirror `NodeSelection` on the diagram.
+- **Traversal & Insertion**: When a diagram node is selected via `NodeSelection`, pressing `ArrowDown`/`ArrowUp` moves the focus beyond the diagram. If the boundary of the document is reached, a new default paragraph node is inserted and focused.
+
+### Sidebar Brand Logo & Theme Styling
+- **Gradient Logo**: The main "Flow" logo in the sidebar utilizes a CSS background gradient from primary indigo to violet, coupled with scale-up hover animations.
+- **Collapsed Monogram**: When the sidebar collapses, the logo switches to a centered, circular glowing monogram "F".
+- **Selection Highlight**: Selected NodeViews in the editor receive a visible selection outline matching the primary brand color (`.ProseMirror-selectednode`).
+
+### Thread View Panel Loading (Skeleton Screen)
+To eliminate visual layout shifts (CLS) when retrieving thread panel content:
+- Active loading panels display a pulsing skeleton template (matching header and multi-line body placeholders) instead of a simple text spinner.
+- The skeleton container size corresponds to standard editor elements to ensure visual stability before content finishes loading.
 
 ## Architectural Invariants
 

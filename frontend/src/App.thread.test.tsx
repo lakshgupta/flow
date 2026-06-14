@@ -345,7 +345,7 @@ describe("App thread and reference flows", () => {
     });
     await user.click(await within(thread).findByRole("link", { name: "Third note" }));
 
-    expect(await within(thread).findByText("Loading document content.")).toBeInTheDocument();
+    expect(await within(thread).findByTestId("thread-panel-skeleton")).toBeInTheDocument();
     expect(within(thread).queryByDisplayValue("Overview")).not.toBeInTheDocument();
 
     delayedNoteThree.resolve(noteThreeResponse);

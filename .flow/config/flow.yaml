@@ -7,4 +7,5 @@ gui:
         documentTOCRatio: 0.32
     graphCanvasEnabled:
         design/20260506-001-FEAT-mermaid-diagrams: true
+        design/20260606-001-FEAT-obsidian-editor-and-thread-loading: true
         manual: true

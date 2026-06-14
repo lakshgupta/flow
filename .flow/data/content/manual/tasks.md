@@ -27,69 +27,69 @@ flow create task \
 
 Valid statuses:
 
-| 
+|  
 Status
 
- | 
+|
 
 Meaning
 
- |
-| --- | --- |
-| 
+|  
+| --- | --- |  
+|
 
 `Ready`
 
- | 
+|
 
 Planned but not started
 
- |
-| 
+|  
+|
 
 `Running`
 
- | 
+|
 
 Currently in progress
 
- |
-| 
+|  
+|
 
 `Done`
 
- | 
+|
 
 Completed successfully
 
- |
-| 
+|  
+|
 
 `Success`
 
- | 
+|
 
 Validated and passed
 
- |
-| 
+|  
+|
 
 `Failed`
 
- | 
+|
 
 Did not pass validation
 
- |
-| 
+|  
+|
 
 `Interrupted`
 
- | 
+|
 
 Stopped before completion
 
- |
+|
 
 ## Task frontmatter
 

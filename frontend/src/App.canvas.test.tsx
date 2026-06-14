@@ -748,7 +748,7 @@ describe("App graph canvas flows", () => {
     await user.click(executionButton);
     await screen.findByTestId("flow-node-note-1");
 
-    expect(document.querySelector('[data-nodeid="note-3"] .graph-canvas-node-circle')).not.toBeNull();
+    expect(document.querySelector('[data-nodeid="note-3"] .graph-canvas-node')).not.toBeNull();
     expect(document.querySelector('.graph-canvas-overlay svg path[stroke-dasharray="6 4"]')).not.toBeNull();
   });
 });

@@ -79,6 +79,8 @@ export type GraphCanvasOverlayActions = {
   closeNodeContextMenu: () => void;
   /** Sets or clears the per-node color override; null or empty string clears the override. */
   setNodeColor: (nodeId: string, colorId: string | null) => void;
+  /** Deletes the canvas node after confirmation. */
+  deleteNode: (nodeId: string) => void;
   createGraphDocument: (type: GraphCreateType) => void;
 };
 

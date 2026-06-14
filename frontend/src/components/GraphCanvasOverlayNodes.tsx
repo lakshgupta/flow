@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowDownToLine, ArrowUpToLine, File as FileIcon, Download, ExternalLink } from "lucide-react";
 
 import { graphDirectoryColorHex } from "../lib/graphColors";
-import { graphCanvasTypeClassName, graphCanvasTypeLabel } from "../lib/graphCanvasUtils";
+import { graphCanvasTypeClassName, graphCanvasTypeLabel, graphCanvasStatusLabel } from "../lib/graphCanvasUtils";
 import { graphCanvasOverlayPosition } from "../lib/graphCanvasUtils";
 import type { GraphCanvasOverlayController } from "./graphCanvasOverlayController";
 
@@ -105,13 +105,11 @@ export function GraphCanvasOverlayNodes({
     width: number,
     height: number,
     axis: "horizontal" | "vertical" | "both",
-    shape?: string,
   ): void {
     event.preventDefault();
     event.stopPropagation();
 
     const zoom = rfViewport.zoom > 0 ? rfViewport.zoom : 1;
-    const isCircle = shape === "circle";
     resizeSessionRef.current = {
       nodeId,
       startClientX: event.clientX,
@@ -120,8 +118,8 @@ export function GraphCanvasOverlayNodes({
       startHeight: height,
       axis,
       zoom,
-      minWidth: isCircle ? 132 : 132,
-      minHeight: isCircle ? 132 : 96,
+      minWidth: 132,
+      minHeight: 96,
       nextWidth: width,
       nextHeight: height,
     };
@@ -172,7 +170,7 @@ export function GraphCanvasOverlayNodes({
         const isIntersectionSource = intersectingSourceNodeId === node.id && intersectingNodeIds.length > 0;
         const nodeWidth = node.data.width ?? 288;
         const nodeHeight = node.data.height ?? 130;
-        const splitExpandedNode = node.data.shape !== "circle" && node.data.isExpanded;
+        const splitExpandedNode = node.data.isExpanded;
         const nodeStyle = {
           ...(graphColor ? ({ "--graph-node-color": graphColor } as CSSProperties) : {}),
           width: `${nodeWidth}px`,
@@ -217,7 +215,6 @@ export function GraphCanvasOverlayNodes({
                   "graph-canvas-node",
                   `graph-canvas-node-${graphCanvasTypeClassName(node.data.type)}`,
                   graphColor ? "graph-canvas-node-tinted" : "",
-                  node.data.shape === "circle" ? "graph-canvas-node-circle" : "",
                   node.data.isExpanded ? "graph-canvas-node-expanded" : "",
                   splitExpandedNode ? "graph-canvas-node-split" : "",
                   node.data.isCanvasSelected ? "graph-canvas-node-selected" : "",
@@ -227,17 +224,16 @@ export function GraphCanvasOverlayNodes({
                   .join(" ")}
                 style={nodeStyle}
               >
-                {node.data.shape === "circle" ? (
-                  <>
-                    <span className="graph-canvas-node-badge">{graphCanvasTypeLabel(node.data.type)}</span>
-                    <strong className="graph-canvas-node-title">{node.data.title}</strong>
-                    <span className="graph-canvas-node-graph">{node.data.graph}</span>
-                  </>
-                ) : splitExpandedNode ? (
+                {splitExpandedNode ? (
                   <>
                     <section className="graph-canvas-node-core">
                       <div className="graph-canvas-node-topline">
                         <span className="graph-canvas-node-badge">{graphCanvasTypeLabel(node.data.type)}</span>
+                        {node.data.type === "task" && node.data.status ? (
+                          <span className={`graph-canvas-node-status graph-canvas-node-status-${node.data.status.toLowerCase()}`}>
+                            {graphCanvasStatusLabel(node.data.status)}
+                          </span>
+                        ) : null}
                         <span className="graph-canvas-node-graph">{node.data.graph}</span>
                       </div>
                       <strong className="graph-canvas-node-title">{node.data.title}</strong>
@@ -247,12 +243,11 @@ export function GraphCanvasOverlayNodes({
                         </div>
                       ) : null}
                       {node.data.previewKind === "pdf" && node.data.previewURL ? (
-                        <div className="graph-canvas-node-preview graph-canvas-node-preview-pdf">
-                          <iframe
-                            src={`${node.data.previewURL}#page=1&view=FitH`}
-                            title={node.data.previewName ?? node.data.title}
-                            loading="lazy"
-                          />
+                        <div className="graph-canvas-node-preview graph-canvas-node-preview-file">
+                          <span className="graph-canvas-node-preview-file-icon" aria-hidden="true">
+                            <FileIcon size={14} />
+                          </span>
+                          <span className="graph-canvas-node-preview-file-name">{node.data.previewName ?? "PDF document"}</span>
                         </div>
                       ) : null}
                       {node.data.previewKind === "file" ? (
@@ -314,6 +309,11 @@ export function GraphCanvasOverlayNodes({
                   <>
                     <div className="graph-canvas-node-topline">
                       <span className="graph-canvas-node-badge">{graphCanvasTypeLabel(node.data.type)}</span>
+                      {node.data.type === "task" && node.data.status ? (
+                        <span className={`graph-canvas-node-status graph-canvas-node-status-${node.data.status.toLowerCase()}`}>
+                          {graphCanvasStatusLabel(node.data.status)}
+                        </span>
+                      ) : null}
                       <span className="graph-canvas-node-graph">{node.data.graph}</span>
                     </div>
                     <strong className="graph-canvas-node-title">{node.data.title}</strong>
@@ -323,12 +323,11 @@ export function GraphCanvasOverlayNodes({
                       </div>
                     ) : null}
                     {node.data.previewKind === "pdf" && node.data.previewURL ? (
-                      <div className="graph-canvas-node-preview graph-canvas-node-preview-pdf">
-                        <iframe
-                          src={`${node.data.previewURL}#page=1&view=FitH`}
-                          title={node.data.previewName ?? node.data.title}
-                          loading="lazy"
-                        />
+                      <div className="graph-canvas-node-preview graph-canvas-node-preview-file">
+                        <span className="graph-canvas-node-preview-file-icon" aria-hidden="true">
+                          <FileIcon size={14} />
+                        </span>
+                        <span className="graph-canvas-node-preview-file-name">{node.data.previewName ?? "PDF document"}</span>
                       </div>
                     ) : null}
                     {node.data.previewKind === "file" ? (
@@ -389,17 +388,17 @@ export function GraphCanvasOverlayNodes({
                   <>
                     <div
                       className="graph-canvas-node-resize-edge graph-canvas-node-resize-edge-right"
-                      onPointerDown={(event) => beginResize(event, node.id, nodeWidth, nodeHeight, "horizontal", node.data.shape)}
+                      onPointerDown={(event) => beginResize(event, node.id, nodeWidth, nodeHeight, "horizontal")}
                       role="presentation"
                     />
                     <div
                       className="graph-canvas-node-resize-edge graph-canvas-node-resize-edge-bottom"
-                      onPointerDown={(event) => beginResize(event, node.id, nodeWidth, nodeHeight, "vertical", node.data.shape)}
+                      onPointerDown={(event) => beginResize(event, node.id, nodeWidth, nodeHeight, "vertical")}
                       role="presentation"
                     />
                     <div
                       className="graph-canvas-node-resize-edge graph-canvas-node-resize-edge-corner"
-                      onPointerDown={(event) => beginResize(event, node.id, nodeWidth, nodeHeight, "both", node.data.shape)}
+                      onPointerDown={(event) => beginResize(event, node.id, nodeWidth, nodeHeight, "both")}
                       role="presentation"
                     />
                   </>

@@ -24,10 +24,6 @@ vi.mock('./ui/block-handle', () => ({
   BlockHandle: () => null,
 }))
 
-vi.mock('@excalidraw/excalidraw', () => ({
-  Excalidraw: () => null,
-}))
-
 vi.mock('./ui/drop-indicator', () => ({
   DropIndicator: () => null,
 }))
@@ -131,7 +127,9 @@ describe('RichTextEditor markdown shortcuts', () => {
     await user.type(editor, 'after block')
 
     await waitFor(() => {
-      expect(editor.querySelector('pre')).toHaveTextContent('const value = 1')
+      const codeContent = editor.querySelector('code[data-node-view-content]')
+      expect(codeContent).not.toBeNull()
+      expect(codeContent).toHaveTextContent('const value = 1')
       expect(editor.querySelector('p')).toHaveTextContent('after block')
     })
   })

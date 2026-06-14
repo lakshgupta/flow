@@ -71,6 +71,7 @@ type UseGraphCanvasSurfaceActionsArgs = {
   setCanvasContextMenu: (value: { x: number; y: number } | null) => void;
   setNodeContextMenu: (value: { x: number; y: number; nodeId: string } | null) => void;
   handleSetNodeColor: (nodeId: string, colorId: string | null) => Promise<void> | void;
+  handleCanvasDeleteNode: (nodeId: string) => void;
   setShiftSelectedNodes: (nodeIds: string[]) => void;
   rfViewportRef: MutableRefObject<{ x: number; y: number; zoom: number }>;
 };
@@ -115,6 +116,7 @@ export function useGraphCanvasSurfaceActions({
   setCanvasContextMenu,
   setNodeContextMenu,
   handleSetNodeColor,
+  handleCanvasDeleteNode,
   setShiftSelectedNodes,
   rfViewportRef,
 }: UseGraphCanvasSurfaceActionsArgs): {
@@ -151,6 +153,7 @@ export function useGraphCanvasSurfaceActions({
     persistGraphCanvasPosition,
     persistGraphCanvasViewport,
     handleSetNodeColor,
+    handleCanvasDeleteNode,
   });
 
   const handleGraphCanvasClearHoveredTooltip = useCallback((edgeId: string) => {
@@ -378,6 +381,11 @@ export function useGraphCanvasSurfaceActions({
     void actionRefs.current.handleSetNodeColor(nodeId, colorId);
   }, [setNodeContextMenu]);
 
+  const deleteNodeBridge = useCallback((nodeId: string) => {
+    setNodeContextMenu(null);
+    actionRefs.current.handleCanvasDeleteNode(nodeId);
+  }, [setNodeContextMenu]);
+
   const graphCanvasOverlayActions = useMemo<GraphCanvasOverlayActions>(() => ({
     clearEdgeClickTimer,
     selectEdge: setSelectedEdgeId,
@@ -402,6 +410,7 @@ export function useGraphCanvasSurfaceActions({
     openNodeContextMenu,
     closeNodeContextMenu,
     setNodeColor: setNodeColorBridge,
+    deleteNode: deleteNodeBridge,
     createGraphDocument: handleGraphCanvasCreateDocumentBridge,
   }), [
     clearEdgeClickTimer,
@@ -409,6 +418,7 @@ export function useGraphCanvasSurfaceActions({
     openNodeContextMenu,
     closeNodeContextMenu,
     setNodeColorBridge,
+    deleteNodeBridge,
     handleGraphCanvasClearHoveredTooltip,
     handleGraphCanvasCreateDocumentBridge,
     handleGraphCanvasDeleteEdgeBridge,

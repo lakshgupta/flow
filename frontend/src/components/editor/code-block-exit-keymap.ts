@@ -10,7 +10,10 @@ function isCollapsedCodeBlockSelection(commandState: Parameters<Command>[0]): bo
   return $head.parent.isTextblock && $head.parent.type.spec.code === true
 }
 
-const moveCursorAfterCodeBlock: Command = (state, dispatch) => {
+const moveCursorAfterCodeBlock: Command = (state, dispatch, view) => {
+  if (!view) {
+    return false
+  }
   if (!isCollapsedCodeBlockSelection(state)) {
     return false
   }
@@ -55,7 +58,10 @@ const moveCursorAfterCodeBlock: Command = (state, dispatch) => {
   return true
 }
 
-const moveCursorBeforeCodeBlock: Command = (state, dispatch) => {
+const moveCursorBeforeCodeBlock: Command = (state, dispatch, view) => {
+  if (!view) {
+    return false
+  }
   if (!isCollapsedCodeBlockSelection(state)) {
     return false
   }

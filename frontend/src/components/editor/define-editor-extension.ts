@@ -14,6 +14,7 @@ import { defineCodeBlockExitKeymap } from './code-block-exit-keymap'
 import { defineHeadingExitKeymap } from './heading-exit-keymap'
 import { defineImageIndentKeymap } from './image-indent-keymap'
 import { defineCodeBlockView } from './ui/code-block-view'
+import { defineDiagLogPlugin } from './diag-log-plugin'
 import { defineImageView } from './ui/image-view'
 import { hasImageExtension } from './image-utils'
 
@@ -42,7 +43,10 @@ export function defineEditorExtension(
     definePlaceholder({ placeholder }),
     // Keep the Shiki extension mounted but avoid parsing custom diagram languages
     // (for example `excalidraw`) as regular code blocks.
-    defineCodeBlockShiki({ nodeTypes: ['mathBlock'] }),
+    // `nodeTypes` here is the list of ProseMirror node types that receive
+    // Shiki syntax highlighting decorations, not a list of languages. The
+    // default is `['codeBlock', 'mathBlock']`, which is what we want.
+    defineCodeBlockShiki(),
     defineMath({
       renderMathBlock: (text, element) => renderKaTeX(text, element, { displayMode: true, throwOnError: false, output: 'mathml' }),
       renderMathInline: (text, element) => renderKaTeX(text, element, { displayMode: false, throwOnError: false, output: 'mathml' }),

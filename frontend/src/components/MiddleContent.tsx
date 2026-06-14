@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { memo, type RefObject } from "react";
 import type { ReactFlowInstance } from "reactflow";
 
 import type { GraphCanvasFlowNodeData, GraphCanvasResponse, GraphTreeResponse, SurfaceState } from "../types";
@@ -56,7 +56,7 @@ type MiddleContentProps = {
   };
 };
 
-export function MiddleContent({
+function MiddleContentComponent({
   activeSurface,
   isThreadStackOpen,
   renderCenterDocumentShell,
@@ -172,3 +172,5 @@ export function MiddleContent({
     </div>
   );
 }
+
+export const MiddleContent = memo(MiddleContentComponent);

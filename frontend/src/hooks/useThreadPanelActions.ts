@@ -4,12 +4,10 @@ import type { ThreadPanelStackProps } from "../components/ThreadPanels";
 import type { DocumentFormState, HomeFormState } from "../types";
 import { useLatestRef } from "./useLatestRef";
 
-type ThreadDensityMode = "comfortable" | "dense" | "ultra";
-
 type UseThreadPanelActionsArgs = {
   activateThreadDocument: (documentId: string, graphPath: string) => Promise<void> | void;
-  setThreadDensityMode: (mode: ThreadDensityMode) => void;
   toggleThreadExpanded: () => void;
+  togglePanelExpandMode: (documentId: string) => void;
   moveThreadFocus: (delta: number) => void;
   toggleRightRailMaximized: () => void;
   closeDocumentThreadFrom: (index: number) => Promise<void> | void;
@@ -37,12 +35,13 @@ type UseThreadPanelActionsArgs = {
   removeOutgoingLink: (nodeId: string) => void;
   updateEditableLinkDetail: (nodeId: string, field: "linkType" | "context", value: string) => void;
   beginThreadPanelResize: (event: ReactMouseEvent<HTMLDivElement>, panelElement: HTMLElement | null, panelKey: string) => void;
+  resetThreadPanelWidth: (panelKey: string) => void;
 };
 
 export function useThreadPanelActions({
   activateThreadDocument,
-  setThreadDensityMode,
   toggleThreadExpanded,
+  togglePanelExpandMode,
   moveThreadFocus,
   toggleRightRailMaximized,
   closeDocumentThreadFrom,
@@ -59,11 +58,12 @@ export function useThreadPanelActions({
   removeOutgoingLink,
   updateEditableLinkDetail,
   beginThreadPanelResize,
+  resetThreadPanelWidth,
 }: UseThreadPanelActionsArgs): ThreadPanelStackProps["actions"] {
   const actionRefs = useLatestRef<UseThreadPanelActionsArgs>({
     activateThreadDocument,
-    setThreadDensityMode,
     toggleThreadExpanded,
+    togglePanelExpandMode,
     moveThreadFocus,
     toggleRightRailMaximized,
     closeDocumentThreadFrom,
@@ -80,18 +80,19 @@ export function useThreadPanelActions({
     removeOutgoingLink,
     updateEditableLinkDetail,
     beginThreadPanelResize,
+    resetThreadPanelWidth,
   });
 
   const handleThreadPanelActivate = useCallback((documentId: string, graphPath: string) => {
     void actionRefs.current.activateThreadDocument(documentId, graphPath);
   }, []);
 
-  const handleThreadDensityModeChange = useCallback((mode: ThreadDensityMode) => {
-    actionRefs.current.setThreadDensityMode(mode);
-  }, []);
-
   const handleThreadExpandedToggle = useCallback(() => {
     actionRefs.current.toggleThreadExpanded();
+  }, []);
+
+  const handlePanelExpandModeToggle = useCallback((documentId: string) => {
+    actionRefs.current.togglePanelExpandMode(documentId);
   }, []);
 
   const handleThreadFocusMove = useCallback((delta: number) => {
@@ -159,10 +160,14 @@ export function useThreadPanelActions({
     actionRefs.current.beginThreadPanelResize(event, panelElement instanceof HTMLElement ? panelElement : null, panelKey);
   }, []);
 
+  const handleResetThreadPanelWidth = useCallback((panelKey: string) => {
+    actionRefs.current.resetThreadPanelWidth(panelKey);
+  }, []);
+
   return useMemo(() => ({
     activateThreadDocument: handleThreadPanelActivate,
-    setThreadDensityMode: handleThreadDensityModeChange,
     toggleThreadExpanded: handleThreadExpandedToggle,
+    togglePanelExpandMode: handlePanelExpandModeToggle,
     moveThreadFocus: handleThreadFocusMove,
     minimizeRightRail: handleRightRailMinimize,
     closeDocumentThreadFrom: handleThreadCloseFrom,
@@ -179,6 +184,7 @@ export function useThreadPanelActions({
     removeOutgoingLink: handleThreadRemoveOutgoingLink,
     updateLinkDetail: handleThreadUpdateLinkDetail,
     beginThreadPanelResize: handleThreadPanelResizeMouseDown,
+    resetThreadPanelWidth: handleResetThreadPanelWidth,
   }), [
     handleRightRailMinimize,
     handleThreadAddOutgoingLink,
@@ -187,8 +193,8 @@ export function useThreadPanelActions({
     handleThreadClearEditorScrollTarget,
     handleThreadCloseFrom,
     handleThreadDateOpen,
-    handleThreadDensityModeChange,
     handleThreadExpandedToggle,
+    handlePanelExpandModeToggle,
     handleThreadFocusMove,
     handleThreadFormFieldChange,
     handleThreadHomeFormFieldChange,
@@ -197,6 +203,7 @@ export function useThreadPanelActions({
     handleThreadPanelResizeMouseDown,
     handleThreadPanelTOCResizeMouseDown,
     handleThreadRemoveOutgoingLink,
+    handleResetThreadPanelWidth,
     handleThreadTOCNavigate,
     handleThreadUpdateLinkDetail,
   ]);

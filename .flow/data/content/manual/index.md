@@ -60,6 +60,8 @@ Flow is a **local-first Markdown workspace** for capturing notes, tracking tasks
     
     <p><br></p>
     
+    <p><br></p>
+    
     ![](/api/files?path=data%2Fuploads%2Fflow_logo_linux.png)
     
     <p><br></p>

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 
 import { Calendar } from "@/components/ui/calendar";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { findAllDateMentions, datesWithEntries, toISODateString } from "@/lib/dateEntries";
 import type { CalendarDocumentResponse } from "@/types";
 import { RenderedMarkdown } from "./RenderedMarkdown";
@@ -78,7 +79,7 @@ export function HomeCalendarPanel({ documents, selectedDate, onDateChange, onDoc
         modifiers={{ hasEntry: datesWithContent }}
         modifiersClassNames={{ hasEntry: "rdp-day-has-entry" }}
       />
-      <div className="home-cal-entries">
+      <ScrollArea className="home-cal-entries">
         {error !== "" ? (
           <p className="home-cal-empty">{error}</p>
         ) : mentions.length > 0 ? (
@@ -103,7 +104,7 @@ export function HomeCalendarPanel({ documents, selectedDate, onDateChange, onDoc
         ) : (
           <p className="home-cal-empty">No entries for this day.</p>
         )}
-      </div>
+      </ScrollArea>
       <div className="home-cal-footer" />
     </div>
   );

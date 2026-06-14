@@ -20,11 +20,11 @@ export function AppSidebar({
   return (
     <Sidebar className="app-left-sidebar">
       <SidebarHeader className="sidebar-header shell-card-header-tight shell-sidebar-header">
-        <div className="shell-sidebar-brand-hero">
+        <div className="shell-sidebar-brand-hero" data-collapsed={!open}>
           {open ? (
             <h2 className="shell-sidebar-brand">Flow</h2>
           ) : (
-            <span className="sr-only">Flow</span>
+            <h2 className="shell-sidebar-brand shell-sidebar-brand-collapsed" title="Flow">F</h2>
           )}
         </div>
       </SidebarHeader>

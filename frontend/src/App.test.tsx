@@ -10,18 +10,6 @@ vi.mock("./WysiwygEditor", () => ({
   ),
 }));
 
-vi.mock("@excalidraw/excalidraw", () => ({
-  Excalidraw: () => null,
-  exportToSvg: async () => document.createElementNS("http://www.w3.org/2000/svg", "svg"),
-  getNonDeletedElements: (elements: unknown[]) => elements,
-  restore: (data: { elements?: unknown[]; appState?: Record<string, unknown>; files?: Record<string, unknown> }) => ({
-    elements: data.elements ?? [],
-    appState: data.appState ?? {},
-    files: data.files ?? {},
-  }),
-  serializeAsJSON: () => JSON.stringify({ elements: [], appState: {}, files: {} }),
-}));
-
 vi.mock("@xyflow/react", async () => {
   const React = await import("react");
 
@@ -1008,7 +996,7 @@ describe("App graph canvas flows", () => {
     await user.click(executionButton);
     await screen.findByTestId("flow-node-note-1");
 
-    expect(document.querySelector('[data-nodeid="note-3"] .graph-canvas-node-circle')).not.toBeNull();
+    expect(document.querySelector('[data-nodeid="note-3"] .graph-canvas-node')).not.toBeNull();
     expect(document.querySelector('.graph-canvas-overlay svg path[stroke-dasharray="6 4"]')).not.toBeNull();
   });
 
@@ -1331,7 +1319,7 @@ describe("App graph canvas flows", () => {
     });
     await user.click(await within(thread).findByRole("link", { name: "Third note" }));
 
-    expect(await within(thread).findByText("Loading document content.")).toBeInTheDocument();
+    expect(await within(thread).findByTestId("thread-panel-skeleton")).toBeInTheDocument();
     expect(within(thread).queryByDisplayValue("Overview")).not.toBeInTheDocument();
 
     delayedNoteThree.resolve(noteThreeResponse);

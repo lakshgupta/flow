@@ -1,4 +1,4 @@
-import type { HTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
 
 import { ChevronRight } from "lucide-react";
 
@@ -18,6 +18,10 @@ export function BreadcrumbItem({ className, ...props }: HTMLAttributes<HTMLLIEle
 
 export function BreadcrumbPage({ className, ...props }: HTMLAttributes<HTMLSpanElement>) {
   return <span aria-current="page" className={cn("ds-breadcrumb-page", className)} {...props} />;
+}
+
+export function BreadcrumbLink({ className, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
+  return <button type="button" className={cn("ds-breadcrumb-link", className)} {...props} />;
 }
 
 type BreadcrumbSeparatorProps = {

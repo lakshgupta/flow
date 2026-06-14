@@ -67,6 +67,7 @@ type GraphCanvasNode struct {
 	// "sky"). When non-empty, the canvas renders this node with the specified color instead of
 	// inheriting the graph directory color.
 	NodeColor         string              `json:"nodeColor,omitempty"`
+	Status            string              `json:"status,omitempty"`
 	Position          GraphCanvasPosition `json:"position"`
 	PositionPersisted bool                `json:"positionPersisted"`
 	Width             float64             `json:"width,omitempty"`
@@ -318,6 +319,7 @@ func buildGraphCanvasNode(item markdown.WorkspaceDocument) (GraphCanvasNode, str
 			PreviewName:       previewName,
 			PreviewAssetCount: previewAssetCount,
 			NodeColor:         document.Metadata.Color,
+			Status:            document.Metadata.Status,
 			links:             cloneNodeLinks(document.Metadata.Links),
 		}, graphPath, true, nil
 	case markdown.CommandDocument:

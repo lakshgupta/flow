@@ -114,7 +114,6 @@ import "./styles.css";
 type RightPanelTab = "calendar" | "search" | "home";
 type DocumentOpenMode = "center" | "right-rail";
 type CenterDocumentSidePanelMode = "hidden" | "toc" | "properties";
-type ThreadDensityMode = "comfortable" | "dense" | "ultra";
 type RenameDialogState =
   | { kind: "graph"; graphPath: string }
   | { kind: "node"; documentId: string; fileName: string };
@@ -302,6 +301,7 @@ function updateGraphCanvasDocumentEntry(graphCanvas: GraphCanvasResponse | null,
       featureSlug: nextDocument.featureSlug,
       tags: nextDocument.tags,
       nodeColor: nextDocument.color,
+      status: nextDocument.status,
       createdAt: nextDocument.createdAt,
       updatedAt: nextDocument.updatedAt,
     };
@@ -392,9 +392,32 @@ function FlowApp() {
   const [leftSidebarWidth, setLeftSidebarWidth] = useState<number>(256);
   const [rightSidebarWidth, setRightSidebarWidth] = useState<number>(320);
   const [documentTOCRatio, setDocumentTOCRatio] = useState<number>(DEFAULT_DOCUMENT_TOC_RATIO);
-  const [threadPanelWidths, setThreadPanelWidths] = useState<Record<string, number>>({});
-  const [threadDensityMode, setThreadDensityMode] = useState<ThreadDensityMode>("comfortable");
+  const THREAD_PANEL_WIDTHS_KEY = "flow_thread_panel_widths";
+  const [threadPanelWidths, setThreadPanelWidths] = useState<Record<string, number>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const item = window.localStorage.getItem(THREAD_PANEL_WIDTHS_KEY);
+      return item ? JSON.parse(item) : {};
+    } catch (error) {
+      console.warn("Error reading thread panel widths from localStorage", error);
+      return {};
+    }
+  });
+
+  const persistThreadPanelWidths = useCallback((updater: Record<string, number> | ((prev: Record<string, number>) => Record<string, number>)) => {
+    setThreadPanelWidths((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      try {
+        window.localStorage.setItem(THREAD_PANEL_WIDTHS_KEY, JSON.stringify(next));
+      } catch (error) {
+        console.warn("Error saving thread panel widths to localStorage", error);
+      }
+      return next;
+    });
+  }, []);
+
   const [threadExpanded, setThreadExpanded] = useState<boolean>(false);
+  const [panelExpandModes, setPanelExpandModes] = useState<Record<string, "thread" | "full">>({});
   const [centerDocumentSidePanelMode, setCenterDocumentSidePanelMode] = useState<CenterDocumentSidePanelMode>("hidden");
   const [homeTOCVisible, setHomeTOCVisible] = useState<boolean>(false);
   const [isResizingLeft, setIsResizingLeft] = useState<boolean>(false);
@@ -425,6 +448,7 @@ function FlowApp() {
   const documentSavePromiseRef = useRef<Promise<void> | null>(null);
   const edgeClickTimerRef = useRef<number | null>(null);
   const documentThreadRef = useRef<ThreadDocumentEntry[]>([]);
+  const threadDocumentsByIdRef = useRef<Record<string, DocumentResponse>>({});
   const threadStackRef = useRef<HTMLDivElement | null>(null);
   const selectedDocumentOpenModeRef = useRef<DocumentOpenMode>("right-rail");
   const formStateRef = useRef<DocumentFormState>(emptyDocumentFormState);
@@ -513,9 +537,6 @@ function FlowApp() {
   const graphCanvasNodeSearchSelectedIndex = useMemo(() => {
     return graphCanvasNodeSearchMatches.findIndex((node) => node.id === selectedCanvasNodeId);
   }, [graphCanvasNodeSearchMatches, selectedCanvasNodeId]);
-  const selectedGraphNode = useMemo(() => {
-    return graphTree?.graphs.find((graphNode) => graphNode.graphPath === selectedGraphPath) ?? null;
-  }, [graphTree?.graphs, selectedGraphPath]);
   const selectedCanvasNode = useMemo(() => {
     return selectedGraphCanvasNode(graphCanvasData, selectedCanvasNodeId);
   }, [graphCanvasData, selectedCanvasNodeId]);
@@ -533,42 +554,33 @@ function FlowApp() {
     return countConnectedGraphCanvasEdges(graphCanvasData, selectedCanvasNodeId);
   }, [graphCanvasData, selectedCanvasNodeId]);
   const workspaceSurfaceSection = activeSurface.kind === "graph" ? "Content" : "Home";
-  const workspaceSurfaceTitle = useMemo(() => {
-    return activeSurface.kind === "graph" ? selectedGraphNode?.displayName ?? selectedGraphPath : null;
-  }, [activeSurface.kind, selectedGraphNode, selectedGraphPath]);
   const trackedLocalWorkspaces = useMemo(() => {
     return (workspace?.workspaces ?? []).filter((entry) => entry.scope === "local");
   }, [workspace?.workspaces]);
-  const isHomeThreadRoot = documentThread.length > 0 && documentThread[0]?.documentId === HOME_THREAD_DOCUMENT_ID;
-  const activeThreadTailId = documentThread.length > 0 ? documentThread[documentThread.length - 1]?.documentId ?? "" : "";
-  const hasAssetThreadTail = activeThreadTailId !== "" && threadAssetsById[activeThreadTailId] !== undefined;
+  const isHomeThreadRoot = useMemo(() => documentThread.length > 0 && documentThread[0]?.documentId === HOME_THREAD_DOCUMENT_ID, [documentThread]);
+  const activeThreadTailId = useMemo(() => documentThread.length > 0 ? documentThread[documentThread.length - 1]?.documentId ?? "" : "", [documentThread]);
+  const hasAssetThreadTail = useMemo(() => activeThreadTailId !== "" && threadAssetsById[activeThreadTailId] !== undefined, [activeThreadTailId, threadAssetsById]);
   const isCenterDocumentOpen = selectedDocumentId !== "" && selectedDocumentOpenMode === "center";
-  const isThreadStackOpen = selectedDocumentOpenMode === "center"
-    && (selectedDocumentId !== "" || hasAssetThreadTail || (isHomeThreadRoot && activeSurface.kind === "home"));
-  const isSelectedDocumentLoading = selectedDocumentId !== "" && (selectedDocument === null || selectedDocument.id !== selectedDocumentId);
-  const activeThreadDocumentId = selectedDocumentOpenMode === "center"
+  const isThreadStackOpen = useMemo(() => selectedDocumentOpenMode === "center"
+    && (selectedDocumentId !== "" || hasAssetThreadTail || (isHomeThreadRoot && activeSurface.kind === "home")),
+    [selectedDocumentOpenMode, selectedDocumentId, hasAssetThreadTail, isHomeThreadRoot, activeSurface.kind]);
+  const isSelectedDocumentLoading = useMemo(() => selectedDocumentId !== "" && (selectedDocument === null || selectedDocument.id !== selectedDocumentId), [selectedDocumentId, selectedDocument]);
+  const activeThreadDocumentId = useMemo(() => selectedDocumentOpenMode === "center"
     ? (selectedDocumentId !== "" ? selectedDocumentId : activeSurface.kind === "home" ? HOME_THREAD_DOCUMENT_ID : activeThreadTailId)
-    : activeThreadTailId;
+    : activeThreadTailId,
+    [selectedDocumentOpenMode, selectedDocumentId, activeSurface.kind, activeThreadTailId]);
   const showCenterDocumentSidePanel = centerDocumentSidePanelMode !== "hidden";
-  const centerDocumentSidePanelLabel = centerDocumentSidePanelMode === "properties" ? "Document properties" : "Document table of contents";
-  const centerDocumentSidePanelTitle = centerDocumentSidePanelMode === "properties" ? "Properties" : "Table of Contents";
-  const centerDocumentSidePanelDescription = centerDocumentSidePanelMode === "properties"
+  const centerDocumentSidePanelLabel = useMemo(() => centerDocumentSidePanelMode === "properties" ? "Document properties" : "Document table of contents", [centerDocumentSidePanelMode]);
+  const centerDocumentSidePanelTitle = useMemo(() => centerDocumentSidePanelMode === "properties" ? "Properties" : "Table of Contents", [centerDocumentSidePanelMode]);
+  const centerDocumentSidePanelDescription = useMemo(() => centerDocumentSidePanelMode === "properties"
     ? "Edit the markdown frontmatter fields for this document."
-    : "Jump to headings in the current document.";
-  const centerDocumentSidePanelResizerLabel = centerDocumentSidePanelMode === "properties"
+    : "Jump to headings in the current document.",
+    [centerDocumentSidePanelMode]);
+  const centerDocumentSidePanelResizerLabel = useMemo(() => centerDocumentSidePanelMode === "properties"
     ? "Resize document properties"
-    : "Resize table of contents";
+    : "Resize table of contents",
+    [centerDocumentSidePanelMode]);
   const hasRightRailDocument = selectedDocumentId !== "" && selectedDocumentOpenMode === "right-rail";
-  const nextThreadDensityMode: ThreadDensityMode = threadDensityMode === "comfortable"
-    ? "dense"
-    : threadDensityMode === "dense"
-      ? "ultra"
-      : "comfortable";
-  const nextThreadDensityLabel = nextThreadDensityMode === "comfortable"
-    ? "comfortable"
-    : nextThreadDensityMode === "dense"
-      ? "dense"
-      : "ultra";
   const relationshipTagCatalog = useMemo(() => {
     const tagSet = new Set<string>();
 
@@ -607,18 +619,14 @@ function FlowApp() {
     return documentThread.map((entry, index) => {
       const isTail = index === documentThread.length - 1;
       const isActive = selectedDocumentOpenMode === "center" && activeThreadDocumentId === entry.documentId;
-      const document = isActive && selectedDocument?.id === entry.documentId
-        ? selectedDocument
-        : threadDocumentsById[entry.documentId] ?? null;
 
       return {
         ...entry,
-        document,
         isActive,
         isTail,
       };
     });
-  }, [activeThreadDocumentId, documentThread, selectedDocument, selectedDocumentOpenMode, threadDocumentsById]);
+  }, [activeThreadDocumentId, documentThread, selectedDocumentOpenMode]);
   const activeThreadPanelKey = useMemo(() => {
     if (threadPanels.length === 0) {
       return "";
@@ -772,6 +780,10 @@ function FlowApp() {
   useEffect(() => {
     documentThreadRef.current = documentThread;
   }, [documentThread]);
+
+  useEffect(() => {
+    threadDocumentsByIdRef.current = threadDocumentsById;
+  }, [threadDocumentsById]);
 
   useEffect(() => {
     selectedDocumentOpenModeRef.current = selectedDocumentOpenMode;
@@ -958,6 +970,16 @@ function FlowApp() {
       const allowedIDs = new Set(nextThread.map((entry) => entry.documentId));
       return Object.fromEntries(Object.entries(current).filter(([assetID]) => allowedIDs.has(assetID)));
     });
+    setPanelExpandModes((current) => {
+      const allowedIds = new Set(nextThread.map((entry) => entry.documentId));
+      const next: Record<string, "thread" | "full"> = {};
+      for (const [documentId, mode] of Object.entries(current)) {
+        if (allowedIds.has(documentId)) {
+          next[documentId] = mode;
+        }
+      }
+      return next;
+    });
   }
 
   function clearDocumentThread(): void {
@@ -990,6 +1012,21 @@ function FlowApp() {
       if (next) {
         setRightRailCollapsed(true);
         setRightRailMaximized(false);
+      }
+      return next;
+    });
+  }
+
+  function togglePanelExpandMode(documentId: string): void {
+    setPanelExpandModes((prev) => {
+      const current = prev[documentId];
+      const next = { ...prev };
+      if (current === undefined) {
+        next[documentId] = "thread";
+      } else if (current === "thread") {
+        next[documentId] = "full";
+      } else {
+        delete next[documentId];
       }
       return next;
     });
@@ -1221,7 +1258,7 @@ function FlowApp() {
       return;
     }
 
-    syncCenterThreadSelection(documentId, documentId, threadDocumentsById[documentId] ?? null);
+    syncCenterThreadSelection(documentId, documentId, threadDocumentsByIdRef.current[documentId] ?? null);
     openGraphSurface(graphPath);
     collapseDocumentRightRailIfOpen();
   }
@@ -1257,7 +1294,7 @@ function FlowApp() {
     setSelectedDocumentOpenMode("center");
     setSelectedDocumentId(nextActive.documentId);
     setSelectedCanvasNodeId(nextActive.documentId);
-    syncSelectedDocumentState(threadDocumentsById[nextActive.documentId] ?? null);
+    syncSelectedDocumentState(threadDocumentsByIdRef.current[nextActive.documentId] ?? null);
     startTransition(() => {
       setActiveSurface({ kind: "graph", graphPath: nextActive.graphPath });
     });
@@ -2768,19 +2805,49 @@ function FlowApp() {
       return;
     }
 
+    const threadStack = panel.closest<HTMLElement>(".thread-stack");
+
     const startX = event.clientX;
     const startWidth = bounds.width;
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
+    panel.classList.add("is-resizing");
+
+    const tooltip = document.createElement("div");
+    tooltip.className = "thread-panel-resize-tooltip";
+    tooltip.textContent = `${Math.round(startWidth)}px`;
+    tooltip.style.left = `${event.clientX}px`;
+    tooltip.style.top = `${bounds.top - 6}px`;
+    document.body.appendChild(tooltip);
+
+    let lastWidth = startWidth;
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const deltaX = moveEvent.clientX - startX;
-      setThreadPanelWidths((prev) => ({ ...prev, [panelKey]: clampThreadPanelWidth(startWidth + deltaX) }));
+      const nextWidth = clampThreadPanelWidth(startWidth + deltaX);
+      if (nextWidth === lastWidth) return;
+      lastWidth = nextWidth;
+
+      panel.style.setProperty("--thread-panel-width", `${nextWidth}px`);
+      const widthKey = panelKey.includes(":") ? panelKey.split(":")[0] : panelKey;
+      persistThreadPanelWidths((prev) => ({ ...prev, [widthKey]: nextWidth }));
+      tooltip.textContent = `${Math.round(nextWidth)}px`;
+      tooltip.style.left = `${moveEvent.clientX}px`;
+
+      if (threadStack) {
+        const stackRect = threadStack.getBoundingClientRect();
+        const overshoot = moveEvent.clientX - stackRect.right + 16;
+        if (overshoot > 0) {
+          threadStack.scrollLeft += overshoot;
+        }
+      }
     };
 
     const handleMouseUp = () => {
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
+      panel.classList.remove("is-resizing");
+      tooltip.remove();
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
@@ -2789,6 +2856,15 @@ function FlowApp() {
     window.addEventListener("mouseup", handleMouseUp);
     event.preventDefault();
     event.stopPropagation();
+  }
+
+  function resetThreadPanelWidth(panelKey: string): void {
+    const widthKey = panelKey.includes(":") ? panelKey.split(":")[0] : panelKey;
+    persistThreadPanelWidths((prev) => {
+      const next = { ...prev };
+      delete next[widthKey];
+      return next;
+    });
   }
 
   function handleHomeDocumentTOCResizeMouseDown(event: React.MouseEvent<HTMLDivElement>): void {
@@ -2934,6 +3010,20 @@ function FlowApp() {
       title: file.title,
       path: file.path,
       graphPath,
+    });
+  }
+
+  function handleCanvasDeleteNode(nodeId: string): void {
+    const node = graphCanvasNodes.find((candidate) => candidate.id === nodeId);
+    if (node === undefined) {
+      return;
+    }
+    openDeleteDialog({
+      id: node.data.id,
+      type: node.data.type,
+      title: node.data.title,
+      path: node.data.fileName,
+      graphPath: node.data.graph,
     });
   }
 
@@ -3347,6 +3437,7 @@ function FlowApp() {
         }
         setGraphTree((current) => updateGraphTreeDocumentEntry(current, doc, updatedDocument));
         setGraphCanvasData((current) => updateGraphCanvasDocumentEntry(current, doc, updatedDocument));
+        setGraphCanvasReloadToken((current) => current + 1);
       } catch (mutationFailure) {
         setMutationError(toErrorMessage(mutationFailure));
       } finally {
@@ -3576,8 +3667,8 @@ function FlowApp() {
 
   const threadPanelActions = useThreadPanelActions({
     activateThreadDocument,
-    setThreadDensityMode,
     toggleThreadExpanded,
+    togglePanelExpandMode,
     moveThreadFocus,
     toggleRightRailMaximized,
     closeDocumentThreadFrom,
@@ -3594,6 +3685,7 @@ function FlowApp() {
     removeOutgoingLink,
     updateEditableLinkDetail,
     beginThreadPanelResize,
+    resetThreadPanelWidth,
   });
 
   const rightRailDocumentActions = useRightRailDocumentActions({
@@ -3677,6 +3769,7 @@ function FlowApp() {
     setCanvasContextMenu,
     setNodeContextMenu,
     handleSetNodeColor,
+    handleCanvasDeleteNode,
     setShiftSelectedNodes,
     rfViewportRef,
   });
@@ -4055,10 +4148,9 @@ function FlowApp() {
       isMaximizedRightRail={isMaximizedRightRail}
       isRightRailDocked={!isMaximizedRightRail && !rightRailCollapsed}
       threadExpanded={threadExpanded}
-      threadDensityMode={threadDensityMode}
-      nextThreadDensityLabel={nextThreadDensityLabel}
-      nextThreadDensityMode={nextThreadDensityMode}
+      panelExpandModes={panelExpandModes}
       threadPanels={threadPanels}
+      threadDocumentsById={threadDocumentsById}
       activeThreadPanelIndex={activeThreadPanelIndex}
       threadStackRef={threadStackRef}
       threadPanelWidths={threadPanelWidths}
@@ -4115,8 +4207,10 @@ function FlowApp() {
       />
       <SidebarInset>
         <WorkspaceHeader
-          workspaceSurfaceTitle={workspaceSurfaceTitle}
           workspaceSurfaceSection={workspaceSurfaceSection}
+          selectedGraphPath={selectedGraphPath}
+          graphTree={graphTree}
+          onNavigateGraph={handleSelectGraph}
           rightPanelTab={rightPanelTab}
           rightRailCollapsed={rightRailCollapsed}
           activeSurface={activeSurface}

@@ -33,7 +33,7 @@ import (
 var version = buildinfo.ProjectVersion()
 
 const defaultGUIPort = 4317
-const guiLogRetentionWindow = 7 * 24 * time.Hour
+const guiLogRetentionWindow = 15 * 24 * time.Hour
 
 type commandEnv struct {
 	stdout           io.Writer

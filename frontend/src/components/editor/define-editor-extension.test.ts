@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 const {
   defineBasicExtension,
   union,
+  definePlugin,
   defineBackgroundColor,
   defineCodeBlockShiki,
   defineHorizontalRule,
@@ -19,6 +20,7 @@ const {
 } = vi.hoisted(() => ({
   defineBasicExtension: vi.fn(() => 'basic-extension'),
   union: vi.fn((...extensions: unknown[]) => extensions),
+  definePlugin: vi.fn(() => 'plugin-extension'),
   defineBackgroundColor: vi.fn(() => 'background-color-extension'),
   defineCodeBlockShiki: vi.fn(() => 'code-block-shiki-extension'),
   defineHorizontalRule: vi.fn(() => 'horizontal-rule-extension'),
@@ -40,6 +42,7 @@ vi.mock('prosekit/basic', () => ({
 
 vi.mock('prosekit/core', () => ({
   union,
+  definePlugin,
 }))
 
 vi.mock('prosekit/extensions/background-color', () => ({
@@ -105,7 +108,7 @@ describe('defineEditorExtension', () => {
     const extension = defineEditorExtension('Image ready')
 
     expect(defineImageView).toHaveBeenCalledTimes(1)
-    expect(defineCodeBlockShiki).toHaveBeenCalledWith({ nodeTypes: ['mathBlock'] })
+    expect(defineCodeBlockShiki).toHaveBeenCalledWith()
     expect(defineMath).toHaveBeenCalledTimes(1)
     expect(union).toHaveBeenCalledWith(
       'basic-extension',

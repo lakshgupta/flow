@@ -77,6 +77,10 @@ export function graphCanvasTypeLabel(value: string): string {
   return value === "command" ? "Cmd" : value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+export function graphCanvasStatusLabel(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 export function graphCanvasTypeClassName(value: string): string {
   if (value === "task" || value === "command") {
     return value;
@@ -84,8 +88,8 @@ export function graphCanvasTypeClassName(value: string): string {
   return "note";
 }
 
-function graphCanvasNodeShape(value?: string): string {
-  return value === "circle" ? "circle" : "card";
+function graphCanvasNodeShape(_value?: string): string {
+  return "card";
 }
 
 const MIN_CANVAS_NODE_WIDTH = 132;
@@ -101,13 +105,6 @@ function normalizeCanvasNodeDimension(value: number | undefined, fallback: numbe
 
 function graphCanvasNodeDimensions(shape?: string, previewKind?: string, width?: number, height?: number): { width: number; height: number } {
   let fallback: { width: number; height: number };
-  if (graphCanvasNodeShape(shape) === "circle") {
-    fallback = { width: 132, height: 132 };
-    return {
-      width: normalizeCanvasNodeDimension(width, fallback.width, 132),
-      height: normalizeCanvasNodeDimension(height, fallback.height, 132),
-    };
-  }
 
   if (previewKind === "image" || previewKind === "pdf" || previewKind === "file") {
     fallback = { width: CANVAS_NODE_W, height: CANVAS_NODE_PREVIEW_H };
@@ -129,7 +126,6 @@ export function renderGraphCanvasNodeLabel(data: GraphCanvasFlowNodeInput): Reac
         "graph-canvas-node",
         `graph-canvas-node-${graphCanvasTypeClassName(data.type)}`,
         graphColor ? "graph-canvas-node-tinted" : "",
-        data.shape === "circle" ? "graph-canvas-node-circle" : "",
         data.isCanvasSelected ? "graph-canvas-node-selected" : "",
         data.isPanelDocument ? "graph-canvas-node-panel" : "",
       ]
@@ -137,22 +133,17 @@ export function renderGraphCanvasNodeLabel(data: GraphCanvasFlowNodeInput): Reac
         .join(" ")}
       style={graphColor ? { "--graph-node-color": graphColor } as CSSProperties : undefined}
     >
-      {data.shape === "circle" ? (
-        <>
-          <span className="graph-canvas-node-badge">{graphCanvasTypeLabel(data.type)}</span>
-          <strong className="graph-canvas-node-title">{data.title}</strong>
-          <span className="graph-canvas-node-graph">{data.graph}</span>
-        </>
-      ) : (
-        <>
-          <div className="graph-canvas-node-topline">
-            <span className="graph-canvas-node-badge">{graphCanvasTypeLabel(data.type)}</span>
-            <span className="graph-canvas-node-graph">{data.graph}</span>
-          </div>
-          <strong className="graph-canvas-node-title">{data.title}</strong>
-          {data.description !== "" ? <p className="graph-canvas-node-description">{data.description}</p> : null}
-        </>
-      )}
+      <div className="graph-canvas-node-topline">
+        <span className="graph-canvas-node-badge">{graphCanvasTypeLabel(data.type)}</span>
+        {data.type === "task" && data.status ? (
+          <span className={`graph-canvas-node-status graph-canvas-node-status-${data.status.toLowerCase()}`}>
+            {graphCanvasStatusLabel(data.status)}
+          </span>
+        ) : null}
+        <span className="graph-canvas-node-graph">{data.graph}</span>
+      </div>
+      <strong className="graph-canvas-node-title">{data.title}</strong>
+      {data.description !== "" ? <p className="graph-canvas-node-description">{data.description}</p> : null}
     </article>
   );
 }
@@ -191,6 +182,7 @@ export function buildGraphCanvasFlowNodes(
         previewAssetCount: item.previewAssetCount,
         featureSlug: item.featureSlug,
         fileName: fileNameFromPath(item.path),
+        status: item.status,
         positionPersisted: item.positionPersisted,
         isCanvasSelected: item.id === selectedCanvasNodeId,
         isExpanded,
@@ -210,6 +202,7 @@ export function buildGraphCanvasFlowNodes(
       previewAssetCount: item.previewAssetCount,
       featureSlug: item.featureSlug,
       fileName: fileNameFromPath(item.path),
+      status: item.status,
       positionPersisted: item.positionPersisted,
       width: dimensions.width,
       height: dimensions.height,

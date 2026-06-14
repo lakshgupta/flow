@@ -202,6 +202,8 @@ export type GraphCanvasNodePayload = {
   updatedAt?: string;
   /** Per-node color override (a GraphDirectoryColorId such as "rose" or "sky"). Empty string means no override. */
   nodeColor?: string;
+  /** Task status (e.g. "Ready", "Running", "Done", "Success", "Failed", "Interrupted"). Only set for task nodes. */
+  status?: string;
   position: GraphCanvasPosition;
   positionPersisted: boolean;
   width?: number;
@@ -302,6 +304,8 @@ export type GraphCanvasFlowNodeData = {
   previewAssetCount?: number;
   featureSlug: string;
   fileName: string;
+  /** Task status (e.g. "Ready", "Running", "Done"). Only set for task nodes. */
+  status?: string;
   positionPersisted: boolean;
   width: number;
   height: number;

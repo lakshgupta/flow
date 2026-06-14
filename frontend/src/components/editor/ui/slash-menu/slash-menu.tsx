@@ -7,7 +7,6 @@ import { useCallback, useRef } from 'react'
 import SlashMenuEmpty from './slash-menu-empty'
 import SlashMenuItem from './slash-menu-item'
 
-// Match inputs like "/", "/table", "/heading 1" etc.
 const regex = /\/(\S.*)?$/u
 
 export default function SlashMenu({ onDateRequest, uploader }: { onDateRequest?: () => void; uploader?: Uploader<string> }) {
@@ -23,7 +22,6 @@ export default function SlashMenu({ onDateRequest, uploader }: { onDateRequest?:
     if (file && uploader) {
       editor.commands.uploadImage({ file, uploader })
     }
-    // Reset input so the same file can be selected again
     event.target.value = ''
   }, [editor, uploader])
 
@@ -97,20 +95,8 @@ export default function SlashMenu({ onDateRequest, uploader }: { onDateRequest?:
 
         <SlashMenuItem
           label="Code"
-          kbd="```"
-          onSelect={() => editor.commands.setCodeBlock()}
-        />
-
-        <SlashMenuItem
-          label="Mermaid Diagram"
-          kbd="```mermaid"
-          onSelect={() => editor.commands.setCodeBlock({ language: 'mermaid' })}
-        />
-
-        <SlashMenuItem
-          label="Excalidraw Diagram"
-          kbd="```excalidraw"
-          onSelect={() => editor.commands.setCodeBlock({ language: 'excalidraw' })}
+          kbd="/code"
+          onSelect={() => editor.commands.insertCodeBlock({ language: '' })}
         />
 
         {onDateRequest && (

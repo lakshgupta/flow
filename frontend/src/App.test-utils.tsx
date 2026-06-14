@@ -10,18 +10,6 @@ vi.mock("./WysiwygEditor", () => ({
   ),
 }));
 
-vi.mock("@excalidraw/excalidraw", () => ({
-  Excalidraw: () => null,
-  exportToSvg: async () => document.createElementNS("http://www.w3.org/2000/svg", "svg"),
-  getNonDeletedElements: (elements: unknown[]) => elements,
-  restore: (data: { elements?: unknown[]; appState?: Record<string, unknown>; files?: Record<string, unknown> }) => ({
-    elements: data.elements ?? [],
-    appState: data.appState ?? {},
-    files: data.files ?? {},
-  }),
-  serializeAsJSON: () => JSON.stringify({ elements: [], appState: {}, files: {} }),
-}));
-
 vi.mock("@xyflow/react", async () => {
   const React = await import("react");
 

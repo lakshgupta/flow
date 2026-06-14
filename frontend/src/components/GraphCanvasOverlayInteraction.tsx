@@ -1,4 +1,4 @@
-import { CheckSquare, FileText, Paintbrush, Terminal, X } from "lucide-react";
+import { CheckSquare, FileText, Paintbrush, Terminal, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { GraphCanvasOverlayController } from "./graphCanvasOverlayController";
 import { GRAPH_DIRECTORY_COLOR_OPTIONS } from "../lib/graphColors";
@@ -37,7 +37,7 @@ export function GraphCanvasOverlayInteraction({
     edgeToolbar,
     relationshipTagCatalog,
   } = controller.state;
-  const { closeCanvasContextMenu, createGraphDocument, setEdgeToolbarState, persistEdgeToolbar, closeNodeContextMenu, setNodeColor } = controller.actions;
+  const { closeCanvasContextMenu, createGraphDocument, setEdgeToolbarState, persistEdgeToolbar, closeNodeContextMenu, setNodeColor, deleteNode } = controller.actions;
   const [relationshipTagInput, setRelationshipTagInput] = useState<string>("");
 
   useEffect(() => {
@@ -121,6 +121,15 @@ export function GraphCanvasOverlayInteraction({
               {option.label}
             </button>
           ))}
+          <div className="canvas-context-menu-separator" />
+          <button
+            type="button"
+            className="flow-dropdown-item"
+            data-variant="destructive"
+            onClick={() => deleteNode(nodeContextMenu.nodeId)}
+          >
+            <Trash2 size={13} /> Delete
+          </button>
         </div>
       )}
 

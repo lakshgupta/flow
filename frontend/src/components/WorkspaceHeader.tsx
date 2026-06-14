@@ -1,13 +1,15 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { SidebarTrigger } from "./ui/sidebar";
 import { Separator } from "./ui/separator";
-import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "./ui/breadcrumb";
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "./ui/breadcrumb";
 import { RightRailControls, type RightRailControlsProps } from "./RightRailControls";
-import type { SurfaceState } from "../types";
+import type { GraphTreeResponse, SurfaceState } from "../types";
 
 export type WorkspaceHeaderProps = {
-  workspaceSurfaceTitle: string | null;
   workspaceSurfaceSection: string;
+  selectedGraphPath: string;
+  graphTree: GraphTreeResponse | null;
+  onNavigateGraph: (graphPath: string) => void;
   rightPanelTab: string;
   rightRailCollapsed: boolean;
   activeSurface: SurfaceState;
@@ -15,15 +17,40 @@ export type WorkspaceHeaderProps = {
   rightRailControlsActions: RightRailControlsProps["actions"];
 };
 
+function graphPathSegments(graphPath: string): string[] {
+  if (graphPath === "") {
+    return [];
+  }
+  return graphPath.split("/");
+}
+
 function WorkspaceHeaderComponent({
-  workspaceSurfaceTitle,
   workspaceSurfaceSection,
+  selectedGraphPath,
+  graphTree,
+  onNavigateGraph,
   rightPanelTab,
   rightRailCollapsed,
   activeSurface,
   settingsDialogProps,
   rightRailControlsActions,
 }: WorkspaceHeaderProps) {
+  const pathSegments = graphPathSegments(selectedGraphPath);
+
+  const displayNames = useMemo(() => {
+    if (pathSegments.length === 0) {
+      return [];
+    }
+    const names: string[] = [];
+    let builtPath = "";
+    for (let i = 0; i < pathSegments.length; i++) {
+      builtPath = i === 0 ? pathSegments[i] : `${builtPath}/${pathSegments[i]}`;
+      const graphNode = graphTree?.graphs.find((g) => g.graphPath === builtPath);
+      names.push(graphNode?.displayName ?? pathSegments[i]);
+    }
+    return names;
+  }, [pathSegments, graphTree?.graphs]);
+
   return (
     <header className="workspace-shell-header">
       <div className="workspace-shell-header-leading">
@@ -33,18 +60,29 @@ function WorkspaceHeaderComponent({
           <BreadcrumbList>
             <BreadcrumbItem>Workspace</BreadcrumbItem>
             <BreadcrumbSeparator />
-            {workspaceSurfaceTitle === null ? (
+            {pathSegments.length === 0 ? (
               <BreadcrumbItem>
                 <BreadcrumbPage>{workspaceSurfaceSection}</BreadcrumbPage>
               </BreadcrumbItem>
             ) : (
-              <>
-                <BreadcrumbItem>{workspaceSurfaceSection}</BreadcrumbItem>
-                <BreadcrumbSeparator />
-                <BreadcrumbItem>
-                  <BreadcrumbPage>{workspaceSurfaceTitle}</BreadcrumbPage>
-                </BreadcrumbItem>
-              </>
+              pathSegments.map((segment, index) => {
+                const isLast = index === pathSegments.length - 1;
+                const builtPath = pathSegments.slice(0, index + 1).join("/");
+                return (
+                  <span key={builtPath} style={{ display: "contents" }}>
+                    {index > 0 && <BreadcrumbSeparator />}
+                    <BreadcrumbItem>
+                      {isLast ? (
+                        <BreadcrumbPage>{displayNames[index]}</BreadcrumbPage>
+                      ) : (
+                        <BreadcrumbLink onClick={() => onNavigateGraph(builtPath)}>
+                          {displayNames[index]}
+                        </BreadcrumbLink>
+                      )}
+                    </BreadcrumbItem>
+                  </span>
+                );
+              })
             )}
           </BreadcrumbList>
         </Breadcrumb>
