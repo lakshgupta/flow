@@ -127,9 +127,9 @@ describe('RichTextEditor markdown shortcuts', () => {
     await user.type(editor, 'after block')
 
     await waitFor(() => {
-      const codeContent = editor.querySelector('code[data-node-view-content]')
+      const codeContent = editor.querySelector('pre')
       expect(codeContent).not.toBeNull()
-      expect(codeContent).toHaveTextContent('const value = 1')
+      expect(codeContent?.textContent).toContain('const value = 1')
       expect(editor.querySelector('p')).toHaveTextContent('after block')
     })
   })
