@@ -99,6 +99,13 @@ function SidebarProvider({
         event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
         (event.metaKey || event.ctrlKey)
       ) {
+        const target = event.target
+        if (target instanceof HTMLElement) {
+          const tag = target.tagName
+          if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) {
+            return
+          }
+        }
         event.preventDefault()
         toggleSidebar()
       }
