@@ -97,6 +97,20 @@ turndown.addRule("strikethrough", {
     return content === "" ? "" : `~~${content}~~`;
   },
 });
+// Strip block-level wrappers inside table cells so GFM table rows stay on a
+// single line.  Without this rule, default paragraph/heading/etc handlers
+// append "\n\n" which breaks markdown-it's table parser on the next load.
+turndown.addRule("tableCellBlock", {
+  filter(node) {
+    if (!(node instanceof Element)) return false;
+    const tag = node.tagName;
+    if (!["P", "H1", "H2", "H3", "H4", "H5", "H6"].includes(tag)) return false;
+    return node.closest("td, th") !== null;
+  },
+  replacement(content) {
+    return content.trim();
+  },
+});
 turndown.addRule("mark", {
   filter: "mark",
   replacement(content) {

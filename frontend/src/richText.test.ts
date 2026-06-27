@@ -137,4 +137,35 @@ describe('richText conversion', () => {
     expect(markdown).toContain('-   keep')
     expect(markdown).toContain('  -   spacing')
   })
+
+  it('preserves a table with header cells across round-trip', () => {
+    const sourceHTML = '<table><tbody><tr><th><p>Name</p></th><th><p>Age</p></th></tr><tr><td><p>Alice</p></td><td><p>30</p></td></tr></tbody></table>'
+    const markdown = editorHTMLToMarkdown(sourceHTML)
+    const html = markdownToHTML(markdown)
+
+    expect(html).toContain('<th>')
+    expect(html).toContain('<td>')
+    expect(html).toContain('Name')
+    expect(html).toContain('Alice')
+  })
+
+  it('preserves a plain table (no headers) across round-trip', () => {
+    const sourceHTML = '<table><tbody><tr><td><p>Hello</p></td><td><p>World</p></td></tr></tbody></table>'
+    const markdown = editorHTMLToMarkdown(sourceHTML)
+    const html = markdownToHTML(markdown)
+
+    expect(html).toContain('<td>')
+    expect(html).toContain('Hello')
+    expect(html).toContain('World')
+  })
+
+  it('preserves a table with heading tags in cells across round-trip', () => {
+    const sourceHTML = '<table><tbody><tr><th><h2>Name</h2></th><th><h2>Value</h2></th></tr><tr><td><p>Alice</p></td><td><p>30</p></td></tr></tbody></table>'
+    const markdown = editorHTMLToMarkdown(sourceHTML)
+    const html = markdownToHTML(markdown)
+
+    expect(html).toContain('<th>')
+    expect(html).toContain('Name')
+    expect(html).toContain('Alice')
+  })
 })
