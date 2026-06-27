@@ -8,4 +8,7 @@ gui:
     graphCanvasEnabled:
         design/20260506-001-FEAT-mermaid-diagrams: true
         design/20260606-001-FEAT-obsidian-editor-and-thread-loading: true
+        development/20260509-001-FEAT-home-backlog: true
+        development/20260606-001-FEAT-obsidian-editor-and-thread-loading: true
+        development/20260627-004-FIX-home-transition-perf: true
         manual: true

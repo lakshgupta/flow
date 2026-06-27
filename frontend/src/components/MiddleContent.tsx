@@ -99,77 +99,80 @@ function MiddleContentComponent({
     return <>{renderCenterDocumentShell(false)}</>;
   }
 
-  if (activeSurface.kind === "home") {
-    return (
-      <HomeSurface
-        homeMutationError={homeMutationError}
-        homeTOCVisible={homeTOCVisible}
-        showFreshStartGuide={showFreshStartGuide}
-        homeDocumentLayoutRef={homeDocumentLayoutRef}
-        homeDocumentEditorRef={homeDocumentEditorRef}
-        documentTOCRatio={documentTOCRatio}
-        homeInlineReferences={homeInlineReferences}
-        editorScrollTarget={editorScrollTarget}
-        homeFormState={homeFormState}
-        tocItems={tocItems}
-        actions={homeSurfaceActions}
-      />
-    );
-  }
+  const isHome = activeSurface.kind === "home";
 
   return (
-    <div className="graph-canvas-outer">
-      {graphCanvasError !== "" ? (
-        <div className="detail-empty shell-inner-card">
-          <p>Graph canvas data could not be loaded for this graph.</p>
-        </div>
-      ) : graphCanvasLoading ? (
-        <div className="skeleton-card">
-          <div className="skeleton-graph-canvas">
-            <div className="skeleton-line skeleton-line-lg" />
-            <div className="skeleton-line skeleton-line-md" />
-            <div className="skeleton-node" />
-            <div className="skeleton-line skeleton-line-sm" />
-            <div className="skeleton-node" />
-            <div className="skeleton-line skeleton-line-md" />
-            <div className="skeleton-node" />
-          </div>
-        </div>
-      ) : graphCanvasData !== null && graphCanvasData.nodes.length === 0 ? (
-        <GraphEmptyState
-          selectedGraphPath={selectedGraphPath}
-          graphCanvasDragActive={graphCanvasDragActive}
-          graphCreateError={graphCreateError}
-          graphCreatePendingType={graphCreatePendingType}
-          actions={graphEmptyStateActions}
+    <>
+      <div style={isHome ? undefined : { display: "none" }}>
+        <HomeSurface
+          homeMutationError={homeMutationError}
+          homeTOCVisible={homeTOCVisible}
+          showFreshStartGuide={showFreshStartGuide}
+          homeDocumentLayoutRef={homeDocumentLayoutRef}
+          homeDocumentEditorRef={homeDocumentEditorRef}
+          documentTOCRatio={documentTOCRatio}
+          homeInlineReferences={homeInlineReferences}
+          editorScrollTarget={editorScrollTarget}
+          homeFormState={homeFormState}
+          tocItems={tocItems}
+          actions={homeSurfaceActions}
         />
-      ) : graphCanvasData === null ? (
-        <div className="detail-empty shell-inner-card">
-          <p>Graph canvas data is not available yet.</p>
+      </div>
+      {!isHome && (
+        <div className="graph-canvas-outer">
+          {graphCanvasError !== "" ? (
+            <div className="detail-empty shell-inner-card">
+              <p>Graph canvas data could not be loaded for this graph.</p>
+            </div>
+          ) : graphCanvasLoading ? (
+            <div className="skeleton-card">
+              <div className="skeleton-graph-canvas">
+                <div className="skeleton-line skeleton-line-lg" />
+                <div className="skeleton-line skeleton-line-md" />
+                <div className="skeleton-node" />
+                <div className="skeleton-line skeleton-line-sm" />
+                <div className="skeleton-node" />
+                <div className="skeleton-line skeleton-line-md" />
+                <div className="skeleton-node" />
+              </div>
+            </div>
+          ) : graphCanvasData !== null && graphCanvasData.nodes.length === 0 ? (
+            <GraphEmptyState
+              selectedGraphPath={selectedGraphPath}
+              graphCanvasDragActive={graphCanvasDragActive}
+              graphCreateError={graphCreateError}
+              graphCreatePendingType={graphCreatePendingType}
+              actions={graphEmptyStateActions}
+            />
+          ) : graphCanvasData === null ? (
+            <div className="detail-empty shell-inner-card">
+              <p>Graph canvas data is not available yet.</p>
+            </div>
+          ) : (
+            <GraphCanvasSurface
+              graphCanvasShellRef={graphCanvasShellRef}
+              selectedGraphPath={selectedGraphPath}
+              graphCanvasDragActive={graphCanvasDragActive}
+              connectingFrom={connectingFrom}
+              graphCanvasData={graphCanvasData}
+              graphCanvasNodes={graphCanvasNodes}
+              graphCanvasEdges={graphCanvasEdges}
+              edgeTypes={edgeTypes}
+              graphCanvasNodeSearchTerm={graphCanvasNodeSearchTerm}
+              graphCanvasNodeSearchHasMatches={graphCanvasNodeSearchHasMatches}
+              graphCanvasNodeSearchSelectedIndex={graphCanvasNodeSearchSelectedIndex}
+              graphCanvasNodeSearchMatchCount={graphCanvasNodeSearchMatchCount}
+              normalizedGraphCanvasNodeSearchTerm={normalizedGraphCanvasNodeSearchTerm}
+              graphCanvasResettingLayout={graphCanvasResettingLayout}
+              graphCanvasLayoutMode={graphCanvasLayoutMode}
+              overlayController={overlayController}
+              edgeDoubleClickAction={handleEdgeDoubleClickAction}
+              actions={graphCanvasSurfaceActions}
+            />
+          )}
         </div>
-      ) : (
-        <GraphCanvasSurface
-          graphCanvasShellRef={graphCanvasShellRef}
-          selectedGraphPath={selectedGraphPath}
-          graphCanvasDragActive={graphCanvasDragActive}
-          connectingFrom={connectingFrom}
-          graphCanvasData={graphCanvasData}
-          graphCanvasNodes={graphCanvasNodes}
-          graphCanvasEdges={graphCanvasEdges}
-          edgeTypes={edgeTypes}
-          graphCanvasNodeSearchTerm={graphCanvasNodeSearchTerm}
-          graphCanvasNodeSearchHasMatches={graphCanvasNodeSearchHasMatches}
-          graphCanvasNodeSearchSelectedIndex={graphCanvasNodeSearchSelectedIndex}
-          graphCanvasNodeSearchMatchCount={graphCanvasNodeSearchMatchCount}
-          normalizedGraphCanvasNodeSearchTerm={normalizedGraphCanvasNodeSearchTerm}
-          graphCanvasResettingLayout={graphCanvasResettingLayout}
-          graphCanvasLayoutMode={graphCanvasLayoutMode}
-          overlayController={overlayController}
-          edgeDoubleClickAction={handleEdgeDoubleClickAction}
-          actions={graphCanvasSurfaceActions}
-        />
       )}
-    </div>
+    </>
   );
 }
 

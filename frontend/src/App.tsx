@@ -2115,25 +2115,78 @@ function FlowApp() {
   }
 
   async function handleSelectHome(): Promise<void> {
-    await flushPendingActiveEditorSave();
-    clearContextPanel();
-    setGraphCanvasError("");
-    setGraphCreateError("");
-    setSelectedCanvasNodeId("");
+    // Sync editor state synchronously so the form state is fresh.
+    syncDocumentBodyFromActiveEditor();
+    syncHomeBodyFromEditor();
+
+    // Cancel pending auto-save timers so they don't fire after we leave.
+    if (documentAutoSaveTimerRef.current !== null) {
+      clearTimeout(documentAutoSaveTimerRef.current);
+      documentAutoSaveTimerRef.current = null;
+    }
+    if (homeAutoSaveTimerRef.current !== null) {
+      clearTimeout(homeAutoSaveTimerRef.current);
+      homeAutoSaveTimerRef.current = null;
+    }
+
+    // Wait for any in-progress save to finish before starting a new one,
+    // but don't block the transition on it.
+    const pendingDocSave = documentSavePromiseRef.current;
+    const pendingHomeSave = homeSavePromiseRef.current;
+
     startTransition(() => {
+      clearContextPanel();
+      setGraphCanvasError("");
+      setGraphCreateError("");
+      setSelectedCanvasNodeId("");
       setActiveSurface({ kind: "home" });
     });
+
+    // Fire saves in the background — don't block navigation.
+    if (pendingDocSave !== null) {
+      void pendingDocSave;
+    }
+    if (selectedDocumentRef.current !== null) {
+      void handleSaveDocument(selectedDocumentRef.current, formStateRef.current);
+    }
+    if (pendingHomeSave !== null) {
+      void pendingHomeSave;
+    }
   }
 
   async function handleSelectGraph(graphPath: string): Promise<void> {
-    await flushPendingActiveEditorSave();
-    clearContextPanel();
-    setGraphCanvasError("");
-    setGraphCreateError("");
-    setSelectedCanvasNodeId("");
+    syncDocumentBodyFromActiveEditor();
+    syncHomeBodyFromEditor();
+
+    if (documentAutoSaveTimerRef.current !== null) {
+      clearTimeout(documentAutoSaveTimerRef.current);
+      documentAutoSaveTimerRef.current = null;
+    }
+    if (homeAutoSaveTimerRef.current !== null) {
+      clearTimeout(homeAutoSaveTimerRef.current);
+      homeAutoSaveTimerRef.current = null;
+    }
+
+    const pendingDocSave = documentSavePromiseRef.current;
+    const pendingHomeSave = homeSavePromiseRef.current;
+
     startTransition(() => {
+      clearContextPanel();
+      setGraphCanvasError("");
+      setGraphCreateError("");
+      setSelectedCanvasNodeId("");
       setActiveSurface({ kind: "graph", graphPath });
     });
+
+    if (pendingDocSave !== null) {
+      void pendingDocSave;
+    }
+    if (selectedDocumentRef.current !== null) {
+      void handleSaveDocument(selectedDocumentRef.current, formStateRef.current);
+    }
+    if (pendingHomeSave !== null) {
+      void pendingHomeSave;
+    }
   }
 
   function resolveDocumentGraphPath(documentId: string, fallbackGraphPath: string): string {

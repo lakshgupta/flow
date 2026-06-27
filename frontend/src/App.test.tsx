@@ -3949,7 +3949,7 @@ describe("App graph canvas flows", () => {
     await user.click(graphButton);
 
     expect(await screen.findByTestId("react-flow-mock")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Home body editor")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Home body editor").closest(".home-surface")?.parentElement).toHaveStyle({ display: "none" });
 
     // Navigate back to Home
     await user.click(screen.getByRole("button", { name: /^Home$/i }));
