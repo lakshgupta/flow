@@ -230,9 +230,9 @@ The sidebar Content tree supports dragging graph rows to reparent them:
 ## Editor Interaction & Thread UI
 
 ### Rich Text Editor Navigation (Obsidian-style)
-To improve rich-text editing usability, diagram views (such as Mermaid and Excalidraw sections) and code blocks allow transparent keyboard selection and cursor movement. 
+To improve rich-text editing usability, diagram views (such as Mermaid sections) and code blocks allow transparent keyboard selection and cursor movement. 
 
-- **Button Removal**: Redundant "Write above" and "Write below" buttons are omitted from the UI of code editor, Mermaid, and Excalidraw sections.
+- **Button Removal**: Redundant "Write above" and "Write below" buttons are omitted from the UI of code editor and Mermaid sections.
 - **Adjacent Navigation**: Standard keyboard arrow-key navigation (pressing `ArrowDown` at the bottom of a block above a diagram, or `ArrowUp` at the top of a block below a diagram) programmatically transitions the selection to a ProseMirror `NodeSelection` on the diagram.
 - **Traversal & Insertion**: When a diagram node is selected via `NodeSelection`, pressing `ArrowDown`/`ArrowUp` moves the focus beyond the diagram. If the boundary of the document is reached, a new default paragraph node is inserted and focused.
 

@@ -42,7 +42,7 @@ export function defineEditorExtension(
     defineBackgroundColor(),
     definePlaceholder({ placeholder }),
     // Keep the Shiki extension mounted but avoid parsing custom diagram languages
-    // (for example `excalidraw`) as regular code blocks.
+    // as regular code blocks.
     // `nodeTypes` here is the list of ProseMirror node types that receive
     // Shiki syntax highlighting decorations, not a list of languages. The
     // default is `['codeBlock', 'mathBlock']`, which is what we want.

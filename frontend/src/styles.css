@@ -3907,7 +3907,8 @@ pre {
   border-radius: 1.1rem;
   background: var(--surface-warm);
   box-shadow: var(--shadow-card);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .ProseMirror-selectednode .flow-diagram-block,
@@ -4033,6 +4034,10 @@ pre {
   gap: 0.55rem;
 }
 
+.flow-diagram-block-source.hidden {
+  display: none;
+}
+
 .flow-diagram-block-source-label {
   font-size: 0.78rem;
   font-weight: 600;
@@ -4072,118 +4077,6 @@ pre {
   border-radius: 0.9rem;
   background: rgba(255, 255, 255, 0.4);
   color: var(--muted-foreground);
-}
-
-.flow-excalidraw-diagram {
-  margin: 0.35rem 0 0;
-  border-radius: 0.9rem;
-  background: color-mix(in srgb, var(--card) 92%, var(--accent) 8%);
-  overflow: hidden;
-}
-
-.flow-excalidraw-diagram-inline {
-  padding: 0.5rem;
-}
-
-.flow-excalidraw-diagram-editor {
-  min-height: 24rem;
-}
-
-.flow-excalidraw-diagram-loading,
-.flow-excalidraw-diagram-error {
-  border-style: dashed;
-}
-
-.flow-excalidraw-diagram-message,
-.flow-excalidraw-diagram-detail {
-  margin: 0;
-}
-
-.flow-excalidraw-diagram-message {
-  padding: 0.9rem;
-  font-size: 0.88rem;
-  color: var(--muted-foreground);
-}
-
-.flow-excalidraw-diagram-detail {
-  padding: 0 0.9rem 0.9rem;
-  font-size: 0.8rem;
-  color: var(--destructive);
-}
-
-.flow-excalidraw-diagram svg {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-
-.flow-excalidraw-editor-shell {
-  position: relative;
-  min-height: 24rem;
-  min-width: 1000px;
-}
-
-/*
- * Excalidraw desktop-mode enforcement
- *
- * Excalidraw enters mobile mode (adds excalidraw--mobile) when the container
- * width is below its internal breakpoint (~960 px). In mobile mode the toolbar
- * containers switch from position:absolute to position:static, stacking in
- * document flow and pushing the canvas thousands of pixels below the shell;
- * the shell's overflow:hidden then hides it entirely.
- *
- * Solution: force min-width above the breakpoint so Excalidraw always renders
- * its desktop UI. The shell's overflow:hidden clips any visual overflow.
- * This app targets desktop only, so the mobile UI is never appropriate.
- */
-.flow-excalidraw-editor-shell .excalidraw {
-  position: relative !important;
-  height: 100% !important;
-  overflow: hidden !important;
-  /* Must exceed Excalidraw's mobile breakpoint (~960 px). The outer shell
-     clips any excess width so only the shell area is visible. */
-  min-width: 1000px !important;
-}
-
-.flow-excalidraw-resize-handle {
-  position: absolute;
-  left: 50%;
-  bottom: 0.5rem;
-  z-index: 3;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.25rem;
-  height: 1.25rem;
-  margin-left: -1.125rem;
-  border: 0;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--card) 78%, var(--foreground) 22%);
-  color: color-mix(in srgb, var(--foreground) 60%, transparent);
-  cursor: ns-resize;
-  opacity: 0;
-  transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
-}
-
-.flow-excalidraw-editor-shell:hover .flow-excalidraw-resize-handle,
-.flow-excalidraw-editor-shell:focus-within .flow-excalidraw-resize-handle {
-  opacity: 1;
-}
-
-.flow-excalidraw-resize-handle:hover,
-.flow-excalidraw-resize-handle:focus-visible {
-  background: color-mix(in srgb, var(--accent) 28%, var(--card) 72%);
-  color: var(--foreground);
-}
-
-.flow-excalidraw-resize-handle:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--ring) 80%, transparent);
-  outline-offset: 2px;
-}
-
-
-.thread-panel-rendered-markdown pre[data-excalidraw-rendered="true"] {
-  display: none;
 }
 
 /* Date links inserted via the / trigger */

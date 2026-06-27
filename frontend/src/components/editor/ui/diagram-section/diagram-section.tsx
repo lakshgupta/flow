@@ -1,15 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { ReactNodeViewProps } from "prosekit/react";
 import { IconChevronDown, IconChevronUp, IconTrash } from "@tabler/icons-react";
 
 import { MermaidDiagram } from "../../../MermaidDiagram";
-import { LazyExcalidraw } from "../../../LazyExcalidraw";
 import { joinClassNames } from "../../../ui/utils";
 
-type SectionLanguage = "mermaid" | "excalidraw";
+type SectionLanguage = "mermaid";
 
 function isSectionLanguage(language: string | null | undefined): language is SectionLanguage {
-  return language === "mermaid" || language === "excalidraw";
+  return language === "mermaid";
 }
 
 const SECTION_LABELS: Record<SectionLanguage, { title: string; placeholder: string; toggle: string; sourceLabel: string }> = {
@@ -19,43 +18,21 @@ const SECTION_LABELS: Record<SectionLanguage, { title: string; placeholder: stri
     toggle: "Toggle Mermaid source editor",
     sourceLabel: "Mermaid source",
   },
-  excalidraw: {
-    title: "Excalidraw Diagram",
-    placeholder: "Untitled Excalidraw diagram",
-    toggle: "Toggle Excalidraw source editor",
-    sourceLabel: "Excalidraw source",
-  },
 };
 
-function splitTitleAndSource(text: string): { title: string; source: string } {
-  const newlineIndex = text.indexOf("\n");
-  if (newlineIndex === -1) {
-    return { title: "", source: text };
-  }
-  return {
-    title: text.slice(0, newlineIndex).trim(),
-    source: text.slice(newlineIndex + 1).replace(/^\n+/, ""),
-  };
-}
-
-function joinTitleAndSource(title: string, source: string): string {
-  const trimmedTitle = title.trim();
-  const trimmedSource = source.replace(/^\n+/, "").replace(/\n+$/, "");
-  if (trimmedTitle === "" && trimmedSource === "") return "";
-  if (trimmedTitle === "") return trimmedSource;
-  if (trimmedSource === "") return trimmedTitle;
-  return `${trimmedTitle}\n${trimmedSource}`;
-}
-
 /**
- * NodeView that wraps a Mermaid or Excalidraw code block as a labeled,
- * deletable, keyboard-navigable section.
+ * NodeView that wraps a Mermaid code block as a labeled, deletable,
+ * keyboard-navigable section.
+ *
+ * The title is stored as the first line of the code block text for persistence.
+ * It is extracted ONCE on mount — subsequent source editor changes never
+ * overwrite the title. Only the title input field can update it.
  *
  * - Title bar: editable title input on the left, source-edit toggle + delete
  *   (trash) button on the right.
- * - Body: the rendered diagram (Mermaid SVG or Excalidraw canvas).
+ * - Body: the rendered diagram (Mermaid SVG).
  * - Source editor: collapsible <pre> below the body that holds the code block
- *   contentRef so the user can edit the Mermaid/Excalidraw source directly.
+ *   contentRef so the user can edit the Mermaid source directly.
  * - Keyboard: Alt+ArrowUp/Down swaps the section with its previous/next sibling.
  */
 export default function DiagramSection(props: ReactNodeViewProps) {
@@ -66,24 +43,30 @@ export default function DiagramSection(props: ReactNodeViewProps) {
   const isSection = isSectionLanguage(language);
   const labels = isSection ? SECTION_LABELS[language] : null;
 
-  const { title, source } = useMemo(() => splitTitleAndSource(fullText), [fullText]);
-  const [draftTitle, setDraftTitle] = useState<string>(title);
+  // Extract title ONCE on mount from persisted code block text.
+  // After mount, title is only updated when the user commits via the title input.
+  const [committedTitle, setCommittedTitle] = useState<string>(() => {
+    const newlineIndex = fullText.indexOf("\n");
+    return newlineIndex === -1 ? "" : fullText.slice(0, newlineIndex).trim();
+  });
+  const [draftTitle, setDraftTitle] = useState<string>(committedTitle);
+
+  // Source is the full text minus the committed title line
+  const source = useMemo(() => {
+    if (!committedTitle) return fullText;
+    const prefix = committedTitle + "\n";
+    return fullText.startsWith(prefix) ? fullText.slice(prefix.length) : fullText;
+  }, [fullText, committedTitle]);
+
   // Auto-open source editor when a new diagram block is inserted (empty source)
   const [sourceOpen, setSourceOpen] = useState<boolean>(source.trim() === "");
-  const lastSyncedTitleRef = useRef<string>(title);
-
-  useEffect(() => {
-    if (title !== lastSyncedTitleRef.current) {
-      setDraftTitle(title);
-      lastSyncedTitleRef.current = title;
-    }
-  }, [title]);
 
   const commitTitle = useCallback(
     (nextTitle: string) => {
       if (!isSectionLanguage(language)) return;
-      if (nextTitle === title) return;
-      const next = joinTitleAndSource(nextTitle, source);
+      const trimmed = nextTitle.trim();
+      if (trimmed === committedTitle) return;
+      const next = trimmed ? `${trimmed}\n${source}` : source;
       const pos = typeof getPos === "function" ? getPos() : null;
       if (pos === null) return;
       const codeBlockType = view.state.schema.nodes.codeBlock;
@@ -94,8 +77,9 @@ export default function DiagramSection(props: ReactNodeViewProps) {
       );
       const tr = view.state.tr.replaceWith(pos, pos + node.nodeSize, newNode);
       view.dispatch(tr);
+      setCommittedTitle(trimmed);
     },
-    [language, title, source, getPos, view, node],
+    [language, committedTitle, source, getPos, view, node],
   );
 
   const handleTitleBlur = useCallback(() => {
@@ -109,11 +93,11 @@ export default function DiagramSection(props: ReactNodeViewProps) {
         commitTitle(draftTitle);
         (event.currentTarget as HTMLInputElement).blur();
       } else if (event.key === "Escape") {
-        setDraftTitle(title);
+        setDraftTitle(committedTitle);
         (event.currentTarget as HTMLInputElement).blur();
       }
     },
-    [commitTitle, draftTitle, title],
+    [commitTitle, draftTitle, committedTitle],
   );
 
   const handleDelete = useCallback(() => {
@@ -123,25 +107,6 @@ export default function DiagramSection(props: ReactNodeViewProps) {
     view.dispatch(tr);
     view.focus();
   }, [getPos, view, node]);
-
-  /** Write Excalidraw canvas changes back to the code block, preserving the
-   *  title line. Updates content in-place to avoid destroying the node view. */
-  const handleExcalidrawSourceChange = useCallback(
-    (nextSource: string) => {
-      const next = joinTitleAndSource(title, nextSource)
-      const pos = typeof getPos === "function" ? getPos() : null
-      if (pos === null) return
-      // Update text content in-place: replace content inside the code block
-      // (pos+1 to pos+node.nodeSize-1) rather than replacing the entire node,
-      // which would destroy the Excalidraw component.
-      const contentStart = pos + 1
-      const contentEnd = pos + node.nodeSize - 1
-      const tr = view.state.tr
-      tr.insertText(next, contentStart, contentEnd)
-      view.dispatch(tr)
-    },
-    [title, getPos, view, node],
-  )
 
   const handleSectionKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -205,19 +170,21 @@ export default function DiagramSection(props: ReactNodeViewProps) {
           />
         </div>
         <div className="flow-diagram-block-actions">
-          <button
-            aria-label={labels.toggle}
-            aria-pressed={sourceOpen}
-            className={joinClassNames(
-              "flow-diagram-block-action",
-              sourceOpen && "bg-muted text-foreground",
-            )}
-            onClick={() => setSourceOpen((current) => !current)}
-            type="button"
-          >
-            <ChevronIcon size={14} stroke={1.75} />
-            <span>Source</span>
-          </button>
+          {language === "mermaid" && (
+            <button
+              aria-label={labels.toggle}
+              aria-pressed={sourceOpen}
+              className={joinClassNames(
+                "flow-diagram-block-action",
+                sourceOpen && "bg-muted text-foreground",
+              )}
+              onClick={() => setSourceOpen((current) => !current)}
+              type="button"
+            >
+              <ChevronIcon size={14} stroke={1.75} />
+              <span>Source</span>
+            </button>
+          )}
           <button
             aria-label={`Delete ${labels.title.toLowerCase()}`}
             className="flow-diagram-block-action flow-diagram-block-action-destructive"
@@ -230,24 +197,20 @@ export default function DiagramSection(props: ReactNodeViewProps) {
       </div>
       <div className="flow-diagram-block-body" contentEditable={false}>
         <div className="flow-diagram-block-preview">
-          {language === "mermaid" ? (
-            <MermaidDiagram source={source} />
-          ) : (
-            <LazyExcalidraw source={source} onSourceChange={handleExcalidrawSourceChange} />
-          )}
+          <MermaidDiagram source={source} />
         </div>
       </div>
       <div className={sourceOpen ? 'flow-diagram-block-source' : 'flow-diagram-block-source hidden'}>
-        <label className="flow-diagram-block-source-label" contentEditable={false}>
-          {labels.sourceLabel}
-        </label>
-        <pre
-          ref={contentRef}
-          aria-label={labels.sourceLabel}
-          className="flow-diagram-source"
-          data-language={language}
-        />
-      </div>
+          <label className="flow-diagram-block-source-label" contentEditable={false}>
+            {labels.sourceLabel}
+          </label>
+          <pre
+            ref={contentRef}
+            aria-label={labels.sourceLabel}
+            className="flow-diagram-source"
+            data-language={language}
+          />
+        </div>
     </div>
   );
 }
