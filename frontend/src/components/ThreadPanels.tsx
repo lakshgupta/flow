@@ -97,6 +97,26 @@ export type ThreadPanelStackProps = {
   actions: ThreadPanelActions;
 };
 
+/** Open an external URL in the system browser.
+ *  In Wails desktop mode, `window.runtime.BrowserOpenURL` opens the URL in the
+ *  user's default browser. In browser mode, a temporary <a> click is used. */
+function openExternalLink(href: string) {
+  const runtime = typeof window !== "undefined"
+    ? (window as Record<string, unknown>).runtime as Record<string, ((url: string) => void) | undefined> | undefined
+    : undefined;
+  if (typeof runtime?.BrowserOpenURL === "function") {
+    runtime.BrowserOpenURL(href);
+    return;
+  }
+  const a = document.createElement("a");
+  a.href = href;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 function handleReadonlyPanelClick(
   event: ReactMouseEvent<HTMLDivElement>,
   sourceDocumentId: string,
@@ -114,6 +134,13 @@ function handleReadonlyPanelClick(
   }
 
   const href = anchor.getAttribute("href") ?? anchor.href;
+
+  // Cmd/Ctrl+Click on a regular URL opens it in the browser
+  if ((event.metaKey || event.ctrlKey) && href && !href.startsWith("#") && !href.startsWith("/api/files")) {
+    event.preventDefault();
+    openExternalLink(href);
+    return;
+  }
 
   const dateResult = parseFlowDateHref(href);
   if (dateResult !== null) {
