@@ -103,7 +103,7 @@ function MiddleContentComponent({
 
   return (
     <>
-      <div style={isHome ? undefined : { display: "none" }}>
+      <div style={isHome ? { flex: "1 1 auto", display: "flex", minHeight: 0 } : { display: "none" }}>
         <HomeSurface
           homeMutationError={homeMutationError}
           homeTOCVisible={homeTOCVisible}
