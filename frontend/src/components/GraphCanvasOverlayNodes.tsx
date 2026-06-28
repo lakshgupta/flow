@@ -1,5 +1,5 @@
 import type { CSSProperties, KeyboardEvent, PointerEvent as ReactPointerEvent, RefObject } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { ArrowDownToLine, ArrowUpToLine, File as FileIcon, Download, ExternalLink } from "lucide-react";
 
 import { graphDirectoryColorHex } from "../lib/graphColors";
@@ -52,35 +52,21 @@ export function GraphCanvasOverlayNodes({
     nextHeight: number;
   } | null>(null);
 
-  useEffect(() => {
-    setDraftDescriptions((current) => {
-      const next: Record<string, string> = {};
-      let changed = false;
-      for (const node of graphCanvasNodes) {
-        if (Object.prototype.hasOwnProperty.call(current, node.id)) {
-          next[node.id] = current[node.id] ?? "";
-          continue;
-        }
-        next[node.id] = node.data.description ?? "";
-        changed = true;
-      }
-
-      if (!changed && Object.keys(current).length === Object.keys(next).length) {
-        return current;
-      }
-      return next;
-    });
-  }, [graphCanvasNodes]);
-
   function handleDescriptionCommit(nodeId: string, fallbackDescription: string): void {
-    const draft = draftDescriptions[nodeId] ?? fallbackDescription;
-    const nextDescription = draft.trim();
-    const currentDescription = (fallbackDescription ?? "").trim();
-    if (nextDescription === currentDescription) {
+    const draft = draftDescriptions[nodeId];
+    if (draft === undefined) {
       return;
     }
-    setDraftDescriptions((current) => ({ ...current, [nodeId]: nextDescription }));
-    onNodeDescriptionSave(nodeId, nextDescription);
+    const nextDescription = draft.trim();
+    const currentDescription = (fallbackDescription ?? "").trim();
+    if (nextDescription !== currentDescription) {
+      onNodeDescriptionSave(nodeId, nextDescription);
+    }
+    setDraftDescriptions((current) => {
+      const next = { ...current };
+      delete next[nodeId];
+      return next;
+    });
   }
 
   function handleDescriptionKeyDown(event: KeyboardEvent<HTMLInputElement>, nodeId: string, fallbackDescription: string): void {
@@ -94,7 +80,11 @@ export function GraphCanvasOverlayNodes({
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
-      setDraftDescriptions((current) => ({ ...current, [nodeId]: fallbackDescription ?? "" }));
+      setDraftDescriptions((current) => {
+        const next = { ...current };
+        delete next[nodeId];
+        return next;
+      });
       (event.currentTarget as HTMLInputElement).blur();
     }
   }

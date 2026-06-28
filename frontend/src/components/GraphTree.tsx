@@ -1,5 +1,5 @@
 import { CheckSquare, ChevronDown, ChevronRight, EyeOff, FileText, FolderPlus, Home, Layers, Minus, MoreHorizontal, Paintbrush, Pencil, Plus, RefreshCw, Star, Terminal, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import {
   DropdownMenu,
@@ -88,7 +88,8 @@ type FileTreeRowProps = {
   onSetNodeColor: (documentId: string, color: string | null) => void;
   onSetGraphCanvasDisabled: (graphPath: string, disabled: boolean) => void;
   onRebuildIndex: () => void;
-  collapsed: Set<string>;
+  collapsedSet: Set<string>;
+  isCollapsed: boolean;
   onToggleCollapse: (path: string) => void;
   isFavorite: (path: string) => boolean;
   toggleFavorite: (path: string) => void;
@@ -110,7 +111,7 @@ function graphRowStyle(color?: string): CSSProperties | undefined {
   return { "--graph-row-color": colorHex } as CSSProperties;
 }
 
-function FileTreeRow({
+function FileTreeRowComponent({
   node,
   depth,
   activeSurface,
@@ -130,7 +131,8 @@ function FileTreeRow({
   onSetNodeColor,
   onSetGraphCanvasDisabled,
   onRebuildIndex,
-  collapsed,
+  collapsedSet,
+  isCollapsed,
   onToggleCollapse,
   isFavorite,
   toggleFavorite,
@@ -148,7 +150,6 @@ function FileTreeRow({
   const files = node.data.files ?? [];
   const hasChildren = node.children.length > 0;
   const hasExpandableContent = hasChildren || files.length > 0;
-  const isCollapsed = collapsed.has(node.data.graphPath);
   const graphColorStyle = graphRowStyle(node.data.color);
   const isDropTarget = draggedItem !== null
     && dropTargetGraphPath === node.data.graphPath
@@ -478,7 +479,8 @@ function FileTreeRow({
             onSetNodeColor={onSetNodeColor}
             onSetGraphCanvasDisabled={onSetGraphCanvasDisabled}
             onRebuildIndex={onRebuildIndex}
-            collapsed={collapsed}
+            collapsedSet={collapsedSet}
+            isCollapsed={collapsedSet.has(child.data.graphPath)}
             onToggleCollapse={onToggleCollapse}
             isFavorite={isFavorite}
             toggleFavorite={toggleFavorite}
@@ -494,6 +496,8 @@ function FileTreeRow({
     </>
   );
 }
+
+export const FileTreeRow = memo(FileTreeRowComponent);
 
 type GraphTreeProps = {
   graphTree: GraphTreeResponse | null;
@@ -538,8 +542,8 @@ export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSele
   }, [addingGraph]);
 
   const allGraphs = graphTree?.graphs ?? [];
-  const favoriteGraphs = allGraphs.filter((g) => isFavorite(g.graphPath));
-  const fileTree = buildFileTree(allGraphs);
+  const favoriteGraphs = useMemo(() => allGraphs.filter((g) => isFavorite(g.graphPath)), [allGraphs, isFavorite]);
+  const fileTree = useMemo(() => buildFileTree(allGraphs), [allGraphs]);
 
   // Collapse all graphs on initial load so the sidebar starts tidy.
   // Uses a ref to ensure this only runs once, even if allGraphs changes.
@@ -775,7 +779,8 @@ export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSele
                     onSetNodeColor={onSetNodeColor}
                     onSetGraphCanvasDisabled={onSetGraphCanvasDisabled}
                     onRebuildIndex={onRebuildIndex}
-                    collapsed={collapsed}
+                    collapsedSet={collapsed}
+                    isCollapsed={collapsed.has(node.data.graphPath)}
                     onToggleCollapse={handleToggleCollapse}
                     isFavorite={isFavorite}
                     toggleFavorite={toggleFavorite}

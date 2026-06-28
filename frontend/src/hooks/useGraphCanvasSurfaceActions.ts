@@ -1,6 +1,7 @@
 import {
   useCallback,
   useMemo,
+  useRef,
   type MutableRefObject,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -155,6 +156,9 @@ export function useGraphCanvasSurfaceActions({
     handleSetNodeColor,
     handleCanvasDeleteNode,
   });
+
+  // Ref to track drag position during active drag, avoiding state updates on every frame
+  const dragPositionRef = useRef<{ nodeId: string; position: GraphCanvasPosition } | null>(null);
 
   const handleGraphCanvasClearHoveredTooltip = useCallback((edgeId: string) => {
     setHoveredEdgeTooltip((current) => current?.edgeId === edgeId ? null : current);
@@ -322,14 +326,20 @@ export function useGraphCanvasSurfaceActions({
   }, []);
 
   const handleGraphCanvasNodeDragSurface = useCallback((nodeId: string, position: GraphCanvasPosition) => {
-    actionRefs.current.updateGraphCanvasNodePosition(nodeId, position);
+    // Store drag position in ref to avoid state updates on every frame
+    dragPositionRef.current = { nodeId, position };
     actionRefs.current.updateIntersectingNodes(nodeId, position);
   }, []);
 
   const handleGraphCanvasNodeDragStopSurface = useCallback((nodeId: string, position: GraphCanvasPosition) => {
-    actionRefs.current.updateGraphCanvasNodePosition(nodeId, position);
-    actionRefs.current.updateIntersectingNodes(nodeId, position);
-    void actionRefs.current.persistGraphCanvasPosition(nodeId, position);
+    // Use the final position from ref if available, otherwise use the passed position
+    const finalPosition = dragPositionRef.current?.nodeId === nodeId
+      ? dragPositionRef.current.position
+      : position;
+    actionRefs.current.updateGraphCanvasNodePosition(nodeId, finalPosition);
+    actionRefs.current.updateIntersectingNodes(nodeId, finalPosition);
+    void actionRefs.current.persistGraphCanvasPosition(nodeId, finalPosition);
+    dragPositionRef.current = null;
   }, []);
 
   const handleGraphCanvasContextMenuSurface = useCallback((x: number, y: number) => {
