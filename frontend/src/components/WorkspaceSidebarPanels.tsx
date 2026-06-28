@@ -1,5 +1,5 @@
 import { GalleryVerticalEnd } from "lucide-react";
-import { memo, useCallback, useRef } from "react";
+import { memo } from "react";
 
 import { GraphTree } from "./GraphTree";
 import { Label } from "./ui/label";
@@ -14,14 +14,6 @@ type WorkspaceSelectorPanelProps = {
 };
 
 function WorkspaceSelectorPanelComponent({ workspace, switchingWorkspace, actions }: WorkspaceSelectorPanelProps) {
-  const lastFiredRef = useRef("");
-
-  const handleChange = useCallback((value: string) => {
-    if (value === lastFiredRef.current) return;
-    lastFiredRef.current = value;
-    actions.selectWorkspace(value);
-  }, [actions]);
-
   if (workspace === null || !workspace.workspaceSelectionEnabled) {
     return null;
   }
@@ -37,10 +29,7 @@ function WorkspaceSelectorPanelComponent({ workspace, switchingWorkspace, action
         className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
         value={workspace.workspacePath}
         onChange={(event) => {
-          handleChange(event.target.value);
-        }}
-        onInput={(event) => {
-          handleChange((event.target as HTMLSelectElement).value);
+          actions.selectWorkspace(event.target.value);
         }}
         disabled={switchingWorkspace}
       >
