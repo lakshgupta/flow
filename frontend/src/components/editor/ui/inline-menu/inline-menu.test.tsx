@@ -101,13 +101,15 @@ describe('InlineMenu', () => {
 
     render(<InlineMenu />)
 
-    const headingSelect = screen.getByLabelText('Heading size')
-    expect(headingSelect).toHaveValue('0')
+    const headingButton = screen.getByRole('button', { name: /Normal.*Heading|Heading.*Normal/i })
+    expect(headingButton).toHaveTextContent('Normal')
 
-    await user.selectOptions(headingSelect, '2')
+    await user.click(headingButton)
+    await user.click(screen.getByRole('button', { name: 'Heading 2' }))
     expect(setHeading).toHaveBeenCalledWith({ level: 2 })
 
-    await user.selectOptions(headingSelect, '0')
+    await user.click(headingButton)
+    await user.click(screen.getByRole('button', { name: 'Normal' }))
     expect(setParagraph).toHaveBeenCalled()
   })
 })

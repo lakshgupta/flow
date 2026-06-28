@@ -214,9 +214,11 @@ export default function InlineMenu() {
   const [linkMenuOpen, setLinkMenuOpen] = useState(false)
   const [textColorMenuOpen, setTextColorMenuOpen] = useState(false)
   const [backgroundColorMenuOpen, setBackgroundColorMenuOpen] = useState(false)
+  const [headingMenuOpen, setHeadingMenuOpen] = useState(false)
   const toggleLinkMenuOpen = () => setLinkMenuOpen((open) => !open)
   const toggleTextColorMenuOpen = () => setTextColorMenuOpen((open) => !open)
   const toggleBackgroundColorMenuOpen = () => setBackgroundColorMenuOpen((open) => !open)
+  const toggleHeadingMenuOpen = () => setHeadingMenuOpen((open) => !open)
 
   const handleLinkUpdate = (href?: string) => {
     if (href) {
@@ -255,6 +257,7 @@ export default function InlineMenu() {
 
   const applyHeadingLevel = (level: 0 | 1 | 2 | 3) => {
     items.heading?.command(level)
+    setHeadingMenuOpen(false)
     editor.focus()
   }
 
@@ -268,6 +271,7 @@ export default function InlineMenu() {
             setLinkMenuOpen(false)
             setTextColorMenuOpen(false)
             setBackgroundColorMenuOpen(false)
+            setHeadingMenuOpen(false)
           }
         }}
       >
@@ -374,22 +378,47 @@ export default function InlineMenu() {
         )}
 
         {items.heading && items.heading.canExec && (
-          <label className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-50">
-            <span className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Heading</span>
-            <select
-              aria-label="Heading size"
-              className="min-w-28 bg-transparent text-sm outline-none"
-              value={String(items.heading.level)}
-              onChange={(event) => applyHeadingLevel(Number(event.target.value) as 0 | 1 | 2 | 3)}
-            >
-              <option value="0">Normal</option>
-              <option value="1">Heading 1</option>
-              <option value="2">Heading 2</option>
-              <option value="3">Heading 3</option>
-            </select>
-          </label>
+          <Button
+            pressed={headingMenuOpen}
+            onClick={toggleHeadingMenuOpen}
+            tooltip="Heading"
+          >
+            <span className="flex items-center gap-1 text-xs font-medium">
+              {items.heading.level === 0 ? 'Normal' : `H${items.heading.level}`}
+            </span>
+          </Button>
         )}
       </InlinePopover>
+
+      {items.heading && items.heading.canExec && (
+        <InlinePopover
+          placement="bottom"
+          defaultOpen={false}
+          open={headingMenuOpen}
+          onOpenChange={setHeadingMenuOpen}
+          className="z-10 box-border border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-lg [&:not([data-state])]:hidden relative flex flex-col rounded-lg p-1 gap-y-0.5 items-stretch"
+        >
+          {[
+            { level: 0 as const, label: 'Normal' },
+            { level: 1 as const, label: 'Heading 1' },
+            { level: 2 as const, label: 'Heading 2' },
+            { level: 3 as const, label: 'Heading 3' },
+          ].map((option) => (
+            <button
+              key={option.level}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => applyHeadingLevel(option.level)}
+              className={`flex items-center rounded-md px-3 py-1.5 text-sm text-left whitespace-nowrap ${
+                items.heading.level === option.level
+                  ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-50 font-medium'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </InlinePopover>
+      )}
 
       {items.link && (
         <InlinePopover
