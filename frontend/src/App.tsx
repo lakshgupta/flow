@@ -2756,7 +2756,7 @@ function FlowApp() {
     }
 
     try {
-      setMutationError("");
+      setHomeMutationError("");
       setSwitchingWorkspace(true);
       await selectWorkspace(normalizedNextPath);
       const snapshot = await loadWorkspaceSnapshot();
@@ -2768,7 +2768,7 @@ function FlowApp() {
       setGraphCanvasReloadToken((current) => current + 1);
       void refreshCalendarDocumentList();
     } catch (err) {
-      setMutationError(toErrorMessage(err));
+      setHomeMutationError(toErrorMessage(err));
     } finally {
       setSwitchingWorkspace(false);
     }
