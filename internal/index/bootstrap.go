@@ -932,16 +932,11 @@ func graphPathForDocument(relativePath string, document markdown.Document) strin
 		return graphPath
 	}
 
-	switch value := document.(type) {
-	case markdown.NoteDocument:
-		return value.Metadata.Graph
-	case markdown.TaskDocument:
-		return value.Metadata.Graph
-	case markdown.CommandDocument:
-		return value.Metadata.Graph
-	default:
+	if document.Kind() == markdown.HomeType {
 		return ""
 	}
+
+	return document.Graph()
 }
 
 func featureSlugFromGraphPath(graphPath string) string {
@@ -955,8 +950,7 @@ func featureSlugFromGraphPath(graphPath string) string {
 }
 
 func looksLikeFlowDocument(data []byte) bool {
-	normalized := strings.ReplaceAll(string(data), "\r\n", "\n")
-	return strings.HasPrefix(normalized, "---\n")
+	return markdown.LooksLikeFlowDocument(data)
 }
 
 func parseHomeIndexedDocument(data []byte) (markdown.HomeDocument, error) {
@@ -996,14 +990,7 @@ func parseHomeIndexedDocument(data []byte) (markdown.HomeDocument, error) {
 }
 
 func deriveHomeTitle(body string) string {
-	for _, line := range strings.Split(body, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "# ") {
-			return strings.TrimSpace(strings.TrimPrefix(trimmed, "# "))
-		}
-	}
-
-	return "Home"
+	return markdown.DeriveHomeTitle(body)
 }
 
 func insertReferences(transaction *sql.Tx, documentID string, referenceIDs []string) error {
@@ -1056,16 +1043,5 @@ func canonicalNoteLink(leftNoteID string, rightNoteID string) (string, string) {
 }
 
 func indexedDocumentIdentity(document markdown.Document) (string, markdown.DocumentType, bool) {
-	switch value := document.(type) {
-	case markdown.HomeDocument:
-		return value.Metadata.ID, value.Metadata.Type, true
-	case markdown.NoteDocument:
-		return value.Metadata.ID, value.Metadata.Type, true
-	case markdown.TaskDocument:
-		return value.Metadata.ID, value.Metadata.Type, true
-	case markdown.CommandDocument:
-		return value.Metadata.ID, value.Metadata.Type, true
-	default:
-		return "", "", false
-	}
+	return document.ID(), document.Kind(), true
 }

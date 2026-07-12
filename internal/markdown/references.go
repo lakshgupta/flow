@@ -198,16 +198,10 @@ func collectReferenceTargets(documents []WorkspaceDocument) ([]ReferenceTarget, 
 }
 
 func referenceTargetFromDocument(item WorkspaceDocument) (ReferenceTarget, bool) {
-	switch document := item.Document.(type) {
-	case NoteDocument:
-		return buildReferenceTarget(item.Path, document.Metadata.ID, document.Metadata.Type, document.Metadata.Graph, document.Metadata.Title), true
-	case TaskDocument:
-		return buildReferenceTarget(item.Path, document.Metadata.ID, document.Metadata.Type, document.Metadata.Graph, document.Metadata.Title), true
-	case CommandDocument:
-		return buildReferenceTarget(item.Path, document.Metadata.ID, document.Metadata.Type, document.Metadata.Graph, document.Metadata.Title), true
-	default:
+	if item.Document.Kind() == HomeType {
 		return ReferenceTarget{}, false
 	}
+	return buildReferenceTarget(item.Path, item.Document.ID(), item.Document.Kind(), item.Document.Graph(), item.Document.Title()), true
 }
 
 func buildReferenceTarget(path string, id string, documentType DocumentType, graphPath string, title string) ReferenceTarget {

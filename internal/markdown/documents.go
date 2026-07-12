@@ -143,8 +143,18 @@ type CommandDocument struct {
 // Document is the shared interface for parsed Flow Markdown documents.
 type Document interface {
 	Kind() DocumentType
-	body() string
+	BodyContent() string
 	metadata() any
+	MetadataCommon() CommonFields
+	ID() string
+	Graph() string
+	Title() string
+	Description() string
+	Tags() []string
+	CreatedAt() string
+	UpdatedAt() string
+	Color() string
+	Links() []NodeLink
 }
 
 func (document NoteDocument) Kind() DocumentType    { return NoteType }
@@ -152,15 +162,70 @@ func (document TaskDocument) Kind() DocumentType    { return TaskType }
 func (document CommandDocument) Kind() DocumentType { return CommandType }
 func (document HomeDocument) Kind() DocumentType    { return HomeType }
 
-func (document HomeDocument) body() string    { return document.Body }
 func (document NoteDocument) body() string    { return document.Body }
 func (document TaskDocument) body() string    { return document.Body }
 func (document CommandDocument) body() string { return document.Body }
+func (document HomeDocument) body() string    { return document.Body }
 
-func (document HomeDocument) metadata() any    { return document.Metadata }
 func (document NoteDocument) metadata() any    { return document.Metadata }
 func (document TaskDocument) metadata() any    { return document.Metadata }
 func (document CommandDocument) metadata() any { return document.Metadata }
+func (document HomeDocument) metadata() any    { return document.Metadata }
+
+func (document NoteDocument) BodyContent() string    { return document.Body }
+func (document TaskDocument) BodyContent() string    { return document.Body }
+func (document CommandDocument) BodyContent() string { return document.Body }
+func (document HomeDocument) BodyContent() string    { return document.Body }
+
+func (document NoteDocument) MetadataCommon() CommonFields    { return document.Metadata.CommonFields }
+func (document TaskDocument) MetadataCommon() CommonFields    { return document.Metadata.CommonFields }
+func (document CommandDocument) MetadataCommon() CommonFields { return document.Metadata.CommonFields }
+func (document HomeDocument) MetadataCommon() CommonFields    { return document.Metadata }
+
+func (document NoteDocument) ID() string    { return document.Metadata.ID }
+func (document TaskDocument) ID() string    { return document.Metadata.ID }
+func (document CommandDocument) ID() string { return document.Metadata.ID }
+func (document HomeDocument) ID() string    { return document.Metadata.ID }
+
+func (document NoteDocument) Graph() string    { return document.Metadata.Graph }
+func (document TaskDocument) Graph() string    { return document.Metadata.Graph }
+func (document CommandDocument) Graph() string { return document.Metadata.Graph }
+func (document HomeDocument) Graph() string    { return document.Metadata.Graph }
+
+func (document NoteDocument) Title() string    { return document.Metadata.Title }
+func (document TaskDocument) Title() string    { return document.Metadata.Title }
+func (document CommandDocument) Title() string { return document.Metadata.Title }
+func (document HomeDocument) Title() string    { return document.Metadata.Title }
+
+func (document NoteDocument) Description() string    { return document.Metadata.Description }
+func (document TaskDocument) Description() string    { return document.Metadata.Description }
+func (document CommandDocument) Description() string { return document.Metadata.Description }
+func (document HomeDocument) Description() string    { return document.Metadata.Description }
+
+func (document NoteDocument) Tags() []string    { return document.Metadata.Tags }
+func (document TaskDocument) Tags() []string    { return document.Metadata.Tags }
+func (document CommandDocument) Tags() []string { return document.Metadata.Tags }
+func (document HomeDocument) Tags() []string    { return document.Metadata.Tags }
+
+func (document NoteDocument) CreatedAt() string    { return document.Metadata.CreatedAt }
+func (document TaskDocument) CreatedAt() string    { return document.Metadata.CreatedAt }
+func (document CommandDocument) CreatedAt() string { return document.Metadata.CreatedAt }
+func (document HomeDocument) CreatedAt() string    { return document.Metadata.CreatedAt }
+
+func (document NoteDocument) UpdatedAt() string    { return document.Metadata.UpdatedAt }
+func (document TaskDocument) UpdatedAt() string    { return document.Metadata.UpdatedAt }
+func (document CommandDocument) UpdatedAt() string { return document.Metadata.UpdatedAt }
+func (document HomeDocument) UpdatedAt() string    { return document.Metadata.UpdatedAt }
+
+func (document NoteDocument) Color() string    { return document.Metadata.Color }
+func (document TaskDocument) Color() string    { return document.Metadata.Color }
+func (document CommandDocument) Color() string { return document.Metadata.Color }
+func (document HomeDocument) Color() string    { return document.Metadata.Color }
+
+func (document NoteDocument) Links() []NodeLink    { return document.Metadata.Links }
+func (document TaskDocument) Links() []NodeLink    { return document.Metadata.Links }
+func (document CommandDocument) Links() []NodeLink { return document.Metadata.Links }
+func (document HomeDocument) Links() []NodeLink    { return nil }
 
 // ParseDocument parses Markdown with YAML frontmatter and dispatches to the concrete document type.
 func ParseDocument(data []byte) (Document, error) {
@@ -234,7 +299,7 @@ func ParseCommandDocument(data []byte) (CommandDocument, error) {
 
 // SerializeDocument encodes a concrete Flow document back to Markdown.
 func SerializeDocument(document Document) ([]byte, error) {
-	return serialize(document.metadata(), document.Kind(), document.body())
+	return serialize(document.metadata(), document.Kind(), document.BodyContent())
 }
 
 // RelativeDocumentPath returns the canonical relative path for a document inside .flow.
@@ -366,6 +431,48 @@ func documentDirectoryName(documentType DocumentType) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported document type %q", documentType)
 	}
+}
+
+// CloneStrings returns a copy of the string slice.
+func CloneStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make([]string, len(values))
+	copy(cloned, values)
+	return cloned
+}
+
+// CloneMap returns a copy of the string map.
+func CloneMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make(map[string]string, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+// LooksLikeFlowDocument returns true when data begins with YAML frontmatter.
+func LooksLikeFlowDocument(data []byte) bool {
+	return strings.HasPrefix(NormalizeMarkdownText(string(data)), "---\n")
+}
+
+func NormalizeMarkdownText(value string) string {
+	return strings.ReplaceAll(value, "\r\n", "\n")
+}
+
+// DeriveHomeTitle extracts the first H1 heading from body, falling back to "Home".
+func DeriveHomeTitle(body string) string {
+	for _, line := range strings.Split(body, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "# ") {
+			return strings.TrimSpace(strings.TrimPrefix(trimmed, "# "))
+		}
+	}
+	return "Home"
 }
 
 // CompactMarkdown normalizes newlines and trims trailing whitespace-only lines.

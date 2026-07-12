@@ -170,7 +170,7 @@ func BuildTaskLayerView(documents []markdown.WorkspaceDocument) (TaskLayerView, 
 			Title:       taskDocument.Metadata.Title,
 			Status:      taskDocument.Metadata.Status,
 			Path:        item.Path,
-			Tags:        cloneStrings(taskDocument.Metadata.Tags),
+			Tags:        slices.Clone(taskDocument.Metadata.Tags),
 			CreatedAt:   taskDocument.Metadata.CreatedAt,
 			UpdatedAt:   taskDocument.Metadata.UpdatedAt,
 			Links:       markdown.NodeLinkIDs(taskDocument.Metadata.Links),
@@ -278,7 +278,7 @@ func BuildCommandLayerView(documents []markdown.WorkspaceDocument, selectedGraph
 			Graph:       commandDocument.Metadata.Graph,
 			Title:       commandDocument.Metadata.Title,
 			Path:        item.Path,
-			Tags:        cloneStrings(commandDocument.Metadata.Tags),
+			Tags:        slices.Clone(commandDocument.Metadata.Tags),
 			CreatedAt:   commandDocument.Metadata.CreatedAt,
 			UpdatedAt:   commandDocument.Metadata.UpdatedAt,
 			Links:       markdown.NodeLinkIDs(commandDocument.Metadata.Links),
@@ -408,7 +408,7 @@ func BuildTaskFocusedGraphSnapshot(documents []markdown.WorkspaceDocument, selec
 			Title:       taskDocument.Metadata.Title,
 			Status:      taskDocument.Metadata.Status,
 			Path:        item.Path,
-			Tags:        cloneStrings(taskDocument.Metadata.Tags),
+			Tags:        slices.Clone(taskDocument.Metadata.Tags),
 			CreatedAt:   taskDocument.Metadata.CreatedAt,
 			UpdatedAt:   taskDocument.Metadata.UpdatedAt,
 			Links:       markdown.NodeLinkIDs(taskDocument.Metadata.Links),
@@ -465,7 +465,7 @@ func BuildCommandFocusedGraphSnapshot(documents []markdown.WorkspaceDocument, se
 			Graph:       commandDocument.Metadata.Graph,
 			Title:       commandDocument.Metadata.Title,
 			Path:        item.Path,
-			Tags:        cloneStrings(commandDocument.Metadata.Tags),
+			Tags:        slices.Clone(commandDocument.Metadata.Tags),
 			CreatedAt:   commandDocument.Metadata.CreatedAt,
 			UpdatedAt:   commandDocument.Metadata.UpdatedAt,
 			Links:       markdown.NodeLinkIDs(commandDocument.Metadata.Links),
@@ -527,7 +527,7 @@ func BuildNoteGraphView(documents []markdown.WorkspaceDocument) (NoteGraphView, 
 			Graph:       noteDocument.Metadata.Graph,
 			Title:       noteDocument.Metadata.Title,
 			Path:        item.Path,
-			Tags:        cloneStrings(noteDocument.Metadata.Tags),
+			Tags:        slices.Clone(noteDocument.Metadata.Tags),
 			CreatedAt:   noteDocument.Metadata.CreatedAt,
 			UpdatedAt:   noteDocument.Metadata.UpdatedAt,
 			Links:       refIDs,
@@ -755,7 +755,7 @@ func buildFocusedDependencySnapshot(nodes map[string]dependencySnapshotNode, sel
 	return focusedDependencySnapshot{
 		SelectedGraph:       selectedGraph,
 		AvailableGraphs:     availableGraphs,
-		ExpandedBoundaryIDs: cloneStrings(expandedBoundaryIDs),
+		ExpandedBoundaryIDs: slices.Clone(expandedBoundaryIDs),
 		Nodes:               included,
 		Edges:               edges,
 		BoundaryMarkers:     markers,
@@ -963,16 +963,6 @@ func canonicalNotePair(left string, right string) (string, string) {
 	}
 
 	return right, left
-}
-
-func cloneStrings(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-
-	cloned := make([]string, len(values))
-	copy(cloned, values)
-	return cloned
 }
 
 func cloneNodeLinks(links []markdown.NodeLink) []markdown.NodeLink {

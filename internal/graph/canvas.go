@@ -227,16 +227,10 @@ func BuildGraphCanvasView(documents []markdown.WorkspaceDocument, selectedGraph 
 }
 
 func graphCanvasDocumentIdentity(document markdown.Document) (string, string, bool) {
-	switch value := document.(type) {
-	case markdown.NoteDocument:
-		return value.Metadata.ID, value.Metadata.Graph, true
-	case markdown.TaskDocument:
-		return value.Metadata.ID, value.Metadata.Graph, true
-	case markdown.CommandDocument:
-		return value.Metadata.ID, value.Metadata.Graph, true
-	default:
+	if document.Kind() == markdown.HomeType {
 		return "", "", false
 	}
+	return document.ID(), document.Graph(), true
 }
 
 func buildGraphCanvasReferenceNode(target markdown.ReferenceTarget) GraphCanvasNode {
@@ -280,66 +274,38 @@ func buildGraphCanvasNode(item markdown.WorkspaceDocument) (GraphCanvasNode, str
 		return GraphCanvasNode{}, "", false, nil
 	}
 
-	switch document := item.Document.(type) {
-	case markdown.NoteDocument:
-		previewKind, previewURL, previewName, previewAssetCount := extractCanvasPreview(document.Body)
-		return GraphCanvasNode{
-			ID:                document.Metadata.ID,
-			Type:              string(document.Metadata.Type),
-			FeatureSlug:       featureSlug,
-			Graph:             graphPath,
-			Title:             document.Metadata.Title,
-			Description:       document.Metadata.Description,
-			Path:              item.Path,
-			Tags:              cloneStrings(document.Metadata.Tags),
-			CreatedAt:         document.Metadata.CreatedAt,
-			UpdatedAt:         document.Metadata.UpdatedAt,
-			PreviewKind:       previewKind,
-			PreviewURL:        previewURL,
-			PreviewName:       previewName,
-			PreviewAssetCount: previewAssetCount,
-			NodeColor:         document.Metadata.Color,
-			links:             cloneNodeLinks(document.Metadata.Links),
-		}, graphPath, true, nil
-	case markdown.TaskDocument:
-		previewKind, previewURL, previewName, previewAssetCount := extractCanvasPreview(document.Body)
-		return GraphCanvasNode{
-			ID:                document.Metadata.ID,
-			Type:              string(document.Metadata.Type),
-			FeatureSlug:       featureSlug,
-			Graph:             graphPath,
-			Title:             document.Metadata.Title,
-			Description:       document.Metadata.Description,
-			Path:              item.Path,
-			Tags:              cloneStrings(document.Metadata.Tags),
-			CreatedAt:         document.Metadata.CreatedAt,
-			UpdatedAt:         document.Metadata.UpdatedAt,
-			PreviewKind:       previewKind,
-			PreviewURL:        previewURL,
-			PreviewName:       previewName,
-			PreviewAssetCount: previewAssetCount,
-			NodeColor:         document.Metadata.Color,
-			Status:            document.Metadata.Status,
-			links:             cloneNodeLinks(document.Metadata.Links),
-		}, graphPath, true, nil
-	case markdown.CommandDocument:
-		return GraphCanvasNode{
-			ID:          document.Metadata.ID,
-			Type:        string(document.Metadata.Type),
-			FeatureSlug: featureSlug,
-			Graph:       graphPath,
-			Title:       document.Metadata.Title,
-			Description: document.Metadata.Description,
-			Path:        item.Path,
-			Tags:        cloneStrings(document.Metadata.Tags),
-			CreatedAt:   document.Metadata.CreatedAt,
-			UpdatedAt:   document.Metadata.UpdatedAt,
-			NodeColor:   document.Metadata.Color,
-			links:       cloneNodeLinks(document.Metadata.Links),
-		}, graphPath, true, nil
-	default:
+	d := item.Document
+
+	if d.Kind() == markdown.HomeType {
 		return GraphCanvasNode{}, "", false, nil
 	}
+
+	previewKind, previewURL, previewName, previewAssetCount := extractCanvasPreview(d.BodyContent())
+
+	node := GraphCanvasNode{
+		ID:                d.ID(),
+		Type:              string(d.Kind()),
+		FeatureSlug:       featureSlug,
+		Graph:             graphPath,
+		Title:             d.Title(),
+		Description:       d.Description(),
+		Path:              item.Path,
+		Tags:              slices.Clone(d.Tags()),
+		CreatedAt:         d.CreatedAt(),
+		UpdatedAt:         d.UpdatedAt(),
+		PreviewKind:       previewKind,
+		PreviewURL:        previewURL,
+		PreviewName:       previewName,
+		PreviewAssetCount: previewAssetCount,
+		NodeColor:         d.Color(),
+		links:             cloneNodeLinks(d.Links()),
+	}
+
+	if taskDoc, ok := d.(markdown.TaskDocument); ok {
+		node.Status = taskDoc.Metadata.Status
+	}
+
+	return node, graphPath, true, nil
 }
 
 type canvasPreviewCandidate struct {

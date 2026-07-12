@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/lex/flow/internal/buildinfo"
 	"github.com/lex/flow/internal/config"
@@ -364,6 +365,7 @@ func NewMux(options Options) (http.Handler, error) {
 	}
 
 	api := &apiHandler{options: options}
+	api.root.Store(options.Root)
 	staticHandler := http.FileServer(http.FS(assets))
 
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -382,6 +384,12 @@ func NewMux(options Options) (http.Handler, error) {
 
 type apiHandler struct {
 	options Options
+	root    atomic.Value
+}
+
+func (handler *apiHandler) resolvedRoot() workspace.Root {
+	r, _ := handler.root.Load().(workspace.Root)
+	return r
 }
 
 func (handler *apiHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
@@ -470,7 +478,7 @@ func (handler *apiHandler) handleCreateDocument(writer http.ResponseWriter, requ
 		return
 	}
 
-	response, err := loadDocumentResponse(handler.options.Root, documentIDForResponse(workspaceDocument.Document))
+	response, err := loadDocumentResponse(handler.resolvedRoot(), documentIDForResponse(workspaceDocument.Document))
 	if err != nil {
 		writeMutationError(writer, err)
 		return
@@ -480,22 +488,22 @@ func (handler *apiHandler) handleCreateDocument(writer http.ResponseWriter, requ
 }
 
 func (handler *apiHandler) handleWorkspace(writer http.ResponseWriter, _ *http.Request) {
-	workspaceConfig, err := readWorkspaceConfig(handler.options.Root)
+	workspaceConfig, err := readWorkspaceConfig(handler.resolvedRoot())
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	if err := syncWorkspaceGUIStateToIndex(handler.options.Root, workspaceConfig); err != nil {
+	if err := syncWorkspaceGUIStateToIndex(handler.resolvedRoot(), workspaceConfig); err != nil {
 		// Keep workspace reads available even when index synchronization fails.
 	}
 
 	writeJSON(writer, http.StatusOK, workspaceResponse{
-		Scope:         handler.options.Root.Scope,
-		WorkspacePath: handler.options.Root.WorkspacePath,
-		FlowPath:      handler.options.Root.FlowPath,
-		ConfigPath:    handler.options.Root.ConfigPath,
-		IndexPath:     handler.options.Root.IndexPath,
+		Scope:         handler.resolvedRoot().Scope,
+		WorkspacePath: handler.resolvedRoot().WorkspacePath,
+		FlowPath:      handler.resolvedRoot().FlowPath,
+		ConfigPath:    handler.resolvedRoot().ConfigPath,
+		IndexPath:     handler.resolvedRoot().IndexPath,
 		HomePath:      filepath.ToSlash(filepath.Join(workspace.DataDirName, workspace.HomeFileName)),
 		GUIPort:       workspaceConfig.GUI.Port,
 		Appearance:    workspaceConfig.GUI.Appearance,
@@ -507,7 +515,7 @@ func (handler *apiHandler) handleWorkspace(writer http.ResponseWriter, _ *http.R
 		AppVersion:                buildinfo.ProjectVersion(),
 		LicenseText:               appLicenseText,
 		CopyrightText:             appCopyrightText,
-		Workspaces:                workspaceChoicesForResponse(handler.options.Root, handler.options.GlobalLocatorPath),
+		Workspaces:                workspaceChoicesForResponse(handler.resolvedRoot(), handler.options.GlobalLocatorPath),
 		WorkspaceSelectionEnabled: workspaceSelectionEnabled(handler.options),
 	})
 }
@@ -530,7 +538,7 @@ func (handler *apiHandler) handleSelectWorkspace(writer http.ResponseWriter, req
 		return
 	}
 
-	choices := workspaceChoicesForResponse(handler.options.Root, handler.options.GlobalLocatorPath)
+	choices := workspaceChoicesForResponse(handler.resolvedRoot(), handler.options.GlobalLocatorPath)
 	selectedScope := workspace.LocalScope
 	matched := false
 	for _, choice := range choices {
@@ -565,7 +573,7 @@ func (handler *apiHandler) handleSelectWorkspace(writer http.ResponseWriter, req
 		return
 	}
 
-	handler.options.Root = resolved
+	handler.root.Store(resolved)
 	handler.handleWorkspace(writer, request)
 }
 
@@ -597,13 +605,13 @@ func (handler *apiHandler) handleDeregisterLocalWorkspace(writer http.ResponseWr
 		return
 	}
 
-	if handler.options.Root.WorkspacePath == absWorkspacePath {
+	if handler.resolvedRoot().WorkspacePath == absWorkspacePath {
 		globalRoot, err := workspace.ResolveGlobal(handler.options.GlobalLocatorPath)
 		if err != nil {
 			writeError(writer, http.StatusInternalServerError, err.Error())
 			return
 		}
-		handler.options.Root = globalRoot
+		handler.root.Store(globalRoot)
 	}
 
 	handler.handleWorkspace(writer, request)
@@ -657,7 +665,7 @@ func (handler *apiHandler) handleUpdateWorkspace(writer http.ResponseWriter, req
 		return
 	}
 
-	workspaceConfig, err := readWorkspaceConfig(handler.options.Root)
+	workspaceConfig, err := readWorkspaceConfig(handler.resolvedRoot())
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
@@ -686,7 +694,7 @@ func (handler *apiHandler) handleUpdateWorkspace(writer http.ResponseWriter, req
 }
 
 func (handler *apiHandler) handleRebuildIndex(writer http.ResponseWriter, _ *http.Request) {
-	if err := core.RebuildIndex(core.RebuildIndexRequest{IndexPath: handler.options.Root.IndexPath, FlowPath: handler.options.Root.FlowPath}); err != nil {
+	if err := core.RebuildIndex(core.RebuildIndexRequest{IndexPath: handler.resolvedRoot().IndexPath, FlowPath: handler.resolvedRoot().FlowPath}); err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -695,7 +703,7 @@ func (handler *apiHandler) handleRebuildIndex(writer http.ResponseWriter, _ *htt
 }
 
 func (handler *apiHandler) handleHome(writer http.ResponseWriter, _ *http.Request) {
-	home, err := loadHomeResponse(handler.options.Root)
+	home, err := loadHomeResponse(handler.resolvedRoot())
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
@@ -711,12 +719,12 @@ func (handler *apiHandler) handleUpdateHome(writer http.ResponseWriter, request 
 		return
 	}
 
-	if err := writeHomeDocument(handler.options.Root, payload); err != nil {
+	if err := writeHomeDocument(handler.resolvedRoot(), payload); err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	home, err := loadHomeResponse(handler.options.Root)
+	home, err := loadHomeResponse(handler.resolvedRoot())
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
@@ -726,7 +734,7 @@ func (handler *apiHandler) handleUpdateHome(writer http.ResponseWriter, request 
 }
 
 func (handler *apiHandler) handleCalendarDocuments(writer http.ResponseWriter, _ *http.Request) {
-	documents, err := loadCalendarDocumentResponses(handler.options.Root)
+	documents, err := loadCalendarDocumentResponses(handler.resolvedRoot())
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
@@ -744,10 +752,10 @@ func (handler *apiHandler) handleCreateGraph(writer http.ResponseWriter, request
 
 	if err := core.CreateGraph(core.CreateGraphRequest{
 		Name:      payload.Name,
-		IndexPath: handler.options.Root.IndexPath,
-		FlowPath:  handler.options.Root.FlowPath,
+		IndexPath: handler.resolvedRoot().IndexPath,
+		FlowPath:  handler.resolvedRoot().FlowPath,
 	}, func(name string) error {
-		return workspace.CreateGraph(handler.options.Root, workspace.CreateGraphInput{Name: name})
+		return workspace.CreateGraph(handler.resolvedRoot(), workspace.CreateGraphInput{Name: name})
 	}); err != nil {
 		var invalidMutation workspace.InvalidMutationError
 		if errors.As(err, &invalidMutation) {
@@ -769,7 +777,7 @@ func (handler *apiHandler) handleCreateGraphFiles(writer http.ResponseWriter, re
 		return
 	}
 
-	graphDir := filepath.Join(handler.options.Root.GraphsPath, filepath.FromSlash(graphName))
+	graphDir := filepath.Join(handler.resolvedRoot().GraphsPath, filepath.FromSlash(graphName))
 	if info, err := os.Stat(graphDir); err != nil || !info.IsDir() {
 		writeError(writer, http.StatusNotFound, fmt.Sprintf("graph %q not found", graphName))
 		return
@@ -817,9 +825,9 @@ func (handler *apiHandler) createGraphFileNote(graphName string, header *multipa
 		return documentResponse{}, fmt.Errorf("invalid file name")
 	}
 
-	assetFileName := makeUniqueFileName(handler.options.Root, graphName, workspace.SanitizeAssetFileName(originalFileName))
+	assetFileName := makeUniqueFileName(handler.resolvedRoot(), graphName, workspace.SanitizeAssetFileName(originalFileName))
 	assetRelativePath := filepath.ToSlash(filepath.Join(workspace.DataDirName, workspace.GraphsDirName, filepath.FromSlash(graphName), assetFileName))
-	assetAbsolutePath := filepath.Join(handler.options.Root.FlowPath, filepath.FromSlash(assetRelativePath))
+	assetAbsolutePath := filepath.Join(handler.resolvedRoot().FlowPath, filepath.FromSlash(assetRelativePath))
 
 	if err := os.MkdirAll(filepath.Dir(assetAbsolutePath), 0o755); err != nil {
 		return documentResponse{}, fmt.Errorf("create file directory: %w", err)
@@ -843,7 +851,7 @@ func (handler *apiHandler) createGraphFileNote(graphName string, header *multipa
 		return documentResponse{}, fmt.Errorf("close workspace file: %w", err)
 	}
 
-	noteSlug := makeUniqueNoteSlug(handler.options.Root, graphName, strings.TrimSuffix(assetFileName, filepath.Ext(assetFileName)))
+	noteSlug := makeUniqueNoteSlug(handler.resolvedRoot(), graphName, strings.TrimSuffix(assetFileName, filepath.Ext(assetFileName)))
 	title := titleFromFileName(originalFileName)
 	assetURL := "/api/files?path=" + url.QueryEscape(assetRelativePath)
 	body := noteBodyForAsset(assetURL, title, filepath.Ext(assetFileName))
@@ -862,7 +870,7 @@ func (handler *apiHandler) createGraphFileNote(graphName string, header *multipa
 		return documentResponse{}, err
 	}
 
-	return loadDocumentResponse(handler.options.Root, documentIDForResponse(createdDocument.Document))
+	return loadDocumentResponse(handler.resolvedRoot(), documentIDForResponse(createdDocument.Document))
 }
 
 // createDocumentRequestFromPayload keeps HTTP-specific decoding at the edge
@@ -891,13 +899,13 @@ func createDocumentRequestFromPayload(payload createDocumentRequest) core.Create
 // createDocument adapts shared document-create requests onto canonical
 // workspace mutations so HTTP stays a thin transport layer.
 func (handler *apiHandler) createDocument(request core.CreateDocumentRequest) (markdown.WorkspaceDocument, error) {
-	return workspace.CreateDocumentFromCoreRequest(handler.options.Root, request)
+	return workspace.CreateDocumentFromCoreRequest(handler.resolvedRoot(), request)
 }
 
 // updateDocument adapts shared document-update requests onto canonical
 // workspace mutations so HTTP stays a thin transport layer.
 func (handler *apiHandler) updateDocument(documentID string, patch core.UpdateDocumentPatch) (markdown.WorkspaceDocument, error) {
-	return workspace.UpdateDocumentByIDFromCorePatch(handler.options.Root, documentID, patch)
+	return workspace.UpdateDocumentByIDFromCorePatch(handler.resolvedRoot(), documentID, patch)
 }
 
 func (handler *apiHandler) handleUploadFile(writer http.ResponseWriter, request *http.Request) {
@@ -919,7 +927,7 @@ func (handler *apiHandler) handleUploadFile(writer http.ResponseWriter, request 
 	}
 
 	documentPath := strings.TrimSpace(request.URL.Query().Get("documentPath"))
-	assetDir, assetRelativeDir, dirErr := workspace.ResolveAssetDir(handler.options.Root.FlowPath, documentPath)
+	assetDir, assetRelativeDir, dirErr := workspace.ResolveAssetDir(handler.resolvedRoot().FlowPath, documentPath)
 	if dirErr != nil {
 		writeError(writer, http.StatusBadRequest, dirErr.Error())
 		return
@@ -974,8 +982,8 @@ func (handler *apiHandler) handleWorkspaceFile(writer http.ResponseWriter, reque
 		return
 	}
 
-	absolutePath := filepath.Join(handler.options.Root.FlowPath, cleaned)
-	relativeToFlow, err := filepath.Rel(handler.options.Root.FlowPath, absolutePath)
+	absolutePath := filepath.Join(handler.resolvedRoot().FlowPath, cleaned)
+	relativeToFlow, err := filepath.Rel(handler.resolvedRoot().FlowPath, absolutePath)
 	if err != nil || strings.HasPrefix(relativeToFlow, "..") {
 		writeError(writer, http.StatusBadRequest, "path is invalid")
 		return
@@ -1001,18 +1009,18 @@ func (handler *apiHandler) handleWorkspaceFile(writer http.ResponseWriter, reque
 }
 
 func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.Request) {
-	nodes, err := index.ReadGraphNodesWorkspace(handler.options.Root.IndexPath, handler.options.Root.FlowPath)
+	nodes, err := index.ReadGraphNodesWorkspace(handler.resolvedRoot().IndexPath, handler.resolvedRoot().FlowPath)
 	if err != nil {
 		// Keep the GUI tree route responsive even when index projection data is unavailable.
 		nodes = nil
 	}
 
-	files, err := index.ReadGraphTreeFilesWorkspace(handler.options.Root.IndexPath, handler.options.Root.FlowPath)
+	files, err := index.ReadGraphTreeFilesWorkspace(handler.resolvedRoot().IndexPath, handler.resolvedRoot().FlowPath)
 	if err != nil {
 		files = nil
 	}
 
-	home, err := loadHomeResponse(handler.options.Root)
+	home, err := loadHomeResponse(handler.resolvedRoot())
 	if err != nil {
 		home = homeResponse{ID: "home", Type: "home", Title: "Home", Path: filepath.ToSlash(filepath.Join(workspace.DataDirName, workspace.HomeFileName))}
 	}
@@ -1039,11 +1047,11 @@ func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.R
 
 	response := graphTreeResponse{Home: home, Graphs: make([]graphTreeNodeResponse, 0, len(nodes))}
 	graphDirectoryColors := map[string]string{}
-	if colors, colorErr := pruneWorkspaceGraphDirectoryColors(handler.options.Root, nodes); colorErr == nil {
+	if colors, colorErr := pruneWorkspaceGraphDirectoryColors(handler.resolvedRoot(), nodes); colorErr == nil {
 		graphDirectoryColors = colors
 	}
 	graphCanvasEnabled := map[string]bool{}
-	if enabled, enabledErr := pruneWorkspaceGraphCanvasEnabled(handler.options.Root, nodes); enabledErr == nil {
+	if enabled, enabledErr := pruneWorkspaceGraphCanvasEnabled(handler.resolvedRoot(), nodes); enabledErr == nil {
 		graphCanvasEnabled = enabled
 	}
 	if len(nodes) > 0 {
@@ -1177,13 +1185,13 @@ func (handler *apiHandler) handleGraphCanvas(writer http.ResponseWriter, request
 		return
 	}
 
-	documents, _, err := workspace.LoadDocumentsBestEffort(handler.options.Root.FlowPath)
+	documents, _, err := workspace.LoadDocumentsBestEffort(handler.resolvedRoot().FlowPath)
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	layoutPositions, err := index.ReadGraphLayoutPositionsWorkspace(handler.options.Root.IndexPath, handler.options.Root.FlowPath, selectedGraph)
+	layoutPositions, err := index.ReadGraphLayoutPositionsWorkspace(handler.resolvedRoot().IndexPath, handler.resolvedRoot().FlowPath, selectedGraph)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "must not be empty") {
@@ -1204,7 +1212,7 @@ func (handler *apiHandler) handleGraphCanvas(writer http.ResponseWriter, request
 		}
 	}
 
-	viewport, hasViewport, err := index.ReadGraphLayoutViewportWorkspace(handler.options.Root.IndexPath, handler.options.Root.FlowPath, selectedGraph)
+	viewport, hasViewport, err := index.ReadGraphLayoutViewportWorkspace(handler.resolvedRoot().IndexPath, handler.resolvedRoot().FlowPath, selectedGraph)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "must not be empty") {
@@ -1219,7 +1227,7 @@ func (handler *apiHandler) handleGraphCanvas(writer http.ResponseWriter, request
 	if err != nil {
 		// If the graph exists as an empty directory (no documents yet), return an empty canvas
 		// rather than an error so the frontend can show create actions.
-		nodes, nodeErr := index.ReadGraphNodesWorkspace(handler.options.Root.IndexPath, handler.options.Root.FlowPath)
+		nodes, nodeErr := index.ReadGraphNodesWorkspace(handler.resolvedRoot().IndexPath, handler.resolvedRoot().FlowPath)
 		if nodeErr == nil {
 			for _, node := range nodes {
 				if node.GraphPath == selectedGraph {
@@ -1272,7 +1280,7 @@ func (handler *apiHandler) handleGraphLayout(writer http.ResponseWriter, request
 		return
 	}
 
-	documents, _, err := workspace.LoadDocumentsBestEffort(handler.options.Root.FlowPath)
+	documents, _, err := workspace.LoadDocumentsBestEffort(handler.resolvedRoot().FlowPath)
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
@@ -1322,7 +1330,7 @@ func (handler *apiHandler) handleGraphLayout(writer http.ResponseWriter, request
 		})
 	}
 
-	if err := index.WriteGraphLayoutPositionsWorkspace(handler.options.Root.IndexPath, handler.options.Root.FlowPath, positions); err != nil {
+	if err := index.WriteGraphLayoutPositionsWorkspace(handler.resolvedRoot().IndexPath, handler.resolvedRoot().FlowPath, positions); err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1335,7 +1343,7 @@ func (handler *apiHandler) handleGraphLayout(writer http.ResponseWriter, request
 			Y:         payload.Viewport.Y,
 			Zoom:      payload.Viewport.Zoom,
 		}
-		if err := index.WriteGraphLayoutViewportWorkspace(handler.options.Root.IndexPath, handler.options.Root.FlowPath, viewport); err != nil {
+		if err := index.WriteGraphLayoutViewportWorkspace(handler.resolvedRoot().IndexPath, handler.resolvedRoot().FlowPath, viewport); err != nil {
 			if strings.Contains(err.Error(), "zoom must be greater than zero") {
 				writeError(writer, http.StatusBadRequest, err.Error())
 				return
@@ -1357,7 +1365,7 @@ func (handler *apiHandler) handleDocument(writer http.ResponseWriter, request *h
 		return
 	}
 
-	parseFailure, found, err := index.ReadDocumentParseFailureWorkspace(handler.options.Root.IndexPath, handler.options.Root.FlowPath, documentID)
+	parseFailure, found, err := index.ReadDocumentParseFailureWorkspace(handler.resolvedRoot().IndexPath, handler.resolvedRoot().FlowPath, documentID)
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
@@ -1367,7 +1375,7 @@ func (handler *apiHandler) handleDocument(writer http.ResponseWriter, request *h
 		return
 	}
 
-	documents, _, err := workspace.LoadDocumentsBestEffort(handler.options.Root.FlowPath)
+	documents, _, err := workspace.LoadDocumentsBestEffort(handler.resolvedRoot().FlowPath)
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
@@ -1379,20 +1387,33 @@ func (handler *apiHandler) handleDocument(writer http.ResponseWriter, request *h
 		return
 	}
 
+	var matchedItem markdown.WorkspaceDocument
+	var matched bool
 	for _, item := range documents {
-		response, ok, err := buildDocumentResponse(item, noteView, documents)
-		if err != nil {
-			writeError(writer, http.StatusInternalServerError, err.Error())
-			return
-		}
-
-		if ok && response.ID == documentID {
-			writeJSON(writer, http.StatusOK, response)
-			return
+		if item.Document.ID() == documentID {
+			matchedItem = item
+			matched = true
+			break
 		}
 	}
 
-	writeError(writer, http.StatusNotFound, fmt.Sprintf("document %q not found", documentID))
+	if !matched {
+		writeError(writer, http.StatusNotFound, fmt.Sprintf("document %q not found", documentID))
+		return
+	}
+
+	response, ok, err := buildDocumentResponse(matchedItem, noteView, documents)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if !ok {
+		writeError(writer, http.StatusNotFound, fmt.Sprintf("document %q not found", documentID))
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, response)
 }
 
 func (handler *apiHandler) handleUpdateDocument(writer http.ResponseWriter, request *http.Request) {
@@ -1417,7 +1438,7 @@ func (handler *apiHandler) handleUpdateDocument(writer http.ResponseWriter, requ
 		return
 	}
 
-	response, err := loadDocumentResponse(handler.options.Root, documentIDForResponse(workspaceDocument.Document))
+	response, err := loadDocumentResponse(handler.resolvedRoot(), documentIDForResponse(workspaceDocument.Document))
 	if err != nil {
 		writeMutationError(writer, err)
 		return
@@ -1471,10 +1492,10 @@ func (handler *apiHandler) handleRenameGraph(writer http.ResponseWriter, request
 		CurrentName: graphName,
 		NextName:    payload.Name,
 		AfterRename: func() error {
-			return remapGraphDirectoryColors(handler.options.Root, graphName, payload.Name)
+			return remapGraphDirectoryColors(handler.resolvedRoot(), graphName, payload.Name)
 		},
 	}, func(currentName string, nextName string) error {
-		return workspace.RenameGraph(handler.options.Root, currentName, nextName)
+		return workspace.RenameGraph(handler.resolvedRoot(), currentName, nextName)
 	}); err != nil {
 		var invalidMutation workspace.InvalidMutationError
 		var documentNotFound workspace.DocumentNotFoundError
@@ -1505,10 +1526,10 @@ func (handler *apiHandler) handleDeleteGraph(writer http.ResponseWriter, request
 	if err := core.DeleteGraph(core.DeleteGraphRequest{
 		Name: graphName,
 		AfterDelete: func() error {
-			return deleteGraphDirectoryColors(handler.options.Root, graphName)
+			return deleteGraphDirectoryColors(handler.resolvedRoot(), graphName)
 		},
 	}, func(name string) error {
-		return workspace.DeleteGraph(handler.options.Root, name)
+		return workspace.DeleteGraph(handler.resolvedRoot(), name)
 	}); err != nil {
 		var invalidMutation workspace.InvalidMutationError
 		var documentNotFound workspace.DocumentNotFoundError
@@ -1531,7 +1552,7 @@ func (handler *apiHandler) handleUpdateGraphColor(writer http.ResponseWriter, re
 		return
 	}
 
-	graphDir := filepath.Join(handler.options.Root.GraphsPath, filepath.FromSlash(graphName))
+	graphDir := filepath.Join(handler.resolvedRoot().GraphsPath, filepath.FromSlash(graphName))
 	if _, err := os.Stat(graphDir); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			writeError(writer, http.StatusNotFound, fmt.Sprintf("graph %q not found", graphName))
@@ -1547,7 +1568,7 @@ func (handler *apiHandler) handleUpdateGraphColor(writer http.ResponseWriter, re
 		return
 	}
 
-	workspaceConfig, err := readWorkspaceConfig(handler.options.Root)
+	workspaceConfig, err := readWorkspaceConfig(handler.resolvedRoot())
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
@@ -1579,7 +1600,7 @@ func (handler *apiHandler) handleUpdateGraphCanvasDisabled(writer http.ResponseW
 		return
 	}
 
-	graphDir := filepath.Join(handler.options.Root.GraphsPath, filepath.FromSlash(graphName))
+	graphDir := filepath.Join(handler.resolvedRoot().GraphsPath, filepath.FromSlash(graphName))
 	if _, err := os.Stat(graphDir); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			writeError(writer, http.StatusNotFound, fmt.Sprintf("graph %q not found", graphName))
@@ -1595,7 +1616,7 @@ func (handler *apiHandler) handleUpdateGraphCanvasDisabled(writer http.ResponseW
 		return
 	}
 
-	workspaceConfig, err := readWorkspaceConfig(handler.options.Root)
+	workspaceConfig, err := readWorkspaceConfig(handler.resolvedRoot())
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
@@ -1615,7 +1636,7 @@ func (handler *apiHandler) handleUpdateGraphCanvasDisabled(writer http.ResponseW
 	// Canvas enablement is config-only state. Avoid syncing workspace GUI state to
 	// the index here to prevent transient index read/write contention right before
 	// the client refreshes /api/graphs.
-	if err := config.Write(handler.options.Root.ConfigPath, workspaceConfig); err != nil {
+	if err := config.Write(handler.resolvedRoot().ConfigPath, workspaceConfig); err != nil {
 		writeError(writer, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -1631,7 +1652,7 @@ func (handler *apiHandler) handleDeleteDocument(writer http.ResponseWriter, requ
 	}
 
 	relativePath, err := core.DeleteDocument(core.DeleteDocumentRequest{DocumentID: strings.TrimSpace(documentID)}, func(id string) (string, error) {
-		return workspace.DeleteDocumentByID(handler.options.Root, id)
+		return workspace.DeleteDocumentByID(handler.resolvedRoot(), id)
 	})
 	if err != nil {
 		writeMutationError(writer, err)
@@ -1648,7 +1669,7 @@ func (handler *apiHandler) handleMergeDocuments(writer http.ResponseWriter, requ
 		return
 	}
 
-	merged, err := workspace.MergeDocuments(handler.options.Root, workspace.MergeDocumentsInput{
+	merged, err := workspace.MergeDocuments(handler.resolvedRoot(), workspace.MergeDocumentsInput{
 		DocumentIDs: payload.DocumentIDs,
 	})
 	if err != nil {
@@ -1656,7 +1677,7 @@ func (handler *apiHandler) handleMergeDocuments(writer http.ResponseWriter, requ
 		return
 	}
 
-	response, err := loadDocumentResponse(handler.options.Root, documentIDForResponse(merged.Document))
+	response, err := loadDocumentResponse(handler.resolvedRoot(), documentIDForResponse(merged.Document))
 	if err != nil {
 		writeMutationError(writer, err)
 		return
@@ -1672,12 +1693,12 @@ func (handler *apiHandler) handleAddReference(writer http.ResponseWriter, reques
 		return
 	}
 
-	if err := workspace.AddLink(handler.options.Root, payload.FromID, payload.ToID, payload.Context, normalizeRelationshipPayload(payload.Relationships)); err != nil {
+	if err := workspace.AddLink(handler.resolvedRoot(), payload.FromID, payload.ToID, payload.Context, normalizeRelationshipPayload(payload.Relationships)); err != nil {
 		writeMutationError(writer, err)
 		return
 	}
 
-	response, err := loadDocumentResponse(handler.options.Root, payload.FromID)
+	response, err := loadDocumentResponse(handler.resolvedRoot(), payload.FromID)
 	if err != nil {
 		writeMutationError(writer, err)
 		return
@@ -1693,12 +1714,12 @@ func (handler *apiHandler) handleRemoveReference(writer http.ResponseWriter, req
 		return
 	}
 
-	if err := workspace.RemoveLink(handler.options.Root, payload.FromID, payload.ToID); err != nil {
+	if err := workspace.RemoveLink(handler.resolvedRoot(), payload.FromID, payload.ToID); err != nil {
 		writeMutationError(writer, err)
 		return
 	}
 
-	response, err := loadDocumentResponse(handler.options.Root, payload.FromID)
+	response, err := loadDocumentResponse(handler.resolvedRoot(), payload.FromID)
 	if err != nil {
 		writeMutationError(writer, err)
 		return
@@ -1714,12 +1735,12 @@ func (handler *apiHandler) handleUpdateReferenceContext(writer http.ResponseWrit
 		return
 	}
 
-	if err := workspace.UpdateLinkContext(handler.options.Root, payload.FromID, payload.ToID, payload.Context, normalizeRelationshipPayload(payload.Relationships)); err != nil {
+	if err := workspace.UpdateLinkContext(handler.resolvedRoot(), payload.FromID, payload.ToID, payload.Context, normalizeRelationshipPayload(payload.Relationships)); err != nil {
 		writeMutationError(writer, err)
 		return
 	}
 
-	response, err := loadDocumentResponse(handler.options.Root, payload.FromID)
+	response, err := loadDocumentResponse(handler.resolvedRoot(), payload.FromID)
 	if err != nil {
 		writeMutationError(writer, err)
 		return
@@ -1753,7 +1774,7 @@ func (handler *apiHandler) handleSearch(writer http.ResponseWriter, request *htt
 		limit = parsedLimit
 	}
 
-	results, err := index.SearchWorkspaceWithFilters(handler.options.Root.IndexPath, handler.options.Root.FlowPath, filters, limit)
+	results, err := index.SearchWorkspaceWithFilters(handler.resolvedRoot().IndexPath, handler.resolvedRoot().FlowPath, filters, limit)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "must not be empty") {
@@ -1783,7 +1804,7 @@ func (handler *apiHandler) handleReferenceTargets(writer http.ResponseWriter, re
 		limit = parsedLimit
 	}
 
-	documents, _, err := workspace.LoadDocumentsBestEffort(handler.options.Root.FlowPath)
+	documents, _, err := workspace.LoadDocumentsBestEffort(handler.resolvedRoot().FlowPath)
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
@@ -1818,7 +1839,7 @@ func (handler *apiHandler) handleNodeView(writer http.ResponseWriter, request *h
 	id := strings.TrimSpace(request.URL.Query().Get("id"))
 	graph := strings.TrimSpace(request.URL.Query().Get("graph"))
 
-	view, err := index.ReadNodeViewWorkspace(handler.options.Root.IndexPath, handler.options.Root.FlowPath, id, graph)
+	view, err := index.ReadNodeViewWorkspace(handler.resolvedRoot().IndexPath, handler.resolvedRoot().FlowPath, id, graph)
 	if err != nil {
 		switch {
 		case strings.Contains(err.Error(), "must not be empty"):
@@ -1850,18 +1871,6 @@ func (handler *apiHandler) handleGUIStop(writer http.ResponseWriter, _ *http.Req
 
 func readWorkspaceConfig(root workspace.Root) (config.Workspace, error) {
 	return workspace.ReadOrDefaultConfig(root.ConfigPath)
-}
-
-func workspaceConfigGraphColors(root workspace.Root) map[string]string {
-	workspaceConfig, err := readWorkspaceConfig(root)
-	if err != nil {
-		return map[string]string{}
-	}
-	if workspaceConfig.GUI.GraphDirectoryColors == nil {
-		return map[string]string{}
-	}
-
-	return workspaceConfig.GUI.GraphDirectoryColors
 }
 
 func graphNameFromGraphRequestPath(path string) (string, bool) {
@@ -1921,7 +1930,7 @@ func (handler *apiHandler) handleDownloadGraphArchive(writer http.ResponseWriter
 		return
 	}
 
-	archive, err := buildGraphArchive(handler.options.Root, graphName)
+	archive, err := buildGraphArchive(handler.resolvedRoot(), graphName)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			writeError(writer, http.StatusNotFound, "graph not found")
@@ -1997,9 +2006,9 @@ func buildGraphArchive(root workspace.Root, graphPath string) ([]byte, error) {
 		if openErr != nil {
 			return openErr
 		}
-		defer source.Close()
-
-		if _, copyErr := io.Copy(archiveEntry, source); copyErr != nil {
+		_, copyErr := io.Copy(archiveEntry, source)
+		source.Close()
+		if copyErr != nil {
 			return copyErr
 		}
 
@@ -2018,13 +2027,13 @@ func buildGraphArchive(root workspace.Root, graphPath string) ([]byte, error) {
 }
 
 func (handler *apiHandler) handleDownloadWorkspaceArchive(writer http.ResponseWriter, _ *http.Request) {
-	archive, err := buildWorkspaceArchive(handler.options.Root)
+	archive, err := buildWorkspaceArchive(handler.resolvedRoot())
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	workspaceName := filepath.Base(handler.options.Root.WorkspacePath)
+	workspaceName := filepath.Base(handler.resolvedRoot().WorkspacePath)
 	if workspaceName == "" || workspaceName == "." || workspaceName == string(filepath.Separator) {
 		workspaceName = "workspace"
 	}
@@ -2083,9 +2092,9 @@ func buildWorkspaceArchive(root workspace.Root) ([]byte, error) {
 		if openErr != nil {
 			return openErr
 		}
-		defer source.Close()
-
-		if _, copyErr := io.Copy(archiveEntry, source); copyErr != nil {
+		_, copyErr := io.Copy(archiveEntry, source)
+		source.Close()
+		if copyErr != nil {
 			return copyErr
 		}
 
@@ -2265,12 +2274,12 @@ func syncWorkspaceGUIStateToIndex(root workspace.Root, workspaceConfig config.Wo
 }
 
 func (handler *apiHandler) persistWorkspaceConfigForRequest(writer http.ResponseWriter, workspaceConfig config.Workspace) bool {
-	if err := config.Write(handler.options.Root.ConfigPath, workspaceConfig); err != nil {
+	if err := config.Write(handler.resolvedRoot().ConfigPath, workspaceConfig); err != nil {
 		writeError(writer, http.StatusBadRequest, err.Error())
 		return false
 	}
 
-	if err := syncWorkspaceGUIStateToIndex(handler.options.Root, workspaceConfig); err != nil {
+	if err := syncWorkspaceGUIStateToIndex(handler.resolvedRoot(), workspaceConfig); err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return false
 	}
@@ -2292,82 +2301,42 @@ func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteG
 		return documentResponse{}, false, err
 	}
 
-	switch document := item.Document.(type) {
-	case markdown.NoteDocument:
-		featureSlug, err := featureSlugFromPath(item.Path)
-		if err != nil {
-			return documentResponse{}, false, err
-		}
-
-		node := noteView.Nodes[document.Metadata.ID]
-		return documentResponse{
-			ID:               document.Metadata.ID,
-			Type:             string(document.Metadata.Type),
-			FeatureSlug:      featureSlug,
-			Graph:            document.Metadata.Graph,
-			Title:            document.Metadata.Title,
-			Description:      document.Metadata.Description,
-			Path:             item.Path,
-			Tags:             cloneStrings(document.Metadata.Tags),
-			CreatedAt:        document.Metadata.CreatedAt,
-			UpdatedAt:        document.Metadata.UpdatedAt,
-			Body:             document.Body,
-			Links:            convertLinks(document.Metadata.Links),
-			Color:            document.Metadata.Color,
-			RelatedNoteIDs:   cloneStrings(node.RelatedNoteIDs),
-			InlineReferences: inlineReferences,
-		}, true, nil
-	case markdown.TaskDocument:
-		featureSlug, err := featureSlugFromPath(item.Path)
-		if err != nil {
-			return documentResponse{}, false, err
-		}
-
-		return documentResponse{
-			ID:               document.Metadata.ID,
-			Type:             string(document.Metadata.Type),
-			FeatureSlug:      featureSlug,
-			Graph:            document.Metadata.Graph,
-			Title:            document.Metadata.Title,
-			Description:      document.Metadata.Description,
-			Path:             item.Path,
-			Tags:             cloneStrings(document.Metadata.Tags),
-			CreatedAt:        document.Metadata.CreatedAt,
-			UpdatedAt:        document.Metadata.UpdatedAt,
-			Body:             document.Body,
-			Status:           document.Metadata.Status,
-			Links:            convertLinks(document.Metadata.Links),
-			Color:            document.Metadata.Color,
-			InlineReferences: inlineReferences,
-		}, true, nil
-	case markdown.CommandDocument:
-		featureSlug, err := featureSlugFromPath(item.Path)
-		if err != nil {
-			return documentResponse{}, false, err
-		}
-
-		return documentResponse{
-			ID:               document.Metadata.ID,
-			Type:             string(document.Metadata.Type),
-			FeatureSlug:      featureSlug,
-			Graph:            document.Metadata.Graph,
-			Title:            document.Metadata.Title,
-			Description:      document.Metadata.Description,
-			Path:             item.Path,
-			Tags:             cloneStrings(document.Metadata.Tags),
-			CreatedAt:        document.Metadata.CreatedAt,
-			UpdatedAt:        document.Metadata.UpdatedAt,
-			Body:             document.Body,
-			Links:            convertLinks(document.Metadata.Links),
-			Name:             document.Metadata.Name,
-			Env:              cloneMap(document.Metadata.Env),
-			Run:              document.Metadata.Run,
-			Color:            document.Metadata.Color,
-			InlineReferences: inlineReferences,
-		}, true, nil
-	default:
-		return documentResponse{}, false, nil
+	featureSlug, err := featureSlugFromPath(item.Path)
+	if err != nil {
+		return documentResponse{}, false, err
 	}
+
+	d := item.Document
+	base := documentResponse{
+		ID:               d.ID(),
+		Type:             string(d.Kind()),
+		FeatureSlug:      featureSlug,
+		Graph:            d.Graph(),
+		Title:            d.Title(),
+		Description:      d.Description(),
+		Path:             item.Path,
+		Tags:             slices.Clone(d.Tags()),
+		CreatedAt:        d.CreatedAt(),
+		UpdatedAt:        d.UpdatedAt(),
+		Body:             d.BodyContent(),
+		Links:            convertLinks(d.Links()),
+		Color:            d.Color(),
+		InlineReferences: inlineReferences,
+	}
+
+	switch v := d.(type) {
+	case markdown.TaskDocument:
+		base.Status = v.Metadata.Status
+	case markdown.CommandDocument:
+		base.Name = v.Metadata.Name
+		base.Env = markdown.CloneMap(v.Metadata.Env)
+		base.Run = v.Metadata.Run
+	case markdown.NoteDocument:
+		node := noteView.Nodes[d.ID()]
+		base.RelatedNoteIDs = slices.Clone(node.RelatedNoteIDs)
+	}
+
+	return base, true, nil
 }
 
 func featureSlugFromPath(path string) (string, error) {
@@ -2397,7 +2366,7 @@ func convertLinks(links []markdown.NodeLink) []nodeReferenceResponse {
 		result[i] = nodeReferenceResponse{
 			Node:          link.Node,
 			Context:       link.Context,
-			Relationships: cloneStrings(link.Relationships),
+			Relationships: slices.Clone(link.Relationships),
 		}
 	}
 
@@ -2464,28 +2433,7 @@ func nodeLinksPatchFromPayload(links *[]nodeReferenceResponse) *[]markdown.NodeL
 	return &converted
 }
 
-func cloneStrings(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
 
-	cloned := make([]string, len(values))
-	copy(cloned, values)
-	return cloned
-}
-
-func cloneMap(values map[string]string) map[string]string {
-	if len(values) == 0 {
-		return nil
-	}
-
-	cloned := make(map[string]string, len(values))
-	for key, value := range values {
-		cloned[key] = value
-	}
-
-	return cloned
-}
 
 func writeJSON(writer http.ResponseWriter, statusCode int, value any) {
 	writer.Header().Set("Content-Type", "application/json")
@@ -2547,17 +2495,26 @@ func loadDocumentResponse(root workspace.Root, documentID string) (documentRespo
 		return documentResponse{}, err
 	}
 
+	var matchedItem markdown.WorkspaceDocument
+	var matched bool
 	for _, item := range documents {
-		response, ok, err := buildDocumentResponse(item, noteView, documents)
-		if err != nil {
-			return documentResponse{}, err
-		}
-		if ok && response.ID == documentID {
-			return response, nil
+		if item.Document.ID() == documentID {
+			matchedItem = item
+			matched = true
+			break
 		}
 	}
 
-	return documentResponse{}, workspace.DocumentNotFoundError{Selector: documentID}
+	if !matched {
+		return documentResponse{}, workspace.DocumentNotFoundError{Selector: documentID}
+	}
+
+	response, _, err := buildDocumentResponse(matchedItem, noteView, documents)
+	if err != nil {
+		return documentResponse{}, err
+	}
+
+	return response, nil
 }
 
 func resolveInlineReferenceResponses(documents []markdown.WorkspaceDocument, item markdown.WorkspaceDocument) ([]inlineReferenceResponse, error) {
@@ -2608,64 +2565,33 @@ func loadCalendarDocumentResponses(root workspace.Root) ([]calendarDocumentRespo
 }
 
 func buildCalendarDocumentResponse(item markdown.WorkspaceDocument) (calendarDocumentResponse, bool) {
-	switch document := item.Document.(type) {
-	case markdown.HomeDocument:
-		title := strings.TrimSpace(document.Metadata.Title)
+	d := item.Document
+	if d.Kind() == markdown.HomeType {
+		title := strings.TrimSpace(d.Title())
 		if title == "" {
-			title = deriveHomeTitle(document.Body)
+			title = markdown.DeriveHomeTitle(d.BodyContent())
 		}
-
 		return calendarDocumentResponse{
 			ID:    "home",
 			Type:  string(markdown.HomeType),
-			Graph: "",
 			Title: title,
 			Path:  item.Path,
-			Body:  normalizeMarkdownText(document.Body),
+			Body:  markdown.NormalizeMarkdownText(d.BodyContent()),
 		}, true
-	case markdown.NoteDocument:
-		return calendarDocumentResponse{
-			ID:    document.Metadata.ID,
-			Type:  string(document.Metadata.Type),
-			Graph: document.Metadata.Graph,
-			Title: document.Metadata.Title,
-			Path:  item.Path,
-			Body:  document.Body,
-		}, true
-	case markdown.TaskDocument:
-		return calendarDocumentResponse{
-			ID:    document.Metadata.ID,
-			Type:  string(document.Metadata.Type),
-			Graph: document.Metadata.Graph,
-			Title: document.Metadata.Title,
-			Path:  item.Path,
-			Body:  document.Body,
-		}, true
-	case markdown.CommandDocument:
-		return calendarDocumentResponse{
-			ID:    document.Metadata.ID,
-			Type:  string(document.Metadata.Type),
-			Graph: document.Metadata.Graph,
-			Title: document.Metadata.Title,
-			Path:  item.Path,
-			Body:  document.Body,
-		}, true
-	default:
-		return calendarDocumentResponse{}, false
 	}
+
+	return calendarDocumentResponse{
+		ID:    d.ID(),
+		Type:  string(d.Kind()),
+		Graph: d.Graph(),
+		Title: d.Title(),
+		Path:  item.Path,
+		Body:  d.BodyContent(),
+	}, true
 }
 
 func documentIDForResponse(document markdown.Document) string {
-	switch value := document.(type) {
-	case markdown.NoteDocument:
-		return value.Metadata.ID
-	case markdown.TaskDocument:
-		return value.Metadata.ID
-	case markdown.CommandDocument:
-		return value.Metadata.ID
-	default:
-		return ""
-	}
+	return document.ID()
 }
 
 func loadHomeResponse(root workspace.Root) (homeResponse, error) {
@@ -2690,36 +2616,20 @@ func loadHomeResponse(root workspace.Root) (homeResponse, error) {
 		return homeResponse{}, fmt.Errorf("load workspace documents: %w", err)
 	}
 
-	var homeItem *markdown.WorkspaceDocument
-	for _, item := range documents {
-		if filepath.ToSlash(item.Path) != relativePath {
-			continue
-		}
-		copyItem := item
-		homeItem = &copyItem
-		break
-	}
-
-	if homeItem == nil {
-		synthesized, normalizeErr := markdown.NormalizeWorkspaceDocument(markdown.WorkspaceDocument{
-			Path: relativePath,
-			Document: markdown.HomeDocument{
-				Metadata: markdown.CommonFields{
-					ID:          home.ID,
-					Type:        markdown.HomeType,
-					Title:       home.Title,
-					Description: home.Description,
-				},
-				Body: home.Body,
+	homeItem := markdown.WorkspaceDocument{
+		Path: relativePath,
+		Document: markdown.HomeDocument{
+			Metadata: markdown.CommonFields{
+				ID:          home.ID,
+				Type:        markdown.HomeType,
+				Title:       home.Title,
+				Description: home.Description,
 			},
-		})
-		if normalizeErr != nil {
-			return homeResponse{}, fmt.Errorf("normalize synthetic home document: %w", normalizeErr)
-		}
-		homeItem = &synthesized
+			Body: home.Body,
+		},
 	}
 
-	inlineReferences, err := resolveInlineReferenceResponses(documents, *homeItem)
+	inlineReferences, err := resolveInlineReferenceResponses(documents, homeItem)
 	if err != nil {
 		return homeResponse{}, fmt.Errorf("resolve home inline references: %w", err)
 	}
@@ -2729,18 +2639,18 @@ func loadHomeResponse(root workspace.Root) (homeResponse, error) {
 }
 
 func parseHomeResponse(data []byte) (homeResponse, error) {
-	if !looksLikeFlowDocument(data) {
-		body := normalizeMarkdownText(string(data))
+	if !markdown.LooksLikeFlowDocument(data) {
+		body := markdown.NormalizeMarkdownText(string(data))
 		return homeResponse{
 			ID:          "home",
 			Type:        string(markdown.HomeType),
-			Title:       deriveHomeTitle(body),
+			Title:       markdown.DeriveHomeTitle(body),
 			Description: "",
 			Body:        body,
 		}, nil
 	}
 
-	document, err := markdown.ParseDocument([]byte(normalizeMarkdownText(string(data))))
+	document, err := markdown.ParseDocument([]byte(markdown.NormalizeMarkdownText(string(data))))
 	if err != nil {
 		return homeResponse{}, err
 	}
@@ -2756,7 +2666,7 @@ func parseHomeResponse(data []byte) (homeResponse, error) {
 	}
 	title := strings.TrimSpace(homeDocument.Metadata.Title)
 	if title == "" {
-		title = deriveHomeTitle(homeDocument.Body)
+		title = markdown.DeriveHomeTitle(homeDocument.Body)
 	}
 
 	return homeResponse{
@@ -2764,7 +2674,7 @@ func parseHomeResponse(data []byte) (homeResponse, error) {
 		Type:        string(markdown.HomeType),
 		Title:       title,
 		Description: homeDocument.Metadata.Description,
-		Body:        normalizeMarkdownText(homeDocument.Body),
+		Body:        markdown.NormalizeMarkdownText(homeDocument.Body),
 	}, nil
 }
 
@@ -2781,7 +2691,7 @@ func writeHomeDocument(root workspace.Root, payload updateHomeRequest) error {
 
 	body := ""
 	if payload.Body != nil {
-		body = normalizeMarkdownText(*payload.Body)
+		body = markdown.NormalizeMarkdownText(*payload.Body)
 	}
 
 	data, err := markdown.SerializeDocument(markdown.HomeDocument{
@@ -2812,26 +2722,4 @@ func writeHomeDocument(root workspace.Root, payload updateHomeRequest) error {
 	return nil
 }
 
-func looksLikeFlowDocument(data []byte) bool {
-	return strings.HasPrefix(normalizeMarkdownText(string(data)), "---\n")
-}
 
-func normalizeMarkdownText(value string) string {
-	return strings.ReplaceAll(value, "\r\n", "\n")
-}
-
-func deriveHomeTitle(body string) string {
-	for _, line := range strings.Split(body, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "# ") {
-			return strings.TrimSpace(strings.TrimPrefix(trimmed, "# "))
-		}
-	}
-
-	return "Home"
-}
-
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
-}

@@ -130,22 +130,9 @@ func (backend Backend) GraphTree() (GraphTreeSnapshot, error) {
 		files = nil
 	}
 
-	documents, _, err := workspace.LoadDocumentsBestEffort(backend.root.FlowPath)
+	home, err := readHomeDocument(backend.root.HomePath)
 	if err != nil {
 		return GraphTreeSnapshot{}, err
-	}
-
-	home := markdown.HomeDocument{}
-	for _, item := range documents {
-		if document, ok := item.Document.(markdown.HomeDocument); ok {
-			home = document
-			break
-		}
-	}
-	if home.Metadata.Type == "" && home.Metadata.Title == "" && home.Body == "" {
-		home = markdown.HomeDocument{
-			Metadata: markdown.CommonFields{ID: "home", Type: markdown.HomeType, Title: "Home"},
-		}
 	}
 
 	filesByGraph := make(map[string][]index.GraphTreeFile)
@@ -433,4 +420,33 @@ func (backend Backend) writeUploadedFile(fileName string, content []byte, docume
 
 	assetRelativePath := filepath.Join(assetRelativeDir, assetFileName)
 	return workspace.BuildAssetURL(assetRelativePath), nil
+}
+
+func readHomeDocument(homePath string) (markdown.HomeDocument, error) {
+	data, err := os.ReadFile(homePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return markdown.HomeDocument{
+				Metadata: markdown.CommonFields{ID: "home", Type: markdown.HomeType, Title: "Home"},
+			}, nil
+		}
+		return markdown.HomeDocument{}, fmt.Errorf("read home document: %w", err)
+	}
+
+	home, err := markdown.ParseHomeDocument(data)
+	if err != nil {
+		return markdown.HomeDocument{}, fmt.Errorf("parse home document: %w", err)
+	}
+
+	if strings.TrimSpace(home.Metadata.ID) == "" {
+		home.Metadata.ID = "home"
+	}
+	if strings.TrimSpace(home.Metadata.Title) == "" {
+		home.Metadata.Title = markdown.DeriveHomeTitle(home.Body)
+	}
+	if home.Metadata.Type == "" {
+		home.Metadata.Type = markdown.HomeType
+	}
+
+	return home, nil
 }

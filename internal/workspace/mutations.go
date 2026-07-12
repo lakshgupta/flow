@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -355,20 +356,8 @@ func DeleteDocumentByID(root Root, documentID string) (string, error) {
 	return DeleteDocumentByPath(root, workspaceDocument.Path)
 }
 
-// documentBody extracts the body text from a parsed Document via type switch.
 func documentBody(doc markdown.Document) string {
-	switch d := doc.(type) {
-	case markdown.NoteDocument:
-		return d.Body
-	case markdown.TaskDocument:
-		return d.Body
-	case markdown.CommandDocument:
-		return d.Body
-	case markdown.HomeDocument:
-		return d.Body
-	default:
-		return ""
-	}
+	return doc.BodyContent()
 }
 
 // MergeDocumentsInput describes a merge of multiple documents into the first.
@@ -438,7 +427,7 @@ func MergeDocuments(root Root, input MergeDocumentsInput) (markdown.WorkspaceDoc
 		mergedTargetLinks = append(mergedTargetLinks, markdown.NodeLink{
 			Node:          link.Node,
 			Context:       link.Context,
-			Relationships: cloneStrings(link.Relationships),
+			Relationships: slices.Clone(link.Relationships),
 		})
 	}
 
@@ -456,7 +445,7 @@ func MergeDocuments(root Root, input MergeDocumentsInput) (markdown.WorkspaceDoc
 					existing.Context = link.Context
 				}
 				if len(existing.Relationships) == 0 && len(link.Relationships) > 0 {
-					existing.Relationships = cloneStrings(link.Relationships)
+					existing.Relationships = slices.Clone(link.Relationships)
 				}
 				mergedTargetLinks[existingIndex] = existing
 				continue
@@ -466,7 +455,7 @@ func MergeDocuments(root Root, input MergeDocumentsInput) (markdown.WorkspaceDoc
 			mergedTargetLinks = append(mergedTargetLinks, markdown.NodeLink{
 				Node:          link.Node,
 				Context:       link.Context,
-				Relationships: cloneStrings(link.Relationships),
+				Relationships: slices.Clone(link.Relationships),
 			})
 		}
 	}
@@ -521,7 +510,7 @@ func MergeDocuments(root Root, input MergeDocumentsInput) (markdown.WorkspaceDoc
 					changed = true
 				}
 				if len(existing.Relationships) == 0 && len(link.Relationships) > 0 {
-					existing.Relationships = cloneStrings(link.Relationships)
+					existing.Relationships = slices.Clone(link.Relationships)
 					nextLinks[existingIndex] = existing
 					changed = true
 				}
@@ -532,7 +521,7 @@ func MergeDocuments(root Root, input MergeDocumentsInput) (markdown.WorkspaceDoc
 			nextLinks = append(nextLinks, markdown.NodeLink{
 				Node:          nextNode,
 				Context:       link.Context,
-				Relationships: cloneStrings(link.Relationships),
+				Relationships: slices.Clone(link.Relationships),
 			})
 		}
 
@@ -561,32 +550,12 @@ func MergeDocuments(root Root, input MergeDocumentsInput) (markdown.WorkspaceDoc
 }
 
 func documentID(doc markdown.Document) string {
-	switch d := doc.(type) {
-	case markdown.NoteDocument:
-		return d.Metadata.ID
-	case markdown.TaskDocument:
-		return d.Metadata.ID
-	case markdown.CommandDocument:
-		return d.Metadata.ID
-	case markdown.HomeDocument:
-		return d.Metadata.ID
-	default:
-		return ""
-	}
+	return doc.ID()
 }
 
 // documentLinks returns a copy of the links list for any document type.
 func documentLinks(doc markdown.Document) []markdown.NodeLink {
-	switch d := doc.(type) {
-	case markdown.NoteDocument:
-		return cloneLinks(d.Metadata.Links)
-	case markdown.TaskDocument:
-		return cloneLinks(d.Metadata.Links)
-	case markdown.CommandDocument:
-		return cloneLinks(d.Metadata.Links)
-	default:
-		return nil
-	}
+	return cloneLinks(doc.Links())
 }
 
 // AddLink appends a NodeLink{Node: toID, Context: context, Relationships: relationships} to the source
@@ -620,7 +589,7 @@ func AddLink(root Root, fromID, toID, context string, relationships []string) er
 	newLinks := append(currentLinks, markdown.NodeLink{
 		Node:          toID,
 		Context:       strings.TrimSpace(context),
-		Relationships: cloneStrings(relationships),
+		Relationships: slices.Clone(relationships),
 	})
 	_, err = UpdateDocumentByPath(root, sourceDoc.Path, DocumentPatch{Links: &newLinks})
 	return err
@@ -672,7 +641,7 @@ func UpdateLinkContext(root Root, fromID, toID, context string, relationships []
 			newLinks[i] = markdown.NodeLink{
 				Node:          link.Node,
 				Context:       strings.TrimSpace(context),
-				Relationships: cloneStrings(relationships),
+				Relationships: slices.Clone(relationships),
 			}
 			found = true
 		} else {
@@ -716,7 +685,7 @@ func buildCreateDocument(input CreateDocumentInput) markdown.Document {
 		Graph:       input.Graph,
 		Title:       input.Title,
 		Description: input.Description,
-		Tags:        cloneStrings(input.Tags),
+		Tags:        slices.Clone(input.Tags),
 		CreatedAt:   input.CreatedAt,
 		UpdatedAt:   input.UpdatedAt,
 	}
@@ -745,7 +714,7 @@ func buildCreateDocument(input CreateDocumentInput) markdown.Document {
 				CommonFields: common,
 				Name:         input.Name,
 				Links:        cloneLinks(input.Links),
-				Env:          cloneMap(input.Env),
+				Env:          markdown.CloneMap(input.Env),
 				Run:          input.Run,
 			},
 			Body: input.Body,
@@ -789,7 +758,7 @@ func applyDocumentPatch(document markdown.Document, patch DocumentPatch) (markdo
 			value.Metadata.Links = cloneLinks(*patch.Links)
 		}
 		if patch.Env != nil {
-			value.Metadata.Env = cloneMap(*patch.Env)
+			value.Metadata.Env = markdown.CloneMap(*patch.Env)
 		}
 		if patch.Run != nil {
 			value.Metadata.Run = *patch.Run
@@ -827,7 +796,7 @@ func patchCommonFields(fields *markdown.CommonFields, patch DocumentPatch) {
 		fields.UpdatedAt = *patch.UpdatedAt
 	}
 	if patch.Tags != nil {
-		fields.Tags = cloneStrings(*patch.Tags)
+		fields.Tags = slices.Clone(*patch.Tags)
 	}
 	if patch.Color != nil {
 		fields.Color = *patch.Color
@@ -947,16 +916,7 @@ func validateWorkspaceMutationDocuments(currentRelativePath string, targetRelati
 // documentIDForCleanup extracts the canonical ID from any supported document type.
 // Returns an empty string for unsupported types so callers can skip cleanup safely.
 func documentIDForCleanup(document markdown.Document) string {
-	switch d := document.(type) {
-	case markdown.NoteDocument:
-		return d.Metadata.ID
-	case markdown.TaskDocument:
-		return d.Metadata.ID
-	case markdown.CommandDocument:
-		return d.Metadata.ID
-	default:
-		return ""
-	}
+	return document.ID()
 }
 
 func prepareDeletionDocuments(relativePath string, document markdown.Document, workspaceDocuments []markdown.WorkspaceDocument) ([]markdown.WorkspaceDocument, error) {
@@ -981,31 +941,14 @@ func prepareDeletionDocuments(relativePath string, document markdown.Document, w
 	return targets, nil
 }
 func removeReferenceFromWorkspaceDocument(item markdown.WorkspaceDocument, referenceID string) (markdown.WorkspaceDocument, bool) {
-	switch document := item.Document.(type) {
-	case markdown.NoteDocument:
-		nextLinks := removeNodeLink(document.Metadata.Links, referenceID)
-		if len(nextLinks) == len(document.Metadata.Links) {
-			return item, false
-		}
-		document.Metadata.Links = nextLinks
-		return markdown.WorkspaceDocument{Path: item.Path, Document: document}, true
-	case markdown.TaskDocument:
-		nextLinks := removeNodeLink(document.Metadata.Links, referenceID)
-		if len(nextLinks) == len(document.Metadata.Links) {
-			return item, false
-		}
-		document.Metadata.Links = nextLinks
-		return markdown.WorkspaceDocument{Path: item.Path, Document: document}, true
-	case markdown.CommandDocument:
-		nextLinks := removeNodeLink(document.Metadata.Links, referenceID)
-		if len(nextLinks) == len(document.Metadata.Links) {
-			return item, false
-		}
-		document.Metadata.Links = nextLinks
-		return markdown.WorkspaceDocument{Path: item.Path, Document: document}, true
-	default:
+	d := item.Document
+	origLinks := d.Links()
+	nextLinks := removeNodeLink(origLinks, referenceID)
+	if len(nextLinks) == len(origLinks) {
 		return item, false
 	}
+	updated := setDocumentLinks(d, nextLinks)
+	return markdown.WorkspaceDocument{Path: item.Path, Document: updated}, true
 }
 
 func removeString(values []string, target string) []string {
@@ -1058,16 +1001,7 @@ func findDocumentByID(flowPath string, documentID string) (markdown.WorkspaceDoc
 }
 
 func documentIDFor(document markdown.Document) string {
-	switch value := document.(type) {
-	case markdown.NoteDocument:
-		return value.Metadata.ID
-	case markdown.TaskDocument:
-		return value.Metadata.ID
-	case markdown.CommandDocument:
-		return value.Metadata.ID
-	default:
-		return ""
-	}
+	return document.ID()
 }
 
 func ensureMarkdownFileName(value string) string {
@@ -1145,17 +1079,8 @@ func normalizeDocumentGraphForPath(relativePath string, document markdown.Docume
 	return normalized.Document
 }
 
-func documentGraph(document markdown.Document) string {
-	switch value := document.(type) {
-	case markdown.NoteDocument:
-		return value.Metadata.Graph
-	case markdown.TaskDocument:
-		return value.Metadata.Graph
-	case markdown.CommandDocument:
-		return value.Metadata.Graph
-	default:
-		return ""
-	}
+func documentGraph(doc markdown.Document) string {
+	return doc.Graph()
 }
 
 func planDocumentReferenceRewriteWrites(flowPath string, currentRelativePath string, targetRelativePath string, currentDocument markdown.Document, targetDocument markdown.Document) (map[string]markdown.Document, error) {
@@ -1353,24 +1278,14 @@ func referenceBreadcrumbForDocument(pathValue string, document markdown.Document
 }
 
 func referenceTitleForDocument(document markdown.Document) string {
-	var title string
-	switch value := document.(type) {
-	case markdown.NoteDocument:
-		title = value.Metadata.Title
-	case markdown.TaskDocument:
-		title = value.Metadata.Title
-	case markdown.CommandDocument:
-		title = value.Metadata.Title
-	default:
+	if document.Kind() == markdown.HomeType {
 		return ""
 	}
-
-	title = strings.TrimSpace(title)
+	title := strings.TrimSpace(document.Title())
 	if title != "" {
 		return title
 	}
-
-	return strings.TrimSpace(documentIDFor(document))
+	return strings.TrimSpace(document.ID())
 }
 
 func rewriteWorkspaceDocumentInlineReferences(item markdown.WorkspaceDocument, rewriteMap map[string]string) (markdown.WorkspaceDocument, bool) {
@@ -1378,42 +1293,14 @@ func rewriteWorkspaceDocumentInlineReferences(item markdown.WorkspaceDocument, r
 		return item, false
 	}
 
-	switch document := item.Document.(type) {
-	case markdown.HomeDocument:
-		rewrittenBody := markdown.RewriteInlineReferenceTargets(document.Body, rewriteMap)
-		if rewrittenBody == document.Body {
-			return item, false
-		}
-		document.Body = rewrittenBody
-		item.Document = document
-		return item, true
-	case markdown.NoteDocument:
-		rewrittenBody := markdown.RewriteInlineReferenceTargets(document.Body, rewriteMap)
-		if rewrittenBody == document.Body {
-			return item, false
-		}
-		document.Body = rewrittenBody
-		item.Document = document
-		return item, true
-	case markdown.TaskDocument:
-		rewrittenBody := markdown.RewriteInlineReferenceTargets(document.Body, rewriteMap)
-		if rewrittenBody == document.Body {
-			return item, false
-		}
-		document.Body = rewrittenBody
-		item.Document = document
-		return item, true
-	case markdown.CommandDocument:
-		rewrittenBody := markdown.RewriteInlineReferenceTargets(document.Body, rewriteMap)
-		if rewrittenBody == document.Body {
-			return item, false
-		}
-		document.Body = rewrittenBody
-		item.Document = document
-		return item, true
-	default:
+	origBody := documentBody(item.Document)
+	rewrittenBody := markdown.RewriteInlineReferenceTargets(origBody, rewriteMap)
+	if rewrittenBody == origBody {
 		return item, false
 	}
+
+	item.Document = setDocumentBody(item.Document, rewrittenBody)
+	return item, true
 }
 
 func renameGraphPath(graphPath string, currentGraph string, nextGraph string) (string, bool) {
@@ -1568,7 +1455,7 @@ func uniqueAssetFileName(dir string, candidate string) string {
 		ext = ".bin"
 	}
 
-	for index := 0; ; index++ {
+	for index := 0; index < 10000; index++ {
 		name := base + ext
 		if index > 0 {
 			name = fmt.Sprintf("%s-%d%s", base, index+1, ext)
@@ -1578,9 +1465,10 @@ func uniqueAssetFileName(dir string, candidate string) string {
 			return name
 		}
 	}
+
+	return base + ext
 }
 
-// setDocumentBody returns a copy of the document with the body field replaced.
 func setDocumentBody(document markdown.Document, body string) markdown.Document {
 	switch d := document.(type) {
 	case markdown.NoteDocument:
@@ -1594,6 +1482,22 @@ func setDocumentBody(document markdown.Document, body string) markdown.Document 
 		return d
 	case markdown.HomeDocument:
 		d.Body = body
+		return d
+	default:
+		return document
+	}
+}
+
+func setDocumentLinks(document markdown.Document, links []markdown.NodeLink) markdown.Document {
+	switch d := document.(type) {
+	case markdown.NoteDocument:
+		d.Metadata.Links = links
+		return d
+	case markdown.TaskDocument:
+		d.Metadata.Links = links
+		return d
+	case markdown.CommandDocument:
+		d.Metadata.Links = links
 		return d
 	default:
 		return document
@@ -1625,25 +1529,4 @@ func removeNodeLink(values []markdown.NodeLink, nodeID string) []markdown.NodeLi
 	return filtered
 }
 
-func cloneStrings(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
 
-	cloned := make([]string, len(values))
-	copy(cloned, values)
-	return cloned
-}
-
-func cloneMap(values map[string]string) map[string]string {
-	if len(values) == 0 {
-		return nil
-	}
-
-	cloned := make(map[string]string, len(values))
-	for key, value := range values {
-		cloned[key] = value
-	}
-
-	return cloned
-}
