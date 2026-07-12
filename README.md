@@ -217,7 +217,20 @@ Flow provides release assets for:
 - `darwin/amd64`
 - `darwin/arm64`
 
-Install from downloaded asset:
+**One-liner** (downloads and installs the latest release):
+
+```bash
+curl -fsSL https://github.com/lakshgupta/flow/releases/latest/download/flow-install.sh | bash
+```
+
+**Install a specific version**:
+
+```bash
+curl -fsSL -o flow-install.sh https://github.com/lakshgupta/flow/releases/download/v0.6.0/flow-install.sh
+chmod +x flow-install.sh && ./flow-install.sh 0.6.0
+```
+
+**Or download and run the release asset manually**:
 
 ```bash
 bash ./install.sh

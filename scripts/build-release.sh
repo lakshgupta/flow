@@ -34,6 +34,7 @@ VERSION="$(release_version)"
 ARCHIVE_NAME="$(release_archive_name "$VERSION" "$TARGET_OS" "$TARGET_ARCH")"
 CHECKSUM_NAME="$(release_checksum_name "$VERSION" "$TARGET_OS" "$TARGET_ARCH")"
 INSTALLER_NAME="install.sh"
+ROOT_INSTALLER_NAME="flow-install.sh"
 
 rm -rf "$STAGING_DIR"
 mkdir -p "$STAGING_DIR"
@@ -86,6 +87,7 @@ popd >/dev/null
 
 cp "$ROOT_DIR/LICENSE" "$STAGING_DIR/LICENSE"
 install -m 0755 "$ROOT_DIR/scripts/install.sh" "$DIST_DIR/$INSTALLER_NAME"
+install -m 0755 "$ROOT_DIR/flow-install.sh" "$DIST_DIR/$ROOT_INSTALLER_NAME"
 
 tar -C "$STAGING_DIR" -czf "$DIST_DIR/$ARCHIVE_NAME" flow LICENSE
 
@@ -100,3 +102,4 @@ echo "Staged release artifacts for ${TARGET_OS}/${TARGET_ARCH}:"
 echo "- $DIST_DIR/$ARCHIVE_NAME"
 echo "- $DIST_DIR/$CHECKSUM_NAME"
 echo "- $DIST_DIR/$INSTALLER_NAME"
+echo "- $DIST_DIR/$ROOT_INSTALLER_NAME"
