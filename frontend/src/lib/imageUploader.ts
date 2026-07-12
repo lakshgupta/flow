@@ -23,9 +23,10 @@ export function arrayBufferToBase64(buffer: ArrayBuffer): string {
  */
 function getWailsApp(): Record<string, unknown> | null {
   if (typeof window === 'undefined') return null
-  const go = (window as Record<string, unknown>).go as Record<string, unknown> | undefined
-  const app = go?.desktop?.App as Record<string, unknown> | undefined
-  return app ?? null
+  const go = (window as unknown as Record<string, unknown>).go as Record<string, unknown> | undefined
+  const app = go?.desktop as Record<string, unknown> | undefined
+  const wailsApp = app?.App as Record<string, unknown> | undefined
+  return wailsApp ?? null
 }
 
 /**

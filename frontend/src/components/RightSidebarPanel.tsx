@@ -1,10 +1,12 @@
 import { memo, type RefObject } from "react";
 
-import type { DocumentFormState, GraphTreeResponse, SearchResult, SurfaceState } from "../types";
+import type { DocumentFormState, DocumentResponse, GraphTreeResponse, HomeFormState, SearchResult, SurfaceState } from "../types";
 import type { RightRailSearchPanelProps, RightRailCalendarPanelProps } from "./RightRailPanels";
 import { RightRailSearchPanel, RightRailCalendarPanel } from "./RightRailPanels";
-import { DocumentEditorPane } from "./DocumentEditorPane";
+import { DocumentEditorPane, type DocumentEditorPaneActions, type DocumentLinkDetail } from "./DocumentEditorPane";
 import { RichTextEditor } from "./editor/RichTextEditor";
+import type { TOCItem } from "./TableOfContents";
+import type { HomeSurfaceActions } from "./HomeSurface";
 
 type RightSidebarPanelProps = {
   rightRailCollapsed: boolean;
@@ -15,18 +17,13 @@ type RightSidebarPanelProps = {
   // Home surface
   graphTree: GraphTreeResponse | null;
   homeDocumentEditorRef: RefObject<{ getMarkdown: () => string } | null>;
-  homeFormState: { title: string; body: string };
+  homeFormState: HomeFormState;
   homeInlineReferences: GraphTreeResponse["home"]["inlineReferences"];
-  homeSurfaceActions: {
-    updateHomeFormField: (field: string, value: string) => void;
-    openInlineReference: (documentId: string, graphPath: string) => void;
-    openDate: (date: string) => void;
-    openThreadAsset: (href: string) => void;
-  };
+  homeSurfaceActions: HomeSurfaceActions;
   // Document editor
   hasRightRailDocument: boolean;
   renderCenterDocumentShell: (isMaximizedRightRail: boolean) => React.ReactNode;
-  selectedDocument: DocumentFormState | null;
+  selectedDocument: DocumentResponse | null;
   formState: DocumentFormState;
   panelError: string;
   mutationError: string;
@@ -36,12 +33,12 @@ type RightSidebarPanelProps = {
   selectedDocumentGraphColor: string | undefined;
   selectedDocumentTintStyle: React.CSSProperties | undefined;
   documentTOCRatio: number;
-  tocItems: Array<{ id: string; title: string; level: number; slug: string }>;
-  selectedDocumentLinks: { outgoing: Array<{ id: string; title: string }>; incoming: Array<{ id: string; title: string }> };
+  tocItems: TOCItem[];
+  selectedDocumentLinks: { outgoing: DocumentLinkDetail[]; incoming: DocumentLinkDetail[] };
   rightRailDocumentLayoutRef: RefObject<HTMLDivElement | null>;
   rightRailDocumentEditorRef: RefObject<{ getMarkdown: () => string } | null>;
   editorScrollTarget: string | null;
-  rightRailDocumentActions: Record<string, unknown>;
+  rightRailDocumentActions: DocumentEditorPaneActions;
   // Search
   searchQuery: string;
   searchTagQuery: string;
@@ -51,16 +48,16 @@ type RightSidebarPanelProps = {
   searchError: string;
   hasDeferredSearchFilter: boolean;
   searchResults: SearchResult[];
-  setSearchQuery: (value: string) => void;
-  setSearchTagQuery: (value: string) => void;
-  setSearchTitleQuery: (value: string) => void;
-  setSearchDescriptionQuery: (value: string) => void;
-  setSearchContentQuery: (value: string) => void;
+  setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
+  setSearchTagQuery: React.Dispatch<React.SetStateAction<string>>;
+  setSearchTitleQuery: React.Dispatch<React.SetStateAction<string>>;
+  setSearchDescriptionQuery: React.Dispatch<React.SetStateAction<string>>;
+  setSearchContentQuery: React.Dispatch<React.SetStateAction<string>>;
   handleRightRailSearchResultNavigate: (result: SearchResult) => void;
   // Calendar
   calendarDocumentsForDisplay: RightRailCalendarPanelProps["documents"];
   calendarFocusDate: string;
-  setCalendarFocusDate: (value: string) => void;
+  setCalendarFocusDate: React.Dispatch<React.SetStateAction<string>>;
   handleRightRailCalendarDocumentOpen: (document: RightRailCalendarPanelProps["documents"][0]) => void;
   calendarError: string;
 };

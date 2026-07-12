@@ -14,7 +14,6 @@ import { defineCodeBlockExitKeymap } from './code-block-exit-keymap'
 import { defineHeadingExitKeymap } from './heading-exit-keymap'
 import { defineImageIndentKeymap } from './image-indent-keymap'
 import { defineCodeBlockView } from './ui/code-block-view'
-import { defineDiagLogPlugin } from './diag-log-plugin'
 import { defineImageView } from './ui/image-view'
 import { hasImageExtension } from './image-utils'
 

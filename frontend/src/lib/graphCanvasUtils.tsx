@@ -187,6 +187,10 @@ export function buildGraphCanvasFlowNodes(
         isCanvasSelected: item.id === selectedCanvasNodeId,
         isExpanded,
         isPanelDocument: item.id === selectedDocumentId,
+        width: dimensions.width,
+        height: dimensions.height,
+        baseHeight: baseDimensions.height,
+        zIndex: 0,
       }),
       id: item.id,
       type: item.type,
@@ -389,7 +393,7 @@ export async function applyElkHorizontalLayout(
   const positioned = layout.children ?? [];
   return Object.fromEntries(
     positioned
-      .filter((node): node is { id: string; x: number; y: number } =>
+      .filter((node): node is { id: string; x: number; y: number; width: number; height: number } =>
         typeof node.id === "string" && typeof node.x === "number" && typeof node.y === "number",
       )
       .map((node) => [node.id, { x: Math.round(node.x), y: Math.round(node.y) }]),

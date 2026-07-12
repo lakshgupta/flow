@@ -7,7 +7,7 @@ import { Button } from "./ui/button";
 
 import type { HomeFormState, HomeResponse } from "../types";
 
-type HomeSurfaceActions = {
+export type HomeSurfaceActions = {
   toggleTOC: () => void;
   updateHomeFormField: (field: keyof HomeFormState, value: string) => void;
   openInlineReference: (documentId: string, graphPath: string) => void;

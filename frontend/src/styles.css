@@ -3623,7 +3623,14 @@ pre {
   padding: 1rem 1rem 0;
 }
 
-.thread-panel-header-leading,
+.thread-panel-header-leading {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .thread-panel-header-actions {
   display: flex;
   align-items: center;

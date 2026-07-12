@@ -9,13 +9,13 @@ import { RichTextEditor, type RichTextEditorHandle } from "./editor/RichTextEdit
 import { formatDocumentType } from "../lib/docUtils";
 import type { DocumentFormState, DocumentResponse } from "../types";
 
-type DocumentLinkDetail = {
+export type DocumentLinkDetail = {
 	nodeId: string;
 	context: string;
 	graphPath: string;
 };
 
-type DocumentEditorPaneActions = {
+export type DocumentEditorPaneActions = {
 	toggleMaximize: () => void;
 	openDeleteDialog: () => void;
 	closeDocument: () => void;

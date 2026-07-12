@@ -14,7 +14,7 @@ export default function SlashMenuItem(props: {
   // (empty) values, excluding the item from the filtered list.
   const itemRef = useCallback(
     (el: HTMLElement | null) => {
-      if (el) (el as { value: string }).value = props.label
+      if (el) (el as unknown as { value: string }).value = props.label
     },
     [props.label],
   )

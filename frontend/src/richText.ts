@@ -32,27 +32,27 @@ const turndown = new TurndownService({
 
 turndown.use(gfm);
 turndown.addRule("mathBlock", {
-  filter(node) {
+  filter(node: any) {
     return node instanceof Element && node.tagName === "DIV" && node.classList.contains("prosemirror-math-block");
   },
-  replacement(_content, node) {
+  replacement(_content: any, node: any) {
     if (!(node instanceof Element)) return "";
     const source = node.querySelector("code")?.textContent ?? "";
     return `\n\n$$${source}$$\n\n`;
   },
 });
 turndown.addRule("mathInline", {
-  filter(node) {
+  filter(node: any) {
     return node instanceof Element && node.tagName === "SPAN" && node.classList.contains("prosemirror-math-inline");
   },
-  replacement(_content, node) {
+  replacement(_content: any, node: any) {
     if (!(node instanceof Element)) return "";
     const source = node.querySelector("code")?.textContent ?? "";
     return `$${source}$`;
   },
 });
 turndown.addRule("emptyParagraph", {
-  filter(node) {
+  filter(node: any) {
     return node instanceof Element && isSemanticallyEmptyParagraph(node);
   },
   replacement() {
@@ -60,13 +60,13 @@ turndown.addRule("emptyParagraph", {
   },
 });
 turndown.addRule("flowDateLink", {
-  filter(node) {
+  filter(node: any) {
     if (!(node instanceof Element) || node.tagName !== "A") {
       return false;
     }
     return parseFlowDateHref(node.getAttribute("href") ?? "") !== null;
   },
-  replacement(_content, node) {
+  replacement(_content: any, node: any) {
     if (!(node instanceof Element)) {
       return "";
     }
@@ -74,14 +74,14 @@ turndown.addRule("flowDateLink", {
   },
 });
 turndown.addRule("flowInlineReference", {
-  filter(node) {
+  filter(node: any) {
     if (!(node instanceof Element) || node.tagName !== "A") {
       return false;
     }
 
     return parseFlowReferenceHref(node.getAttribute("href") ?? "") !== null;
   },
-  replacement(_content, node) {
+  replacement(_content: any, node: any) {
     if (!(node instanceof Element)) {
       return "";
     }
@@ -90,10 +90,10 @@ turndown.addRule("flowInlineReference", {
   },
 });
 turndown.addRule("strikethrough", {
-  filter(node) {
+  filter(node: any) {
     return node instanceof Element && ["S", "STRIKE", "DEL"].includes(node.tagName);
   },
-  replacement(content) {
+  replacement(content: any) {
     return content === "" ? "" : `~~${content}~~`;
   },
 });
@@ -101,24 +101,24 @@ turndown.addRule("strikethrough", {
 // single line.  Without this rule, default paragraph/heading/etc handlers
 // append "\n\n" which breaks markdown-it's table parser on the next load.
 turndown.addRule("tableCellBlock", {
-  filter(node) {
+  filter(node: any) {
     if (!(node instanceof Element)) return false;
     const tag = node.tagName;
     if (!["P", "H1", "H2", "H3", "H4", "H5", "H6"].includes(tag)) return false;
     return node.closest("td, th") !== null;
   },
-  replacement(content) {
+  replacement(content: any) {
     return content.trim();
   },
 });
 turndown.addRule("mark", {
   filter: "mark",
-  replacement(content) {
+  replacement(content: any) {
     return `<mark>${content}</mark>`;
   },
 });
 turndown.addRule("styledSpanColors", {
-  filter(node) {
+  filter(node: any) {
     if (!(node instanceof Element) || node.tagName !== "SPAN") {
       return false;
     }
@@ -127,7 +127,7 @@ turndown.addRule("styledSpanColors", {
     const backgroundColor = extractBackgroundColor(node);
     return textColor !== null || backgroundColor !== null;
   },
-  replacement(content, node) {
+  replacement(content: any, node: any) {
     if (!(node instanceof Element)) {
       return content;
     }

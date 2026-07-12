@@ -409,7 +409,7 @@ export default function InlineMenu() {
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => applyHeadingLevel(option.level)}
               className={`flex items-center rounded-md px-3 py-1.5 text-sm text-left whitespace-nowrap ${
-                items.heading.level === option.level
+                items.heading?.level === option.level
                   ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-50 font-medium'
                   : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
               }`}

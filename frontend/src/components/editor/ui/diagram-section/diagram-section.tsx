@@ -67,8 +67,8 @@ export default function DiagramSection(props: ReactNodeViewProps) {
       const trimmed = nextTitle.trim();
       if (trimmed === committedTitle) return;
       const next = trimmed ? `${trimmed}\n${source}` : source;
-      const pos = typeof getPos === "function" ? getPos() : null;
-      if (pos === null) return;
+      const pos = typeof getPos === "function" ? getPos() : undefined;
+      if (pos === undefined) return;
       const codeBlockType = view.state.schema.nodes.codeBlock;
       if (!codeBlockType) return;
       const newNode = codeBlockType.create(
@@ -101,8 +101,8 @@ export default function DiagramSection(props: ReactNodeViewProps) {
   );
 
   const handleDelete = useCallback(() => {
-    const pos = typeof getPos === "function" ? getPos() : null;
-    if (pos === null) return;
+    const pos = typeof getPos === "function" ? getPos() : undefined;
+    if (pos === undefined) return;
     const tr = view.state.tr.delete(pos, pos + node.nodeSize);
     view.dispatch(tr);
     view.focus();
@@ -113,8 +113,8 @@ export default function DiagramSection(props: ReactNodeViewProps) {
       if (!event.altKey) return;
       if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
       event.preventDefault();
-      const pos = typeof getPos === "function" ? getPos() : null;
-      if (pos === null) return;
+      const pos = typeof getPos === "function" ? getPos() : undefined;
+      if (pos === undefined) return;
       const direction = event.key === "ArrowUp" ? -1 : 1;
       const $pos = view.state.doc.resolve(pos);
       const parent = $pos.parent;

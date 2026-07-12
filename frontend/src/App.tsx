@@ -84,6 +84,7 @@ import { useTheme } from "./lib/theme";
 import { todayString } from "./lib/dateEntries";
 import { toErrorMessage } from "./lib/utils";
 import type { EdgeTypes } from "@xyflow/react";
+import type { GraphCanvasFlowEdgeData } from "./lib/graphCanvasUtils";
 
 const EDGE_TYPES: EdgeTypes = { contextEdge: ContextEdge };
 
@@ -314,7 +315,7 @@ function updateGraphCanvasDocumentEntry(graphCanvas: GraphCanvasResponse | null,
 function FlowApp() {
   const { theme, setTheme } = useTheme();
   const rfViewport = useViewport();
-  const graphCanvasFlowRef = useRef<ReactFlowInstance<GraphCanvasFlowNodeData> | null>(null);
+  const graphCanvasFlowRef = useRef<ReactFlowInstance<Node<GraphCanvasFlowNodeData>, Edge<GraphCanvasFlowEdgeData>> | null>(null);
   const rfViewportRef = useRef(rfViewport);
   const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null);
   const [graphTree, setGraphTree] = useState<GraphTreeResponse | null>(null);
@@ -442,8 +443,8 @@ function FlowApp() {
   const connectingTargetRef = useRef<string | null>(null);
   const homeFormStateRef = useRef<HomeFormState>(emptyHomeFormState);
   const homeFormWorkspacePathRef = useRef<string>("");
-  const homeAutoSaveTimerRef = useRef<number | null>(null);
-  const documentAutoSaveTimerRef = useRef<number | null>(null);
+  const homeAutoSaveTimerRef = useRef<number | undefined>(undefined);
+  const documentAutoSaveTimerRef = useRef<number | undefined>(undefined);
   const homeSavePromiseRef = useRef<Promise<void> | null>(null);
   const documentSavePromiseRef = useRef<Promise<void> | null>(null);
   const edgeClickTimerRef = useRef<number | null>(null);
@@ -813,7 +814,7 @@ function FlowApp() {
     });
   }, [activeThreadPanelKey, isThreadStackOpen]);
 
-  const moveThreadFocus = useCallback((delta: -1 | 1): void => {
+  const moveThreadFocus = useCallback((delta: number): void => {
     if (!isThreadStackOpen || threadPanels.length === 0 || activeThreadPanelIndex < 0) {
       return;
     }
@@ -1060,11 +1061,11 @@ function FlowApp() {
   async function flushPendingDocumentSave(): Promise<void> {
     await waitForEditorStateToSettle();
     const hasUnsyncedEditorState = syncDocumentBodyFromActiveEditor();
-    const hadPendingTimer = documentAutoSaveTimerRef.current !== null;
+    const hadPendingTimer =   documentAutoSaveTimerRef.current !== undefined;
 
     if (hadPendingTimer) {
-      clearTimeout(documentAutoSaveTimerRef.current);
-      documentAutoSaveTimerRef.current = null;
+      window.clearTimeout(documentAutoSaveTimerRef.current);
+      documentAutoSaveTimerRef.current = undefined;
     }
 
     if (documentSavePromiseRef.current !== null) {
@@ -1081,12 +1082,12 @@ function FlowApp() {
   async function flushPendingHomeSave(): Promise<void> {
     await waitForEditorStateToSettle();
     const hasUnsyncedEditorState = syncHomeBodyFromEditor();
-    const hadPendingTimer = homeAutoSaveTimerRef.current !== null;
+    const hadPendingTimer =   homeAutoSaveTimerRef.current !== undefined;
 
     if (hadPendingTimer) {
-      clearTimeout(homeAutoSaveTimerRef.current);
-      homeAutoSaveTimerRef.current = null;
-    }
+      window.clearTimeout(homeAutoSaveTimerRef.current);
+  homeAutoSaveTimerRef.current = undefined;
+  }
 
     if (homeSavePromiseRef.current !== null) {
       await homeSavePromiseRef.current;
@@ -1571,9 +1572,9 @@ function FlowApp() {
   }, [refreshCalendarDocumentList]);
 
   useEffect(() => {
-    if (documentAutoSaveTimerRef.current !== null) {
-      clearTimeout(documentAutoSaveTimerRef.current);
-      documentAutoSaveTimerRef.current = null;
+    if (  documentAutoSaveTimerRef.current !== undefined) {
+      window.clearTimeout(documentAutoSaveTimerRef.current);
+      documentAutoSaveTimerRef.current = undefined;
     }
 
     if (selectedDocumentId === "") {
@@ -1953,11 +1954,11 @@ function FlowApp() {
       });
     }
 
-    if (documentAutoSaveTimerRef.current !== null) {
-      clearTimeout(documentAutoSaveTimerRef.current);
+    if (  documentAutoSaveTimerRef.current !== undefined) {
+      window.clearTimeout(documentAutoSaveTimerRef.current);
     }
     documentAutoSaveTimerRef.current = window.setTimeout(() => {
-      documentAutoSaveTimerRef.current = null;
+      documentAutoSaveTimerRef.current = undefined;
       if (selectedDocumentRef.current !== null) {
         void handleSaveDocument(selectedDocumentRef.current, formStateRef.current);
       }
@@ -1978,11 +1979,11 @@ function FlowApp() {
       return next;
     });
 
-    if (documentAutoSaveTimerRef.current !== null) {
-      clearTimeout(documentAutoSaveTimerRef.current);
+    if (  documentAutoSaveTimerRef.current !== undefined) {
+      window.clearTimeout(documentAutoSaveTimerRef.current);
     }
     documentAutoSaveTimerRef.current = window.setTimeout(() => {
-      documentAutoSaveTimerRef.current = null;
+      documentAutoSaveTimerRef.current = undefined;
       if (selectedDocumentRef.current !== null) {
         void handleSaveDocument(selectedDocumentRef.current, formStateRef.current);
       }
@@ -2019,11 +2020,11 @@ function FlowApp() {
       return next;
     });
 
-    if (documentAutoSaveTimerRef.current !== null) {
-      clearTimeout(documentAutoSaveTimerRef.current);
+    if (  documentAutoSaveTimerRef.current !== undefined) {
+      window.clearTimeout(documentAutoSaveTimerRef.current);
     }
     documentAutoSaveTimerRef.current = window.setTimeout(() => {
-      documentAutoSaveTimerRef.current = null;
+      documentAutoSaveTimerRef.current = undefined;
       if (selectedDocumentRef.current !== null) {
         void handleSaveDocument(selectedDocumentRef.current, formStateRef.current);
       }
@@ -2048,11 +2049,11 @@ function FlowApp() {
       return next;
     });
 
-    if (documentAutoSaveTimerRef.current !== null) {
-      clearTimeout(documentAutoSaveTimerRef.current);
+    if (  documentAutoSaveTimerRef.current !== undefined) {
+      window.clearTimeout(documentAutoSaveTimerRef.current);
     }
     documentAutoSaveTimerRef.current = window.setTimeout(() => {
-      documentAutoSaveTimerRef.current = null;
+      documentAutoSaveTimerRef.current = undefined;
       if (selectedDocumentRef.current !== null) {
         void handleSaveDocument(selectedDocumentRef.current, formStateRef.current);
       }
@@ -2066,19 +2067,19 @@ function FlowApp() {
       homeFormStateRef.current = next;
       return next;
     });
-    if (homeAutoSaveTimerRef.current !== null) {
-      clearTimeout(homeAutoSaveTimerRef.current);
+    if (  homeAutoSaveTimerRef.current !== undefined) {
+      window.clearTimeout(homeAutoSaveTimerRef.current);
     }
     homeAutoSaveTimerRef.current = window.setTimeout(() => {
-      homeAutoSaveTimerRef.current = null;
+      homeAutoSaveTimerRef.current = undefined;
       void handleSaveHomeContent(homeFormStateRef.current);
     }, 800);
   }
 
   function clearContextPanel(): void {
-    if (documentAutoSaveTimerRef.current !== null) {
-      clearTimeout(documentAutoSaveTimerRef.current);
-      documentAutoSaveTimerRef.current = null;
+    if (  documentAutoSaveTimerRef.current !== undefined) {
+      window.clearTimeout(documentAutoSaveTimerRef.current);
+      documentAutoSaveTimerRef.current = undefined;
     }
     setSelectedDocumentId("");
     setSelectedDocumentOpenMode("right-rail");
@@ -2120,14 +2121,14 @@ function FlowApp() {
     syncHomeBodyFromEditor();
 
     // Cancel pending auto-save timers so they don't fire after we leave.
-    if (documentAutoSaveTimerRef.current !== null) {
-      clearTimeout(documentAutoSaveTimerRef.current);
-      documentAutoSaveTimerRef.current = null;
+    if (  documentAutoSaveTimerRef.current !== undefined) {
+      window.clearTimeout(documentAutoSaveTimerRef.current);
+      documentAutoSaveTimerRef.current = undefined;
     }
-    if (homeAutoSaveTimerRef.current !== null) {
-      clearTimeout(homeAutoSaveTimerRef.current);
-      homeAutoSaveTimerRef.current = null;
-    }
+    if (  homeAutoSaveTimerRef.current !== undefined) {
+      window.clearTimeout(homeAutoSaveTimerRef.current);
+  homeAutoSaveTimerRef.current = undefined;
+  }
 
     // Wait for any in-progress save to finish before starting a new one,
     // but don't block the transition on it.
@@ -2158,14 +2159,14 @@ function FlowApp() {
     syncDocumentBodyFromActiveEditor();
     syncHomeBodyFromEditor();
 
-    if (documentAutoSaveTimerRef.current !== null) {
-      clearTimeout(documentAutoSaveTimerRef.current);
-      documentAutoSaveTimerRef.current = null;
+    if (  documentAutoSaveTimerRef.current !== undefined) {
+      window.clearTimeout(documentAutoSaveTimerRef.current);
+      documentAutoSaveTimerRef.current = undefined;
     }
-    if (homeAutoSaveTimerRef.current !== null) {
-      clearTimeout(homeAutoSaveTimerRef.current);
-      homeAutoSaveTimerRef.current = null;
-    }
+    if (  homeAutoSaveTimerRef.current !== undefined) {
+      window.clearTimeout(homeAutoSaveTimerRef.current);
+  homeAutoSaveTimerRef.current = undefined;
+  }
 
     const pendingDocSave = documentSavePromiseRef.current;
     const pendingHomeSave = homeSavePromiseRef.current;
@@ -2275,7 +2276,7 @@ function FlowApp() {
       return;
     }
 
-    const flow = graphCanvasFlowRef.current as (ReactFlowInstance<GraphCanvasFlowNodeData> & {
+    const flow = graphCanvasFlowRef.current as (ReactFlowInstance<Node<GraphCanvasFlowNodeData>, Edge<GraphCanvasFlowEdgeData>> & {
       getIntersectingNodes?: (node: Node<GraphCanvasFlowNodeData>) => Node<GraphCanvasFlowNodeData>[];
       getNode?: (id: string) => Node<GraphCanvasFlowNodeData> | undefined;
     }) | null;
@@ -2549,7 +2550,7 @@ function FlowApp() {
 
     const centerX = targetNode.position.x + (targetNode.width ?? 0) / 2;
     const centerY = targetNode.position.y + (targetNode.height ?? 0) / 2;
-    const flow = graphCanvasFlowRef.current as (ReactFlowInstance<GraphCanvasFlowNodeData> & {
+    const flow = graphCanvasFlowRef.current as (ReactFlowInstance<Node<GraphCanvasFlowNodeData>, Edge<GraphCanvasFlowEdgeData>> & {
       setCenter?: (x: number, y: number, options?: { zoom?: number; duration?: number }) => void;
     }) | null;
     flow?.setCenter?.(centerX, centerY, { zoom: rfViewport.zoom, duration: 220 });
@@ -3610,7 +3611,7 @@ function FlowApp() {
 
   function clearEdgeClickTimer(): void {
     if (edgeClickTimerRef.current !== null) {
-      window.clearTimeout(edgeClickTimerRef.current);
+      window.window.clearTimeout(edgeClickTimerRef.current);
       edgeClickTimerRef.current = null;
     }
   }
@@ -4119,19 +4120,19 @@ function FlowApp() {
   const flushOnHideRef = useRef<() => void>(() => {});
   // Update every render so the callback always closes over current state/refs.
   flushOnHideRef.current = () => {
-    const hasDocTimer = documentAutoSaveTimerRef.current !== null;
-    const hasHomeTimer = homeAutoSaveTimerRef.current !== null;
+    const hasDocTimer =   documentAutoSaveTimerRef.current !== undefined;
+    const hasHomeTimer =   homeAutoSaveTimerRef.current !== undefined;
     if (!hasDocTimer && !hasHomeTimer) {
       return;
     }
     if (hasDocTimer) {
-      clearTimeout(documentAutoSaveTimerRef.current);
-      documentAutoSaveTimerRef.current = null;
+      window.clearTimeout(documentAutoSaveTimerRef.current);
+      documentAutoSaveTimerRef.current = undefined;
     }
     if (hasHomeTimer) {
-      clearTimeout(homeAutoSaveTimerRef.current);
-      homeAutoSaveTimerRef.current = null;
-    }
+      window.clearTimeout(homeAutoSaveTimerRef.current);
+  homeAutoSaveTimerRef.current = undefined;
+  }
     // Sync latest editor state into the form refs synchronously.
     syncDocumentBodyFromActiveEditor();
     syncHomeBodyFromEditor();

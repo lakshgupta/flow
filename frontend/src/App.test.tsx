@@ -2219,13 +2219,12 @@ describe("App graph canvas flows", () => {
     await screen.findByTestId("flow-node-note-1");
     await expandSidebarGraph("Execution");
 
-    const fileButton = (await screen.findByText("overview.md")).closest('[data-sidebar="menu-sub-button"]');
+    const fileButton = (await screen.findByText("overview.md")).closest('[data-sidebar="menu-sub-button"]') as HTMLElement | null;
     if (fileButton === null) {
       throw new Error("missing overview file button");
     }
 
     expect(within(fileButton).queryByText("Overview")).not.toBeInTheDocument();
-
     await user.click(fileButton);
     expect(await screen.findByLabelText("Document content layout")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Document title" })).toHaveValue("Overview");

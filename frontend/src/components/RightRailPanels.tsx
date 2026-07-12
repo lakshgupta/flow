@@ -7,7 +7,7 @@ import { HomeCalendarPanel } from "./HomeCalendarPanel";
 import { Card, CardContent, CardHeader } from "./ui/card";
 import { Input } from "./ui/input";
 
-type RightRailSearchPanelProps = {
+export type RightRailSearchPanelProps = {
   searchQuery: string;
   searchTagQuery: string;
   searchTitleQuery: string;
@@ -117,7 +117,7 @@ function RightRailSearchPanelComponent({
 
 export const RightRailSearchPanel = memo(RightRailSearchPanelComponent);
 
-type RightRailCalendarPanelProps = {
+export type RightRailCalendarPanelProps = {
   documents: CalendarDocumentResponse[];
   selectedDate: string;
   error: string;

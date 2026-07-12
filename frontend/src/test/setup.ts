@@ -10,12 +10,19 @@ if (!("ResizeObserver" in globalThis)) {
   globalThis.ResizeObserver = ResizeObserverStub as typeof ResizeObserver;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const doc = document as any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const HTMLElementProto = HTMLElement.prototype as any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const RangeProto = Range.prototype as any;
+
 if (!("elementFromPoint" in document)) {
-  document.elementFromPoint = () => document.body;
+  doc.elementFromPoint = () => document.body;
 }
 
 if (!("getAnimations" in HTMLElement.prototype)) {
-  HTMLElement.prototype.getAnimations = () => [];
+  HTMLElementProto.getAnimations = () => [];
 }
 
 const zeroRect = () => ({
@@ -33,15 +40,15 @@ const zeroRect = () => ({
 });
 
 if (!("getBoundingClientRect" in HTMLElement.prototype)) {
-  HTMLElement.prototype.getBoundingClientRect = zeroRect;
+  HTMLElementProto.getBoundingClientRect = zeroRect;
 }
 
 if (!("scrollIntoView" in HTMLElement.prototype)) {
-  HTMLElement.prototype.scrollIntoView = function() {};
+  HTMLElementProto.scrollIntoView = function() {};
 }
 
 if (!("getClientRects" in HTMLElement.prototype)) {
-  HTMLElement.prototype.getClientRects = () => ({
+  HTMLElementProto.getClientRects = () => ({
     item: () => null,
     length: 0,
     [Symbol.iterator]: function* iterator() {},
@@ -49,11 +56,11 @@ if (!("getClientRects" in HTMLElement.prototype)) {
 }
 
 if (!("getBoundingClientRect" in Range.prototype)) {
-  Range.prototype.getBoundingClientRect = zeroRect;
+  RangeProto.getBoundingClientRect = zeroRect;
 }
 
 if (!("getClientRects" in Range.prototype)) {
-  Range.prototype.getClientRects = () => ({
+  RangeProto.getClientRects = () => ({
     item: () => null,
     length: 0,
     [Symbol.iterator]: function* iterator() {},
@@ -71,5 +78,5 @@ Object.defineProperty(window, "matchMedia", {
     addEventListener: () => {},
     removeEventListener: () => {},
     dispatchEvent: () => false,
-  })
+  }),
 });

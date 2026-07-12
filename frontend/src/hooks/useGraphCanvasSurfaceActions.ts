@@ -6,10 +6,11 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import type { Node, NodeChange, ReactFlowInstance } from "@xyflow/react";
+import type { Edge, Node, NodeChange, ReactFlowInstance } from "@xyflow/react";
 
 import { getWailsCreateGraphFileNote } from "../lib/imageUploader";
 import type { GraphCanvasSurfaceProps } from "../components/GraphCanvasSurface";
+import type { GraphCanvasFlowEdgeData } from "../lib/graphCanvasUtils";
 import type {
   EdgeToolbarState,
   GraphCanvasOverlayActions,
@@ -67,7 +68,7 @@ type UseGraphCanvasSurfaceActionsArgs = {
   setGraphCanvasDragActive: (active: boolean) => void;
   setGraphCanvasNodeSearchTerm: (value: string) => void;
   setGraphCanvasNodeSearchIndex: (value: number) => void;
-  graphCanvasFlowRef: MutableRefObject<ReactFlowInstance<GraphCanvasFlowNodeData> | null>;
+  graphCanvasFlowRef: MutableRefObject<ReactFlowInstance<Node<GraphCanvasFlowNodeData>, Edge<GraphCanvasFlowEdgeData>> | null>;
   setSelectedCanvasNodeId: (nodeId: string) => void;
   setCanvasContextMenu: (value: { x: number; y: number } | null) => void;
   setNodeContextMenu: (value: { x: number; y: number; nodeId: string } | null) => void;
@@ -305,7 +306,7 @@ export function useGraphCanvasSurfaceActions({
     void actionRefs.current.handleToggleGraphCanvasLayout();
   }, []);
 
-  const handleGraphCanvasSetFlowInstance = useCallback((instance: ReactFlowInstance<GraphCanvasFlowNodeData>) => {
+  const handleGraphCanvasSetFlowInstance = useCallback((instance: ReactFlowInstance<Node<GraphCanvasFlowNodeData>, Edge<GraphCanvasFlowEdgeData>>) => {
     graphCanvasFlowRef.current = instance;
   }, [graphCanvasFlowRef]);
 

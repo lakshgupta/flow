@@ -26,7 +26,7 @@ const mockGetDocHTML = vi.fn()
 const mockFocus = vi.fn()
 const mockInsertText = vi.fn()
 const mockDispatch = vi.fn()
-const mockPosAtCoords = vi.fn(() => ({ pos: 1 }))
+const mockPosAtCoords = vi.fn<(...args: any[]) => { pos: number } | null>(() => ({ pos: 1 }))
 const mockSetSelection = vi.fn(() => 'transaction')
 let capturedDocChange: (() => void) | null = null
 let mockEditorViewDOMHTML = ''

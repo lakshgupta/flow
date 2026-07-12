@@ -90,16 +90,18 @@ describe("GraphTree", () => {
           onRenameGraph={() => undefined}
           onRenameNode={() => undefined}
           onMoveNode={onMoveNode}
+          onMoveGraph={() => undefined}
           onDeleteNode={() => undefined}
           onDeleteGraph={() => undefined}
           onDownloadGraph={() => undefined}
           onSetGraphColor={() => undefined}
+          onSetNodeColor={() => undefined}
           onSetGraphCanvasDisabled={() => undefined}
           onRebuildIndex={() => undefined}
         />
       </SidebarProvider>,
     );
-
+    
     // Graphs start collapsed — expand Execution to see its files.
     const executionRow = screen.getByText("Execution").closest("li");
     await user.click(within(executionRow!).getByRole("button", { name: "Expand" }));
@@ -141,16 +143,18 @@ describe("GraphTree", () => {
           onRenameGraph={() => undefined}
           onRenameNode={() => undefined}
           onMoveNode={onMoveNode}
+          onMoveGraph={() => undefined}
           onDeleteNode={() => undefined}
           onDeleteGraph={() => undefined}
           onDownloadGraph={() => undefined}
           onSetGraphColor={() => undefined}
+          onSetNodeColor={() => undefined}
           onSetGraphCanvasDisabled={() => undefined}
           onRebuildIndex={() => undefined}
         />
       </SidebarProvider>,
     );
-
+    
     // Graphs start collapsed — expand both graphs to see their files.
     const execRow = screen.getByText("Execution").closest("li");
     await user.click(within(execRow!).getByRole("button", { name: "Expand" }));
@@ -196,16 +200,18 @@ describe("GraphTree", () => {
           onRenameGraph={() => undefined}
           onRenameNode={() => undefined}
           onMoveNode={() => undefined}
+          onMoveGraph={() => undefined}
           onDeleteNode={() => undefined}
           onDeleteGraph={() => undefined}
           onDownloadGraph={onDownloadGraph}
           onSetGraphColor={() => undefined}
+          onSetNodeColor={() => undefined}
           onSetGraphCanvasDisabled={() => undefined}
           onRebuildIndex={() => undefined}
         />
       </SidebarProvider>,
     );
-
+    
     await user.click(screen.getByRole("button", { name: "More actions for Execution" }));
     await user.click(await screen.findByRole("menuitem", { name: "Download as zip" }));
 

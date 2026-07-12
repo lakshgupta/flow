@@ -102,7 +102,7 @@ export type ThreadPanelStackProps = {
  *  user's default browser. In browser mode, a temporary <a> click is used. */
 function openExternalLink(href: string) {
   const runtime = typeof window !== "undefined"
-    ? (window as Record<string, unknown>).runtime as Record<string, ((url: string) => void) | undefined> | undefined
+    ? (window as unknown as Record<string, unknown>).runtime as Record<string, ((url: string) => void) | undefined> | undefined
     : undefined;
   if (typeof runtime?.BrowserOpenURL === "function") {
     runtime.BrowserOpenURL(href);

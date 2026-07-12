@@ -1,12 +1,15 @@
 import { memo, type RefObject } from "react";
-import type { ReactFlowInstance } from "reactflow";
+import type { Edge, EdgeTypes, Node } from "@xyflow/react";
 
-import type { GraphCanvasFlowNodeData, GraphCanvasResponse, GraphTreeResponse, SurfaceState } from "../types";
+import type { GraphCanvasFlowNodeData, GraphCanvasResponse, GraphCreateType, GraphTreeResponse, HomeFormState, SurfaceState } from "../types";
+import type { GraphCanvasFlowEdgeData } from "../lib/graphCanvasUtils";
 import type { GraphCanvasOverlayController } from "./graphCanvasOverlayController";
+import type { GraphCanvasSurfaceActions } from "./GraphCanvasSurface";
 import { GraphCanvasSurface } from "./GraphCanvasSurface";
 import { GraphEmptyState } from "./GraphEmptyState";
 import { HomeSurface } from "./HomeSurface";
 import type { ThreadPanelStackProps } from "./ThreadPanels";
+import type { TOCItem } from "./TableOfContents";
 
 type MiddleContentProps = {
   activeSurface: SurfaceState;
@@ -21,18 +24,18 @@ type MiddleContentProps = {
   documentTOCRatio: number;
   homeInlineReferences: GraphTreeResponse["home"]["inlineReferences"];
   editorScrollTarget: string | null;
-  homeFormState: { title: string; body: string };
-  tocItems: Array<{ id: string; title: string; level: number; slug: string }>;
+  homeFormState: HomeFormState;
+  tocItems: TOCItem[];
   homeSurfaceActions: ReturnType<typeof import("../hooks/useHomeSurfaceActions").useHomeSurfaceActions>;
   // Graph canvas props
   graphCanvasShellRef: RefObject<HTMLDivElement | null>;
   selectedGraphPath: string;
   graphCanvasDragActive: boolean;
   connectingFrom: string | null;
-  graphCanvasData: GraphCanvasResponse;
-  graphCanvasNodes: Array<{ id: string; data: GraphCanvasFlowNodeData }>;
-  graphCanvasEdges: Array<{ id: string; source: string; target: string; data: Record<string, unknown> }>;
-  edgeTypes: Record<string, unknown>;
+  graphCanvasData: GraphCanvasResponse | null;
+  graphCanvasNodes: Node<GraphCanvasFlowNodeData>[];
+  graphCanvasEdges: Edge<GraphCanvasFlowEdgeData>[];
+  edgeTypes: EdgeTypes;
   graphCanvasNodeSearchTerm: string;
   graphCanvasNodeSearchHasMatches: boolean;
   graphCanvasNodeSearchSelectedIndex: number;
@@ -41,18 +44,18 @@ type MiddleContentProps = {
   graphCanvasResettingLayout: boolean;
   graphCanvasLayoutMode: "user" | "horizontal";
   overlayController: GraphCanvasOverlayController;
-  handleEdgeDoubleClickAction: (sourceId: string, targetId: string) => void;
-  graphCanvasSurfaceActions: ReturnType<typeof import("../hooks/useGraphCanvasSurfaceActions").useGraphCanvasSurfaceActions>;
+  handleEdgeDoubleClickAction: (sourceId: string, targetId: string, context: string) => void;
+  graphCanvasSurfaceActions: GraphCanvasSurfaceActions;
   // Graph canvas state
   graphCanvasError: string;
   graphCanvasLoading: boolean;
   graphCreateError: string;
-  graphCreatePendingType: string;
+  graphCreatePendingType: GraphCreateType | "";
   graphEmptyStateActions: {
-    selectGraph: (graphPath: string) => void;
-    createGraph: (name: string) => void;
-    dismissGraphCreateError: () => void;
-    setGraphCreatePendingType: (type: string) => void;
+    setDragActive: (active: boolean) => void;
+    handleFilesDrop: (files: FileList | File[]) => void;
+    handleFilesDropFromURIs: (dataTransfer: DataTransfer, graphPath: string) => void;
+    createGraphDocument: (type: GraphCreateType) => void;
   };
 };
 

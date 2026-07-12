@@ -20,7 +20,7 @@ import { Input } from "./ui/input";
 import { EdgeEditContext, type GraphCanvasFlowEdgeData } from "../lib/graphCanvasUtils";
 import type { GraphCanvasFlowNodeData, GraphCanvasPosition, GraphCanvasResponse } from "../types";
 
-type GraphCanvasSurfaceActions = {
+export type GraphCanvasSurfaceActions = {
   setDragActive: (active: boolean) => void;
   handleFilesDrop: (files: FileList | File[]) => void;
   handleFilesDropFromURIs: (dataTransfer: DataTransfer, graphPath: string) => void;
@@ -28,7 +28,7 @@ type GraphCanvasSurfaceActions = {
   searchNext: () => void;
   searchPrevious: () => void;
   toggleLayout: () => void;
-  setFlowInstance: (instance: ReactFlowInstance<GraphCanvasFlowNodeData>) => void;
+  setFlowInstance: (instance: ReactFlowInstance<Node<GraphCanvasFlowNodeData>, Edge<GraphCanvasFlowEdgeData>>) => void;
   handleNodesChange: (changes: NodeChange<Node<GraphCanvasFlowNodeData>>[]) => void;
   handleNodeClick: (nodeId: string) => void;
   handleNodeDoubleClick: (nodeId: string) => void;
