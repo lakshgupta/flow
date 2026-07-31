@@ -1,8 +1,9 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { createRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { RichTextEditor } from './RichTextEditor'
+import { RichTextEditor, type RichTextEditorHandle } from './RichTextEditor'
 
 vi.mock('@/components/ui/calendar', () => ({
   Calendar: () => null,
@@ -131,6 +132,91 @@ describe('RichTextEditor markdown shortcuts', () => {
       expect(codeContent).not.toBeNull()
       expect(codeContent?.textContent).toContain('const value = 1')
       expect(editor.querySelector('p')).toHaveTextContent('after block')
+    })
+  })
+
+  const MERMAID_DOC = '```mermaid\nflowchart TD\n  A --> B\n```'
+
+  it('creates a new line after a trailing mermaid diagram with Enter', async () => {
+    const user = userEvent.setup()
+    const ref = createRef<RichTextEditorHandle>()
+
+    render(
+      <RichTextEditor
+        ref={ref}
+        ariaLabel="Document body editor"
+        onChange={vi.fn()}
+        value={'Intro\n\n' + MERMAID_DOC}
+      />,
+    )
+
+    const editor = screen.getByLabelText('Document body editor')
+    await waitFor(() => {
+      expect(editor.querySelector('[data-diagram-section="true"]')).not.toBeNull()
+      expect(editor.querySelector('.flow-diagram-block-source')?.classList.contains('hidden')).toBe(true)
+    })
+
+    // Clicking in jsdom places the DOM caret either at the doc start (focus
+    // restore) or at the doc end (pointerdown fallback), depending on rAF
+    // timing. Both are valid bug scenarios, so assert the invariant that
+    // holds either way: Enter must never insert a newline inside the diagram
+    // source, and must always create a visible paragraph outside it.
+    await user.click(editor)
+    await waitFor(() => {
+      expect(editor).toHaveFocus()
+    })
+    await user.click(editor)
+    await user.click(editor)
+    await user.keyboard('{Enter}')
+
+    await waitFor(() => {
+      const md = ref.current?.getMarkdown() ?? ''
+      expect(md).not.toContain('A --> B\n\n')
+      expect(md).toContain('flowchart TD\n  A --> B')
+      expect(md).toContain('<p><br></p>')
+    })
+  })
+
+  it('moves a leading mermaid diagram to the next line with Enter', async () => {
+    const user = userEvent.setup()
+    const ref = createRef<RichTextEditorHandle>()
+
+    render(<RichTextEditor ref={ref} ariaLabel="Document body editor" onChange={vi.fn()} value={MERMAID_DOC} />)
+
+    const editor = screen.getByLabelText('Document body editor')
+    await waitFor(() => {
+      expect(editor.querySelector('[data-diagram-section="true"]')).not.toBeNull()
+    })
+
+    await user.click(editor)
+    await user.keyboard('{Enter}')
+
+    await waitFor(() => {
+      expect(editor.firstElementChild?.tagName).toBe('P')
+      expect(ref.current?.getMarkdown()).toContain('<p><br></p>\n\n```mermaid')
+    })
+  })
+
+  it('keeps editing the source when the source editor is open', async () => {
+    const user = userEvent.setup()
+    const ref = createRef<RichTextEditorHandle>()
+
+    render(<RichTextEditor ref={ref} ariaLabel="Document body editor" onChange={vi.fn()} value={MERMAID_DOC} />)
+
+    const editor = screen.getByLabelText('Document body editor')
+    await waitFor(() => {
+      expect(editor.querySelector('[data-diagram-section="true"]')).not.toBeNull()
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Toggle Mermaid source editor' }))
+    await waitFor(() => {
+      expect(editor.querySelector('.flow-diagram-block-source')?.classList.contains('hidden')).toBe(false)
+    })
+    await user.click(editor)
+    await user.keyboard('{Enter}')
+
+    await waitFor(() => {
+      expect(ref.current?.getMarkdown()).toContain('```mermaid\n\nflowchart TD')
     })
   })
 })
