@@ -50,43 +50,78 @@ describe("intersectingGraphCanvasNodeIds", () => {
 });
 
 describe("buildGraphCanvasFlowNodes", () => {
-  it("uses the closest parent graph directory color for nested graph nodes", () => {
-    const graphCanvasData: GraphCanvasResponse = {
-      selectedGraph: "graph1/graph11",
-      availableGraphs: ["graph1", "graph1/graph11"],
-      layerGuidance: {
-        magneticThresholdPx: 24,
-        guides: [],
+  const graphCanvasData: GraphCanvasResponse = {
+    selectedGraph: "project/feature/auth/login",
+    availableGraphs: ["project", "project/feature", "project/feature/auth", "project/feature/auth/login"],
+    layerGuidance: {
+      magneticThresholdPx: 24,
+      guides: [],
+    },
+    nodes: [
+      {
+        id: "note-1",
+        type: "note",
+        graph: "project/feature/auth/login",
+        title: "Deeply nested note",
+        description: "",
+        path: "project/feature/auth/login/note-1.md",
+        featureSlug: "login",
+        position: { x: 120, y: 140 },
+        positionPersisted: true,
       },
-      nodes: [
-        {
-          id: "note-1",
-          type: "note",
-          graph: "graph1/graph11",
-          title: "Nested note",
-          description: "",
-          path: "graph1/graph11/note-1.md",
-          featureSlug: "graph11",
-          position: { x: 120, y: 140 },
-          positionPersisted: true,
-        },
-      ],
-      edges: [],
-      viewport: null,
-    };
+    ],
+    edges: [],
+    viewport: null,
+  };
 
+  it("uses the node's own graph directory color when set", () => {
     const nodes = buildGraphCanvasFlowNodes(
       graphCanvasData,
       {},
       "",
       "",
       {
-        graph1: "rose",
-        "graph1/graph11": "lemon",
+        project: "rose",
+        "project/feature": "amber",
+        "project/feature/auth": "lemon",
+        "project/feature/auth/login": "mint",
       },
     );
 
     expect(nodes).toHaveLength(1);
-    expect(nodes[0].data.graphColor).toBe("rose");
+    expect(nodes[0].data.graphColor).toBe("mint");
+  });
+
+  it("falls back to the closest colored parent directory when the leaf has no color", () => {
+    const nodes = buildGraphCanvasFlowNodes(
+      graphCanvasData,
+      {},
+      "",
+      "",
+      {
+        project: "rose",
+        "project/feature": "amber",
+        "project/feature/auth": "lemon",
+      },
+    );
+
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].data.graphColor).toBe("lemon");
+  });
+
+  it("skips uncolored intermediate directories and finds the closest colored ancestor", () => {
+    const nodes = buildGraphCanvasFlowNodes(
+      graphCanvasData,
+      {},
+      "",
+      "",
+      {
+        project: "rose",
+        "project/feature": "amber",
+      },
+    );
+
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].data.graphColor).toBe("amber");
   });
 });

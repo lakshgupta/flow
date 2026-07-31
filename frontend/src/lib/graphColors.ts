@@ -68,24 +68,8 @@ export function resolveGraphDirectoryColor(graphPath: string, graphColorsByPath:
 }
 
 export function resolveParentGraphDirectoryColor(graphPath: string, graphColorsByPath: Record<string, string>): string | undefined {
-  let current = graphPath.trim();
-
-  for (;;) {
-    const separatorIndex = current.lastIndexOf("/");
-    if (separatorIndex < 0) {
-      break;
-    }
-
-    current = current.slice(0, separatorIndex).trim();
-    if (current === "") {
-      break;
-    }
-
-    const color = resolveGraphDirectoryColor(current, graphColorsByPath);
-    if (color !== undefined) {
-      return color;
-    }
-  }
-
+  // The longest matching entry is the closest ancestor-or-self directory with a
+  // color: a file inside a colored subdirectory inherits that subdirectory's
+  // color, falling back to the nearest colored ancestor.
   return resolveGraphDirectoryColor(graphPath, graphColorsByPath);
 }

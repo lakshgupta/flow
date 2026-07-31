@@ -25,17 +25,17 @@ describe("resolveGraphDirectoryColor", () => {
 });
 
 describe("resolveParentGraphDirectoryColor", () => {
-  it("prefers parent graph color for nested graphs", () => {
+  it("prefers the node's own graph directory color over ancestor colors", () => {
     const colors = {
       graph1: "rose",
       "graph1/graph11": "lemon",
     };
 
-    expect(resolveParentGraphDirectoryColor("graph1/graph11", colors)).toBe("rose");
+    expect(resolveParentGraphDirectoryColor("graph1/graph11", colors)).toBe("lemon");
     expect(resolveParentGraphDirectoryColor("graph1/graph11/sub", colors)).toBe("lemon");
   });
 
-  it("falls back to self color when no parent color exists", () => {
+  it("falls back to the closest colored ancestor directory", () => {
     const colors = {
       graph2: "sage",
     };
