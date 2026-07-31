@@ -3,7 +3,7 @@ id: development/20260730-002-FIX-graph-canvas-coordinates/fix-graph-canvas-coord
 type: task
 graph: development/20260730-002-FIX-graph-canvas-coordinates
 title: Fix per-graph canvas node coordinate persistence
-description: Moving a node in a subgraph must not change the same node's position in the parent graph; each graph canvas keeps its own coordinates
+description: 'Clear frontend position caches on graph switch so each canvas keeps its own coordinates (commit: b03e4a1)'
 status: Done
 ---
 
