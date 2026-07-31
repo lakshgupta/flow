@@ -20,13 +20,20 @@ const SECTION_LABELS: Record<SectionLanguage, { title: string; placeholder: stri
   },
 };
 
+// Start directives of every diagram type the bundled mermaid version can
+// detect (mirrors the detectors registered in mermaid's detectType). A first
+// line starting with one of these is diagram source syntax, not a title.
+const MERMAID_START_DIRECTIVE =
+  /^(?:C4(?:Context|Container|Component|Dynamic|Deployment)|graph|flowchart|erDiagram|gitGraph|gantt|info|pie|quadrantChart|xychart(?:-beta)?|requirement(?:Diagram)?|sequenceDiagram|classDiagram(?:-v2)?|stateDiagram(?:-v2)?|journey|timeline|mindmap|kanban|sankey(?:-beta)?|packet(?:-beta)?|radar-beta|block(?:-beta)?|treeView-beta|architecture|ishikawa(?:-beta)?|venn-beta|treemap|wardley-beta)\b/i;
+
 /**
  * NodeView that wraps a Mermaid code block as a labeled, deletable,
  * keyboard-navigable section.
  *
  * The title is stored as the first line of the code block text for persistence.
  * It is extracted ONCE on mount — subsequent source editor changes never
- * overwrite the title. Only the title input field can update it.
+ * overwrite the title. Only the title input field can update it. A first line
+ * that starts a mermaid diagram directive is never treated as a title.
  *
  * - Title bar: editable title input on the left, source-edit toggle + delete
  *   (trash) button on the right.
@@ -45,9 +52,14 @@ export default function DiagramSection(props: ReactNodeViewProps) {
 
   // Extract title ONCE on mount from persisted code block text.
   // After mount, title is only updated when the user commits via the title input.
+  // A first line that starts a mermaid diagram directive is source syntax
+  // (e.g. "flowchart TD"), not a title — otherwise pasted sources would lose
+  // their first line and fail to render.
   const [committedTitle, setCommittedTitle] = useState<string>(() => {
     const newlineIndex = fullText.indexOf("\n");
-    return newlineIndex === -1 ? "" : fullText.slice(0, newlineIndex).trim();
+    if (newlineIndex === -1) return "";
+    const firstLine = fullText.slice(0, newlineIndex).trim();
+    return MERMAID_START_DIRECTIVE.test(firstLine) ? "" : firstLine;
   });
   const [draftTitle, setDraftTitle] = useState<string>(committedTitle);
 
