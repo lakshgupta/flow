@@ -1762,14 +1762,14 @@ function FlowApp() {
     setGraphCanvasNodeSearchTerm("");
     setGraphCanvasNodeSearchIndex(0);
     setEdgeToolbar(null);
+    setGraphCanvasPositions({});
+    setGraphCanvasUserPositions({});
+    setGraphCanvasHorizontalPositions({});
 
     if (selectedGraphPath === "") {
       setGraphCanvasData(null);
       setGraphCanvasLoading(false);
       setGraphCanvasError("");
-      setGraphCanvasPositions({});
-      setGraphCanvasUserPositions({});
-      setGraphCanvasHorizontalPositions({});
       setGraphCanvasLayoutMode("user");
       setGraphCreateError("");
       setGraphCreatePendingType("");

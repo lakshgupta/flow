@@ -893,6 +893,199 @@ describe("App graph canvas flows", () => {
     });
   });
 
+  it("keeps node coordinates independent per graph canvas", async () => {
+    const parentCanvasResponse = {
+      selectedGraph: "execution",
+      availableGraphs: ["execution", "execution/empty"],
+      layerGuidance: {
+        magneticThresholdPx: 18,
+        guides: [
+          { layer: 0, x: 140 },
+          { layer: 1, x: 460 },
+        ],
+      },
+      nodes: [
+        {
+          id: "note-1",
+          type: "note",
+          graph: "execution/empty",
+          title: "Overview",
+          description: "Execution overview",
+          path: "data/graphs/execution/empty/overview.md",
+          featureSlug: "execution",
+          position: { x: 140, y: 120 },
+          positionPersisted: true,
+        },
+        {
+          id: "note-2",
+          type: "note",
+          graph: "execution",
+          title: "Follow-up",
+          description: "Follow-up notes",
+          path: "data/graphs/execution/follow-up.md",
+          featureSlug: "execution",
+          position: { x: 480, y: 220 },
+          positionPersisted: true,
+        },
+      ],
+      edges: [],
+    };
+    const childCanvasResponse = {
+      selectedGraph: "execution/empty",
+      availableGraphs: ["execution", "execution/empty"],
+      layerGuidance: {
+        magneticThresholdPx: 18,
+        guides: [
+          { layer: 0, x: 140 },
+          { layer: 1, x: 460 },
+        ],
+      },
+      nodes: [
+        {
+          id: "note-1",
+          type: "note",
+          graph: "execution/empty",
+          title: "Overview",
+          description: "Execution overview",
+          path: "data/graphs/execution/empty/overview.md",
+          featureSlug: "execution",
+          position: { x: 300, y: 400 },
+          positionPersisted: true,
+        },
+      ],
+      edges: [],
+    };
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return {
+          home: homeResponse,
+          graphs: [
+            {
+              graphPath: "execution",
+              displayName: "Execution",
+              directCount: 1,
+              totalCount: 2,
+              hasChildren: true,
+              countLabel: "1 direct / 2 total",
+              files: [
+                {
+                  id: "note-2",
+                  type: "note",
+                  title: "Follow-up",
+                  path: "data/graphs/execution/follow-up.md",
+                  fileName: "follow-up.md",
+                },
+              ],
+            },
+            {
+              graphPath: "execution/empty",
+              displayName: "Empty",
+              directCount: 1,
+              totalCount: 1,
+              hasChildren: false,
+              countLabel: "1 direct / 1 total",
+              files: [
+                {
+                  id: "note-1",
+                  type: "note",
+                  title: "Overview",
+                  path: "data/graphs/execution/empty/overview.md",
+                  fileName: "overview.md",
+                },
+              ],
+            },
+          ],
+        };
+      }
+
+      if (url === "/api/graphs/note") {
+        return noteGraphs("execution", "execution/empty");
+      }
+
+      if (url === "/api/graphs/task") {
+        return emptyGraphLists.tasks;
+      }
+
+      if (url === "/api/graphs/command") {
+        return emptyGraphLists.commands;
+      }
+
+      if (url === "/api/graph-canvas?graph=execution") {
+        return parentCanvasResponse;
+      }
+
+      if (url === "/api/graph-canvas?graph=execution%2Fempty") {
+        return childCanvasResponse;
+      }
+
+      if (url === "/api/graph-layout" && init?.method === "PUT") {
+        const body = JSON.parse(String(init.body)) as {
+          graph: string;
+          positions: Array<{ documentId: string; x: number; y: number }>;
+          viewport?: { x: number; y: number; zoom: number };
+        };
+        return {
+          graph: body.graph,
+          positions: body.positions,
+          viewport: body.viewport,
+        };
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Content");
+    await expandSidebarGraph("Execution");
+
+    const executionButton = await findSidebarTreeButton("Execution");
+    await user.click(executionButton);
+    await screen.findByTestId("flow-node-note-2");
+
+    const emptyButton = await findSidebarTreeButton("Empty");
+    await user.click(emptyButton);
+    await screen.findByTestId("flow-node-note-1");
+
+    await user.click(screen.getByRole("button", { name: "Drag stop note-1" }));
+
+    await waitFor(() => {
+      const body = getRequestBody(fetchMock, "/api/graph-layout", "PUT") as {
+        graph: string;
+        positions: Array<{ documentId: string; x: number; y: number }>;
+      };
+      expect(body.graph).toBe("execution/empty");
+      expect(body.positions.find((position) => position.documentId === "note-1")).toBeDefined();
+    });
+
+    await user.click(executionButton);
+    await screen.findByTestId("flow-node-note-2");
+
+    await user.click(screen.getByRole("button", { name: "Drag stop note-2" }));
+
+    await waitFor(() => {
+      const layoutCalls = fetchMock.mock.calls
+        .filter(([url, init]) => url === "/api/graph-layout" && (init?.method ?? "GET") === "PUT")
+        .map(([url, init]) => JSON.parse(String((init as RequestInit).body)) as {
+          graph: string;
+          positions: Array<{ documentId: string; x: number; y: number }>;
+        });
+      expect(layoutCalls).toHaveLength(2);
+      expect(layoutCalls[0].graph).toBe("execution/empty");
+      expect(layoutCalls[1].graph).toBe("execution");
+      const noteOnePosition = layoutCalls[1].positions.find((position) => position.documentId === "note-1");
+      expect(noteOnePosition).toBeDefined();
+      expect(noteOnePosition?.x).toBe(140);
+      expect(noteOnePosition?.y).toBe(120);
+    });
+  });
+
   it("renders dotted reference edges and circular cross-graph reference targets on the canvas", async () => {
     const graphCanvasResponse = {
       selectedGraph: "execution",
