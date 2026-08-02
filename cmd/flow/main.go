@@ -24,6 +24,7 @@ import (
 	"github.com/lex/flow/internal/core"
 	"github.com/lex/flow/internal/desktop"
 	"github.com/lex/flow/internal/execution"
+	"github.com/lex/flow/internal/graph"
 	"github.com/lex/flow/internal/httpapi"
 	"github.com/lex/flow/internal/index"
 	"github.com/lex/flow/internal/markdown"
@@ -71,6 +72,7 @@ var subcommandRunners = map[string]subcommandRunner{
 	"update":    runUpdate,
 	"delete":    runDelete,
 	"node":      runNode,
+	"graph":     runGraph,
 }
 
 // nodeSubcommandRunners maps `flow node` subcommands to handlers.
@@ -253,6 +255,7 @@ func writeRootHelp(w io.Writer) {
 	fmt.Fprintln(w, "  run            Execute a command document")
 	fmt.Fprintln(w, "  skill          Print Flow skill content")
 	fmt.Fprintln(w, "  node           Node-oriented read/update/connect operations")
+	fmt.Fprintln(w, "  graph          Graph traversal operations (e.g. shortest path)")
 	fmt.Fprintln(w, "  workspace      Workspace management commands")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Global option:")
@@ -280,9 +283,10 @@ func writeSkillHelp(w io.Writer) {
 }
 
 func writeSkillContentHelp(w io.Writer) {
-	fmt.Fprintln(w, "Usage: flow skill content [--graph <graph>]")
+	fmt.Fprintln(w, "Usage: flow skill content [--graph <graph>] [--skill <name>]")
 	fmt.Fprintln(w, "Options:")
 	fmt.Fprintln(w, "  --graph <graph>   Development graph root label (default: development)")
+	fmt.Fprintln(w, "  --skill <name>    Skill to print: record-keeping (default) or graph-engineering")
 }
 
 func writeServiceHelp(w io.Writer) {
@@ -329,6 +333,23 @@ func writeNodeHelp(w io.Writer) {
 	fmt.Fprintln(w, "  disconnect   Disconnect two nodes")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Use `flow node <subcommand> --help` for options.")
+}
+
+func writeGraphHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow graph <subcommand> [options]")
+	fmt.Fprintln(w, "Subcommands:")
+	fmt.Fprintln(w, "  path         Find the shortest path between two nodes")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Use `flow graph path --help` for options.")
+}
+
+func writeGraphPathHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow graph path --from <node-id> --to <node-id> [--directed] [--format <json|markdown>]")
+	fmt.Fprintln(w, "Options:")
+	fmt.Fprintln(w, "  --from <node-id>   Start node id")
+	fmt.Fprintln(w, "  --to <node-id>     Target node id")
+	fmt.Fprintln(w, "  --directed         Follow edges only in their declared direction")
+	fmt.Fprintln(w, "  --format <fmt>     Output format: json or markdown (default: markdown)")
 }
 
 func writeNodeReadHelp(w io.Writer) {
@@ -441,6 +462,7 @@ func runSkillContent(args []string, env commandEnv) error {
 	}
 
 	graph := flagSet.String("graph", "development", "development graph root for planning and implementation")
+	skill := flagSet.String("skill", "record-keeping", "skill to print: record-keeping or graph-engineering")
 	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeSkillContentHelp)
 	if err != nil {
 		return err
@@ -453,7 +475,12 @@ func runSkillContent(args []string, env commandEnv) error {
 		return fmt.Errorf("flow skill content requires non-empty --graph")
 	}
 
-	if _, err := io.WriteString(env.stdout, flow.SkillMarkdown()); err != nil {
+	markdown, ok := flow.SkillMarkdownByName(*skill)
+	if !ok {
+		return fmt.Errorf("unknown skill %q; use `flow skill content --help` to list available skills", *skill)
+	}
+
+	if _, err := io.WriteString(env.stdout, markdown); err != nil {
 		return fmt.Errorf("write embedded skill content: %w", err)
 	}
 
@@ -1074,6 +1101,118 @@ func runNode(global bool, args []string, env commandEnv) error {
 	}
 
 	return runner(global, args[1:], env)
+}
+
+func runGraph(global bool, args []string, env commandEnv) error {
+	if writeHelpIfRequested(args, env.stdout, writeGraphHelp) {
+		return nil
+	}
+
+	if len(args) == 0 {
+		return fmt.Errorf("flow graph requires a subcommand: path; use `flow graph --help`")
+	}
+
+	switch args[0] {
+	case "path":
+		return runGraphPath(global, args[1:], env)
+	default:
+		return fmt.Errorf("unknown graph subcommand %q; use `flow graph --help`", args[0])
+	}
+}
+
+func runGraphPath(global bool, args []string, env commandEnv) error {
+	flagSet := flag.NewFlagSet("graph path", flag.ContinueOnError)
+	flagSet.SetOutput(io.Discard)
+	flagSet.Usage = func() {
+		writeGraphPathHelp(env.stdout)
+	}
+
+	from := flagSet.String("from", "", "ID of the start node")
+	to := flagSet.String("to", "", "ID of the target node")
+	directed := flagSet.Bool("directed", false, "follow edges only in their declared direction")
+	format := flagSet.String("format", "markdown", "output format: json or markdown")
+
+	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeGraphPathHelp)
+	if err != nil {
+		return err
+	}
+	if helpShown {
+		return nil
+	}
+
+	if strings.TrimSpace(*from) == "" || strings.TrimSpace(*to) == "" {
+		return fmt.Errorf("flow graph path requires --from and --to")
+	}
+
+	root, err := resolveRoot(global, env)
+	if err != nil {
+		return err
+	}
+
+	documents, err := workspace.LoadDocuments(root.FlowPath)
+	if err != nil {
+		return err
+	}
+
+	result, err := graph.FindShortestPath(documents, *from, *to, *directed)
+	if err != nil {
+		return err
+	}
+
+	if *format == "json" {
+		data, err := json.Marshal(result)
+		if err != nil {
+			return fmt.Errorf("marshal graph path: %w", err)
+		}
+		fmt.Fprintln(env.stdout, string(data))
+		return nil
+	}
+
+	return renderGraphPathMarkdown(env.stdout, result)
+}
+
+func renderGraphPathMarkdown(w io.Writer, result graph.ShortestPathResult) error {
+	if !result.Found {
+		fmt.Fprintf(w, "No path from %q to %q\n", result.From, result.To)
+		return nil
+	}
+
+	mode := "any-direction"
+	if result.Directed {
+		mode = "directed"
+	}
+	fmt.Fprintf(w, "Shortest path from %s to %s (%d hop%s, %s):\n", result.From, result.To, result.Distance, pluralHops(result.Distance), mode)
+
+	for _, node := range result.Nodes {
+		line := fmt.Sprintf("- %s %s [%s/%s]", node.Type, node.ID, deriveRole(node.Type), node.Graph)
+		if node.Title != "" {
+			line += " :: " + node.Title
+		}
+		if node.Status != "" {
+			line += " (" + node.Status + ")"
+		}
+		fmt.Fprintln(w, line)
+	}
+
+	if len(result.Edges) > 0 {
+		fmt.Fprintln(w, "\nEdges:")
+		for _, edge := range result.Edges {
+			label := edge.Kind
+			if edge.Context != "" {
+				label += " · " + edge.Context
+			}
+			fmt.Fprintf(w, "- %s -> %s [%s]\n", edge.From, edge.To, label)
+		}
+	}
+
+	return nil
+}
+
+func pluralHops(count int) string {
+	if count == 1 {
+		return ""
+	}
+	return "s"
 }
 
 type guiContext struct {

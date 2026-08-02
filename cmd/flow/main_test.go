@@ -1925,6 +1925,172 @@ func TestFlowNodeDisconnectRequiresFrom(t *testing.T) {
 	}
 }
 
+func TestFlowGraphPathReturnsMarkdownShortestPath(t *testing.T) {
+	rootDir := t.TempDir()
+	writeGraphPathWorkspaceForTest(t, rootDir, false)
+
+	stdout, stderr := runForTest(t, []string{"graph", "path", "--from", "note-1", "--to", "note-2"}, rootDir)
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+
+	if !strings.Contains(stdout, "Shortest path from note-1 to note-2 (2 hops, any-direction):") {
+		t.Fatalf("stdout missing header, got %q", stdout)
+	}
+	if !strings.Contains(stdout, "- note note-1 [context/demo] :: Note One") {
+		t.Fatalf("stdout missing note-1 line, got %q", stdout)
+	}
+	if !strings.Contains(stdout, "- task task-1 [work/demo] :: Task One (Ready)") {
+		t.Fatalf("stdout missing task-1 line, got %q", stdout)
+	}
+	if !strings.Contains(stdout, "- note note-2 [context/demo] :: Note Two") {
+		t.Fatalf("stdout missing note-2 line, got %q", stdout)
+	}
+	if !strings.Contains(stdout, "- note-1 -> task-1 [link]") {
+		t.Fatalf("stdout missing first edge, got %q", stdout)
+	}
+	if !strings.Contains(stdout, "- task-1 -> note-2 [link]") {
+		t.Fatalf("stdout missing second edge, got %q", stdout)
+	}
+}
+
+func TestFlowGraphPathReturnsJSONOutput(t *testing.T) {
+	rootDir := t.TempDir()
+	writeGraphPathWorkspaceForTest(t, rootDir, false)
+
+	stdout, stderr := runForTest(t, []string{"graph", "path", "--from", "note-1", "--to", "note-2", "--format", "json"}, rootDir)
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+
+	if !strings.Contains(stdout, `"from":"note-1"`) {
+		t.Fatalf("stdout missing from field, got %q", stdout)
+	}
+	if !strings.Contains(stdout, `"to":"note-2"`) {
+		t.Fatalf("stdout missing to field, got %q", stdout)
+	}
+	if !strings.Contains(stdout, `"found":true`) {
+		t.Fatalf("stdout missing found field, got %q", stdout)
+	}
+	if !strings.Contains(stdout, `"distance":2`) {
+		t.Fatalf("stdout missing distance field, got %q", stdout)
+	}
+	if !strings.Contains(stdout, `"kind":"link"`) {
+		t.Fatalf("stdout missing edge kind, got %q", stdout)
+	}
+
+	directedOut, stderr := runForTest(t, []string{"graph", "path", "--from", "note-1", "--to", "note-2", "--format", "json", "--directed"}, rootDir)
+	if stderr != "" {
+		t.Fatalf("directed stderr = %q, want empty", stderr)
+	}
+	if !strings.Contains(directedOut, `"directed":true`) {
+		t.Fatalf("directed stdout missing directed field, got %q", directedOut)
+	}
+}
+
+func TestFlowGraphPathFindsPathViaInlineReferences(t *testing.T) {
+	rootDir := t.TempDir()
+	writeGraphPathWorkspaceForTest(t, rootDir, true)
+
+	stdout, stderr := runForTest(t, []string{"graph", "path", "--from", "note-1", "--to", "note-2"}, rootDir)
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+
+	if !strings.Contains(stdout, "Shortest path from note-1 to note-2 (2 hops, any-direction):") {
+		t.Fatalf("stdout missing header, got %q", stdout)
+	}
+	if !strings.Contains(stdout, "- note-1 -> task-1 [reference") {
+		t.Fatalf("stdout missing first reference edge, got %q", stdout)
+	}
+	if !strings.Contains(stdout, "- task-1 -> note-2 [reference") {
+		t.Fatalf("stdout missing second reference edge, got %q", stdout)
+	}
+	if strings.Contains(stdout, "[link]") {
+		t.Fatalf("stdout unexpectedly contains a link edge, got %q", stdout)
+	}
+
+	jsonOut, stderr := runForTest(t, []string{"graph", "path", "--from", "note-1", "--to", "note-2", "--format", "json"}, rootDir)
+	if stderr != "" {
+		t.Fatalf("json stderr = %q, want empty", stderr)
+	}
+	if !strings.Contains(jsonOut, `"kind":"reference"`) {
+		t.Fatalf("json stdout missing reference kind, got %q", jsonOut)
+	}
+	if strings.Contains(jsonOut, `"kind":"link"`) {
+		t.Fatalf("json stdout unexpectedly contains a link edge, got %q", jsonOut)
+	}
+}
+
+// writeGraphPathWorkspaceForTest seeds a demo workspace with the chain
+// note-1 -> task-1 -> note-2. When useReferences is true the connections are
+// inline [[...]] references in the document bodies; otherwise they are
+// declared frontmatter links.
+func writeGraphPathWorkspaceForTest(t *testing.T, rootDir string, useReferences bool) {
+	t.Helper()
+
+	noteOne := markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{
+				ID:    "note-1",
+				Type:  markdown.NoteType,
+				Graph: "demo",
+				Title: "Note One",
+			},
+		},
+	}
+	taskOne := markdown.TaskDocument{
+		Metadata: markdown.TaskMetadata{
+			CommonFields: markdown.CommonFields{
+				ID:    "task-1",
+				Type:  markdown.TaskType,
+				Graph: "demo",
+				Title: "Task One",
+			},
+			Status: "Ready",
+		},
+	}
+	if useReferences {
+		noteOne.Body = "See [[task-1]] for the plan.\n"
+		taskOne.Body = "Depends on [[note-2]].\n"
+	} else {
+		noteOne.Metadata.Links = []markdown.NodeLink{{Node: "task-1"}}
+		taskOne.Metadata.Links = []markdown.NodeLink{{Node: "note-2"}}
+	}
+
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "demo", "one.md"), noteOne)
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "demo", "task.md"), taskOne)
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "demo", "two.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{
+				ID:    "note-2",
+				Type:  markdown.NoteType,
+				Graph: "demo",
+				Title: "Note Two",
+			},
+		},
+	})
+}
+
+func TestFlowGraphPathUnknownNodeReturnsError(t *testing.T) {
+	rootDir := t.TempDir()
+	writeDocumentForTest(t, filepath.Join(rootDir, ".flow", "data", "content", "demo", "one.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{
+				ID:    "note-1",
+				Type:  markdown.NoteType,
+				Graph: "demo",
+				Title: "Note One",
+			},
+		},
+	})
+
+	stderr := runExpectErrorForTest(t, []string{"graph", "path", "--from", "note-1", "--to", "missing-node"}, rootDir)
+	if !strings.Contains(stderr, `node "missing-node" not found`) {
+		t.Fatalf("stderr = %q, want unknown-node error", stderr)
+	}
+}
+
 type testOption func(*commandEnv)
 
 func withConfigHome(configHome string) testOption {

@@ -17,6 +17,7 @@
 - Validation and test execution: follow [test skill](.agents/skills/test/SKILL.md)
 - Code review: follow [review skill](.agents/skills/review/SKILL.md)
 - Commit creation and Flow record sync: follow [commit skill](.agents/skills/commit/SKILL.md)
+- Graph structure, node/edge engineering, and dependency ordering: follow [graph-engineering skill](.agents/skills/graph-engineering/SKILL.md)
 
 ## Flow Record Keeping
 
