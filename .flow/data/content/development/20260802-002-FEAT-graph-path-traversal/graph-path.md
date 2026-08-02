@@ -3,7 +3,7 @@ id: development/20260802-002-FEAT-graph-path-traversal/graph-path
 type: task
 graph: development/20260802-002-FEAT-graph-path-traversal
 title: Implement flow graph path shortest-path traversal
-description: Add flow graph path --from <id> --to <id> for shortest-path traversal between nodes
+description: 'Add flow graph path --from <id> --to <id> for shortest-path traversal between nodes (commit: 47fd493)'
 tags:
     - feat
     - graph
