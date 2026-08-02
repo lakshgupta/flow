@@ -3,7 +3,7 @@ id: development/20260802-001-FIX-mermaid-arrow-navigation/arrow-navigation
 type: task
 graph: development/20260802-001-FIX-mermaid-arrow-navigation
 title: Arrow-key navigation around collapsed mermaid diagram sections
-description: 'Arrow keys and Backspace navigate over collapsed/open mermaid diagram edges (Down/Right/Enter to write after, Up/Left/Backspace to move the section up)'
+description: 'Arrow keys and Backspace navigate over collapsed/open mermaid diagram edges (Down/Right/Enter to write after, Up/Left/Backspace to move the section up) (commit: 85971ff)'
 status: Done
 tags:
     - bugfix
