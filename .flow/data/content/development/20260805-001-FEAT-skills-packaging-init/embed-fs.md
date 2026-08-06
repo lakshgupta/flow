@@ -3,7 +3,7 @@ id: development/20260805-001-FEAT-skills-packaging-init/embed-fs
 type: task
 graph: development/20260805-001-FEAT-skills-packaging-init
 title: Embed packaging/skills as embed.FS
-description: Rework skillcontent.go to embed all of packaging/skills; add SkillNames()
+description: Rework skillcontent.go to embed all of packaging/skills; add SkillNames(); committed in 6a6f882
 tags:
     - implement
 status: Done
