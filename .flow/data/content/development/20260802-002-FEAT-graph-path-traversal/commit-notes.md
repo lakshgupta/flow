@@ -20,7 +20,7 @@ This commit adds the `flow graph path` shortest-path traversal command together 
 
 ## Changes Included
 
-- `internal/graph/path.go` (new): `FindShortestPath` runs a breadth-first search over the workspace graph built from declared frontmatter `links:` and resolved inline `[[references]]`, skipping the home node. Default any-direction traversal; `--directed` follows edges only in their declared direction. Edge kinds (`link`/`reference`) are preserved through reverse traversal instead of degrading to `reverse`.
+- `internal/graph/path.go` (new): `FindShortestPath` runs a breadth-first search over the workspace graph built from declared frontmatter `links:` and resolved inline reference targets, skipping the home node. Default any-direction traversal; `--directed` follows edges only in their declared direction. Edge kinds (`link`/`reference`) are preserved through reverse traversal instead of degrading to `reverse`.
 - `internal/graph/path_test.go` (new): 7 unit tests covering link chains, direct-edge preference, undirected reference traversal, same-node, no-connection, unknown-node errors, and home-node skipping.
 - `cmd/flow/main.go`: new `graph` subcommand with the `path` handler (`--from`, `--to`, `--directed`, `--format json|markdown`), root help, and markdown/JSON rendering reusing the `deriveRole` convention; plus the `flow skill content --skill` flag for printing the embedded graph-engineering skill.
 - `cmd/flow/main_test.go`: CLI integration tests for `graph path` (markdown output, JSON output, inline-reference traversal asserting `kind: reference`, unknown-node error) using a shared `writeGraphPathWorkspaceForTest` seeding helper.

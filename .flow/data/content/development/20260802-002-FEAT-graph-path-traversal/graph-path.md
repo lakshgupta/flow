@@ -15,7 +15,7 @@ Add `flow graph path --from <node-id> --to <node-id>` to find the shortest path 
 
 Implementation (`internal/graph/path.go`):
 
-- Build the graph from declared frontmatter `links:` and resolved inline `[[references]]`, skipping the home node — the same edge model as the canvas.
+- Build the graph from declared frontmatter `links:` and resolved inline reference targets, skipping the home node — the same edge model as the canvas.
 - Run a breadth-first search so the result is always the shortest path; direct edges are naturally preferred.
 - Default **any-direction** traversal so "what connects X to Y" works regardless of edge orientation; `--directed` follows edges only in their declared direction.
 - Preserve the declared edge kind (`link`/`reference`) through reverse traversals instead of degrading to `reverse`.
