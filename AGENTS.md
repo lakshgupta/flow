@@ -3,25 +3,25 @@
 ## Default Workflow
 
 - When the user does not explicitly choose a prompt, infer the correct stage of work and follow this project workflow: design, plan, implement or fix or refactor, test, review, then commit.
-- Treat the skill files in [.agents/skills/](.agents/skills/) as the source of truth for stage-specific behavior even when the user does not invoke them explicitly.
+- Treat the skill files in [packaging/skills/](packaging/skills/) as the source of truth for stage-specific behavior even when the user does not invoke them explicitly.
 - Reuse the matching skill workflow by default rather than reinterpreting the process from scratch.
-- For record-keeping behavior, follow [packaging/SKILL.md](packaging/SKILL.md) as the authoritative protocol when prompt wording differs.
+- For record-keeping behavior, follow [packaging/skills/flow/SKILL.md](packaging/skills/flow/SKILL.md) as the authoritative protocol when prompt wording differs.
 
 ## Stage Routing
 
-- New feature design or behavior change: follow [design skill](.agents/skills/design/SKILL.md)
-- Feature planning and Flow task-node creation: follow [plan skill](.agents/skills/plan/SKILL.md)
-- Feature implementation from Flow task nodes: follow [implement skill](.agents/skills/implement/SKILL.md)
-- Issue fixing: follow [fix skill](.agents/skills/fix/SKILL.md)
-- Behavior-preserving structural cleanup: follow [refactor skill](.agents/skills/refactor/SKILL.md)
-- Validation and test execution: follow [test skill](.agents/skills/test/SKILL.md)
-- Code review: follow [review skill](.agents/skills/review/SKILL.md)
-- Commit creation and Flow record sync: follow [commit skill](.agents/skills/commit/SKILL.md)
-- Graph structure, node/edge engineering, and dependency ordering: follow [graph-engineering skill](.agents/skills/graph-engineering/SKILL.md)
+- New feature design or behavior change: follow [design skill](packaging/skills/design/SKILL.md)
+- Feature planning and Flow task-node creation: follow [plan skill](packaging/skills/plan/SKILL.md)
+- Feature implementation from Flow task nodes: follow [implement skill](packaging/skills/implement/SKILL.md)
+- Issue fixing: follow [fix skill](packaging/skills/fix/SKILL.md)
+- Behavior-preserving structural cleanup: follow [refactor skill](packaging/skills/refactor/SKILL.md)
+- Validation and test execution: follow [test skill](packaging/skills/test/SKILL.md)
+- Code review: follow [review skill](packaging/skills/review/SKILL.md)
+- Commit creation and Flow record sync: follow [commit skill](packaging/skills/commit/SKILL.md)
+- Graph structure, node/edge engineering, and dependency ordering: follow [graph-engineering skill](packaging/skills/graph-engineering/SKILL.md)
 
 ## Flow Record Keeping
 
-- Follow the [Flow skill](packaging/SKILL.md) for all record keeping: use Flow graph task/note nodes as the system of record for every phase of work.
+- Follow the [Flow skill](packaging/skills/flow/SKILL.md) for all record keeping: use Flow graph task/note nodes as the system of record for every phase of work.
 - Store graph records under `.flow/data/content`.
 - Design records must use `design/YYYYMMDD-NNN-<type>-<title>`.
 - Planning and implementation records must use `development/YYYYMMDD-NNN-<type>-<title>`.
@@ -29,7 +29,7 @@
 - `NNN` is the zero-padded incremental count of directories created on that date.
 - For design updates, filter candidate nodes by title/description/tags first, then inspect body content.
 - Define and maintain task dependencies with explicit `depends-on` links.
-- Refer to [packaging/SKILL.md](packaging/SKILL.md) for the full CLI workflow and mandatory protocol.
+- Refer to [packaging/skills/flow/SKILL.md](packaging/skills/flow/SKILL.md) for the full CLI workflow and mandatory protocol.
 
 ## Persistent Rules
 
@@ -119,5 +119,5 @@ The CI workflows (release, installer-validation) do not run Go or frontend tests
 - **Mutations write Markdown first, then refresh the index.** Never reverse this order.
 - `internal/core/` is the shared orchestration layer (transport-agnostic). `cmd/flow/`, `internal/httpapi/`, and `internal/desktop/` are transport adapters only. Keep business logic in `internal/core/`.
 - The React frontend at `frontend/` uses Vite, React 19, Tailwind CSS 4, and shadcn/ui. Component aliases use `@/` for `frontend/src/`.
-- `skillcontent.go` at repo root embeds `packaging/SKILL.md` into the binary via `//go:embed`. The `flow skill content` command prints it.
+- `skillcontent.go` at repo root embeds the whole `packaging/skills/` tree into the binary via `//go:embed`. The `flow skill list`, `flow skill content`, and `flow skill init` commands read from it.
 - `internal/httpapi/static/` is git-ignored — it receives frontend build output. The Go binary embeds it with `embed.FS`.

@@ -214,8 +214,12 @@ Core commands:
   - Updates document fields by path.
 - `flow delete --path <relative-path>`
   - Deletes a document by path.
-- `flow skill content [--graph <graph>]`
-  - Prints a Skill.md template for Flow-centric delivery using `design/YYYYMMDD-NNN-<type>-<title>` and `development/YYYYMMDD-NNN-<type>-<title>` record keeping conventions.
+- `flow skill list`
+  - Lists the skills embedded in the binary.
+- `flow skill content [--skill <name>]`
+  - Prints an embedded skill (default: the record-keeping skill, alias `record-keeping`), using `design/YYYYMMDD-NNN-<type>-<title>` and `development/YYYYMMDD-NNN-<type>-<title>` record keeping conventions.
+- `flow skill init [--project] [--force] [--quiet] [--skill <name>]`
+  - Writes embedded skills to the global agent skills directory `~/.agents/skills/` (default) or the current workspace's `.agents/skills/` with `--project`; `--skill` restricts to a single skill; existing files are skipped unless `--force`.
 - `flow search [--limit <n>] [--graph <graph>] [--feature <feature>] [--type <note|task|command>] [--tag <tag>] [--title <text>] [--description <text>] [--content <text>] [--compact] [query]`
   - Indexed search with field filters and optional compact ID-only output.
 - `flow run <command-id-or-short-name>`

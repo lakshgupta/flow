@@ -864,6 +864,108 @@ func TestFlowUnknownCommandReturnsErrorWithHelp(t *testing.T) {
 	}
 }
 
+func TestFlowSkillListListsEmbeddedSkills(t *testing.T) {
+	stdout, stderr := runForTest(t, []string{"skill", "list"}, t.TempDir())
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+
+	for _, expected := range []string{"commit", "design", "fix", "flow", "graph-engineering", "implement", "plan", "refactor", "review", "test"} {
+		if !strings.Contains(stdout, expected) {
+			t.Fatalf("stdout missing skill %q, got %q", expected, stdout)
+		}
+	}
+}
+
+func TestFlowSkillContentByName(t *testing.T) {
+	stdout, stderr := runForTest(t, []string{"skill", "content", "--skill", "design"}, t.TempDir())
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+	if !strings.Contains(stdout, "name: design") {
+		t.Fatalf("stdout missing design skill, got %q", stdout)
+	}
+
+	stdout, stderr = runForTest(t, []string{"skill", "content", "--skill", "record-keeping"}, t.TempDir())
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+	if !strings.Contains(stdout, "# Skill: Flow-First Record Keeping") {
+		t.Fatalf("stdout missing record-keeping alias content, got %q", stdout)
+	}
+}
+
+func TestFlowSkillContentUnknownSkillReturnsError(t *testing.T) {
+	stderr := runExpectErrorForTest(t, []string{"skill", "content", "--skill", "bogus"}, t.TempDir())
+	if !strings.Contains(stderr, "unknown skill") {
+		t.Fatalf("stderr = %q, want unknown-skill message", stderr)
+	}
+}
+
+func TestFlowSkillInitWritesToGlobalSkillsDir(t *testing.T) {
+	homeDir := t.TempDir()
+	stdout, stderr := runForTest(t, []string{"skill", "init", "--quiet"}, t.TempDir(), withHomeDir(homeDir))
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+	if !strings.Contains(stdout, "10 skill file(s)") {
+		t.Fatalf("stdout missing init summary, got %q", stdout)
+	}
+
+	for _, expected := range []string{"flow", "design", "graph-engineering"} {
+		target := filepath.Join(homeDir, ".agents", "skills", expected, "SKILL.md")
+		if _, err := os.Stat(target); err != nil {
+			t.Fatalf("expected skill file %s: %v", target, err)
+		}
+	}
+
+	count := initializerCount(t, filepath.Join(homeDir, ".agents", "skills"))
+	if count != 10 {
+		t.Fatalf("global init wrote %d skill dirs, want 10", count)
+	}
+
+	// Rerun is idempotent: no files changed, all skipped.
+	stdout, stderr = runForTest(t, []string{"skill", "init"}, t.TempDir(), withHomeDir(homeDir))
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+	if !strings.Contains(stdout, "0 skill file(s), 10 skipped") {
+		t.Fatalf("stdout missing idempotent summary, got %q", stdout)
+	}
+}
+
+func TestFlowSkillInitProjectWritesToWorkspaceAgentsSkills(t *testing.T) {
+	projectDir := t.TempDir()
+	stdout, stderr := runForTest(t, []string{"skill", "init", "--project", "--skill", "flow"}, projectDir)
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+	if !strings.Contains(stdout, "1 skill file(s), 0 skipped") {
+		t.Fatalf("stdout missing init summary, got %q", stdout)
+	}
+
+	target := filepath.Join(projectDir, ".agents", "skills", "flow", "SKILL.md")
+	if _, err := os.Stat(target); err != nil {
+		t.Fatalf("expected project skill file %s: %v", target, err)
+	}
+}
+
+func TestFlowSkillInitUnknownSkillReturnsError(t *testing.T) {
+	stderr := runExpectErrorForTest(t, []string{"skill", "init", "--skill", "bogus"}, t.TempDir())
+	if !strings.Contains(stderr, "unknown skill") {
+		t.Fatalf("stderr = %q, want unknown-skill message", stderr)
+	}
+}
+
+func initializerCount(t *testing.T, dir string) int {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read skills dir: %v", err)
+	}
+	return len(entries)
+}
+
 func TestFlowNodeUnknownSubcommandReturnsErrorWithHelp(t *testing.T) {
 	stderr := runExpectErrorForTest(t, []string{"node", "bogus"}, t.TempDir())
 	if !strings.Contains(stderr, "unknown node subcommand") {
@@ -2097,6 +2199,14 @@ func withConfigHome(configHome string) testOption {
 	return func(env *commandEnv) {
 		env.userConfigDir = func() (string, error) {
 			return configHome, nil
+		}
+	}
+}
+
+func withHomeDir(homeDir string) testOption {
+	return func(env *commandEnv) {
+		env.userHomeDir = func() (string, error) {
+			return homeDir, nil
 		}
 	}
 }

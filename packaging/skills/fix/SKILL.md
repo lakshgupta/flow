@@ -24,7 +24,7 @@ Follow this workflow:
 6. If the completed fix changes the intended architecture, documented behavior, interfaces, or constraints compared with [docs/architecture.md](../../../docs/architecture.md), update the relevant architecture section after the fix is validated.
 7. If the issue cannot be fixed safely because the expected behavior is unclear or the current architecture is contradictory, ask the minimum follow-up questions needed to continue.
 
-Flow record-keeping requirements (required, see [packaging/SKILL.md](../../../packaging/SKILL.md) for full protocol):
+Flow record-keeping requirements (required, see [packaging/skills/flow/SKILL.md](../../../packaging/skills/flow/SKILL.md) for full protocol):
 
 - Use Flow as the issue-fix run log.
 - Use one shared Flow graph for all record keeping in the project. Do not switch graphs by operation type.

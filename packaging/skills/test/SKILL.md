@@ -23,7 +23,7 @@ Follow this workflow:
 5. If failures are found, create or update follow-up Flow tasks with clear repro details and expected behavior.
 6. Do not claim validation is complete if required checks were not run.
 
-Flow record-keeping requirements (required, see [packaging/SKILL.md](../../../packaging/SKILL.md) for full protocol):
+Flow record-keeping requirements (required, see [packaging/skills/flow/SKILL.md](../../../packaging/skills/flow/SKILL.md) for full protocol):
 
 - Use Flow as the testing ledger.
 - Use one shared Flow graph for all record keeping in the project. Do not switch graphs by operation type.

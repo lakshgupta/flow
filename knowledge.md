@@ -63,8 +63,8 @@ frontend/src/
   styles.css               Tailwind v4 global styles
 frontend/tests/            Playwright e2e tests
 docs/                      architecture, build, reference docs
-.agents/skills/            agent skill files (design, implement, fix, etc.)
-packaging/                 Linux .deb & macOS .dmg manifests + SKILL.md protocol
+packaging/skills/            canonical agent skill files (flow, design, plan, implement, fix, etc.)
+packaging/linux, macos/     Linux .deb & macOS .dmg manifests
 scripts/                   build/release/install shell scripts
 .flow/                     Flow's own workspace (yes, Flow eats its own dogfood)
 ```
@@ -118,7 +118,7 @@ Playwright tests use port 5174 (separate from the Vite dev server on 5173). The 
 
 ## Agent Workflow
 
-This project uses a stage-based workflow via `.agents/skills/`:
+This project uses a stage-based workflow via `packaging/skills/` (also distributable with `flow skill init`):
 1. **design** → feature proposal & architecture.md update
 2. **plan** → create Flow task nodes
 3. **implement** → code from task nodes

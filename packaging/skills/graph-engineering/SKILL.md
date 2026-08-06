@@ -8,7 +8,7 @@ argument-hint: Graph feature, sub-graph, or workflow to engineer
 
 Engineer Flow's graph as a first-class, persistent, inspectable state — not as prose or chat transcripts. Flow already treats Markdown on disk as the source of truth and derives a graph (canvas, layers, focused snapshots) from it. This skill teaches the discipline of *engineering through the graph*: every node edit and edge decision is a deliberate, validated graph mutation, and work is only committed when the graph is coherent.
 
-Read [packaging/SKILL.md](../../../packaging/SKILL.md) for the mandatory record-keeping protocol (sub-graph naming, task statuses, commit-id recording) and [docs/architecture.md](../../../docs/architecture.md) for the backend model.
+Read [packaging/skills/flow/SKILL.md](../../../packaging/skills/flow/SKILL.md) for the mandatory record-keeping protocol (sub-graph naming, task statuses, commit-id recording) and [docs/architecture.md](../../../docs/architecture.md) for the backend model.
 
 ## Flow Graph Model
 

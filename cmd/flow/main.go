@@ -42,6 +42,7 @@ type commandEnv struct {
 	getwd            func() (string, error)
 	environ          func() []string
 	userConfigDir    func() (string, error)
+	userHomeDir      func() (string, error)
 	guiRuntime       *execution.GUIRuntime
 	openBrowser      func(string) error
 	startCommand     func(execution.CommandExecution, io.Writer, io.Writer) error
@@ -134,6 +135,7 @@ func main() {
 		getwd:         os.Getwd,
 		environ:       os.Environ,
 		userConfigDir: os.UserConfigDir,
+		userHomeDir:   os.UserHomeDir,
 	})
 
 	os.Exit(exitCode)
@@ -253,7 +255,7 @@ func writeRootHelp(w io.Writer) {
 	fmt.Fprintln(w, "  delete         Delete a document by path")
 	fmt.Fprintln(w, "  search         Search indexed content")
 	fmt.Fprintln(w, "  run            Execute a command document")
-	fmt.Fprintln(w, "  skill          Print Flow skill content")
+	fmt.Fprintln(w, "  skill          Print, list, or initialize Flow skills")
 	fmt.Fprintln(w, "  node           Node-oriented read/update/connect operations")
 	fmt.Fprintln(w, "  graph          Graph traversal operations (e.g. shortest path)")
 	fmt.Fprintln(w, "  workspace      Workspace management commands")
@@ -277,16 +279,29 @@ func writeConfigureHelp(w io.Writer) {
 func writeSkillHelp(w io.Writer) {
 	fmt.Fprintln(w, "Usage: flow skill <subcommand> [options]")
 	fmt.Fprintln(w, "Subcommands:")
+	fmt.Fprintln(w, "  list           List embedded Flow skills")
 	fmt.Fprintln(w, "  content        Print embedded Flow skill content")
+	fmt.Fprintln(w, "  init           Install Flow skills for an agent")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Use `flow skill content --help` for options.")
+	fmt.Fprintln(w, "Use `flow skill <subcommand> --help` for options.")
 }
 
 func writeSkillContentHelp(w io.Writer) {
 	fmt.Fprintln(w, "Usage: flow skill content [--graph <graph>] [--skill <name>]")
 	fmt.Fprintln(w, "Options:")
-	fmt.Fprintln(w, "  --graph <graph>   Development graph root label (default: development)")
-	fmt.Fprintln(w, "  --skill <name>    Skill to print: record-keeping (default) or graph-engineering")
+	fmt.Fprintln(w, "  --graph <graph>   Development graph root label (accepted for compatibility, default: development)")
+	fmt.Fprintln(w, "  --skill <name>    Skill to print (default: flow; alias record-keeping)")
+	fmt.Fprintf(w, "  Available skills: %s\n", strings.Join(flow.SkillNames(), ", "))
+}
+
+func writeSkillInitHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow skill init [options]")
+	fmt.Fprintln(w, "Initialize the embedded Flow skills so an agent can use them.")
+	fmt.Fprintln(w, "Options:")
+	fmt.Fprintln(w, "  --skill <name>    Only initialize this skill (repeatable)")
+	fmt.Fprintln(w, "  --project         Write to .agents/skills in the current workspace instead of ~/.agents/skills")
+	fmt.Fprintln(w, "  --force           Overwrite existing skill files")
+	fmt.Fprintln(w, "  --quiet           Suppress per-file output")
 }
 
 func writeServiceHelp(w io.Writer) {
@@ -447,8 +462,12 @@ func runSkill(_ bool, args []string, env commandEnv) error {
 	}
 
 	switch args[0] {
+	case "list":
+		return runSkillList(args[1:], env)
 	case "content":
 		return runSkillContent(args[1:], env)
+	case "init":
+		return runSkillInit(args[1:], env)
 	default:
 		return fmt.Errorf("unknown skill subcommand %q; use `flow skill --help`", args[0])
 	}
@@ -461,8 +480,8 @@ func runSkillContent(args []string, env commandEnv) error {
 		writeSkillContentHelp(env.stdout)
 	}
 
-	graph := flagSet.String("graph", "development", "development graph root for planning and implementation")
-	skill := flagSet.String("skill", "record-keeping", "skill to print: record-keeping or graph-engineering")
+	graph := flagSet.String("graph", "development", "development graph root for planning and implementation (accepted for compatibility)")
+	skill := flagSet.String("skill", "flow", "skill to print (default: flow; alias record-keeping)")
 	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeSkillContentHelp)
 	if err != nil {
 		return err
@@ -485,6 +504,122 @@ func runSkillContent(args []string, env commandEnv) error {
 	}
 
 	return nil
+}
+
+func runSkillList(args []string, env commandEnv) error {
+	if writeHelpIfRequested(args, env.stdout, writeSkillListHelp) {
+		return nil
+	}
+
+	for _, name := range flow.SkillNames() {
+		fmt.Fprintln(env.stdout, name)
+	}
+
+	return nil
+}
+
+func writeSkillListHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow skill list")
+	fmt.Fprintln(w, "List the Flow skills embedded in this binary.")
+}
+
+func runSkillInit(args []string, env commandEnv) error {
+	flagSet := flag.NewFlagSet("skill init", flag.ContinueOnError)
+	flagSet.SetOutput(io.Discard)
+	flagSet.Usage = func() {
+		writeSkillInitHelp(env.stdout)
+	}
+
+	var skills stringListFlag
+	project := flagSet.Bool("project", false, "write to .agents/skills in the current workspace instead of ~/.agents/skills")
+	force := flagSet.Bool("force", false, "overwrite existing skill files")
+	quiet := flagSet.Bool("quiet", false, "suppress per-file output")
+	flagSet.Var(&skills, "skill", "only initialize this skill (repeatable)")
+
+	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeSkillInitHelp)
+	if err != nil {
+		return err
+	}
+	if helpShown {
+		return nil
+	}
+
+	targets := []string(skills)
+	if len(targets) == 0 {
+		targets = flow.SkillNames()
+	}
+
+	markdowns := make(map[string]string, len(targets))
+	for _, name := range targets {
+		markdown, ok := flow.SkillMarkdownByName(name)
+		if !ok {
+			return fmt.Errorf("unknown skill %q; use `flow skill list` to list available skills", name)
+		}
+		markdowns[name] = markdown
+	}
+
+	targetDir, err := resolveSkillInitTargetDir(*project, env)
+	if err != nil {
+		return err
+	}
+
+	written := 0
+	skipped := 0
+	for _, name := range targets {
+		markdown := markdowns[name]
+
+		skillDir := filepath.Join(targetDir, name)
+		if err := os.MkdirAll(skillDir, 0o755); err != nil {
+			return fmt.Errorf("create skill directory: %w", err)
+		}
+
+		targetPath := filepath.Join(skillDir, "SKILL.md")
+		existing, readErr := os.ReadFile(targetPath)
+		if readErr == nil && !*force && string(existing) == markdown {
+			skipped++
+			continue
+		}
+		if readErr == nil && !*force {
+			if !*quiet {
+				fmt.Fprintf(env.stdout, "skip %s (exists; use --force to overwrite)\n", targetPath)
+			}
+			skipped++
+			continue
+		}
+
+		if err := os.WriteFile(targetPath, []byte(markdown), 0o644); err != nil {
+			return fmt.Errorf("write skill file: %w", err)
+		}
+		written++
+		if !*quiet {
+			fmt.Fprintf(env.stdout, "wrote %s\n", targetPath)
+		}
+	}
+
+	fmt.Fprintf(env.stdout, "Initialized %d skill file(s), %d skipped in %s\n", written, skipped, targetDir)
+	return nil
+}
+
+// resolveSkillInitTargetDir returns the directory skills are installed into:
+// the global agent skills dir (~/.agents/skills) by default, or the current
+// workspace's .agents/skills directory with --project.
+func resolveSkillInitTargetDir(project bool, env commandEnv) (string, error) {
+	if !project {
+		homeDir, err := env.userHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve user home directory: %w", err)
+		}
+		if strings.TrimSpace(homeDir) == "" {
+			return "", fmt.Errorf("resolve user home directory: empty home path")
+		}
+		return filepath.Join(homeDir, ".agents", "skills"), nil
+	}
+
+	workingDirectory, err := env.getwd()
+	if err != nil {
+		return "", fmt.Errorf("resolve working directory: %w", err)
+	}
+	return filepath.Join(workingDirectory, ".agents", "skills"), nil
 }
 
 func runInit(global bool, args []string, env commandEnv) error {

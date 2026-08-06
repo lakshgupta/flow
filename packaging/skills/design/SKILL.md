@@ -18,7 +18,7 @@ Follow this workflow:
 4. Ask for explicit approval at the end. Use clear approval language such as: "Approve this design and update architecture.md."
 5. Only after explicit approval in the same conversation, update [docs/architecture.md](../../../docs/architecture.md).
 
-Flow record-keeping requirements (required, see [packaging/SKILL.md](../../../packaging/SKILL.md) for full protocol):
+Flow record-keeping requirements (required, see [packaging/skills/flow/SKILL.md](../../../packaging/skills/flow/SKILL.md) for full protocol):
 
 - Use the Flow workspace as the execution log for this design run.
 - Use one shared Flow graph for all record keeping in the project. Do not switch graphs by operation type.

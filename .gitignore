@@ -29,6 +29,7 @@ go.work.sum
 
 # agents
 .antigravitycli
+.agents/skills/
 
 # Frontend artifacts
 frontend/node_modules/

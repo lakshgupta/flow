@@ -26,7 +26,7 @@ Follow this workflow:
 8. If you identify issues, prioritize findings by severity and user impact.
 9. If no issues are found, state that explicitly and mention any residual risk or testing gaps.
 
-Flow record-keeping requirements (required, see [packaging/SKILL.md](../../../packaging/SKILL.md) for full protocol):
+Flow record-keeping requirements (required, see [packaging/skills/flow/SKILL.md](../../../packaging/skills/flow/SKILL.md) for full protocol):
 
 - Use Flow as the review ledger.
 - Use one shared Flow graph for all record keeping in the project. Do not switch graphs by operation type.

@@ -29,7 +29,7 @@ Follow this workflow:
 11. In the commit body, summarize the Flow task nodes implemented by the commit and the key implementation decisions.
 12. If there is nothing meaningful to commit, explain why and do not create an empty or misleading commit.
 
-Flow record-keeping requirements (required, see [packaging/SKILL.md](../../../packaging/SKILL.md) for full protocol):
+Flow record-keeping requirements (required, see [packaging/skills/flow/SKILL.md](../../../packaging/skills/flow/SKILL.md) for full protocol):
 
 - Use Flow as the commit-run record.
 - Use one shared Flow graph for all record keeping in the project. Do not switch graphs by operation type.

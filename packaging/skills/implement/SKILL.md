@@ -27,7 +27,7 @@ Follow this workflow:
 10. If implementation reveals necessary changes that the user explicitly requested and those changes differ from [docs/architecture.md](../../../docs/architecture.md), update the relevant architecture section after the affected task is finished.
 11. At the end of the run, suggest the next best unchecked task for the same feature. If the feature is completed, suggest the next feature to implement instead.
 
-Flow record-keeping requirements (required, see [packaging/SKILL.md](../../../packaging/SKILL.md) for full protocol):
+Flow record-keeping requirements (required, see [packaging/skills/flow/SKILL.md](../../../packaging/skills/flow/SKILL.md) for full protocol):
 
 - Use Flow as the implementation run log.
 - Use one shared Flow graph for all record keeping in the project. Do not switch graphs by operation type.

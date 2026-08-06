@@ -257,20 +257,24 @@ To eliminate visual layout shifts (CLS) when retrieving thread panel content:
 
 ## Development Workflow & Agent Skills
 
-Flow's own development follows a stage-based workflow with behavior governed by skill files under `.agents/skills/`. The default workflow order is: design, plan, implement or fix or refactor, test, review, commit.
+Flow's own development follows a stage-based workflow with behavior governed by skill files under `packaging/skills/`. The default workflow order is: design, plan, implement or fix or refactor, test, review, commit.
 
 ### Skill Directory Structure
 
+All Flow skills live in a single canonical directory that is both the agent-visible source of truth and the embed source for the binary:
+
 ```
-.agents/skills/
-  design/SKILL.md     — Feature design proposal and architecture.md update workflow
-  plan/SKILL.md       — Feature planning and Flow task-node creation
-  implement/SKILL.md  — Feature implementation from Flow task nodes
-  fix/SKILL.md        — Issue fixing workflow
-  refactor/SKILL.md   — Behavior-preserving structural cleanup
-  test/SKILL.md       — Validation and test execution
-  review/SKILL.md     — Code review workflow
-  commit/SKILL.md     — Commit creation and Flow record sync
+packaging/skills/
+  flow/SKILL.md           — Flow CLI record-keeping protocol (naming, statuses, edges, commit ids)
+  design/SKILL.md         — Feature design proposal and architecture.md update workflow
+  plan/SKILL.md           — Feature planning and Flow task-node creation
+  implement/SKILL.md      — Feature implementation from Flow task nodes
+  fix/SKILL.md            — Issue fixing workflow
+  refactor/SKILL.md       — Behavior-preserving structural cleanup
+  test/SKILL.md           — Validation and test execution
+  review/SKILL.md         — Code review workflow
+  commit/SKILL.md         — Commit creation and Flow record sync
+  graph-engineering/SKILL.md — Node-edge graph design and mutation discipline
 ```
 
 Each skill file is a self-contained Markdown document with YAML frontmatter (`name`, `description`, `user-invocable`, `allowed-tools`, `argument-hint`) followed by the full stage-specific workflow instructions.
@@ -278,8 +282,23 @@ Each skill file is a self-contained Markdown document with YAML frontmatter (`na
 Key related files:
 
 - `AGENTS.md` — Project-level routing table that maps work stages to skill files and defines persistent rules
-- `packaging/SKILL.md` — Flow CLI record-keeping protocol, embedded at build time into the flow binary via `skillcontent.go`
+- `skillcontent.go` — Embeds the whole `packaging/skills/` tree into the flow binary at build time (single `embed.FS`), exposing `SkillNames()`, `SkillMarkdownByName()`, and `flow skill content --skill <name>`
 - `skills-lock.json` — Lock file tracking installed skills with their source type and hash
+- `.agents/skills/` — Generated install location (not committed); produced by `flow skill init --project`
+
+### Skill Distribution
+
+An installed `flow` binary carries every skill. Users materialize them for their agent with:
+
+```bash
+flow skill list                     # enumerate embedded skills
+flow skill content --skill design   # print any skill
+flow skill init                     # write all skills to ~/.agents/skills/
+flow skill init --project           # write all skills to ./.agents/skills/
+flow skill init --project --force   # overwrite existing files
+```
+
+`flow skill init` writes to the global agent skills directory (`~/.agents/skills/`) by default, or to the current workspace's `.agents/skills/` with `--project`. Existing files are left untouched unless `--force` is given. The workspace's `.agents/skills/` directory is generated output and must not be committed.
 
 ### Stage Routing
 
@@ -296,7 +315,7 @@ Key related files:
 
 ### Flow Record Keeping
 
-All phases of work are recorded in the Flow workspace itself — task and note nodes in `.flow/data/content/` serve as the system of record. The `packaging/SKILL.md` skill is embedded into the flow binary and provides the full CLI workflow and mandatory protocol for record keeping. Sub-graph naming follows the pattern `YYYYMMDD-NNN-<type>-<title>` with explicit `depends-on` dependency links between task nodes.
+All phases of work are recorded in the Flow workspace itself — task and note nodes in `.flow/data/content/` serve as the system of record. The `packaging/skills/flow/SKILL.md` skill is embedded into the flow binary and provides the full CLI workflow and mandatory protocol for record keeping. Sub-graph naming follows the pattern `YYYYMMDD-NNN-<type>-<title>` with explicit `depends-on` dependency links between task nodes.
 
 ## Quality Strategy
 
@@ -317,5 +336,5 @@ This keeps canonical-state correctness and projection correctness testable in is
 - [docs/release.md](release.md)
 - [README.md](../README.md)
 - [AGENTS.md](../AGENTS.md)
-- [packaging/SKILL.md](../packaging/SKILL.md)
+- [packaging/skills/flow/SKILL.md](../packaging/skills/flow/SKILL.md)
 

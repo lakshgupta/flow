@@ -27,7 +27,7 @@ Follow this workflow:
 9. After the refactor is complete, run the most relevant available tests, lint checks, or targeted verification.
 10. If the refactor changes documented responsibilities, boundaries, interfaces, or architectural structure compared with [docs/architecture.md](../../../docs/architecture.md), update the relevant architecture section after validation.
 
-Flow record-keeping requirements (required, see [packaging/SKILL.md](../../../packaging/SKILL.md) for full protocol):
+Flow record-keeping requirements (required, see [packaging/skills/flow/SKILL.md](../../../packaging/skills/flow/SKILL.md) for full protocol):
 
 - Use Flow as the refactor run log.
 - Use one shared Flow graph for all record keeping in the project. Do not switch graphs by operation type.

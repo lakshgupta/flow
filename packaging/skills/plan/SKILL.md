@@ -22,7 +22,7 @@ Follow this workflow:
 4. Document the plan in the project's shared Flow graph under a feature sub-directory (for example, `flow/development/<feature-slug>`).
 5. If the feature does not have an approved design yet, direct the user to run the design workflow first rather than planning from an underspecified design.
 
-Flow record-keeping requirements (required, see [packaging/SKILL.md](../../../packaging/SKILL.md) for full protocol):
+Flow record-keeping requirements (required, see [packaging/skills/flow/SKILL.md](../../../packaging/skills/flow/SKILL.md) for full protocol):
 
 - Use Flow as the planning execution environment.
 - Use one shared Flow graph for all record keeping in the project. Do not switch graphs by operation type.

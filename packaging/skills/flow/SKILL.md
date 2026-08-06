@@ -1,3 +1,11 @@
+---
+name: flow
+description: Use the Flow CLI for every record-keeping action in design, planning, and implementation work, following the mandatory record-keeping protocol (sub-graph naming, task statuses, edges, commit-id recording)
+user-invocable: true
+allowed-tools: Bash, Read, Write, Edit, Glob, Grep
+argument-hint: Work stage or workspace to apply record keeping to
+---
+
 # Skill: Flow-First Record Keeping
 
 ## Purpose
