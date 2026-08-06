@@ -3,7 +3,7 @@ id: development/20260805-001-REFACTOR-wails-v2-13-update/update-wails
 type: task
 graph: development/20260805-001-REFACTOR-wails-v2-13-update
 title: Update Wails to v2.13.0
-description: Upgrade github.com/wailsapp/wails/v2 from v2.12.0 to v2.13.0 and verify the desktop build
+description: 'Upgrade github.com/wailsapp/wails/v2 from v2.12.0 to v2.13.0 and verify the desktop build (commit: c9cf1c2)'
 tags:
     - refactor
     - deps
