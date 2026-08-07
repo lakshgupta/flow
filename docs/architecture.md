@@ -237,9 +237,12 @@ To improve rich-text editing usability, diagram views (such as Mermaid sections)
 - **Traversal & Insertion**: When a diagram node is selected via `NodeSelection`, pressing `ArrowDown`/`ArrowUp` moves the focus beyond the diagram. If the boundary of the document is reached, a new default paragraph node is inserted and focused.
 
 ### Sidebar Brand Logo & Theme Styling
-- **Gradient Logo**: The main "Flow" logo in the sidebar utilizes a CSS background gradient from primary indigo to violet, coupled with scale-up hover animations.
+- **Gradient Logo**: The main "Flow" logo in the sidebar utilizes a CSS background gradient from primary pastel indigo to violet, coupled with scale-up hover animations.
 - **Collapsed Monogram**: When the sidebar collapses, the logo switches to a centered, circular glowing monogram "F".
 - **Selection Highlight**: Selected NodeViews in the editor receive a visible selection outline matching the primary brand color (`.ProseMirror-selectednode`).
+
+### UI Look & Feel (Pastel, Notion-inspired)
+The visual language — pastel palette, flat hairline-border surfaces, compact spacing, and component styling rules — is documented in [docs/DESIGN.md](DESIGN.md), which is the canonical styling reference for all UI work. The 2026-08-06 refresh (design/20260806-001-FEAT-ui-pastel-notion-lookfe) moved the UI from a saturated "productivity indigo" palette to soft pastels, reduced app-frame/header/sidebar padding, removed card-in-card chrome, and preserved dark-mode parity through the semantic CSS tokens in `frontend/src/styles.css`. Token changes belong in the `:root`/`.dark` blocks; component structure is unchanged.
 
 ### Thread View Panel Loading (Skeleton Screen)
 To eliminate visual layout shifts (CLS) when retrieving thread panel content:

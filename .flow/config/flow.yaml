@@ -5,10 +5,14 @@ gui:
         leftRatio: 0.25
         rightRatio: 0.24
         documentTOCRatio: 0.32
+    graphDirectoryColors:
+        development: rose
+        development/20260505-002-FIX-editor-markdown-shortcuts: amber
     graphCanvasEnabled:
         design/20260506-001-FEAT-mermaid-diagrams: true
         design/20260606-001-FEAT-obsidian-editor-and-thread-loading: true
+        development: true
+        development/20260505-002-FIX-editor-markdown-shortcuts: true
         development/20260509-001-FEAT-home-backlog: true
         development/20260606-001-FEAT-obsidian-editor-and-thread-loading: true
-        development/20260627-004-FIX-home-transition-perf: true
         manual: true

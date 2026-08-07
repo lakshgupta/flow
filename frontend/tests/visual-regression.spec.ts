@@ -78,16 +78,16 @@ test.describe('Visual Regression Tests', () => {
   test('light theme desktop', async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await page.goto('/');
-    await page.waitForSelector('text=Navigation');
+    await page.waitForSelector('text=FRESH WORKSPACE');
 
-    // Ensure light theme
+    // Force light theme (matches ThemeProvider's applyTheme: root class + dataset)
     await page.evaluate(() => {
-      localStorage.setItem('flow-theme', 'light');
-      window.dispatchEvent(new Event('storage'));
+      const root = document.documentElement;
+      root.classList.remove('dark');
+      root.dataset.theme = 'light';
+      root.style.setProperty('color-scheme', 'light');
     });
-
-    await page.reload();
-    await page.waitForSelector('text=Navigation');
+    await page.waitForTimeout(300);
 
     await expect(page).toHaveScreenshot('light-theme-desktop.png');
   });
@@ -95,16 +95,16 @@ test.describe('Visual Regression Tests', () => {
   test('dark theme desktop', async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await page.goto('/');
-    await page.waitForSelector('text=Navigation');
+    await page.waitForSelector('text=FRESH WORKSPACE');
 
-    // Switch to dark theme
+    // Force dark theme (matches ThemeProvider's applyTheme: root class + dataset)
     await page.evaluate(() => {
-      localStorage.setItem('flow-theme', 'dark');
-      window.dispatchEvent(new Event('storage'));
+      const root = document.documentElement;
+      root.classList.add('dark');
+      root.dataset.theme = 'dark';
+      root.style.setProperty('color-scheme', 'dark');
     });
-
-    await page.reload();
-    await page.waitForSelector('text=Navigation');
+    await page.waitForTimeout(300);
 
     await expect(page).toHaveScreenshot('dark-theme-desktop.png');
   });
@@ -112,15 +112,16 @@ test.describe('Visual Regression Tests', () => {
   test('light theme tablet', async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 });
     await page.goto('/');
-    await page.waitForSelector('text=Navigation');
+    await page.waitForSelector('text=FRESH WORKSPACE');
 
+    // Force light theme (matches ThemeProvider's applyTheme: root class + dataset)
     await page.evaluate(() => {
-      localStorage.setItem('flow-theme', 'light');
-      window.dispatchEvent(new Event('storage'));
+      const root = document.documentElement;
+      root.classList.remove('dark');
+      root.dataset.theme = 'light';
+      root.style.setProperty('color-scheme', 'light');
     });
-
-    await page.reload();
-    await page.waitForSelector('text=Navigation');
+    await page.waitForTimeout(300);
 
     await expect(page).toHaveScreenshot('light-theme-tablet.png');
   });
@@ -128,15 +129,16 @@ test.describe('Visual Regression Tests', () => {
   test('dark theme tablet', async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 });
     await page.goto('/');
-    await page.waitForSelector('text=Navigation');
+    await page.waitForSelector('text=FRESH WORKSPACE');
 
+    // Force dark theme (matches ThemeProvider's applyTheme: root class + dataset)
     await page.evaluate(() => {
-      localStorage.setItem('flow-theme', 'dark');
-      window.dispatchEvent(new Event('storage'));
+      const root = document.documentElement;
+      root.classList.add('dark');
+      root.dataset.theme = 'dark';
+      root.style.setProperty('color-scheme', 'dark');
     });
-
-    await page.reload();
-    await page.waitForSelector('text=Navigation');
+    await page.waitForTimeout(300);
 
     await expect(page).toHaveScreenshot('dark-theme-tablet.png');
   });
@@ -144,15 +146,16 @@ test.describe('Visual Regression Tests', () => {
   test('light theme mobile', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/');
-    await page.waitForSelector('text=Navigation');
+    await page.waitForSelector('text=FRESH WORKSPACE');
 
+    // Force light theme (matches ThemeProvider's applyTheme: root class + dataset)
     await page.evaluate(() => {
-      localStorage.setItem('flow-theme', 'light');
-      window.dispatchEvent(new Event('storage'));
+      const root = document.documentElement;
+      root.classList.remove('dark');
+      root.dataset.theme = 'light';
+      root.style.setProperty('color-scheme', 'light');
     });
-
-    await page.reload();
-    await page.waitForSelector('text=Navigation');
+    await page.waitForTimeout(300);
 
     await expect(page).toHaveScreenshot('light-theme-mobile.png');
   });
@@ -160,15 +163,16 @@ test.describe('Visual Regression Tests', () => {
   test('dark theme mobile', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/');
-    await page.waitForSelector('text=Navigation');
+    await page.waitForSelector('text=FRESH WORKSPACE');
 
+    // Force dark theme (matches ThemeProvider's applyTheme: root class + dataset)
     await page.evaluate(() => {
-      localStorage.setItem('flow-theme', 'dark');
-      window.dispatchEvent(new Event('storage'));
+      const root = document.documentElement;
+      root.classList.add('dark');
+      root.dataset.theme = 'dark';
+      root.style.setProperty('color-scheme', 'dark');
     });
-
-    await page.reload();
-    await page.waitForSelector('text=Navigation');
+    await page.waitForTimeout(300);
 
     await expect(page).toHaveScreenshot('dark-theme-mobile.png');
   });

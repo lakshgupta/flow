@@ -8,12 +8,12 @@ title: Home
 
 - Improvements
     
+    - UI look and feel: sleek, modern, pastel, Notion-inspired; no wasted space — done (20260806-001-FEAT-ui-pastel-notion-lookfe, approved): pastel palette, flat hairline surfaces, compact frame/header/sidebar, docs/DESIGN.md created; visual baselines regenerated
+        
 - Fix
     
-    - if I add the mermaid diagram at the last line then I am unable to move the cursor to the right side of the mermaid section and then on pressing enter my cursor should be on the next line. similarly, if I add the mermaid diagram at the first line of the page then I am unable to move the cursor to the left side of the mermaid section and then on pressing enter the whole mermaid section should be moved on the next line
-        
-    - each graph canvas should maintain the coordinates of the nodes individually. otherwise what is happening is that updating a position of a node in the sub graph also affects the position of the same node in the parent graph.
-        
+    <p><br></p>
+    
 - Tagging
     
     - ability to add a tag using `#` trigger. typing `#` and typing without any space should show user options to select an already used tags or type in a new one fully. the tag could be added anywhere in the page.
