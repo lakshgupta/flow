@@ -5,6 +5,7 @@ graph: development/20260806-001-FEAT-ui-pastel-notion-lookfe
 title: Update palette tokens to pastel
 description: 'Rewrite :root and .dark color tokens in frontend/src/styles.css: warm off-white background, pastel indigo primary ~#7c8cf8 with hover, pastel accent family (mint/sky/lavender/blush/butter), hairline borders, adjust shadow vars to minimal'
 status: Done
+commit: 5b55233
 links:
     - node: development/20260806-001-FEAT-ui-pastel-notion-lookfe/app-frame-spacing
       context: palette before frame

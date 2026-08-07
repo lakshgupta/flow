@@ -5,6 +5,7 @@ graph: development/20260806-001-FEAT-ui-pastel-notion-lookfe
 title: Flatten card surfaces to hairline borders
 description: Replace stacked borders+shadows on .shell-rail-card, .ds-card, .panel-card, graph-button with single hairline border and minimal shadow; pastel-tinted hover states
 status: Done
+commit: 5b55233
 links:
     - node: development/20260806-001-FEAT-ui-pastel-notion-lookfe/sidebar-compact
       context: surfaces before compact rows
