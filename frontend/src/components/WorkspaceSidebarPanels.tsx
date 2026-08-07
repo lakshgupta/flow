@@ -58,6 +58,7 @@ function GraphTreePanelComponent({ graphTree, activeSurface, selectedDocumentId,
       selectedDocumentId={selectedDocumentId}
       onSelectHome={actions.selectHome}
       onSelectGraph={actions.selectGraph}
+      onOpenGraphViolations={actions.openGraphViolations}
       onOpenDocument={actions.openDocument}
       onCreateGraph={actions.createGraph}
       onCreateNode={actions.createNode}

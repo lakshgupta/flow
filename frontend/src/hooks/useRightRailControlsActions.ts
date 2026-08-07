@@ -6,13 +6,14 @@ export type RightRailControlsActions = {
   openSettings: () => void;
   toggleSearch: () => void;
   toggleCalendar: () => void;
+  toggleViolations: () => void;
   openDocument: () => void;
   navigateHome: () => void;
 };
 
 type UseRightRailControlsActionsArgs = {
   setSettingsDialogOpen: (open: boolean) => void;
-  toggleRightPanel: (tab: "calendar" | "search" | "document") => void;
+  toggleRightPanel: (tab: "calendar" | "search" | "document" | "violations") => void;
   handleSelectedNodeDocumentButtonClick: () => void;
   handleNavigateHome: () => void;
 };
@@ -42,6 +43,10 @@ export function useRightRailControlsActions({
     actionRefs.current.toggleRightPanel("calendar");
   }, []);
 
+  const toggleViolations = useCallback(() => {
+    actionRefs.current.toggleRightPanel("violations");
+  }, []);
+
   const openDocument = useCallback(() => {
     actionRefs.current.handleSelectedNodeDocumentButtonClick();
   }, []);
@@ -54,7 +59,8 @@ export function useRightRailControlsActions({
     openSettings,
     toggleSearch,
     toggleCalendar,
+    toggleViolations,
     openDocument,
     navigateHome,
-  }), [navigateHome, openDocument, openSettings, toggleCalendar, toggleSearch]);
+  }), [navigateHome, openDocument, openSettings, toggleCalendar, toggleSearch, toggleViolations]);
 }

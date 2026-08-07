@@ -74,6 +74,7 @@ type FileTreeRowProps = {
   activeSurface: SurfaceState;
   selectedDocumentId: string;
   onSelectGraph: (graphName: string) => void;
+  onOpenGraphViolations: (graphPath: string) => void;
   onOpenDocument: (documentId: string, graphPath: string) => void;
   onCreateGraph: (name: string) => void;
   onCreateNode: (graphPath: string, type: "note" | "task" | "command") => void;
@@ -111,12 +112,53 @@ function graphRowStyle(color?: string): CSSProperties | undefined {
   return { "--graph-row-color": colorHex } as CSSProperties;
 }
 
+/**
+ * GraphViolationBadge shows the persisted edge-type violation count for a graph
+ * row at a glance and jumps to that graph's violations sidebar on click. Errors
+ * take precedence over warnings (red pill); the full breakdown is available via
+ * the tooltip/aria-label.
+ */
+function GraphViolationBadge({
+  graph,
+  onOpenViolations,
+  contextLabel = "",
+}: {
+  graph: GraphTreeNodeData;
+  onOpenViolations: () => void;
+  /** Disambiguates the aria-label when the same graph appears in two sections (Content + Favorites). */
+  contextLabel?: string;
+}) {
+  const errorCount = graph.errorCount ?? 0;
+  const warningCount = graph.warningCount ?? 0;
+  if (errorCount === 0 && warningCount === 0) {
+    return null;
+  }
+
+  const errorLabel = `${errorCount} edge-type error${errorCount === 1 ? "" : "s"}`;
+  const warningLabel = `${warningCount} warning${warningCount === 1 ? "" : "s"}`;
+  const contextSuffix = contextLabel !== "" ? ` (${contextLabel})` : "";
+  const label = `${errorLabel}, ${warningLabel} (incl. sub-graphs)`;
+
+  return (
+    <button
+      type="button"
+      className={`graph-tree-violation-badge${errorCount > 0 ? " graph-tree-violation-badge-error" : ""}`}
+      title={`Open edge violations for ${graph.displayName}${contextSuffix}: ${label}`}
+      aria-label={`Open edge violations for ${graph.displayName}${contextSuffix}: ${label}`}
+      onClick={onOpenViolations}
+    >
+      {errorCount > 0 ? errorCount : warningCount}
+    </button>
+  );
+}
+
 function FileTreeRowComponent({
   node,
   depth,
   activeSurface,
   selectedDocumentId,
   onSelectGraph,
+  onOpenGraphViolations,
   onOpenDocument,
   onCreateGraph,
   onCreateNode,
@@ -253,6 +295,7 @@ function FileTreeRowComponent({
           </span>
           {canvasDisabled && <EyeOff size={11} className="graph-canvas-disabled-icon" aria-label="Canvas view disabled" />}
         </SidebarMenuSubButton>
+        <GraphViolationBadge graph={node.data} onOpenViolations={() => onOpenGraphViolations(node.data.graphPath)} />
         <button
           type="button"
           className={`graph-fav-toggle ${isFav ? "graph-fav-toggle-active" : ""}`}
@@ -465,6 +508,7 @@ function FileTreeRowComponent({
             activeSurface={activeSurface}
             selectedDocumentId={selectedDocumentId}
             onSelectGraph={onSelectGraph}
+            onOpenGraphViolations={onOpenGraphViolations}
             onOpenDocument={onOpenDocument}
             onCreateGraph={onCreateGraph}
             onCreateNode={onCreateNode}
@@ -505,6 +549,7 @@ type GraphTreeProps = {
   selectedDocumentId: string;
   onSelectHome: () => void;
   onSelectGraph: (graphName: string) => void;
+  onOpenGraphViolations: (graphPath: string) => void;
   onOpenDocument: (documentId: string, graphPath: string) => void;
   onCreateGraph: (name: string) => void;
   onCreateNode: (graphPath: string, type: "note" | "task" | "command") => void;
@@ -521,7 +566,7 @@ type GraphTreeProps = {
   onRebuildIndex: () => void;
 };
 
-export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSelectHome, onSelectGraph, onOpenDocument, onCreateGraph, onCreateNode, onRenameGraph, onRenameNode, onMoveNode, onMoveGraph, onDeleteNode, onDeleteGraph, onDownloadGraph, onSetGraphColor, onSetNodeColor, onSetGraphCanvasDisabled, onRebuildIndex }: GraphTreeProps) {
+export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSelectHome, onSelectGraph, onOpenGraphViolations, onOpenDocument, onCreateGraph, onCreateNode, onRenameGraph, onRenameNode, onMoveNode, onMoveGraph, onDeleteNode, onDeleteGraph, onDownloadGraph, onSetGraphColor, onSetNodeColor, onSetGraphCanvasDisabled, onRebuildIndex }: GraphTreeProps) {
   const { toggleFavorite, isFavorite } = useFavorites();
   const [contentExpanded, setContentExpanded] = useState(true);
   const [favoritesExpanded, setFavoritesExpanded] = useState(true);
@@ -650,6 +695,7 @@ export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSele
                           <span className="graph-path">{graph.countLabel}</span>
                         </span>
                       </SidebarMenuSubButton>
+                      <GraphViolationBadge graph={graph} contextLabel="in Favorites" onOpenViolations={() => onOpenGraphViolations(graph.graphPath)} />
                       <button
                         type="button"
                         className={`graph-fav-toggle ${isFav ? "graph-fav-toggle-active" : ""}`}
@@ -765,6 +811,7 @@ export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSele
                     activeSurface={activeSurface}
                     selectedDocumentId={selectedDocumentId}
                     onSelectGraph={onSelectGraph}
+                    onOpenGraphViolations={onOpenGraphViolations}
                     onOpenDocument={onOpenDocument}
                     onCreateGraph={onCreateGraph}
                     onCreateNode={onCreateNode}

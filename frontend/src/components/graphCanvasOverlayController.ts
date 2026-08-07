@@ -2,6 +2,7 @@ import type { Node } from "@xyflow/react";
 import type { MouseEvent, PointerEvent } from "react";
 
 import type {
+  EdgeTypeViolation,
   GraphCanvasEdgePayload,
   GraphCanvasFlowNodeData,
   GraphCreateType,
@@ -26,6 +27,8 @@ export type EdgeToolbarState = {
 
 export type GraphCanvasOverlayState = {
   edges: GraphCanvasEdgePayload[];
+  /** Edge-type compatibility violations used to highlight violating edges on the canvas. */
+  edgeViolations: EdgeTypeViolation[];
   graphCanvasNodes: Node<GraphCanvasFlowNodeData>[];
   rfViewport: { x: number; y: number; zoom: number };
   intersectingNodeIds: string[];
@@ -62,6 +65,15 @@ export type GraphCanvasOverlayActions = {
   handleGraphCanvasEdgeDoubleClick: (sourceId: string, targetId: string, context: string, edgeId: string) => void;
   setEdgeToolbarState: (state: EdgeToolbarState | null) => void;
   persistEdgeToolbar: (state: EdgeToolbarState) => Promise<void>;
+  /** Applies a quick fix for an edge-type violation by swapping the offending relationship tag for the suggested fix tags. */
+  quickFixEdge: (edge: {
+    sourceId: string;
+    targetId: string;
+    context: string;
+    relationships: string[];
+  }, violation: EdgeTypeViolation) => Promise<void>;
+  /** Applies the quick fix for every edge-type violation in the current graph at once. */
+  fixAllEdgeViolations: () => Promise<void>;
   handleDeleteEdge: (sourceId: string, targetId: string) => Promise<void>;
   onNodeClick: (event: MouseEvent<HTMLDivElement>, nodeId: string) => void;
   onNodeDoubleClick: (event: MouseEvent<HTMLDivElement>, nodeId: string) => void;

@@ -1,4 +1,4 @@
-import { CalendarDays, Home, Search, Settings } from "lucide-react";
+import { CalendarDays, Home, Search, Settings, ShieldAlert } from "lucide-react";
 import { memo } from "react";
 
 import { SettingsDialog, type SettingsDialogProps } from "./SettingsDialog";
@@ -9,6 +9,9 @@ import type { RightRailControlsActions } from "../hooks/useRightRailControlsActi
 export type RightRailControlsProps = {
   searchActive: boolean;
   calendarActive: boolean;
+  /** The edge-violations panel toggle; only shown on graph surfaces. */
+  showViolationsButton?: boolean;
+  violationsActive?: boolean;
   showHomeButton: boolean;
   settingsDialog: SettingsDialogProps;
   actions: RightRailControlsActions;
@@ -17,6 +20,8 @@ export type RightRailControlsProps = {
 function RightRailControlsComponent({
   searchActive,
   calendarActive,
+  showViolationsButton = false,
+  violationsActive = false,
   showHomeButton,
   settingsDialog,
   actions,
@@ -64,6 +69,21 @@ function RightRailControlsComponent({
         </TooltipTrigger>
         <TooltipContent side="bottom">Calendar</TooltipContent>
       </Tooltip>
+      {showViolationsButton && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className={`right-rail-icon-btn${violationsActive ? " right-rail-icon-btn-active" : ""}`}
+              aria-label="Edge violations"
+              onClick={actions.toggleViolations}
+            >
+              <ShieldAlert size={17} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Edge violations</TooltipContent>
+        </Tooltip>
+      )}
       <Tooltip>
         <TooltipTrigger asChild>
           <button

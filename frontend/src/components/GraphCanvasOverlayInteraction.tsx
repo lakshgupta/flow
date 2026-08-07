@@ -1,7 +1,8 @@
-import { CheckSquare, FileText, Paintbrush, Terminal, Trash2, X } from "lucide-react";
+import { CheckSquare, FileText, Paintbrush, Terminal, Trash2, Wand2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { GraphCanvasOverlayController } from "./graphCanvasOverlayController";
 import { GRAPH_DIRECTORY_COLOR_OPTIONS } from "../lib/graphColors";
+import { edgeTypeFixLabel, graphCanvasEdgeViolations } from "../lib/graphCanvasUtils";
 
 function normalizeRelationshipTag(value: string): string {
   return value.trim();
@@ -36,9 +37,17 @@ export function GraphCanvasOverlayInteraction({
     connectingTarget,
     edgeToolbar,
     relationshipTagCatalog,
+    edgeViolations,
   } = controller.state;
-  const { closeCanvasContextMenu, createGraphDocument, setEdgeToolbarState, persistEdgeToolbar, closeNodeContextMenu, setNodeColor, deleteNode } = controller.actions;
+  const { closeCanvasContextMenu, createGraphDocument, setEdgeToolbarState, persistEdgeToolbar, quickFixEdge, fixAllEdgeViolations, closeNodeContextMenu, setNodeColor, deleteNode } = controller.actions;
   const [relationshipTagInput, setRelationshipTagInput] = useState<string>("");
+
+  const toolbarEdgeViolations = edgeToolbar === null
+    ? []
+    : graphCanvasEdgeViolations(
+        { source: edgeToolbar.sourceId, target: edgeToolbar.targetId, relationships: edgeToolbar.relationships },
+        controller.state.edgeViolations,
+      );
 
   useEffect(() => {
     setRelationshipTagInput("");
@@ -82,6 +91,22 @@ export function GraphCanvasOverlayInteraction({
           >
             <Terminal size={13} /> Add command
           </button>
+          {edgeViolations.length > 0 && (
+            <>
+              <div className="canvas-context-menu-separator" />
+              <button
+                type="button"
+                className="flow-dropdown-item"
+                title="Apply every quick fix — Alt+Shift+F"
+                onClick={() => {
+                  closeCanvasContextMenu();
+                  void fixAllEdgeViolations();
+                }}
+              >
+                <Wand2 size={13} /> Fix all violations ({edgeViolations.length})
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -234,6 +259,43 @@ export function GraphCanvasOverlayInteraction({
               }}
             />
           </label>
+
+          {toolbarEdgeViolations.length > 0 && (
+            <div className="graph-edge-toolbar-fixes">
+              <div className="graph-edge-toolbar-fixes-title">
+                <Wand2 size={11} /> Quick fix
+              </div>
+              {toolbarEdgeViolations.map((violation, index) => {
+                const fixLabel = edgeTypeFixLabel(violation);
+                return (
+                  <div
+                    key={`${violation.relationship}:${index}`}
+                    className="graph-edge-toolbar-fix"
+                    data-severity={violation.severity}
+                  >
+                    <span className="graph-edge-toolbar-fix-message">{violation.message}</span>
+                    <button
+                      type="button"
+                      className="flow-dropdown-item graph-edge-toolbar-fix-apply"
+                      onClick={() => {
+                        void quickFixEdge(
+                          {
+                            sourceId: edgeToolbar.sourceId,
+                            targetId: edgeToolbar.targetId,
+                            context: edgeToolbar.context,
+                            relationships: edgeToolbar.relationships,
+                          },
+                          violation,
+                        );
+                      }}
+                    >
+                      {fixLabel === "" ? "Remove tag" : `Replace with ${fixLabel}`}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           <div className="graph-edge-toolbar-actions">
             <button

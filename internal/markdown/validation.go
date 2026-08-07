@@ -3,6 +3,7 @@ package markdown
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -198,4 +199,153 @@ func linkTargets(document Document) (string, DocumentType, []string, []string) {
 	default:
 		return "", "", nil, nil
 	}
+}
+
+// EdgeTypeSeverity classifies how seriously a node-type × relationship mismatch is treated.
+type EdgeTypeSeverity string
+
+const (
+	// EdgeTypeSeverityError marks an edge that contradicts the graph model: the
+	// relationship cannot meaningfully hold between these node types.
+	EdgeTypeSeverityError EdgeTypeSeverity = "error"
+	// EdgeTypeSeverityWarning marks a non-canonical but tolerated edge.
+	EdgeTypeSeverityWarning EdgeTypeSeverity = "warning"
+)
+
+// EdgeTypeViolation describes one node-type × relationship incompatibility found
+// during static graph validation. Graph is the graph of the document that
+// declares the link (the "edge's" home graph, matching the index edges table).
+//
+// FixTags holds the relationship tags that resolve this violation when swapped
+// in for the offending Relationship tag (empty means "remove the tag"). It is
+// the payload consumed by the canvas quick-fix action.
+//
+// Note: relationships outside the validated vocabulary (depends-on, maps-to,
+// evolves-from, supersedes) pass through unchecked by design — this includes
+// evolves-to, blocks, documents, captures, and relates-to, which appear in real
+// workspaces as free-form contextual tags.
+type EdgeTypeViolation struct {
+	Path         string           `json:"path"`
+	Graph        string           `json:"graph"`
+	FromID       string           `json:"fromID"`
+	FromType     DocumentType     `json:"fromType"`
+	ToID         string           `json:"toID"`
+	ToType       DocumentType     `json:"toType"`
+	Relationship string           `json:"relationship"`
+	Severity     EdgeTypeSeverity `json:"severity"`
+	Message      string           `json:"message"`
+	FixTags      []string         `json:"fixTags,omitempty"`
+}
+
+// ValidateEdgeTypeCompatibility checks that declared link relationships agree with the
+// node types they connect. It is a static, non-fatal validation: violations are returned
+// for reporting (logged by the index, or surfaced by `flow graph validate`) but never
+// block indexing, because legacy workspaces legitimately contain tolerated patterns.
+//
+// Relationship names are matched case-insensitively with underscores treated as hyphens,
+// so "depends_on" and "depends-on" are the same relationship.
+func ValidateEdgeTypeCompatibility(documents []WorkspaceDocument) []EdgeTypeViolation {
+	typesByID := make(map[string]DocumentType, len(documents))
+	for _, item := range documents {
+		if id := item.Document.ID(); id != "" {
+			typesByID[id] = item.Document.Kind()
+		}
+	}
+
+	var violations []EdgeTypeViolation
+	for _, item := range documents {
+		fromID := item.Document.ID()
+		fromType := item.Document.Kind()
+		if fromID == "" {
+			continue
+		}
+
+		for _, link := range item.Document.Links() {
+			toType, ok := typesByID[link.Node]
+			if !ok {
+				// Missing targets are reported by ValidateWorkspaceDocuments.
+				continue
+			}
+
+			for _, relationship := range link.Relationships {
+				violations = append(violations, checkEdgeTypeCompatibility(item.Path, documentGraph(item), fromID, fromType, link.Node, toType, relationship)...)
+			}
+		}
+	}
+
+	slices.SortFunc(violations, func(left EdgeTypeViolation, right EdgeTypeViolation) int {
+		if left.Path != right.Path {
+			return strings.Compare(left.Path, right.Path)
+		}
+		if left.FromID != right.FromID {
+			return strings.Compare(left.FromID, right.FromID)
+		}
+		if left.ToID != right.ToID {
+			return strings.Compare(left.ToID, right.ToID)
+		}
+		return strings.Compare(left.Relationship, right.Relationship)
+	})
+
+	return violations
+}
+
+func checkEdgeTypeCompatibility(path string, graph string, fromID string, fromType DocumentType, toID string, toType DocumentType, relationship string) []EdgeTypeViolation {
+	// Quick-fix semantics follow each message: only the rule that explicitly
+	// recommends a replacement ("use relates-to for contextual notes") emits fix
+	// tags. The other rules leave fixTags empty, which the UI renders as "Remove
+	// tag" — relabeling an intended execution dependency or record mapping as
+	// "relates-to" would silently mask the user's original intent.
+	makeViolation := func(severity EdgeTypeSeverity, message string, fixTags ...string) EdgeTypeViolation {
+		return EdgeTypeViolation{
+			Path:         path,
+			Graph:        graph,
+			FromID:       fromID,
+			FromType:     fromType,
+			ToID:         toID,
+			ToType:       toType,
+			Relationship: relationship,
+			Severity:     severity,
+			Message:      message,
+			FixTags:      fixTags,
+		}
+	}
+
+	switch normalizedEdgeRelationship(relationship) {
+	case "depends-on":
+		if fromType == NoteType {
+			return []EdgeTypeViolation{makeViolation(EdgeTypeSeverityError, "depends-on requires a task or command source; a note cannot declare execution dependencies")}
+		}
+		if toType == NoteType {
+			return []EdgeTypeViolation{makeViolation(EdgeTypeSeverityWarning, "depends-on targets a note; use relates-to for contextual notes", "relates-to")}
+		}
+	case "maps-to":
+		if fromType == CommandType || toType == CommandType {
+			return []EdgeTypeViolation{makeViolation(EdgeTypeSeverityError, "maps-to connects a record note to a task; commands are not recordable")}
+		}
+		if fromType != NoteType || toType != TaskType {
+			return []EdgeTypeViolation{makeViolation(EdgeTypeSeverityWarning, "maps-to canonically runs from a note to the task it records")}
+		}
+	case "evolves-from", "supersedes":
+		if fromType == CommandType || toType == CommandType {
+			return []EdgeTypeViolation{makeViolation(EdgeTypeSeverityError, "evolves-from/supersedes connects notes or tasks; commands are not design nodes")}
+		}
+	}
+
+	return nil
+}
+
+// normalizedEdgeRelationship canonicalizes a relationship tag for rule matching:
+// lowercase, trimmed, and underscore normalized to hyphen ("depends_on" → "depends-on").
+func normalizedEdgeRelationship(value string) string {
+	return strings.ReplaceAll(strings.ToLower(strings.TrimSpace(value)), "_", "-")
+}
+
+// documentGraph returns the canonical graph for a workspace document: the
+// path-derived graph when the path is canonical, otherwise the frontmatter graph.
+func documentGraph(item WorkspaceDocument) string {
+	if graphPath, ok, err := GraphPathFromWorkspacePath(item.Path); err == nil && ok && graphPath != "" {
+		return graphPath
+	}
+
+	return item.Document.Graph()
 }

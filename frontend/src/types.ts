@@ -49,6 +49,9 @@ export type GraphTreeNodeData = {
   countLabel: string;
   color?: string;
   canvasDisabled?: boolean;
+  /** Persisted edge-type violation counts, scoped to this graph and its sub-graphs. */
+  errorCount?: number;
+  warningCount?: number;
   files: GraphTreeFileData[];
 };
 
@@ -317,3 +320,26 @@ export type GraphCanvasFlowNodeData = {
 };
 
 export type GraphCanvasFlowNodeInput = Omit<GraphCanvasFlowNodeData, "label">;
+
+export type EdgeTypeSeverity = "error" | "warning";
+
+export type EdgeTypeViolation = {
+  path: string;
+  graph: string;
+  fromID: string;
+  fromType: string;
+  toID: string;
+  toType: string;
+  relationship: string;
+  severity: EdgeTypeSeverity;
+  message: string;
+  /** Relationship tags that resolve this violation when swapped in for `relationship` (empty means remove the tag). */
+  fixTags?: string[];
+};
+
+export type GraphValidationResponse = {
+  graph: string;
+  violations: EdgeTypeViolation[];
+  errorCount: number;
+  warningCount: number;
+};

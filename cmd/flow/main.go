@@ -354,8 +354,18 @@ func writeGraphHelp(w io.Writer) {
 	fmt.Fprintln(w, "Usage: flow graph <subcommand> [options]")
 	fmt.Fprintln(w, "Subcommands:")
 	fmt.Fprintln(w, "  path         Find the shortest path between two nodes")
+	fmt.Fprintln(w, "  validate     Check edge-type compatibility (depends-on/maps-to/evolves-from)")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Use `flow graph path --help` for options.")
+	fmt.Fprintln(w, "Use `flow graph <subcommand> --help` for options.")
+}
+
+func writeGraphValidateHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow graph validate [--format <json|markdown>] [--graph <graph>]")
+	fmt.Fprintln(w, "Options:")
+	fmt.Fprintln(w, "  --format <fmt>     Output format: json or markdown (default: markdown)")
+	fmt.Fprintln(w, "  --graph <graph>    Only report violations in this graph (e.g. development/20260501-001-FEAT-parser-retry-budget)")
+	fmt.Fprintln(w, "Checks node-type × relationship compatibility for depends-on, maps-to, evolves-from, and supersedes edges.")
+	fmt.Fprintln(w, "Warnings are advisory; error-severity violations exit non-zero.")
 }
 
 func writeGraphPathHelp(w io.Writer) {
@@ -1244,15 +1254,92 @@ func runGraph(global bool, args []string, env commandEnv) error {
 	}
 
 	if len(args) == 0 {
-		return fmt.Errorf("flow graph requires a subcommand: path; use `flow graph --help`")
+		return fmt.Errorf("flow graph requires a subcommand: path, validate; use `flow graph --help`")
 	}
 
 	switch args[0] {
 	case "path":
 		return runGraphPath(global, args[1:], env)
+	case "validate":
+		return runGraphValidate(global, args[1:], env)
 	default:
 		return fmt.Errorf("unknown graph subcommand %q; use `flow graph --help`", args[0])
 	}
+}
+
+func runGraphValidate(global bool, args []string, env commandEnv) error {
+	flagSet := flag.NewFlagSet("graph validate", flag.ContinueOnError)
+	flagSet.SetOutput(io.Discard)
+	flagSet.Usage = func() {
+		writeGraphValidateHelp(env.stdout)
+	}
+
+	format := flagSet.String("format", "markdown", "output format: json or markdown")
+	graphFilter := flagSet.String("graph", "", "only report violations in this graph (e.g. development/20260501-001-FEAT-parser-retry-budget)")
+
+	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeGraphValidateHelp)
+	if err != nil {
+		return err
+	}
+	if helpShown {
+		return nil
+	}
+
+	root, err := resolveRoot(global, env)
+	if err != nil {
+		return err
+	}
+
+	documents, err := workspace.LoadDocuments(root.FlowPath)
+	if err != nil {
+		return err
+	}
+
+	violations := markdown.ValidateEdgeTypeCompatibility(documents)
+	if strings.TrimSpace(*graphFilter) != "" {
+		filtered := violations[:0]
+		for _, violation := range violations {
+			if violation.Graph == *graphFilter {
+				filtered = append(filtered, violation)
+			}
+		}
+		violations = filtered
+	}
+
+	errorCount := 0
+	for _, violation := range violations {
+		if violation.Severity == markdown.EdgeTypeSeverityError {
+			errorCount++
+		}
+	}
+
+	if *format == "json" {
+		data, err := json.Marshal(violations)
+		if err != nil {
+			return fmt.Errorf("marshal edge-type violations: %w", err)
+		}
+		fmt.Fprintln(env.stdout, string(data))
+		if errorCount > 0 {
+			return fmt.Errorf("edge-type validation found %d error(s), %d warning(s)", errorCount, len(violations)-errorCount)
+		}
+		return nil
+	}
+
+	if len(violations) == 0 {
+		fmt.Fprintln(env.stdout, "No edge-type compatibility violations")
+		return nil
+	}
+
+	for _, violation := range violations {
+		fmt.Fprintf(env.stdout, "- [%s] %s (%s) --%s--> %s (%s): %s\n",
+			violation.Severity, violation.FromID, violation.FromType, violation.Relationship, violation.ToID, violation.ToType, violation.Message)
+	}
+
+	if errorCount > 0 {
+		return fmt.Errorf("edge-type validation found %d error(s), %d warning(s)", errorCount, len(violations)-errorCount)
+	}
+
+	return nil
 }
 
 func runGraphPath(global bool, args []string, env commandEnv) error {

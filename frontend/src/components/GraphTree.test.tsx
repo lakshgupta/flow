@@ -84,6 +84,7 @@ describe("GraphTree", () => {
           selectedDocumentId=""
           onSelectHome={() => undefined}
           onSelectGraph={() => undefined}
+          onOpenGraphViolations={() => undefined}
           onOpenDocument={() => undefined}
           onCreateGraph={() => undefined}
           onCreateNode={() => undefined}
@@ -137,6 +138,7 @@ describe("GraphTree", () => {
           selectedDocumentId=""
           onSelectHome={() => undefined}
           onSelectGraph={() => undefined}
+          onOpenGraphViolations={() => undefined}
           onOpenDocument={() => undefined}
           onCreateGraph={() => undefined}
           onCreateNode={() => undefined}
@@ -194,6 +196,7 @@ describe("GraphTree", () => {
           selectedDocumentId=""
           onSelectHome={() => undefined}
           onSelectGraph={() => undefined}
+          onOpenGraphViolations={() => undefined}
           onOpenDocument={() => undefined}
           onCreateGraph={() => undefined}
           onCreateNode={() => undefined}
@@ -216,5 +219,118 @@ describe("GraphTree", () => {
     await user.click(await screen.findByRole("menuitem", { name: "Download as zip" }));
 
     expect(onDownloadGraph).toHaveBeenCalledWith("execution");
+  });
+
+  it("shows a violation badge on graph rows and hides it for clean graphs", () => {
+    const treeWithViolations = {
+      ...graphTree,
+      graphs: [
+        {
+          ...graphTree.graphs[0]!,
+          errorCount: 2,
+          warningCount: 1,
+        },
+        {
+          ...graphTree.graphs[1]!,
+        },
+      ],
+    };
+
+    render(
+      <SidebarProvider>
+        <GraphTree
+          graphTree={treeWithViolations}
+          activeSurface={{ kind: "graph", graphPath: "execution" }}
+          selectedDocumentId=""
+          onSelectHome={() => undefined}
+          onSelectGraph={() => undefined}
+          onOpenGraphViolations={() => undefined}
+          onOpenDocument={() => undefined}
+          onCreateGraph={() => undefined}
+          onCreateNode={() => undefined}
+          onRenameGraph={() => undefined}
+          onRenameNode={() => undefined}
+          onMoveNode={() => undefined}
+          onMoveGraph={() => undefined}
+          onDeleteNode={() => undefined}
+          onDeleteGraph={() => undefined}
+          onDownloadGraph={() => undefined}
+          onSetGraphColor={() => undefined}
+          onSetNodeColor={() => undefined}
+          onSetGraphCanvasDisabled={() => undefined}
+          onRebuildIndex={() => undefined}
+        />
+      </SidebarProvider>,
+    );
+
+    // Errors take precedence: the Execution row shows the error count as a red pill.
+    const executionRow = screen.getByText("Execution").closest("li");
+    expect(executionRow).not.toBeNull();
+    const badge = within(executionRow!).getByRole("button", {
+      name: /Open edge violations for Execution: 2 edge-type errors, 1 warning/,
+    });
+    expect(badge).toBeInTheDocument();
+    expect(badge.classList.contains("graph-tree-violation-badge-error")).toBe(true);
+    expect(badge.textContent).toContain("2");
+
+    // The clean Release row renders no badge.
+    const releaseRow = screen.getByText("Release").closest("li");
+    expect(releaseRow).not.toBeNull();
+    expect(within(releaseRow!).queryByRole("button", { name: /edge violations/i })).toBeNull();
+  });
+
+  it("jumps to the violations sidebar when the badge is clicked, without selecting the graph row", async () => {
+    const onOpenGraphViolations = vi.fn();
+    const onSelectGraph = vi.fn();
+    const treeWithViolations = {
+      ...graphTree,
+      graphs: [
+        {
+          ...graphTree.graphs[0]!,
+          errorCount: 2,
+          warningCount: 1,
+        },
+        {
+          ...graphTree.graphs[1]!,
+        },
+      ],
+    };
+    const user = userEvent.setup();
+
+    render(
+      <SidebarProvider>
+        <GraphTree
+          graphTree={treeWithViolations}
+          activeSurface={{ kind: "graph", graphPath: "release" }}
+          selectedDocumentId=""
+          onSelectHome={() => undefined}
+          onSelectGraph={onSelectGraph}
+          onOpenGraphViolations={onOpenGraphViolations}
+          onOpenDocument={() => undefined}
+          onCreateGraph={() => undefined}
+          onCreateNode={() => undefined}
+          onRenameGraph={() => undefined}
+          onRenameNode={() => undefined}
+          onMoveNode={() => undefined}
+          onMoveGraph={() => undefined}
+          onDeleteNode={() => undefined}
+          onDeleteGraph={() => undefined}
+          onDownloadGraph={() => undefined}
+          onSetGraphColor={() => undefined}
+          onSetNodeColor={() => undefined}
+          onSetGraphCanvasDisabled={() => undefined}
+          onRebuildIndex={() => undefined}
+        />
+      </SidebarProvider>,
+    );
+
+    const executionRow = screen.getByText("Execution").closest("li");
+    expect(executionRow).not.toBeNull();
+    await user.click(within(executionRow!).getByRole("button", { name: /Open edge violations for Execution/ }));
+
+    expect(onOpenGraphViolations).toHaveBeenCalledTimes(1);
+    expect(onOpenGraphViolations).toHaveBeenCalledWith("execution");
+    // The badge is a sibling of the row button: clicking it must not also select the graph.
+    expect(onSelectGraph).not.toHaveBeenCalled();
   });
 });

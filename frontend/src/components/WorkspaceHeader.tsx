@@ -1,8 +1,10 @@
-import { memo, useMemo } from "react";
+import { Check, Loader2 } from "lucide-react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { SidebarTrigger } from "./ui/sidebar";
 import { Separator } from "./ui/separator";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "./ui/breadcrumb";
 import { RightRailControls, type RightRailControlsProps } from "./RightRailControls";
+import { GraphValidationIndicator } from "./GraphValidationIndicator";
 import type { GraphTreeResponse, SurfaceState } from "../types";
 
 export type WorkspaceHeaderProps = {
@@ -15,6 +17,19 @@ export type WorkspaceHeaderProps = {
   activeSurface: SurfaceState;
   settingsDialogProps: RightRailControlsProps["settingsDialog"];
   rightRailControlsActions: RightRailControlsProps["actions"];
+  /** Bumped after graph mutations to keep the validation badge fresh. */
+  graphValidationReloadToken?: number;
+  /** Opens the right-rail violations sidebar from the validation badge. */
+  onOpenViolations?: () => void;
+  /** Show the edge-violations toggle in the rail controls (graph surfaces only). */
+  showViolationsButton?: boolean;
+  violationsActive?: boolean;
+  /** True while a document autosave is in flight. */
+  savingDocument?: boolean;
+  /** True while the home-surface autosave is in flight. */
+  savingHome?: boolean;
+  /** Epoch ms of the last successful autosave — flashes a brief "Saved" confirmation. */
+  lastSaveAt?: number;
 };
 
 function graphPathSegments(graphPath: string): string[] {
@@ -34,6 +49,13 @@ function WorkspaceHeaderComponent({
   activeSurface,
   settingsDialogProps,
   rightRailControlsActions,
+  graphValidationReloadToken = 0,
+  onOpenViolations,
+  showViolationsButton = false,
+  violationsActive = false,
+  savingDocument = false,
+  savingHome = false,
+  lastSaveAt = 0,
 }: WorkspaceHeaderProps) {
   const pathSegments = graphPathSegments(selectedGraphPath);
 
@@ -50,6 +72,37 @@ function WorkspaceHeaderComponent({
     }
     return names;
   }, [pathSegments, graphTree?.graphs]);
+
+  // Subtle autosave status chip: "Saving…" while a save is in flight, then a
+  // brief fading "Saved" confirmation whenever lastSaveAt advances.
+  // Keep SAVED_FLASH_MS in sync with the saveStatusSavedInOut duration in styles.css.
+  const SAVED_FLASH_MS = 2000;
+  const [showSaved, setShowSaved] = useState<boolean>(false);
+  const lastSaveAtRef = useRef(lastSaveAt);
+  const savedFlashTimerRef = useRef<number | null>(null);
+  const isSaving = savingDocument || savingHome;
+
+  useEffect(() => {
+    if (lastSaveAt === 0 || lastSaveAt === lastSaveAtRef.current) {
+      return;
+    }
+    lastSaveAtRef.current = lastSaveAt;
+    setShowSaved(true);
+
+    // React runs the previous effect's cleanup first, so the old timer is
+    // already cleared here — just arm the new one.
+    savedFlashTimerRef.current = window.setTimeout(() => {
+      savedFlashTimerRef.current = null;
+      setShowSaved(false);
+    }, SAVED_FLASH_MS);
+
+    return () => {
+      if (savedFlashTimerRef.current !== null) {
+        window.clearTimeout(savedFlashTimerRef.current);
+        savedFlashTimerRef.current = null;
+      }
+    };
+  }, [lastSaveAt]);
 
   return (
     <header className="workspace-shell-header">
@@ -88,9 +141,34 @@ function WorkspaceHeaderComponent({
         </Breadcrumb>
       </div>
       <div className="workspace-shell-header-trailing">
+        {activeSurface.kind === "graph" && (
+          <GraphValidationIndicator graphPath={activeSurface.graphPath} reloadToken={graphValidationReloadToken} onOpen={onOpenViolations} />
+        )}
+        {(isSaving || showSaved) && (
+          <div
+            className={`save-status-indicator${!isSaving && showSaved ? " save-status-saved" : ""}`}
+            role="status"
+            aria-live="polite"
+            aria-label={isSaving ? "Saving changes" : "All changes saved"}
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="save-status-icon save-status-spinner" size={13} aria-hidden="true" />
+                <span>Saving…</span>
+              </>
+            ) : (
+              <>
+                <Check className="save-status-icon" size={13} aria-hidden="true" />
+                <span>Saved</span>
+              </>
+            )}
+          </div>
+        )}
         <RightRailControls
           searchActive={rightPanelTab === "search" && !rightRailCollapsed}
           calendarActive={rightPanelTab === "calendar" && !rightRailCollapsed}
+          showViolationsButton={showViolationsButton}
+          violationsActive={violationsActive}
           showHomeButton={activeSurface.kind === "graph"}
           settingsDialog={settingsDialogProps}
           actions={rightRailControlsActions}

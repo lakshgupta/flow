@@ -95,15 +95,20 @@ type calendarDocumentResponse struct {
 }
 
 type graphTreeNodeResponse struct {
-	GraphPath      string                  `json:"graphPath"`
-	DisplayName    string                  `json:"displayName"`
-	DirectCount    int                     `json:"directCount"`
-	TotalCount     int                     `json:"totalCount"`
-	HasChildren    bool                    `json:"hasChildren"`
-	CountLabel     string                  `json:"countLabel"`
-	Color          string                  `json:"color,omitempty"`
-	CanvasDisabled bool                    `json:"canvasDisabled,omitempty"`
-	Files          []graphTreeFileResponse `json:"files"`
+	GraphPath      string `json:"graphPath"`
+	DisplayName    string `json:"displayName"`
+	DirectCount    int    `json:"directCount"`
+	TotalCount     int    `json:"totalCount"`
+	HasChildren    bool   `json:"hasChildren"`
+	CountLabel     string `json:"countLabel"`
+	Color          string `json:"color,omitempty"`
+	CanvasDisabled bool   `json:"canvasDisabled,omitempty"`
+	// ErrorCount and WarningCount summarize the persisted edge-type violations
+	// in this graph, including violations from its sub-graphs (mirroring the
+	// graph-validation endpoint scoping). Zero values are omitted.
+	ErrorCount   int                     `json:"errorCount,omitempty"`
+	WarningCount int                     `json:"warningCount,omitempty"`
+	Files        []graphTreeFileResponse `json:"files"`
 }
 
 type graphTreeFileResponse struct {
@@ -316,6 +321,13 @@ type rebuildIndexResponse struct {
 	Rebuilt bool `json:"rebuilt"`
 }
 
+type graphValidationResponse struct {
+	Graph        string                       `json:"graph"`
+	Violations   []markdown.EdgeTypeViolation `json:"violations"`
+	ErrorCount   int                          `json:"errorCount"`
+	WarningCount int                          `json:"warningCount"`
+}
+
 type mergeDocumentsRequest struct {
 	DocumentIDs []string `json:"documentIds"`
 }
@@ -440,6 +452,8 @@ func (handler *apiHandler) ServeHTTP(writer http.ResponseWriter, request *http.R
 		handler.handleGraphLayout(writer, request)
 	case request.URL.Path == "/api/workspace" && request.Method == http.MethodGet:
 		handler.handleWorkspace(writer, request)
+	case request.URL.Path == "/api/graph-validation" && request.Method == http.MethodGet:
+		handler.handleGraphValidation(writer, request)
 	case request.URL.Path == "/api/index/rebuild" && request.Method == http.MethodPost:
 		handler.handleRebuildIndex(writer, request)
 	case request.URL.Path == "/api/search" && request.Method == http.MethodGet:
@@ -691,6 +705,53 @@ func (handler *apiHandler) handleUpdateWorkspace(writer http.ResponseWriter, req
 	}
 
 	handler.handleWorkspace(writer, request)
+}
+
+func (handler *apiHandler) handleGraphValidation(writer http.ResponseWriter, request *http.Request) {
+	selectedGraph := strings.TrimSpace(request.URL.Query().Get("graph"))
+
+	// Serve the persisted per-graph violation list from the derived index. The
+	// index is rebuilt after every mutation, so the stored rows are always
+	// current. Fall back to on-demand validation only when the index cannot
+	// provide them (e.g. a legacy index built before persistence existed).
+	violations, err := index.ReadGraphEdgeViolationsWorkspace(handler.resolvedRoot().IndexPath, handler.resolvedRoot().FlowPath)
+	if err != nil {
+		documents, _, loadErr := workspace.LoadDocumentsBestEffort(handler.resolvedRoot().FlowPath)
+		if loadErr != nil {
+			writeError(writer, http.StatusInternalServerError, loadErr.Error())
+			return
+		}
+		violations = markdown.ValidateEdgeTypeCompatibility(documents)
+	}
+
+	if selectedGraph != "" {
+		// Prefix-scope like the graph canvas: a parent graph includes violations
+		// from its sub-graphs (e.g. viewing "execution" also shows "execution/parser").
+		filtered := violations[:0]
+		for _, violation := range violations {
+			if violation.Graph == selectedGraph || strings.HasPrefix(violation.Graph, selectedGraph+"/") {
+				filtered = append(filtered, violation)
+			}
+		}
+		violations = filtered
+	}
+
+	errorCount := 0
+	warningCount := 0
+	for _, violation := range violations {
+		if violation.Severity == markdown.EdgeTypeSeverityError {
+			errorCount++
+		} else {
+			warningCount++
+		}
+	}
+
+	writeJSON(writer, http.StatusOK, graphValidationResponse{
+		Graph:        selectedGraph,
+		Violations:   violations,
+		ErrorCount:   errorCount,
+		WarningCount: warningCount,
+	})
 }
 
 func (handler *apiHandler) handleRebuildIndex(writer http.ResponseWriter, _ *http.Request) {
@@ -1054,8 +1115,37 @@ func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.R
 	if enabled, enabledErr := pruneWorkspaceGraphCanvasEnabled(handler.resolvedRoot(), nodes); enabledErr == nil {
 		graphCanvasEnabled = enabled
 	}
+
+	// Edge-type violations are advisory derived data: read them best-effort so
+	// a stale or legacy index can never break the tree. Counts are prefix-scoped
+	// like the graph-validation endpoint, so a row's badge matches what opening
+	// the graph shows in the header indicator.
+	violationsByGraph := map[string]struct{ errors, warnings int }{}
+	if persistedViolations, violationErr := index.ReadGraphEdgeViolationsWorkspace(handler.resolvedRoot().IndexPath, handler.resolvedRoot().FlowPath); violationErr == nil {
+		for _, violation := range persistedViolations {
+			counts := violationsByGraph[violation.Graph]
+			if violation.Severity == markdown.EdgeTypeSeverityError {
+				counts.errors++
+			} else {
+				counts.warnings++
+			}
+			violationsByGraph[violation.Graph] = counts
+		}
+	}
+	graphViolationCounts := func(graphPath string) (int, int) {
+		errorCount, warningCount := 0, 0
+		for violationGraph, counts := range violationsByGraph {
+			if violationGraph == graphPath || strings.HasPrefix(violationGraph, graphPath+"/") {
+				errorCount += counts.errors
+				warningCount += counts.warnings
+			}
+		}
+		return errorCount, warningCount
+	}
+
 	if len(nodes) > 0 {
 		for _, node := range nodes {
+			errorCount, warningCount := graphViolationCounts(node.GraphPath)
 			response.Graphs = append(response.Graphs, graphTreeNodeResponse{
 				GraphPath:      node.GraphPath,
 				DisplayName:    node.DisplayName,
@@ -1065,6 +1155,8 @@ func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.R
 				CountLabel:     fmt.Sprintf("%d direct / %d total", node.DirectCount, node.TotalCount),
 				Color:          graphDirectoryColors[node.GraphPath],
 				CanvasDisabled: !graphCanvasEnabled[node.GraphPath],
+				ErrorCount:     errorCount,
+				WarningCount:   warningCount,
 				Files:          filesByGraph[node.GraphPath],
 			})
 		}
@@ -1077,6 +1169,7 @@ func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.R
 
 		for _, graphPath := range graphPaths {
 			directCount := len(filesByGraph[graphPath])
+			errorCount, warningCount := graphViolationCounts(graphPath)
 			response.Graphs = append(response.Graphs, graphTreeNodeResponse{
 				GraphPath:      graphPath,
 				DisplayName:    graphPath,
@@ -1086,6 +1179,8 @@ func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.R
 				CountLabel:     fmt.Sprintf("%d direct / %d total", directCount, directCount),
 				Color:          graphDirectoryColors[graphPath],
 				CanvasDisabled: !graphCanvasEnabled[graphPath],
+				ErrorCount:     errorCount,
+				WarningCount:   warningCount,
 				Files:          filesByGraph[graphPath],
 			})
 		}
@@ -2433,8 +2528,6 @@ func nodeLinksPatchFromPayload(links *[]nodeReferenceResponse) *[]markdown.NodeL
 	return &converted
 }
 
-
-
 func writeJSON(writer http.ResponseWriter, statusCode int, value any) {
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(statusCode)
@@ -2721,5 +2814,3 @@ func writeHomeDocument(root workspace.Root, payload updateHomeRequest) error {
 
 	return nil
 }
-
-

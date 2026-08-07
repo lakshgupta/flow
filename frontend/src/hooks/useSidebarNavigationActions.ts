@@ -7,6 +7,7 @@ export type SidebarNavigationActions = {
   selectWorkspace: (workspacePath: string) => void;
   selectHome: () => void;
   selectGraph: (graphPath: string) => void;
+  openGraphViolations: (graphPath: string) => void;
   openDocument: (documentId: string, graphPath: string) => void;
   createGraph: (name: string) => void;
   createNode: (graphPath: string, type: "note" | "task" | "command") => void;
@@ -27,6 +28,7 @@ type UseSidebarNavigationActionsArgs = {
   handleWorkspaceSelection: (workspacePath: string) => Promise<void> | void;
   handleSelectHome: () => Promise<void> | void;
   handleSelectGraph: (graphPath: string) => Promise<void> | void;
+  handleOpenGraphViolations: (graphPath: string) => Promise<void> | void;
   handleSelectDocument: (documentId: string, graphPath: string) => void;
   handleSidebarCreateGraph: (name: string) => Promise<void> | void;
   handleSidebarCreateNode: (graphPath: string, type: "note" | "task" | "command") => void;
@@ -47,6 +49,7 @@ export function useSidebarNavigationActions({
   handleWorkspaceSelection,
   handleSelectHome,
   handleSelectGraph,
+  handleOpenGraphViolations,
   handleSelectDocument,
   handleSidebarCreateGraph,
   handleSidebarCreateNode,
@@ -66,6 +69,7 @@ export function useSidebarNavigationActions({
     handleWorkspaceSelection,
     handleSelectHome,
     handleSelectGraph,
+    handleOpenGraphViolations,
     handleSelectDocument,
     handleSidebarCreateGraph,
     handleSidebarCreateNode,
@@ -92,6 +96,10 @@ export function useSidebarNavigationActions({
 
   const selectGraph = useCallback((graphPath: string) => {
     void actionRefs.current.handleSelectGraph(graphPath);
+  }, []);
+
+  const openGraphViolations = useCallback((graphPath: string) => {
+    void actionRefs.current.handleOpenGraphViolations(graphPath);
   }, []);
 
   const openDocument = useCallback((documentId: string, graphPath: string) => {
@@ -154,6 +162,7 @@ export function useSidebarNavigationActions({
     selectWorkspace,
     selectHome,
     selectGraph,
+    openGraphViolations,
     openDocument,
     createGraph,
     createNode,
@@ -176,6 +185,7 @@ export function useSidebarNavigationActions({
     moveGraph,
     moveNode,
     openDocument,
+    openGraphViolations,
     rebuildIndex,
     renameGraph,
     renameNode,

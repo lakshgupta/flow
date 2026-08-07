@@ -7,6 +7,8 @@ import { createContext } from "react";
 import { fileNameFromPath } from "./docUtils";
 import { graphDirectoryColorHex, resolveParentGraphDirectoryColor } from "./graphColors";
 import type {
+  EdgeTypeSeverity,
+  EdgeTypeViolation,
   GraphCanvasEdgePayload,
   GraphCanvasFlowNodeData,
   GraphCanvasFlowNodeInput,
@@ -36,7 +38,9 @@ export type GraphCanvasEdgeVisualState = {
   glowOpacity: number;
   opacity: number;
   strokeDasharray?: string;
-  markerId: "graph-canvas-arrow" | "graph-canvas-arrow-dim" | null;
+  /** Set when the edge maps to an edge-type compatibility violation. */
+  violationSeverity: EdgeTypeSeverity | null;
+  markerId: "graph-canvas-arrow" | "graph-canvas-arrow-dim" | "graph-canvas-arrow-error" | "graph-canvas-arrow-warn" | null;
 };
 
 export type EdgeEditHandler = (sourceId: string, targetId: string, context: string) => void;
@@ -248,10 +252,95 @@ export function isEditableGraphCanvasEdge(edge: Pick<GraphCanvasEdgePayload, "ki
   return edge.kind === "link";
 }
 
+function normalizeEdgeRelationship(value: string): string {
+  return value.trim().toLowerCase().replace(/_/g, "-");
+}
+
+/**
+ * graphCanvasEdgeViolations returns every edge-type compatibility violation that
+ * matches the edge (source/target + normalized relationship tag).
+ */
+export function graphCanvasEdgeViolations(
+  edge: Pick<GraphCanvasEdgePayload, "source" | "target" | "relationships">,
+  violations: EdgeTypeViolation[] | null | undefined,
+): EdgeTypeViolation[] {
+  if (violations === null || violations === undefined || violations.length === 0) {
+    return [];
+  }
+
+  const edgeRelationshipTags = new Set((edge.relationships ?? []).map(normalizeEdgeRelationship));
+  return violations.filter(
+    (violation) =>
+      violation.fromID === edge.source &&
+      violation.toID === edge.target &&
+      edgeRelationshipTags.has(normalizeEdgeRelationship(violation.relationship)),
+  );
+}
+
+/**
+ * graphCanvasEdgeViolationSeverity maps an edge to the most severe edge-type
+ * compatibility violation that matches it (source/target + relationship tag).
+ * Returns null when the edge is not implicated by any violation.
+ */
+export function graphCanvasEdgeViolationSeverity(
+  edge: Pick<GraphCanvasEdgePayload, "source" | "target" | "relationships">,
+  violations: EdgeTypeViolation[] | null | undefined,
+): EdgeTypeSeverity | null {
+  const matched = graphCanvasEdgeViolations(edge, violations);
+  if (matched.some((violation) => violation.severity === "error")) {
+    return "error";
+  }
+  if (matched.length > 0) {
+    return "warning";
+  }
+  return null;
+}
+
+/**
+ * edgeTypeFixLabel returns the human-readable replacement for a violation's
+ * offending relationship tag (empty string means "remove the tag").
+ */
+export function edgeTypeFixLabel(violation: EdgeTypeViolation): string {
+  return (violation.fixTags ?? []).join(" / ");
+}
+
+/**
+ * applyEdgeTypeFixTags computes the relationships list after applying a
+ * violation's quick fix: the offending tag is removed (case- and
+ * separator-insensitive) and the violation's fixTags are added when not already
+ * present.
+ */
+export function applyEdgeTypeFixTags(relationships: string[], violation: EdgeTypeViolation): string[] {
+  const offending = normalizeEdgeRelationship(violation.relationship);
+  const next = relationships.filter((tag) => normalizeEdgeRelationship(tag) !== offending);
+
+  for (const fixTag of violation.fixTags ?? []) {
+    if (!next.some((tag) => normalizeEdgeRelationship(tag) === normalizeEdgeRelationship(fixTag))) {
+      next.push(fixTag);
+    }
+  }
+
+  return next;
+}
+
+/**
+ * applyEdgeTypeFixTagsAll applies a sequence of violation quick fixes to a
+ * relationships list. Used by "fix all violations" when multiple violations
+ * target the same edge.
+ */
+export function applyEdgeTypeFixTagsAll(relationships: string[], violations: EdgeTypeViolation[]): string[] {
+  let next = relationships;
+  for (const violation of violations) {
+    next = applyEdgeTypeFixTags(next, violation);
+  }
+  return next;
+}
+
 export function graphCanvasEdgeVisualState(
   edge: GraphCanvasEdgePayload,
   selectedCanvasNodeId: string,
   selectedEdgeId = "",
+  violationSeverity: EdgeTypeSeverity | null = null,
 ): GraphCanvasEdgeVisualState {
   const isReferenceEdge = !isEditableGraphCanvasEdge(edge);
   const hasSelection = selectedCanvasNodeId !== "";
@@ -270,32 +359,49 @@ export function graphCanvasEdgeVisualState(
         : "var(--graph-edge-dim)"
       : "var(--graph-edge)";
 
+  // Edge-type violations take precedence over the default stroke and force a
+  // dashed stroke: errors are red, warnings are amber.
+  const violationStroke = violationSeverity === "error"
+    ? "var(--destructive)"
+    : violationSeverity === "warning"
+      ? "var(--warn)"
+      : null;
+  const effectiveStroke = violationStroke ?? stroke;
+  const markerId = violationSeverity === "error"
+    ? "graph-canvas-arrow-error"
+    : violationSeverity === "warning"
+      ? "graph-canvas-arrow-warn"
+      : isReferenceEdge ? null : (isConnected || !hasSelection) ? "graph-canvas-arrow" : "graph-canvas-arrow-dim";
+
   return {
     isReferenceEdge,
     hasSelection,
     isConnected,
     isSelected,
     isGlowVisible: hasSelection && isConnected,
-    stroke,
+    stroke: effectiveStroke,
     strokeWidth: isSelected ? 3.5 : hasSelection ? (isConnected ? 2.7 : 1.7) : 2.1,
     glowStrokeWidth: isSelected ? 11 : hasSelection ? (isConnected ? 9 : 0) : 0,
     glowOpacity: isSelected ? 0.45 : hasSelection ? (isConnected ? 0.36 : 0) : 0,
     opacity: hasSelection ? (isConnected ? 1 : 0.56) : 0.92,
-    strokeDasharray: isReferenceEdge ? "6 4" : undefined,
-    markerId: isReferenceEdge ? null : (isConnected || !hasSelection) ? "graph-canvas-arrow" : "graph-canvas-arrow-dim",
+    strokeDasharray: violationStroke !== null ? "8 4" : (isReferenceEdge ? "6 4" : undefined),
+    violationSeverity,
+    markerId,
   };
 }
 
 export function buildGraphCanvasFlowEdges(
   graphCanvasData: GraphCanvasResponse | null,
   selectedCanvasNodeId: string,
+  violations: EdgeTypeViolation[] | null | undefined = null,
 ): Edge<GraphCanvasFlowEdgeData>[] {
   if (graphCanvasData === null) {
     return [];
   }
 
   return graphCanvasData.edges.map((edge: GraphCanvasEdgePayload) => {
-    const visual = graphCanvasEdgeVisualState(edge, selectedCanvasNodeId);
+    const violationSeverity = graphCanvasEdgeViolationSeverity(edge, violations);
+    const visual = graphCanvasEdgeVisualState(edge, selectedCanvasNodeId, "", violationSeverity);
     const isLinkEdge = isEditableGraphCanvasEdge(edge);
 
     return {

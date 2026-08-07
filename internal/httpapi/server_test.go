@@ -494,6 +494,222 @@ func TestNewMuxSelectWorkspaceRebuildsIndexForExternalChanges(t *testing.T) {
 	}
 }
 
+func TestNewMuxServesGraphValidationResults(t *testing.T) {
+	t.Parallel()
+
+	root := createHTTPAPITestWorkspace(t)
+	// Introduce a real edge-type violation: a task that depends-on a note.
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "release", "optimize.md"), markdown.TaskDocument{
+		Metadata: markdown.TaskMetadata{
+			CommonFields: markdown.CommonFields{ID: "task-violation", Type: markdown.TaskType, Graph: "release", Title: "Optimize"},
+			Links:        []markdown.NodeLink{{Node: "note-1", Relationships: []string{"depends-on"}}},
+		},
+		Body: "Optimize body\n",
+	})
+
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	// Unscoped query returns all violations across the workspace.
+	all := performJSONRequest[graphValidationResponse](t, handler, http.MethodGet, "/api/graph-validation")
+	if all.Graph != "" {
+		t.Fatalf("all.Graph = %q, want empty", all.Graph)
+	}
+	if all.ErrorCount != 0 || all.WarningCount != 1 || len(all.Violations) != 1 {
+		t.Fatalf("all = %#v, want 1 warning", all)
+	}
+	if all.Violations[0].Relationship != "depends-on" || all.Violations[0].Severity != markdown.EdgeTypeSeverityWarning {
+		t.Fatalf("all.Violations[0] = %#v", all.Violations[0])
+	}
+
+	// Graph-scoped query returns only that graph's violations.
+	scoped := performJSONRequest[graphValidationResponse](t, handler, http.MethodGet, "/api/graph-validation?graph=release")
+	if scoped.Graph != "release" || scoped.ErrorCount != 0 || scoped.WarningCount != 1 {
+		t.Fatalf("scoped = %#v, want 1 release warning", scoped)
+	}
+
+	// A graph with no violations returns empty results.
+	clean := performJSONRequest[graphValidationResponse](t, handler, http.MethodGet, "/api/graph-validation?graph=notes")
+	if clean.ErrorCount != 0 || clean.WarningCount != 0 || len(clean.Violations) != 0 {
+		t.Fatalf("clean = %#v, want no violations", clean)
+	}
+
+	// The endpoint serves the persisted per-graph list from the derived index:
+	// the same rows written during the NewMux pre-warm rebuild.
+	persisted, err := index.ReadGraphEdgeViolationsWorkspace(root.IndexPath, root.FlowPath)
+	if err != nil {
+		t.Fatalf("index.ReadGraphEdgeViolationsWorkspace() error = %v", err)
+	}
+	if len(persisted) != 1 || persisted[0].FromID != "task-violation" {
+		t.Fatalf("persisted = %#v, want task-violation row", persisted)
+	}
+	if persisted[0].Relationship != "depends-on" || persisted[0].Severity != markdown.EdgeTypeSeverityWarning {
+		t.Fatalf("persisted[0] = %#v, want depends-on warning", persisted[0])
+	}
+}
+
+func TestNewMuxGraphValidationRefreshesAfterLinkMutation(t *testing.T) {
+	t.Parallel()
+
+	root := createHTTPAPITestWorkspace(t)
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "release", "optimize.md"), markdown.TaskDocument{
+		Metadata: markdown.TaskMetadata{
+			CommonFields: markdown.CommonFields{ID: "task-violation", Type: markdown.TaskType, Graph: "release", Title: "Optimize"},
+			Links:        []markdown.NodeLink{{Node: "note-1", Relationships: []string{"depends-on"}}},
+		},
+		Body: "Optimize body\n",
+	})
+
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	before := performJSONRequest[graphValidationResponse](t, handler, http.MethodGet, "/api/graph-validation?graph=release")
+	if before.WarningCount != 1 || len(before.Violations) != 1 {
+		t.Fatalf("before = %#v, want 1 warning", before)
+	}
+
+	// Quick-fix the edge through the mutation endpoint. The write rebuilds the
+	// derived index, so the persisted violation list must refresh: the next
+	// validation query reports no violations.
+	updated := performJSONRequestWithBody[documentResponse](t, handler, http.MethodPatch, "/api/links", map[string]any{
+		"fromId":        "task-violation",
+		"toId":          "note-1",
+		"relationships": []string{"relates-to"},
+	})
+	if updated.ID != "task-violation" {
+		t.Fatalf("updated.ID = %q, want task-violation", updated.ID)
+	}
+
+	after := performJSONRequest[graphValidationResponse](t, handler, http.MethodGet, "/api/graph-validation?graph=release")
+	if after.ErrorCount != 0 || after.WarningCount != 0 || len(after.Violations) != 0 {
+		t.Fatalf("after = %#v, want no violations after fix", after)
+	}
+}
+
+func TestNewMuxGraphTreeReportsViolationCounts(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	root, err := workspace.ResolveLocal(rootDir)
+	if err != nil {
+		t.Fatalf("ResolveLocal() error = %v", err)
+	}
+	if err := config.Write(root.ConfigPath, config.Workspace{GUI: config.GUI{Port: 4812, PanelWidths: config.PanelWidths{LeftRatio: 0.31, RightRatio: 0.22}}}); err != nil {
+		t.Fatalf("config.Write() error = %v", err)
+	}
+
+	// A clean graph with no links.
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "manual", "note.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-manual", Type: markdown.NoteType, Graph: "manual", Title: "Manual"},
+		},
+		Body: "Manual body\n",
+	})
+	// A task in the parent graph and a violating note in its sub-graph: the
+	// note declares depends-on against the parent's task.
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "execution", "task.md"), markdown.TaskDocument{
+		Metadata: markdown.TaskMetadata{
+			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Build"},
+		},
+		Body: "Task body\n",
+	})
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "execution", "parser", "note.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "execution/parser", Title: "Parser notes"},
+			Links:        []markdown.NodeLink{{Node: "task-1", Relationships: []string{"depends-on"}}},
+		},
+		Body: "Note body\n",
+	})
+	// A warning-only graph: a task that depends-on a note (tolerated but
+	// non-canonical) exercises the amber WarningCount path.
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "release", "note.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-2", Type: markdown.NoteType, Graph: "release", Title: "Release notes"},
+		},
+		Body: "Note body\n",
+	})
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "release", "task.md"), markdown.TaskDocument{
+		Metadata: markdown.TaskMetadata{
+			CommonFields: markdown.CommonFields{ID: "task-2", Type: markdown.TaskType, Graph: "release", Title: "Ship"},
+			Links:        []markdown.NodeLink{{Node: "note-2", Relationships: []string{"depends-on"}}},
+		},
+		Body: "Task body\n",
+	})
+
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	tree := performJSONRequest[graphTreeResponse](t, handler, http.MethodGet, "/api/graphs")
+
+	// The sub-graph violation is reported directly on its row...
+	parserNode := graphTreeNodeByPath(t, tree.Graphs, "execution/parser")
+	if parserNode.ErrorCount != 1 || parserNode.WarningCount != 0 {
+		t.Fatalf("execution/parser = %#v, want 1 error", parserNode)
+	}
+	// ...and scoped up into the parent, matching the validation endpoint.
+	executionNode := graphTreeNodeByPath(t, tree.Graphs, "execution")
+	if executionNode.ErrorCount != 1 || executionNode.WarningCount != 0 {
+		t.Fatalf("execution = %#v, want 1 error scoped from sub-graph", executionNode)
+	}
+	// A clean graph reports zero counts.
+	manualNode := graphTreeNodeByPath(t, tree.Graphs, "manual")
+	if manualNode.ErrorCount != 0 || manualNode.WarningCount != 0 {
+		t.Fatalf("manual = %#v, want no violations", manualNode)
+	}
+
+	// A warning-only graph reports the warning count (amber pill path).
+	releaseNode := graphTreeNodeByPath(t, tree.Graphs, "release")
+	if releaseNode.ErrorCount != 0 || releaseNode.WarningCount != 1 {
+		t.Fatalf("release = %#v, want 1 warning", releaseNode)
+	}
+}
+
+func TestNewMuxGraphValidationPrefixScopesSubgraphs(t *testing.T) {
+	t.Parallel()
+
+	root := createHTTPAPITestWorkspace(t)
+	// Violation lives in a sub-graph of "release".
+	writeWorkspaceDocument(t, filepath.Join(root.FlowPath, "data", "content", "release", "tools", "lint.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-sub", Type: markdown.NoteType, Graph: "release/tools", Title: "Lint notes"},
+			Links:        []markdown.NodeLink{{Node: "note-2", Relationships: []string{"depends-on"}}},
+		},
+		Body: "Lint body\n",
+	})
+
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	// Parent graph includes the sub-graph violation (mirrors canvas scoping).
+	parent := performJSONRequest[graphValidationResponse](t, handler, http.MethodGet, "/api/graph-validation?graph=release")
+	if parent.ErrorCount != 1 || len(parent.Violations) != 1 {
+		t.Fatalf("parent = %#v, want 1 error scoped into release", parent)
+	}
+	if parent.Violations[0].Graph != "release/tools" {
+		t.Fatalf("parent.Violations[0].Graph = %q, want release/tools", parent.Violations[0].Graph)
+	}
+
+	// The sub-graph itself reports it directly.
+	sub := performJSONRequest[graphValidationResponse](t, handler, http.MethodGet, "/api/graph-validation?graph=release/tools")
+	if sub.ErrorCount != 1 || len(sub.Violations) != 1 {
+		t.Fatalf("sub = %#v, want 1 error in release/tools", sub)
+	}
+
+	// An unrelated graph stays clean.
+	unrelated := performJSONRequest[graphValidationResponse](t, handler, http.MethodGet, "/api/graph-validation?graph=execution")
+	if unrelated.ErrorCount != 0 || unrelated.WarningCount != 0 || len(unrelated.Violations) != 0 {
+		t.Fatalf("unrelated = %#v, want no violations", unrelated)
+	}
+}
+
 func TestNewMuxSelectWorkspaceRefreshesGraphCanvasNodes(t *testing.T) {
 	t.Parallel()
 

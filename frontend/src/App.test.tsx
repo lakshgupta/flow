@@ -1752,6 +1752,165 @@ describe("App graph canvas flows", () => {
     expect(titleInput).toHaveValue("Overview updated");
   });
 
+  it("persists the first edit after an idle gap immediately instead of waiting for the debounce", async () => {
+    const documentResponse = {
+      id: "note-1",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Overview",
+      description: "Execution overview",
+      path: "data/content/execution/overview.md",
+      tags: [],
+      body: "Overview body\n",
+      links: [],
+      relatedNoteIds: [],
+    };
+
+    const updatedDocumentResponse = {
+      ...documentResponse,
+      title: "Overview updated",
+    };
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/documents/note-1") {
+        if ((init?.method ?? "GET") === "PUT") {
+          return updatedDocumentResponse;
+        }
+
+        return documentResponse;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Execution");
+    await expandSidebarGraph("Execution");
+
+    const fileButton = (await screen.findByText("overview.md")).closest('[data-sidebar="menu-sub-button"]');
+    if (fileButton === null) {
+      throw new Error("missing overview file button");
+    }
+
+    await user.click(fileButton);
+
+    const titleInput = await screen.findByRole("textbox", { name: "Document title" });
+
+    // Move the fake clock more than the max autosave gap past the last save
+    // (mount time), then make one edit with NO debounce advance: the save must
+    // fire immediately, bounding the unsaved window during continuous typing.
+    vi.useFakeTimers();
+    vi.setSystemTime(1_717_171_717_000 + 10_000);
+    await act(async () => {
+      fireEvent.change(titleInput, { target: { value: "Overview updated" } });
+    });
+
+    expect(getRequestBody(fetchMock, "/api/documents/note-1", "PUT")).toMatchObject({
+      title: "Overview updated",
+    });
+  });
+
+  it("shows a header Saving… chip while autosaving and a Saved flash when it lands", async () => {
+    const documentResponse = {
+      id: "note-1",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Overview",
+      description: "Execution overview",
+      path: "data/content/execution/overview.md",
+      tags: [],
+      body: "Overview body\n",
+      links: [],
+      relatedNoteIds: [],
+    };
+
+    const updatedDocumentResponse = {
+      ...documentResponse,
+      title: "Overview updated",
+    };
+
+    // Keep the autosave PUT in flight so we can observe the "Saving…" state
+    // before it resolves into the brief "Saved" flash.
+    let resolveDocumentPut: (value: typeof updatedDocumentResponse) => void = () => {};
+    const documentPutPromise = new Promise<typeof updatedDocumentResponse>((resolve) => {
+      resolveDocumentPut = resolve;
+    });
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/documents/note-1") {
+        if ((init?.method ?? "GET") === "PUT") {
+          return documentPutPromise;
+        }
+
+        return documentResponse;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Execution");
+    await expandSidebarGraph("Execution");
+
+    const fileButton = (await screen.findByText("overview.md")).closest('[data-sidebar="menu-sub-button"]');
+    if (fileButton === null) {
+      throw new Error("missing overview file button");
+    }
+
+    await user.click(fileButton);
+
+    const titleInput = await screen.findByRole("textbox", { name: "Document title" });
+
+    vi.useFakeTimers();
+    await act(async () => {
+      fireEvent.change(titleInput, { target: { value: "Overview updated" } });
+    });
+
+    // The 400ms autosave debounce fires; the PUT stays unresolved, so the
+    // header should report "Saving…".
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+
+    const header = document.querySelector(".workspace-shell-header");
+    expect(header).not.toBeNull();
+    expect(within(header as HTMLElement).getByText("Saving…")).toBeInTheDocument();
+
+    // Resolve the PUT: the header should flash "Saved"…
+    await act(async () => {
+      resolveDocumentPut(updatedDocumentResponse);
+    });
+    expect(within(header as HTMLElement).getByText("Saved")).toBeInTheDocument();
+
+    // …then fade out after the flash window.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2200);
+    });
+    expect(within(header as HTMLElement).queryByText("Saved")).not.toBeInTheDocument();
+  });
+
   it("saves pending document edits before switching to another node", async () => {
     const graphTreeWithTwoFiles = {
       ...graphTreeResponse,
@@ -2754,6 +2913,88 @@ describe("App graph canvas flows", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
     expect(screen.getByText("Summary-Plan.md")).toBeInTheDocument();
+  });
+
+  it("flashes the header Saved confirmation after a rename mutation", async () => {
+    let currentGraphTree = graphTreeResponse;
+    const renamedDocumentResponse = {
+      id: "note-1",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Overview",
+      description: "",
+      path: "data/content/execution/summary.md",
+      body: "Overview body",
+      links: [],
+      relatedNoteIds: [],
+    };
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return currentGraphTree;
+      }
+
+      if (url === "/api/documents/note-1" && (init?.method ?? "GET") === "PUT") {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { fileName: string };
+        currentGraphTree = {
+          ...graphTreeResponse,
+          graphs: [
+            {
+              ...graphTreeResponse.graphs[0],
+              files: [
+                {
+                  ...graphTreeResponse.graphs[0].files[0],
+                  fileName: `${body.fileName}.md`,
+                  path: `data/content/execution/${body.fileName}.md`,
+                },
+              ],
+            },
+          ],
+        };
+        return {
+          ...renamedDocumentResponse,
+          path: `data/content/execution/${body.fileName}.md`,
+        };
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Execution");
+    await expandSidebarGraph("Execution");
+
+    await screen.findByText("overview.md");
+
+    await user.click(screen.getByRole("button", { name: "More actions for overview.md" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Rename" }));
+
+    const input = await screen.findByLabelText("File name");
+    await user.clear(input);
+    await user.type(input, "Summary-Plan");
+
+    const header = document.querySelector(".workspace-shell-header");
+    expect(header).not.toBeNull();
+    expect(within(header as HTMLElement).queryByText("Saved")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Rename" }));
+
+    await waitFor(() => {
+      expect(getRequestBody(fetchMock, "/api/documents/note-1", "PUT")).toEqual({ fileName: "Summary-Plan" });
+    });
+
+    // Manual mutations persist content too: their success must flash the same
+    // header "Saved" confirmation that autosaves do.
+    await waitFor(() => {
+      expect(within(header as HTMLElement).getByText("Saved")).toBeInTheDocument();
+    });
   });
 
   it("deletes a node from the content tree", async () => {

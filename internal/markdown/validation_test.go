@@ -1,6 +1,7 @@
 package markdown
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -263,6 +264,176 @@ func TestNormalizeWorkspaceDocumentUsesGraphPathOverFrontmatter(t *testing.T) {
 	document := item.Document.(TaskDocument)
 	if document.Metadata.Graph != "execution/parser" {
 		t.Fatalf("document.Metadata.Graph = %q, want execution/parser", document.Metadata.Graph)
+	}
+}
+
+func TestValidateEdgeTypeCompatibilityAllowsCanonicalEdges(t *testing.T) {
+	t.Parallel()
+
+	documents := []WorkspaceDocument{
+		{
+			Path: "data/content/demo/task-a.md",
+			Document: TaskDocument{
+				Metadata: TaskMetadata{
+					CommonFields: CommonFields{ID: "task-a", Type: TaskType, Graph: "demo"},
+					Links:        []NodeLink{{Node: "task-b", Relationships: []string{"depends-on"}}},
+				},
+			},
+		},
+		{
+			Path: "data/content/demo/task-b.md",
+			Document: TaskDocument{
+				Metadata: TaskMetadata{
+					CommonFields: CommonFields{ID: "task-b", Type: TaskType, Graph: "demo"},
+				},
+			},
+		},
+		{
+			Path: "data/content/demo/commit-notes.md",
+			Document: NoteDocument{
+				Metadata: NoteMetadata{
+					CommonFields: CommonFields{ID: "note-a", Type: NoteType, Graph: "demo"},
+					Links:        []NodeLink{{Node: "task-a", Relationships: []string{"maps-to"}}},
+				},
+			},
+		},
+		{
+			Path: "data/content/design/overview.md",
+			Document: NoteDocument{
+				Metadata: NoteMetadata{
+					CommonFields: CommonFields{ID: "note-b", Type: NoteType, Graph: "design"},
+					Links:        []NodeLink{{Node: "task-a", Relationships: []string{"evolves-from"}}},
+				},
+			},
+		},
+	}
+
+	violations := ValidateEdgeTypeCompatibility(documents)
+	if len(violations) != 0 {
+		t.Fatalf("ValidateEdgeTypeCompatibility() = %+v, want no violations", violations)
+	}
+}
+
+func TestValidateEdgeTypeCompatibilityReportsViolations(t *testing.T) {
+	t.Parallel()
+
+	documents := []WorkspaceDocument{
+		{
+			Path: "data/content/demo/task-a.md",
+			Document: TaskDocument{
+				Metadata: TaskMetadata{
+					CommonFields: CommonFields{ID: "task-a", Type: TaskType, Graph: "demo"},
+					Links:        []NodeLink{{Node: "note-a", Relationships: []string{"depends-on"}}},
+				},
+			},
+		},
+		{
+			Path: "data/content/demo/note-a.md",
+			Document: NoteDocument{
+				Metadata: NoteMetadata{
+					CommonFields: CommonFields{ID: "note-a", Type: NoteType, Graph: "demo"},
+					Links:        []NodeLink{{Node: "task-a", Relationships: []string{"depends_on"}}},
+				},
+			},
+		},
+		{
+			Path: "data/content/demo/update.md",
+			Document: TaskDocument{
+				Metadata: TaskMetadata{
+					CommonFields: CommonFields{ID: "task-b", Type: TaskType, Graph: "demo"},
+					Links:        []NodeLink{{Node: "note-a", Relationships: []string{"maps-to"}}},
+				},
+			},
+		},
+		{
+			Path: "data/content/release/build.md",
+			Document: CommandDocument{
+				Metadata: CommandMetadata{
+					CommonFields: CommonFields{ID: "cmd-1", Type: CommandType, Graph: "release"},
+					Links:        []NodeLink{{Node: "task-a", Relationships: []string{"evolves-from"}}},
+					Name:         "build",
+					Run:          "go build ./cmd/flow",
+				},
+			},
+		},
+		{
+			Path: "data/content/release/supersede.md",
+			Document: CommandDocument{
+				Metadata: CommandMetadata{
+					CommonFields: CommonFields{ID: "cmd-2", Type: CommandType, Graph: "release"},
+					Links:        []NodeLink{{Node: "task-a", Relationships: []string{"supersedes"}}},
+					Name:         "supersede",
+					Run:          "./supersede.sh",
+				},
+			},
+		},
+	}
+
+	violations := ValidateEdgeTypeCompatibility(documents)
+	if len(violations) != 5 {
+		t.Fatalf("ValidateEdgeTypeCompatibility() len = %d, want 5; got %+v", len(violations), violations)
+	}
+
+	byPath := map[string]EdgeTypeViolation{}
+	for _, violation := range violations {
+		byPath[violation.Path] = violation
+	}
+
+	// Only the rule whose message recommends a replacement emits fix tags;
+	// the others fix by removing the offending tag (empty FixTags).
+	if violation := byPath["data/content/demo/task-a.md"]; violation.Severity != EdgeTypeSeverityWarning {
+		t.Fatalf("task-a depends-on note severity = %q, want warning", violation.Severity)
+	} else if !slices.Equal(violation.FixTags, []string{"relates-to"}) {
+		t.Fatalf("task-a depends-on note fixTags = %v, want [relates-to]", violation.FixTags)
+	}
+	if violation := byPath["data/content/demo/note-a.md"]; violation.Severity != EdgeTypeSeverityError {
+		t.Fatalf("note depends-on source severity = %q, want error", violation.Severity)
+	} else if len(violation.FixTags) != 0 {
+		t.Fatalf("note depends-on source fixTags = %v, want none (remove tag)", violation.FixTags)
+	}
+	if violation := byPath["data/content/demo/update.md"]; violation.Severity != EdgeTypeSeverityWarning {
+		t.Fatalf("task maps-to note severity = %q, want warning", violation.Severity)
+	} else if len(violation.FixTags) != 0 {
+		t.Fatalf("task maps-to note fixTags = %v, want none (remove tag)", violation.FixTags)
+	}
+	if violation := byPath["data/content/release/build.md"]; violation.Severity != EdgeTypeSeverityError {
+		t.Fatalf("command evolves-from severity = %q, want error", violation.Severity)
+	} else if len(violation.FixTags) != 0 {
+		t.Fatalf("command evolves-from fixTags = %v, want none (remove tag)", violation.FixTags)
+	}
+	if violation := byPath["data/content/release/supersede.md"]; violation.Severity != EdgeTypeSeverityError {
+		t.Fatalf("command supersedes severity = %q, want error", violation.Severity)
+	} else if len(violation.FixTags) != 0 {
+		t.Fatalf("command supersedes fixTags = %v, want none (remove tag)", violation.FixTags)
+	}
+}
+
+func TestValidateEdgeTypeCompatibilityIgnoresUnknownRelationships(t *testing.T) {
+	t.Parallel()
+
+	documents := []WorkspaceDocument{
+		{
+			Path: "data/content/demo/task-a.md",
+			Document: TaskDocument{
+				Metadata: TaskMetadata{
+					CommonFields: CommonFields{ID: "task-a", Type: TaskType, Graph: "demo"},
+					Links:        []NodeLink{{Node: "note-a", Relationships: []string{"documents", "captures", "references"}}},
+				},
+			},
+		},
+		{
+			Path: "data/content/demo/note-a.md",
+			Document: NoteDocument{
+				Metadata: NoteMetadata{
+					CommonFields: CommonFields{ID: "note-a", Type: NoteType, Graph: "demo"},
+				},
+			},
+		},
+	}
+
+	violations := ValidateEdgeTypeCompatibility(documents)
+	if len(violations) != 0 {
+		t.Fatalf("ValidateEdgeTypeCompatibility() = %+v, want no violations for unknown relationships", violations)
 	}
 }
 

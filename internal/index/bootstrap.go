@@ -140,6 +140,22 @@ CREATE TABLE workspace_graph_directory_colors (
 	color TEXT NOT NULL,
 	updated_at TEXT NOT NULL
 );
+
+CREATE TABLE graph_edge_violations (
+	path TEXT NOT NULL,
+	graph TEXT NOT NULL,
+	from_id TEXT NOT NULL,
+	from_type TEXT NOT NULL,
+	to_id TEXT NOT NULL,
+	to_type TEXT NOT NULL,
+	relationship TEXT NOT NULL,
+	severity TEXT NOT NULL,
+	message TEXT NOT NULL,
+	fix_tags_json TEXT NOT NULL DEFAULT '[]',
+	PRIMARY KEY (path, from_id, to_id, relationship)
+);
+
+CREATE INDEX graph_edge_violations_graph_idx ON graph_edge_violations(graph);
 `
 
 type indexedDocument struct {
@@ -208,7 +224,7 @@ func Rebuild(indexPath string, flowPaths ...string) error {
 	}
 
 	if len(flowPaths) > 0 && flowPaths[0] != "" {
-		documents, parseFailures, err := collectDocuments(flowPaths[0])
+		documents, parseFailures, edgeViolations, err := collectDocuments(flowPaths[0])
 		if err != nil {
 			return err
 		}
@@ -254,6 +270,13 @@ func Rebuild(indexPath string, flowPaths ...string) error {
 			if err := insertParseFailure(transaction, parseFailure); err != nil {
 				return err
 			}
+		}
+
+		// Persist the advisory edge-type validation results so the graph-validation
+		// endpoint can serve the per-graph violation list straight from the derived
+		// index (rebuilt after every mutation) instead of recomputing on demand.
+		if err := insertGraphEdgeViolations(transaction, edgeViolations); err != nil {
+			return err
 		}
 
 		if err := insertGraphProjection(transaction, documents, parseFailures, flowPaths[0]); err != nil {
@@ -366,21 +389,21 @@ func reinsertPreservedGraphLayoutViewports(transaction *sql.Tx, documents []inde
 	return nil
 }
 
-func collectDocuments(flowPath string) ([]indexedDocument, []indexedParseFailure, error) {
+func collectDocuments(flowPath string) ([]indexedDocument, []indexedParseFailure, []markdown.EdgeTypeViolation, error) {
 	dataPath := filepath.Join(flowPath, "data")
 	if _, err := os.Stat(dataPath); err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil, nil
+			return nil, nil, nil, nil
 		}
 
-		return nil, nil, fmt.Errorf("stat data directory: %w", err)
+		return nil, nil, nil, fmt.Errorf("stat data directory: %w", err)
 	}
 
 	documents := []indexedDocument{}
 	parseFailures := []indexedParseFailure{}
 	usedIDs := map[string]struct{}{}
 	if err := collectHomeDocument(flowPath, filepath.Join(dataPath, "home.md"), &documents); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	for _, document := range documents {
 		if id, _, ok := indexedDocumentIdentity(document.document); ok {
@@ -391,10 +414,10 @@ func collectDocuments(flowPath string) ([]indexedDocument, []indexedParseFailure
 	graphsPath := filepath.Join(dataPath, "content")
 	if _, err := os.Stat(graphsPath); err != nil {
 		if os.IsNotExist(err) {
-			return documents, parseFailures, nil
+			return documents, parseFailures, nil, nil
 		}
 
-		return nil, nil, fmt.Errorf("stat graphs directory: %w", err)
+		return nil, nil, nil, fmt.Errorf("stat graphs directory: %w", err)
 	}
 
 	err := filepath.WalkDir(graphsPath, func(path string, entry os.DirEntry, err error) error {
@@ -409,7 +432,7 @@ func collectDocuments(flowPath string) ([]indexedDocument, []indexedParseFailure
 		return appendIndexedDocument(flowPath, path, &documents, &parseFailures, usedIDs)
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("scan markdown documents: %w", err)
+		return nil, nil, nil, fmt.Errorf("scan markdown documents: %w", err)
 	}
 
 	validationTargets := make([]markdown.WorkspaceDocument, 0, len(documents))
@@ -421,7 +444,16 @@ func collectDocuments(flowPath string) ([]indexedDocument, []indexedParseFailure
 	}
 
 	if err := markdown.ValidateWorkspaceDocuments(validationTargets); err != nil {
-		return nil, nil, fmt.Errorf("validate markdown documents: %w", err)
+		return nil, nil, nil, fmt.Errorf("validate markdown documents: %w", err)
+	}
+
+	// Edge-type compatibility is advisory: violations are logged but never block
+	// the rebuild, so legacy workspaces with tolerated patterns keep indexing.
+	// The same list is returned so Rebuild can persist it for the validation API.
+	edgeViolations := markdown.ValidateEdgeTypeCompatibility(validationTargets)
+	for _, violation := range edgeViolations {
+		log.Printf("flow index: edge-type %s: %s (%s) --%s--> %s (%s) at %s: %s",
+			violation.Severity, violation.FromID, violation.FromType, violation.Relationship, violation.ToID, violation.ToType, violation.Path, violation.Message)
 	}
 
 	for index := range documents {
@@ -430,7 +462,7 @@ func collectDocuments(flowPath string) ([]indexedDocument, []indexedParseFailure
 			Document: documents[index].document,
 		})
 		if err != nil {
-			return nil, nil, fmt.Errorf("normalize markdown document: %w", err)
+			return nil, nil, nil, fmt.Errorf("normalize markdown document: %w", err)
 		}
 
 		documents[index].document = normalizedDocument.Document
@@ -438,7 +470,7 @@ func collectDocuments(flowPath string) ([]indexedDocument, []indexedParseFailure
 		documents[index].graphPath = graphPathForDocument(documents[index].relativePath, normalizedDocument.Document)
 	}
 
-	return documents, parseFailures, nil
+	return documents, parseFailures, edgeViolations, nil
 }
 
 func insertDocument(transaction *sql.Tx, indexed indexedDocument, documentKindsByID map[string]markdown.DocumentType, inlineReferenceIDsByDocument map[string][]string) error {

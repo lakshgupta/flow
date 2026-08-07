@@ -543,6 +543,33 @@ func assertQueryCount(t *testing.T, database *sql.DB, query string, want int) {
 	}
 }
 
+func TestRebuildToleratesEdgeTypeCompatibilityViolations(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	flowPath := filepath.Join(rootDir, ".flow")
+	indexPath := filepath.Join(flowPath, "config", "flow.index")
+
+	// A note declaring depends-on is an edge-type error; the rebuild must still
+	// succeed because the check is advisory (violations are logged, not fatal).
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "demo", "note.md"),
+		"---\nid: note-a\ntype: note\ngraph: demo\ntitle: Alpha\nlinks:\n  - node: task-a\n    relationships:\n      - depends-on\n---\n\nAlpha body\n")
+	writeMarkdownDocument(t, filepath.Join(flowPath, "data", "content", "demo", "task.md"),
+		"---\nid: task-a\ntype: task\ngraph: demo\ntitle: Task\nstatus: Ready\n---\n\nTask body\n")
+
+	if err := Rebuild(indexPath, flowPath); err != nil {
+		t.Fatalf("Rebuild() error = %v, want edge-type violations to be non-fatal", err)
+	}
+
+	database, err := sql.Open("sqlite", indexPath)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer database.Close()
+
+	assertQueryCount(t, database, `SELECT COUNT(*) FROM documents WHERE type != 'home'`, 2)
+}
+
 func TestRebuildSkipsLegacyEdgeFiles(t *testing.T) {
 	t.Parallel()
 

@@ -45,7 +45,7 @@ import { Separator } from "./components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "./components/ui/sidebar";
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./components/ui/tooltip";
-import { requestJSON, deregisterLocalWorkspace, loadCalendarDocuments, loadWorkspaceSnapshot, selectWorkspace, uploadGraphFiles } from "./lib/api";
+import { requestJSON, deregisterLocalWorkspace, loadCalendarDocuments, loadGraphValidation, loadWorkspaceSnapshot, selectWorkspace, uploadGraphFiles } from "./lib/api";
 import { useGraphCanvasSurfaceActions } from "./hooks/useGraphCanvasSurfaceActions";
 import { useHomeSurfaceActions } from "./hooks/useHomeSurfaceActions";
 import { useRightRailDocumentActions } from "./hooks/useRightRailDocumentActions";
@@ -66,6 +66,8 @@ import {
   splitList,
 } from "./lib/docUtils";
 import {
+  applyEdgeTypeFixTags,
+  applyEdgeTypeFixTagsAll,
   applyElkHorizontalLayout,
   buildGraphCanvasFlowEdges,
   buildGraphCanvasFlowNodes,
@@ -94,6 +96,7 @@ import type {
   DeleteDocumentResponse,
   DocumentFormState,
   DocumentResponse,
+  EdgeTypeViolation,
   GraphCanvasFlowNodeData,
   GraphCanvasPosition,
   GraphCanvasResponse,
@@ -112,7 +115,7 @@ import type {
 } from "./types";
 import "./styles.css";
 
-type RightPanelTab = "calendar" | "search" | "home";
+type RightPanelTab = "calendar" | "search" | "home" | "violations";
 type DocumentOpenMode = "center" | "right-rail";
 type CenterDocumentSidePanelMode = "hidden" | "toc" | "properties";
 type RenameDialogState =
@@ -166,6 +169,14 @@ const MAX_DOCUMENT_TOC_RATIO = 0.32;
 const MIN_THREAD_PANEL_WIDTH_PX = 420;
 const THREAD_PANEL_VIEWPORT_MARGIN_PX = 112;
 const DOCUMENT_FILE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+
+// Autosave pacing: edits are persisted after a short idle debounce, and a
+// maximum-gap guard forces a save even during continuous typing so a crash can
+// only lose a bounded window of work.
+const AUTO_SAVE_DEBOUNCE_MS = 400;
+const AUTO_SAVE_MAX_GAP_MS = 4000;
+// fetch keepalive bodies are limited to 64KB; stay safely under it.
+const KEEPALIVE_MAX_BODY_BYTES = 60_000;
 
 type SearchFilters = {
   q: string;
@@ -320,6 +331,7 @@ function FlowApp() {
   const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null);
   const [graphTree, setGraphTree] = useState<GraphTreeResponse | null>(null);
   const [graphCanvasData, setGraphCanvasData] = useState<GraphCanvasResponse | null>(null);
+  const [graphEdgeViolations, setGraphEdgeViolations] = useState<EdgeTypeViolation[]>([]);
   const [graphCanvasLoading, setGraphCanvasLoading] = useState<boolean>(false);
   const [graphCanvasError, setGraphCanvasError] = useState<string>("");
   const [graphCanvasPositions, setGraphCanvasPositions] = useState<Record<string, GraphCanvasPosition>>({});
@@ -389,6 +401,10 @@ function FlowApp() {
   const [savingDocument, setSavingDocument] = useState<boolean>(false);
   const [deletingDocument, setDeletingDocument] = useState<boolean>(false);
   const [savingHome, setSavingHome] = useState<boolean>(false);
+  // Epoch ms of the last successful save — autosave or a manual mutation
+  // (rename/move/import/create/merge/edge-fix). The header flashes a brief
+  // "Saved" confirmation whenever this advances.
+  const [lastSaveAt, setLastSaveAt] = useState<number>(0);
   const [calendarFocusDate, setCalendarFocusDate] = useState<string>(() => todayString());
   const [leftSidebarWidth, setLeftSidebarWidth] = useState<number>(256);
   const [rightSidebarWidth, setRightSidebarWidth] = useState<number>(320);
@@ -447,7 +463,10 @@ function FlowApp() {
   const documentAutoSaveTimerRef = useRef<number | undefined>(undefined);
   const homeSavePromiseRef = useRef<Promise<void> | null>(null);
   const documentSavePromiseRef = useRef<Promise<void> | null>(null);
+  const lastDocumentSaveAtRef = useRef<number>(Date.now());
+  const lastHomeSaveAtRef = useRef<number>(Date.now());
   const edgeClickTimerRef = useRef<number | null>(null);
+  const fixAllEdgeViolationsRef = useRef<() => Promise<void> | void>(() => {});
   const documentThreadRef = useRef<ThreadDocumentEntry[]>([]);
   const threadDocumentsByIdRef = useRef<Record<string, DocumentResponse>>({});
   const threadStackRef = useRef<HTMLDivElement | null>(null);
@@ -519,11 +538,22 @@ function FlowApp() {
   ]);
   graphCanvasNodesRef.current = graphCanvasNodes;
   const graphCanvasEdges = useMemo(() => {
-    const raw = buildGraphCanvasFlowEdges(graphCanvasData, selectedCanvasNodeId);
+    const raw = buildGraphCanvasFlowEdges(graphCanvasData, selectedCanvasNodeId, graphEdgeViolations);
     return selectedEdgeId === ""
       ? raw
       : raw.map((e) => e.id === selectedEdgeId ? { ...e, selected: true } : e);
-  }, [graphCanvasData, selectedCanvasNodeId, selectedEdgeId]);
+  }, [graphCanvasData, graphEdgeViolations, selectedCanvasNodeId, selectedEdgeId]);
+  // Editable link edges that a sidebar quick fix can patch ("fromID\u0000toID").
+  const fixableViolationEdgeKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const edge of graphCanvasData?.edges ?? []) {
+      if (edge.kind !== "link") {
+        continue;
+      }
+      keys.add(`${edge.source}\u0000${edge.target}`);
+    }
+    return keys;
+  }, [graphCanvasData?.edges]);
   const normalizedGraphCanvasNodeSearchTerm = graphCanvasNodeSearchTerm.trim().toLowerCase();
   const graphCanvasNodeSearchMatches = useMemo(() => {
     if (normalizedGraphCanvasNodeSearchTerm === "") {
@@ -1490,7 +1520,8 @@ function FlowApp() {
   async function mutateEdge(
     method: "POST" | "DELETE" | "PATCH",
     payload: { fromId: string; toId: string; context?: string; relationships?: string[] },
-  ): Promise<void> {
+    options: { reload?: boolean } = {},
+  ): Promise<string | null> {
     try {
       setMutationError("");
       await requestJSON<DocumentResponse>("/api/links", {
@@ -1498,9 +1529,14 @@ function FlowApp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      setGraphCanvasReloadToken((current) => current + 1);
+      if (options.reload !== false) {
+        setGraphCanvasReloadToken((current) => current + 1);
+      }
+      return null;
     } catch (err) {
-      setMutationError(toErrorMessage(err));
+      const message = toErrorMessage(err);
+      setMutationError(message);
+      return message;
     }
   }
 
@@ -1779,6 +1815,10 @@ function FlowApp() {
 
     let cancelled = false;
 
+    // Clear violations from the previously viewed graph immediately so stale
+    // highlights cannot linger while the new graph's validation is in flight.
+    setGraphEdgeViolations([]);
+
     async function loadGraphCanvas(): Promise<void> {
       try {
         setGraphCanvasLoading(true);
@@ -1805,7 +1845,22 @@ function FlowApp() {
       }
     }
 
+    async function loadGraphValidationForCanvas(): Promise<void> {
+      try {
+        const response = await loadGraphValidation(selectedGraphPath);
+        if (!cancelled) {
+          setGraphEdgeViolations(response.violations);
+        }
+      } catch {
+        // Validation is best-effort: clear highlights rather than failing the canvas.
+        if (!cancelled) {
+          setGraphEdgeViolations([]);
+        }
+      }
+    }
+
     void loadGraphCanvas();
+    void loadGraphValidationForCanvas();
 
     return () => {
       cancelled = true;
@@ -1933,12 +1988,61 @@ function FlowApp() {
   const handleSelectHomeRef = useRef<() => void>(() => {});
   const openDocumentInRightRailRef = useRef<(documentId: string, graphPath: string) => void>(() => {});
 
+  function scheduleDocumentAutoSave(): void {
+    const now = Date.now();
+    if (documentAutoSaveTimerRef.current !== undefined) {
+      window.clearTimeout(documentAutoSaveTimerRef.current);
+      documentAutoSaveTimerRef.current = undefined;
+    }
+
+    const fire = (): void => {
+      documentAutoSaveTimerRef.current = undefined;
+      if (selectedDocumentRef.current !== null) {
+        lastDocumentSaveAtRef.current = Date.now();
+        void handleSaveDocument(selectedDocumentRef.current, formStateRef.current);
+      }
+    };
+
+    if (now - lastDocumentSaveAtRef.current >= AUTO_SAVE_MAX_GAP_MS) {
+      // Continuous-typing guard: persist now instead of waiting for a pause, so
+      // the unsaved window stays bounded even when the user never stops typing.
+      lastDocumentSaveAtRef.current = now;
+      fire();
+      return;
+    }
+
+    documentAutoSaveTimerRef.current = window.setTimeout(fire, AUTO_SAVE_DEBOUNCE_MS);
+  }
+
+  function scheduleHomeAutoSave(): void {
+    const now = Date.now();
+    if (homeAutoSaveTimerRef.current !== undefined) {
+      window.clearTimeout(homeAutoSaveTimerRef.current);
+      homeAutoSaveTimerRef.current = undefined;
+    }
+
+    const fire = (): void => {
+      homeAutoSaveTimerRef.current = undefined;
+      lastHomeSaveAtRef.current = Date.now();
+      void handleSaveHomeContent(homeFormStateRef.current);
+    };
+
+    if (now - lastHomeSaveAtRef.current >= AUTO_SAVE_MAX_GAP_MS) {
+      lastHomeSaveAtRef.current = now;
+      fire();
+      return;
+    }
+
+    homeAutoSaveTimerRef.current = window.setTimeout(fire, AUTO_SAVE_DEBOUNCE_MS);
+  }
+
   function updateFormField(field: keyof DocumentFormState, value: string): void {
-    setFormState((current) => {
-      const next = { ...current, [field]: value };
-      formStateRef.current = next;
-      return next;
-    });
+    // Write the ref synchronously (not via the functional setState updater) so
+    // an immediate max-gap save can never capture stale content: the updater
+    // only runs after the event handler returns.
+    const next = { ...formStateRef.current, [field]: value };
+    formStateRef.current = next;
+    setFormState(next);
 
     if (field === "links") {
       const allowed = new Set(splitList(value));
@@ -1954,15 +2058,7 @@ function FlowApp() {
       });
     }
 
-    if (  documentAutoSaveTimerRef.current !== undefined) {
-      window.clearTimeout(documentAutoSaveTimerRef.current);
-    }
-    documentAutoSaveTimerRef.current = window.setTimeout(() => {
-      documentAutoSaveTimerRef.current = undefined;
-      if (selectedDocumentRef.current !== null) {
-        void handleSaveDocument(selectedDocumentRef.current, formStateRef.current);
-      }
-    }, 800);
+    scheduleDocumentAutoSave();
   }
 
   function updateEditableLinkDetail(nodeId: string, field: "context" | "linkType", value: string): void {
@@ -1979,15 +2075,7 @@ function FlowApp() {
       return next;
     });
 
-    if (  documentAutoSaveTimerRef.current !== undefined) {
-      window.clearTimeout(documentAutoSaveTimerRef.current);
-    }
-    documentAutoSaveTimerRef.current = window.setTimeout(() => {
-      documentAutoSaveTimerRef.current = undefined;
-      if (selectedDocumentRef.current !== null) {
-        void handleSaveDocument(selectedDocumentRef.current, formStateRef.current);
-      }
-    }, 800);
+    scheduleDocumentAutoSave();
   }
 
   function addOutgoingLink(nodeId: string): void {
@@ -2020,15 +2108,7 @@ function FlowApp() {
       return next;
     });
 
-    if (  documentAutoSaveTimerRef.current !== undefined) {
-      window.clearTimeout(documentAutoSaveTimerRef.current);
-    }
-    documentAutoSaveTimerRef.current = window.setTimeout(() => {
-      documentAutoSaveTimerRef.current = undefined;
-      if (selectedDocumentRef.current !== null) {
-        void handleSaveDocument(selectedDocumentRef.current, formStateRef.current);
-      }
-    }, 800);
+    scheduleDocumentAutoSave();
   }
 
   function removeOutgoingLink(nodeId: string): void {
@@ -2049,15 +2129,7 @@ function FlowApp() {
       return next;
     });
 
-    if (  documentAutoSaveTimerRef.current !== undefined) {
-      window.clearTimeout(documentAutoSaveTimerRef.current);
-    }
-    documentAutoSaveTimerRef.current = window.setTimeout(() => {
-      documentAutoSaveTimerRef.current = undefined;
-      if (selectedDocumentRef.current !== null) {
-        void handleSaveDocument(selectedDocumentRef.current, formStateRef.current);
-      }
-    }, 800);
+    scheduleDocumentAutoSave();
   }
 
   function updateHomeFormField(field: keyof HomeFormState, value: string): void {
@@ -2067,13 +2139,7 @@ function FlowApp() {
       homeFormStateRef.current = next;
       return next;
     });
-    if (  homeAutoSaveTimerRef.current !== undefined) {
-      window.clearTimeout(homeAutoSaveTimerRef.current);
-    }
-    homeAutoSaveTimerRef.current = window.setTimeout(() => {
-      homeAutoSaveTimerRef.current = undefined;
-      void handleSaveHomeContent(homeFormStateRef.current);
-    }, 800);
+    scheduleHomeAutoSave();
   }
 
   function clearContextPanel(): void {
@@ -2957,8 +3023,10 @@ function FlowApp() {
         const failureCount = result.failed?.length ?? 0;
         if (failureCount > 0) {
           setMutationSuccess(`Imported ${result.created.length} files with ${failureCount} skipped.`);
+          setLastSaveAt(Date.now());
         } else {
           setMutationSuccess(`Imported ${result.created.length} files into ${selectedGraphPath}.`);
+          setLastSaveAt(Date.now());
         }
       }
 
@@ -3102,6 +3170,7 @@ function FlowApp() {
       }
 
       setMutationSuccess(`${formatDocumentType(updatedDocument.type)} moved to ${targetGraphPath}.`);
+      setLastSaveAt(Date.now());
     } catch (moveFailure) {
       setMutationError(toErrorMessage(moveFailure));
     }
@@ -3145,6 +3214,7 @@ function FlowApp() {
       }
 
       setMutationSuccess(`Graph moved to ${nextPath}.`);
+      setLastSaveAt(Date.now());
     } catch (moveFailure) {
       setMutationError(toErrorMessage(moveFailure));
     }
@@ -3180,6 +3250,7 @@ function FlowApp() {
       if (origin === "canvas") {
         setMutationError("");
         setMutationSuccess(`${formatDocumentType(createdDocument.type)} created.`);
+        setLastSaveAt(Date.now());
       }
     } catch (createError) {
       setGraphCreateError(toErrorMessage(createError));
@@ -3245,6 +3316,7 @@ function FlowApp() {
 
         setMutationError("");
         setMutationSuccess(`Graph renamed to ${trimmed}.`);
+        setLastSaveAt(Date.now());
       } else {
         const updatedDocument = await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(renameDialog.documentId)}`, {
           method: "PUT",
@@ -3260,6 +3332,7 @@ function FlowApp() {
 
         setMutationError("");
         setMutationSuccess(`${formatDocumentType(updatedDocument.type)} renamed to ${fileNameFromPath(updatedDocument.path)}.`);
+        setLastSaveAt(Date.now());
       }
     } catch (renameFailure) {
       setRenameError(toErrorMessage(renameFailure));
@@ -3439,8 +3512,17 @@ function FlowApp() {
     }
   }
 
-  async function handleSaveDocument(doc: DocumentResponse, state: DocumentFormState): Promise<void> {
+  async function handleSaveDocument(doc: DocumentResponse, state: DocumentFormState, options?: { keepalive?: boolean }): Promise<void> {
+    const keepalive = options?.keepalive === true;
+    const previousSave = documentSavePromiseRef.current;
     const savePromise = (async () => {
+      // Serialize saves so an older PUT can never land after a newer one. The
+      // unload flush (keepalive) intentionally skips this so the final content
+      // is dispatched immediately before the page goes away.
+      if (previousSave !== null && !keepalive) {
+        await previousSave;
+      }
+
       setSavingDocument(true);
       setMutationError("");
 
@@ -3478,9 +3560,11 @@ function FlowApp() {
         // Always include color so clearing the override (empty string) is persisted.
         payload.color = state.color;
 
+        const payloadJSON = JSON.stringify(payload);
         const updatedDocument = await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(doc.id)}`, {
           method: "PUT",
-          body: JSON.stringify(payload),
+          ...(keepalive && new Blob([payloadJSON]).size <= KEEPALIVE_MAX_BODY_BYTES ? { keepalive: true } : {}),
+          body: payloadJSON,
         });
 
         if (selectedDocumentRef.current?.id === updatedDocument.id) {
@@ -3492,6 +3576,7 @@ function FlowApp() {
         setGraphTree((current) => updateGraphTreeDocumentEntry(current, doc, updatedDocument));
         setGraphCanvasData((current) => updateGraphCanvasDocumentEntry(current, doc, updatedDocument));
         setGraphCanvasReloadToken((current) => current + 1);
+        setLastSaveAt(Date.now());
       } catch (mutationFailure) {
         setMutationError(toErrorMessage(mutationFailure));
       } finally {
@@ -3510,22 +3595,31 @@ function FlowApp() {
     }
   }
 
-  async function handleSaveHomeContent(state: HomeFormState): Promise<void> {
+  async function handleSaveHomeContent(state: HomeFormState, options?: { keepalive?: boolean }): Promise<void> {
+    const keepalive = options?.keepalive === true;
+    const previousSave = homeSavePromiseRef.current;
     const savePromise = (async () => {
+      if (previousSave !== null && !keepalive) {
+        await previousSave;
+      }
+
       setSavingHome(true);
       setHomeMutationError("");
 
       try {
+        const payloadJSON = JSON.stringify({
+          title: state.title,
+          description: state.description,
+          body: normalizeHomeBodyForSave(state.body),
+        });
         const updatedHome = await requestJSON<HomeResponse>("/api/home", {
           method: "PUT",
-          body: JSON.stringify({
-            title: state.title,
-            description: state.description,
-            body: normalizeHomeBodyForSave(state.body),
-          }),
+          ...(keepalive && new Blob([payloadJSON]).size <= KEEPALIVE_MAX_BODY_BYTES ? { keepalive: true } : {}),
+          body: payloadJSON,
         });
 
         setGraphTree((current) => (current === null ? current : { ...current, home: updatedHome }));
+        setLastSaveAt(Date.now());
       } catch (mutationFailure) {
         setHomeMutationError(toErrorMessage(mutationFailure));
       } finally {
@@ -3609,6 +3703,178 @@ function FlowApp() {
     setEdgeToolbar((current) => current?.edgeId === state.edgeId ? { ...current, context: state.context, relationships: state.relationships } : current);
   }
 
+  async function handleEdgeTypeQuickFix(
+    edge: { sourceId: string; targetId: string; context: string; relationships: string[] },
+    violation: EdgeTypeViolation,
+  ): Promise<void> {
+    await mutateEdge("PATCH", {
+      fromId: edge.sourceId,
+      toId: edge.targetId,
+      context: edge.context,
+      relationships: applyEdgeTypeFixTags(edge.relationships, violation),
+    });
+    // The fixed edge's tags changed; close a stale toolbar for the same edge.
+    setEdgeToolbar((current) =>
+      current !== null && current.sourceId === edge.sourceId && current.targetId === edge.targetId ? null : current,
+    );
+  }
+
+  async function handleFixAllEdgeViolations(): Promise<void> {
+    if (graphEdgeViolations.length === 0 || graphCanvasData === null) {
+      return;
+    }
+
+    // Group violations by the edge they target so each distinct edge is patched
+    // once (multiple violations can match the same edge).
+    const violationsByEdge = new Map<string, EdgeTypeViolation[]>();
+    for (const violation of graphEdgeViolations) {
+      const key = `${violation.fromID}\u0000${violation.toID}`;
+      const bucket = violationsByEdge.get(key);
+      if (bucket === undefined) {
+        violationsByEdge.set(key, [violation]);
+      } else {
+        bucket.push(violation);
+      }
+    }
+
+    let fixed = 0;
+    let failed = 0;
+    let firstFailure: string | null = null;
+    for (const [key, violations] of violationsByEdge) {
+      const separatorIndex = key.indexOf("\u0000");
+      const fromId = key.slice(0, separatorIndex);
+      const toId = key.slice(separatorIndex + 1);
+      const edge = graphCanvasData.edges.find(
+        (candidate) => candidate.source === fromId && candidate.target === toId,
+      );
+      if (edge === undefined) {
+        failed += 1;
+        if (firstFailure === null) {
+          firstFailure = "Edge not found on the canvas.";
+        }
+        continue;
+      }
+
+      const relationships = applyEdgeTypeFixTagsAll(edge.relationships ?? [], violations);
+      const errorMessage = await mutateEdge("PATCH", {
+        fromId,
+        toId,
+        context: edge.context ?? "",
+        relationships,
+      }, { reload: false });
+      if (errorMessage === null) {
+        fixed += 1;
+      } else {
+        failed += 1;
+        if (firstFailure === null) {
+          firstFailure = errorMessage;
+        }
+      }
+    }
+
+    if (failed === 0) {
+      setMutationError("");
+      setMutationSuccess(`Fixed ${fixed} edge${fixed === 1 ? "" : "s"}.`);
+      setLastSaveAt(Date.now());
+    } else if (fixed === 0) {
+      setMutationSuccess("");
+      setMutationError(firstFailure ?? `Could not fix ${failed} edge${failed === 1 ? "" : "s"}.`);
+    } else {
+      setMutationError("");
+      setMutationSuccess(`Fixed ${fixed} edge${fixed === 1 ? "" : "s"}, ${failed} failed.`);
+      setLastSaveAt(Date.now());
+    }
+    setEdgeToolbar(null);
+    // A single reload refreshes the canvas and the validation results together.
+    setGraphCanvasReloadToken((current) => current + 1);
+  }
+
+  function handleSidebarSelectViolation(violation: EdgeTypeViolation): void {
+    const edge = (graphCanvasData?.edges ?? []).find(
+      (candidate) => candidate.source === violation.fromID && candidate.target === violation.toID,
+    );
+    if (edge === undefined) {
+      return;
+    }
+    setHoveredEdgeTooltip(null);
+    setEdgeToolbar(null);
+    setSelectedEdgeId(edge.id);
+  }
+
+  function handleOpenViolationsPanel(): void {
+    toggleRightPanel("violations");
+  }
+
+  /**
+   * Jump straight to the violations sidebar for a graph: navigate to the graph
+   * surface (when not already there) and open the violations panel without
+   * toggling it closed.
+   */
+  async function handleOpenGraphViolations(graphPath: string): Promise<void> {
+    const alreadyOnGraph = activeSurface.kind === "graph" && activeSurface.graphPath === graphPath;
+    if (!alreadyOnGraph) {
+      await handleSelectGraph(graphPath);
+    }
+
+    setRightSidebarWidth((current) => Math.max(current, 300));
+    setThreadExpanded(false);
+    setRightRailMaximized(false);
+    setRightPanelTab("violations");
+    setRightRailCollapsed(false);
+  }
+
+  function handleSidebarFixViolation(violation: EdgeTypeViolation): void {
+    const edge = (graphCanvasData?.edges ?? []).find(
+      (candidate) => candidate.kind === "link" && candidate.source === violation.fromID && candidate.target === violation.toID,
+    );
+    if (edge === undefined) {
+      return;
+    }
+    void handleEdgeTypeQuickFix(
+      {
+        sourceId: edge.source,
+        targetId: edge.target,
+        context: edge.context ?? "",
+        relationships: edge.relationships ?? [],
+      },
+      violation,
+    );
+  }
+
+  fixAllEdgeViolationsRef.current = handleFixAllEdgeViolations;
+
+  // Alt+Shift+F: apply every edge-type violation quick fix in the current graph.
+  useEffect(() => {
+    if (activeSurface.kind !== "graph") {
+      return;
+    }
+
+    function handleFixAllViolationsKeyDown(event: KeyboardEvent): void {
+      if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+      if (event.key.toLowerCase() !== "f") {
+        return;
+      }
+
+      const target = event.target;
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) {
+          return;
+        }
+      }
+
+      event.preventDefault();
+      void fixAllEdgeViolationsRef.current();
+    }
+
+    window.addEventListener("keydown", handleFixAllViolationsKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleFixAllViolationsKeyDown);
+    };
+  }, [activeSurface.kind]);
+
   function clearEdgeClickTimer(): void {
     if (edgeClickTimerRef.current !== null) {
       window.window.clearTimeout(edgeClickTimerRef.current);
@@ -3682,6 +3948,7 @@ function FlowApp() {
       await refreshShellViews({ nextDocument: mergedDocument, nextDocumentId: mergedDocument.id });
       setSelectedCanvasNodeId(mergedDocument.id);
       setMutationSuccess("Documents merged.");
+      setLastSaveAt(Date.now());
     } catch (mergeFailure) {
       setMutationError(toErrorMessage(mergeFailure));
     }
@@ -3762,6 +4029,7 @@ function FlowApp() {
     handleWorkspaceSelection,
     handleSelectHome,
     handleSelectGraph,
+    handleOpenGraphViolations,
     handleSelectDocument,
     handleSidebarCreateGraph,
     handleSidebarCreateNode,
@@ -3786,6 +4054,8 @@ function FlowApp() {
     handleGraphCanvasEdgeHover,
     handleGraphCanvasEdgeDoubleClick,
     handlePersistEdgeToolbar,
+    handleEdgeTypeQuickFix,
+    handleFixAllEdgeViolations,
     handleDeleteEdge,
     handleGraphCanvasOverlayNodeClick,
     handleGraphCanvasOverlayNodeDoubleClick,
@@ -3831,6 +4101,7 @@ function FlowApp() {
   const graphCanvasOverlayController = useMemo<GraphCanvasOverlayController>(() => ({
     state: {
       edges: graphCanvasData?.edges ?? [],
+      edgeViolations: graphEdgeViolations,
       graphCanvasNodes,
       rfViewport,
       intersectingNodeIds: graphCanvasIntersectingNodeIds,
@@ -3858,6 +4129,7 @@ function FlowApp() {
     connectingTarget,
     edgeToolbar,
     graphCanvasData?.edges,
+    graphEdgeViolations,
     graphCanvasIntersectingNodeIds,
     graphCanvasIntersectionSourceId,
     graphCanvasNodes,
@@ -4136,12 +4408,16 @@ function FlowApp() {
     // Sync latest editor state into the form refs synchronously.
     syncDocumentBodyFromActiveEditor();
     syncHomeBodyFromEditor();
-    // Fire saves; these are fast local fetches so they complete before unload.
+    // Fire saves with keepalive so the requests survive unload. These skip the
+    // save serialization on purpose so the newest content is dispatched first;
+    // write ordering against a still-in-flight older save is strictly
+    // best-effort at this point (loopback saves finish in ms, so the window is
+    // tiny).
     if (hasDocTimer && selectedDocumentRef.current !== null) {
-      void handleSaveDocument(selectedDocumentRef.current, formStateRef.current);
+      void handleSaveDocument(selectedDocumentRef.current, formStateRef.current, { keepalive: true });
     }
     if (hasHomeTimer) {
-      void handleSaveHomeContent(homeFormStateRef.current);
+      void handleSaveHomeContent(homeFormStateRef.current, { keepalive: true });
     }
   };
 
@@ -4270,6 +4546,13 @@ function FlowApp() {
           activeSurface={activeSurface}
           settingsDialogProps={settingsDialogProps}
           rightRailControlsActions={rightRailControlsActions}
+          graphValidationReloadToken={graphCanvasReloadToken}
+          savingDocument={savingDocument}
+          savingHome={savingHome}
+          lastSaveAt={lastSaveAt}
+          onOpenViolations={handleOpenViolationsPanel}
+          showViolationsButton={activeSurface.kind === "graph"}
+          violationsActive={rightPanelTab === "violations" && !rightRailCollapsed}
         />
           <DeleteDocumentDialog
             open={deleteDialogOpen}
@@ -4369,6 +4652,12 @@ function FlowApp() {
           setCalendarFocusDate={setCalendarFocusDate}
           handleRightRailCalendarDocumentOpen={handleRightRailCalendarDocumentOpen}
           calendarError={calendarError}
+          selectedGraphPath={selectedGraphPath}
+          graphViolations={graphEdgeViolations}
+          violationFixableEdgeKeys={fixableViolationEdgeKeys}
+          handleViolationSelect={handleSidebarSelectViolation}
+          handleViolationFix={handleSidebarFixViolation}
+          handleViolationsFixAll={handleFixAllEdgeViolations}
         />
         </div>
       </SidebarInset>

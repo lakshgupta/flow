@@ -1,8 +1,8 @@
 import { memo, type RefObject } from "react";
 
-import type { DocumentFormState, DocumentResponse, GraphTreeResponse, HomeFormState, SearchResult, SurfaceState } from "../types";
-import type { RightRailSearchPanelProps, RightRailCalendarPanelProps } from "./RightRailPanels";
-import { RightRailSearchPanel, RightRailCalendarPanel } from "./RightRailPanels";
+import type { DocumentFormState, DocumentResponse, EdgeTypeViolation, GraphTreeResponse, HomeFormState, SearchResult, SurfaceState } from "../types";
+import type { RightRailSearchPanelProps, RightRailCalendarPanelProps, RightRailViolationsPanelProps } from "./RightRailPanels";
+import { RightRailSearchPanel, RightRailCalendarPanel, RightRailViolationsPanel } from "./RightRailPanels";
 import { DocumentEditorPane, type DocumentEditorPaneActions, type DocumentLinkDetail } from "./DocumentEditorPane";
 import { RichTextEditor } from "./editor/RichTextEditor";
 import type { TOCItem } from "./TableOfContents";
@@ -60,6 +60,13 @@ type RightSidebarPanelProps = {
   setCalendarFocusDate: React.Dispatch<React.SetStateAction<string>>;
   handleRightRailCalendarDocumentOpen: (document: RightRailCalendarPanelProps["documents"][0]) => void;
   calendarError: string;
+  // Violations
+  selectedGraphPath: string;
+  graphViolations: EdgeTypeViolation[];
+  violationFixableEdgeKeys: Set<string>;
+  handleViolationSelect: RightRailViolationsPanelProps["onSelectViolation"];
+  handleViolationFix: RightRailViolationsPanelProps["onFixViolation"];
+  handleViolationsFixAll: RightRailViolationsPanelProps["onFixAll"];
 };
 
 function RightSidebarPanelComponent({
@@ -110,6 +117,12 @@ function RightSidebarPanelComponent({
   setCalendarFocusDate,
   handleRightRailCalendarDocumentOpen,
   calendarError,
+  selectedGraphPath,
+  graphViolations,
+  violationFixableEdgeKeys,
+  handleViolationSelect,
+  handleViolationFix,
+  handleViolationsFixAll,
 }: RightSidebarPanelProps) {
   return (
     <aside
@@ -191,6 +204,15 @@ function RightSidebarPanelComponent({
             onDateChange={setCalendarFocusDate}
             onDocumentOpen={handleRightRailCalendarDocumentOpen}
             error={calendarError}
+          />
+        ) : rightPanelTab === "violations" ? (
+          <RightRailViolationsPanel
+            graphPath={selectedGraphPath}
+            violations={graphViolations}
+            fixableEdgeKeys={violationFixableEdgeKeys}
+            onFixViolation={handleViolationFix}
+            onFixAll={handleViolationsFixAll}
+            onSelectViolation={handleViolationSelect}
           />
         ) : null)}
       </div>

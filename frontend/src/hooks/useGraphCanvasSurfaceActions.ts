@@ -17,6 +17,7 @@ import type {
   HoveredEdgeTooltip,
 } from "../components/graphCanvasOverlayController";
 import type {
+  EdgeTypeViolation,
   GraphCanvasFlowNodeData,
   GraphCanvasPosition,
   GraphCreateType,
@@ -41,6 +42,13 @@ type UseGraphCanvasSurfaceActionsArgs = {
   handleGraphCanvasEdgeHover: (edgeId: string, context: string, x: number, y: number) => void;
   handleGraphCanvasEdgeDoubleClick: (sourceId: string, targetId: string, context: string, edgeId: string) => void;
   handlePersistEdgeToolbar: (state: EdgeToolbarState) => Promise<void>;
+  handleEdgeTypeQuickFix: (edge: {
+    sourceId: string;
+    targetId: string;
+    context: string;
+    relationships: string[];
+  }, violation: EdgeTypeViolation) => Promise<void>;
+  handleFixAllEdgeViolations: () => Promise<void>;
   handleDeleteEdge: (sourceId: string, targetId: string) => Promise<void>;
   handleGraphCanvasOverlayNodeClick: (event: ReactMouseEvent<HTMLDivElement>, nodeId: string) => void;
   handleGraphCanvasOverlayNodeDoubleClick: (event: ReactMouseEvent<HTMLDivElement>, nodeId: string) => void;
@@ -86,6 +94,8 @@ export function useGraphCanvasSurfaceActions({
   handleGraphCanvasEdgeHover,
   handleGraphCanvasEdgeDoubleClick,
   handlePersistEdgeToolbar,
+  handleEdgeTypeQuickFix,
+  handleFixAllEdgeViolations,
   handleDeleteEdge,
   handleGraphCanvasOverlayNodeClick,
   handleGraphCanvasOverlayNodeDoubleClick,
@@ -133,6 +143,8 @@ export function useGraphCanvasSurfaceActions({
     handleGraphCanvasEdgeHover,
     handleGraphCanvasEdgeDoubleClick,
     handlePersistEdgeToolbar,
+    handleEdgeTypeQuickFix,
+    handleFixAllEdgeViolations,
     handleDeleteEdge,
     handleGraphCanvasOverlayNodeClick,
     handleGraphCanvasOverlayNodeDoubleClick,
@@ -167,6 +179,17 @@ export function useGraphCanvasSurfaceActions({
 
   const handleGraphCanvasPersistEdgeToolbar = useCallback((state: EdgeToolbarState) => {
     return actionRefs.current.handlePersistEdgeToolbar(state);
+  }, []);
+
+  const handleGraphCanvasEdgeTypeQuickFixBridge = useCallback((
+    edge: { sourceId: string; targetId: string; context: string; relationships: string[] },
+    violation: EdgeTypeViolation,
+  ) => {
+    return actionRefs.current.handleEdgeTypeQuickFix(edge, violation);
+  }, []);
+
+  const handleGraphCanvasFixAllViolationsBridge = useCallback(() => {
+    return actionRefs.current.handleFixAllEdgeViolations();
   }, []);
 
   const handleGraphCanvasEdgeClickBridge = useCallback((edge: GraphCanvasEdgeClickPayload) => {
@@ -406,6 +429,8 @@ export function useGraphCanvasSurfaceActions({
     handleGraphCanvasEdgeDoubleClick: handleGraphCanvasEdgeDoubleClickBridge,
     setEdgeToolbarState: setEdgeToolbar,
     persistEdgeToolbar: handleGraphCanvasPersistEdgeToolbar,
+    quickFixEdge: handleGraphCanvasEdgeTypeQuickFixBridge,
+    fixAllEdgeViolations: handleGraphCanvasFixAllViolationsBridge,
     handleDeleteEdge: handleGraphCanvasDeleteEdgeBridge,
     onNodeClick: handleGraphCanvasOverlayNodeClickBridge,
     onNodeDoubleClick: handleGraphCanvasOverlayNodeDoubleClickBridge,
@@ -445,6 +470,8 @@ export function useGraphCanvasSurfaceActions({
     handleGraphCanvasOverlayNodeDoubleClickBridge,
     handleGraphCanvasOverlayNodePointerDownBridge,
     handleGraphCanvasPersistEdgeToolbar,
+    handleGraphCanvasEdgeTypeQuickFixBridge,
+    handleGraphCanvasFixAllViolationsBridge,
     handleBringNodeToFrontBridge,
     handleSendNodeToBackBridge,
     setEdgeToolbar,

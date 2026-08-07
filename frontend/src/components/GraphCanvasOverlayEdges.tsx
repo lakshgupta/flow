@@ -1,6 +1,9 @@
 import { getSmoothStepPath } from "@xyflow/react";
 
 import {
+  edgeTypeFixLabel,
+  graphCanvasEdgeViolationSeverity,
+  graphCanvasEdgeViolations,
   graphCanvasEdgeVisualState,
   isEditableGraphCanvasEdge,
   pickBestEdgePorts,
@@ -16,6 +19,7 @@ export function GraphCanvasOverlayEdges({
 }: GraphCanvasOverlayEdgesProps) {
   const {
     edges,
+    edgeViolations,
     graphCanvasNodes,
     rfViewport,
     selectedCanvasNodeId,
@@ -30,6 +34,7 @@ export function GraphCanvasOverlayEdges({
     clearHoveredEdgeTooltip,
     handleGraphCanvasEdgeDoubleClick,
     handleDeleteEdge,
+    quickFixEdge,
   } = controller.actions;
 
   return (
@@ -52,6 +57,12 @@ export function GraphCanvasOverlayEdges({
             <marker id="graph-canvas-arrow-dim" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
               <path d="M 0 0 L 10 3.5 L 0 7 Z" fill="var(--graph-edge-dim)" />
             </marker>
+            <marker id="graph-canvas-arrow-error" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
+              <path d="M 0 0 L 10 3.5 L 0 7 Z" fill="var(--destructive)" />
+            </marker>
+            <marker id="graph-canvas-arrow-warn" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
+              <path d="M 0 0 L 10 3.5 L 0 7 Z" fill="var(--warn)" />
+            </marker>
             <filter id="graph-canvas-edge-glow" x="-40%" y="-40%" width="180%" height="180%">
               <feGaussianBlur stdDeviation="2.4" result="blur" />
               <feMerge>
@@ -66,7 +77,12 @@ export function GraphCanvasOverlayEdges({
               const targetNode = graphCanvasNodes.find((node) => node.id === edge.target);
               if (!sourceNode || !targetNode) return null;
 
-              const visual = graphCanvasEdgeVisualState(edge, selectedCanvasNodeId, selectedEdgeId);
+              const visual = graphCanvasEdgeVisualState(
+                edge,
+                selectedCanvasNodeId,
+                selectedEdgeId,
+                graphCanvasEdgeViolationSeverity(edge, edgeViolations),
+              );
               const isEditableEdge = isEditableGraphCanvasEdge(edge);
               const ports = pickBestEdgePorts(sourceNode, targetNode);
               const [edgePath, labelX, labelY] = getSmoothStepPath({ ...ports, borderRadius: 8 });
@@ -155,6 +171,55 @@ export function GraphCanvasOverlayEdges({
           </g>
         </svg>
       )}
+      {edges.map((edge) => {
+        const matchedViolations = graphCanvasEdgeViolations(edge, edgeViolations);
+        if (matchedViolations.length === 0 || !isEditableGraphCanvasEdge(edge)) {
+          return null;
+        }
+
+        const sourceNode = graphCanvasNodes.find((node) => node.id === edge.source);
+        const targetNode = graphCanvasNodes.find((node) => node.id === edge.target);
+        if (!sourceNode || !targetNode) {
+          return null;
+        }
+
+        const primary = matchedViolations.find((violation) => violation.severity === "error") ?? matchedViolations[0];
+        const ports = pickBestEdgePorts(sourceNode, targetNode);
+        const [, labelX, labelY] = getSmoothStepPath({ ...ports, borderRadius: 8 });
+        const fixLabel = edgeTypeFixLabel(primary);
+
+        return (
+          <button
+            key={`quickfix:${edge.id}`}
+            type="button"
+            className={[
+              "graph-canvas-quickfix",
+              primary.severity === "error" ? "graph-canvas-quickfix-error" : "graph-canvas-quickfix-warn",
+            ].join(" ")}
+            style={{
+              left: labelX * rfViewport.zoom + rfViewport.x,
+              top: labelY * rfViewport.zoom + rfViewport.y,
+            }}
+            title={primary.message}
+            aria-label={`Quick fix: ${primary.message}`}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              void quickFixEdge(
+                {
+                  sourceId: edge.source,
+                  targetId: edge.target,
+                  context: edge.context ?? "",
+                  relationships: edge.relationships ?? [],
+                },
+                primary,
+              );
+            }}
+          >
+            {fixLabel === "" ? "Remove tag" : `→ ${fixLabel}`}
+          </button>
+        );
+      })}
       {hoveredEdgeTooltip !== null && (
         <div
           className="graph-edge-hover-tooltip"
