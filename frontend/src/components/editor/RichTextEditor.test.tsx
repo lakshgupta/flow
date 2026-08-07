@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { RichTextEditor } from './RichTextEditor'
+import { DOC_CHANGE_EMIT_DELAY_MS, RichTextEditor } from './RichTextEditor'
 import { editorHTMLToMarkdown } from '../../richText'
 
 vi.mock('@/components/ui/calendar', () => ({
@@ -133,6 +133,8 @@ describe('RichTextEditor', () => {
   })
 
   afterEach(() => {
+    // Restore real timers even if a test that enabled fake timers failed partway.
+    vi.useRealTimers()
     vi.clearAllMocks()
   })
 
@@ -150,8 +152,12 @@ describe('RichTextEditor', () => {
 
     mockSetContent.mockClear()
 
+    // The doc→onChange emission is trailing-debounced to keep typing smooth;
+    // advance past the coalescing window to flush the pending emit.
+    vi.useFakeTimers()
     act(() => {
       capturedDocChange?.()
+      vi.advanceTimersByTime(DOC_CHANGE_EMIT_DELAY_MS)
     })
 
     expect(handleChange).toHaveBeenCalledTimes(1)
@@ -164,6 +170,7 @@ describe('RichTextEditor', () => {
         value={emittedMarkdown}
       />,
     )
+    vi.useRealTimers()
 
     expect(mockSetContent).not.toHaveBeenCalled()
   })

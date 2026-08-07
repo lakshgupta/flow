@@ -101,6 +101,15 @@ export interface RichTextEditorHandle {
   getMarkdown: () => string
 }
 
+/**
+ * Trailing window for coalescing the doc→markdown→onChange emission while
+ * typing. ProseKit fires a doc change per transaction; serializing the whole
+ * document and re-rendering the app on every keystroke causes typing jank on
+ * larger documents. Saves never depend on this callback — flush paths read
+ * getMarkdown() (live) — so a short delay is safe.
+ */
+export const DOC_CHANGE_EMIT_DELAY_MS = 100
+
 function clampSelectionPosition(position: number | undefined, docSize: number): number {
   if (typeof position !== 'number' || Number.isFinite(position) === false) {
     return 1
@@ -166,6 +175,45 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // only run once — external value updates handled via useEffect below
 
+  const emitTimerRef = useRef<number | null>(null)
+
+  const cancelPendingEmit = useCallback(() => {
+    if (emitTimerRef.current !== null) {
+      window.clearTimeout(emitTimerRef.current)
+      emitTimerRef.current = null
+    }
+  }, [])
+
+  const flushPendingEmit = useCallback(() => {
+    cancelPendingEmit()
+    if (isSettingRef.current) {
+      // The pending change came from a programmatic content push; suppress it
+      // the same way the synchronous path used to.
+      isSettingRef.current = false
+      return
+    }
+    const html = editor.getDocHTML()
+    const markdown = editorHTMLToMarkdown(html)
+    lastEmittedRef.current = markdown
+    onChange(markdown)
+  }, [cancelPendingEmit, editor, onChange])
+
+  const handleDocChange = useCallback(() => {
+    if (isSettingRef.current) {
+      isSettingRef.current = false
+      return
+    }
+    if (emitTimerRef.current !== null) {
+      return // a trailing emit is already scheduled; it will serialize the latest doc
+    }
+    emitTimerRef.current = window.setTimeout(flushPendingEmit, DOC_CHANGE_EMIT_DELAY_MS)
+  }, [flushPendingEmit])
+
+  // Cancel any pending emit on unmount. Navigation flush paths already read
+  // getMarkdown() (which also cancels) before switching documents, so a
+  // deferred onChange can never fire against a different document.
+  useEffect(() => () => { cancelPendingEmit() }, [cancelPendingEmit])
+
   // When the parent supplies a new markdown value (e.g. switching documents),
   // push it into the editor without triggering our onChange.
   useEffect(() => {
@@ -176,9 +224,22 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
       return
     }
 
+    // If the user has un-emitted local edits, they win over this incoming
+    // value: setContent would clobber live typing, and the pending emit will
+    // reconcile the parent shortly (the emitted markdown becomes the echoed
+    // value and this effect then skips). This also guards against a delayed
+    // echo of a previous emit being treated as an external push.
+    if (emitTimerRef.current !== null) {
+      return
+    }
+
     lastRenderedHTMLRef.current = renderedHTML
     lastSyncedInlineReferencesKeyRef.current = inlineReferenceRenderKey
     lastEmittedRef.current = value
+    // Drop any pending user emit before replacing the document: the push is
+    // authoritative, and emitting after it would re-arm an autosave for stale
+    // content.
+    cancelPendingEmit()
     const currentSelection = editor.view?.state.selection
     isSettingRef.current = true
     editor.setContent(renderedHTML || '<p></p>')
@@ -190,7 +251,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
       const head = clampSelectionPosition(currentSelection.head, docSize)
       nextView.dispatch(nextView.state.tr.setSelection(TextSelection.create(nextView.state.doc, anchor, head)))
     }
-  }, [editor, inlineReferenceRenderKey, renderedHTML, value])
+  }, [cancelPendingEmit, editor, inlineReferenceRenderKey, renderedHTML, value])
 
   // Scroll to a heading by its slug when requested by the parent (e.g. TOC click).
   useEffect(() => {
@@ -208,17 +269,6 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
       }
     }
   }, [scrollToHeadingSlug, editor, onScrollCompleted])
-
-  const handleDocChange = useCallback(() => {
-    if (isSettingRef.current) {
-      isSettingRef.current = false
-      return
-    }
-    const html = editor.getDocHTML()
-    const markdown = editorHTMLToMarkdown(html)
-    lastEmittedRef.current = markdown
-    onChange(markdown)
-  }, [editor, onChange])
 
   const positionAssetToolbar = useCallback((anchor: HTMLAnchorElement, href: string, name: string) => {
     const container = editorContainerRef.current
@@ -643,8 +693,14 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
   }
 
   useImperativeHandle(ref, () => ({
-    getMarkdown: () => editorHTMLToMarkdown(editor.getDocHTML()),
-  }), [editor])
+    getMarkdown: () => {
+      // The caller (a flush/navigation path) is about to persist the live
+      // document, so the deferred onChange must not fire later against a
+      // different document.
+      cancelPendingEmit()
+      return editorHTMLToMarkdown(editor.getDocHTML())
+    },
+  }), [cancelPendingEmit, editor])
 
   return (
     <ProseKit editor={editor}>
