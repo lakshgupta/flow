@@ -28,6 +28,12 @@ const mockInsertText = vi.fn()
 const mockDispatch = vi.fn()
 const mockPosAtCoords = vi.fn<(...args: any[]) => { pos: number } | null>(() => ({ pos: 1 }))
 const mockSetSelection = vi.fn(() => 'transaction')
+// vi.mock factories are hoisted above top-level statements, so shared mocks
+// referenced inside them must be created via vi.hoisted.
+const { mockNear } = vi.hoisted(() => ({
+  mockNear: vi.fn(() => ({ from: 1 })),
+}))
+let mockDocResolveParentIsTextblock = true
 let capturedDocChange: (() => void) | null = null
 let mockEditorViewDOMHTML = ''
 let latestMockEditorState: { doc: { content?: { size?: number } }; selection?: { anchor: number; head: number }; tr: { setSelection: typeof mockSetSelection } } | null = null
@@ -40,6 +46,7 @@ vi.mock('prosekit/pm/state', async (importOriginal) => {
     TextSelection: {
       ...actual.TextSelection,
       create: vi.fn(() => 'selection'),
+      near: mockNear,
     },
   }
 })
@@ -77,7 +84,10 @@ vi.mock('prosekit/core', async (importOriginal) => {
       const dom = document.createElement('div')
       dom.innerHTML = mockEditorViewDOMHTML
         const state = {
-          doc: { content: { size: 12 } },
+          doc: {
+            content: { size: 12 },
+            resolve: vi.fn(() => ({ parent: { isTextblock: mockDocResolveParentIsTextblock } })),
+          },
           selection: { anchor: 1, head: 1 },
           tr: {
             setSelection: mockSetSelection,
@@ -130,6 +140,9 @@ describe('RichTextEditor', () => {
     mockPosAtCoords.mockReturnValue({ pos: 1 })
     mockSetSelection.mockReset()
     mockSetSelection.mockReturnValue('transaction')
+    mockNear.mockReset()
+    mockNear.mockReturnValue({ from: 1 })
+    mockDocResolveParentIsTextblock = true
   })
 
   afterEach(() => {
@@ -360,6 +373,33 @@ describe('RichTextEditor', () => {
     })
 
     expect(mockSetSelection).toHaveBeenCalled()
+    expect(mockDispatch).toHaveBeenCalledWith('transaction')
+  })
+
+  it('snaps the caret to a valid text position when pointer coordinates resolve to a non-inline boundary', () => {
+    // posAtCoords reports the doc-start boundary (position 0) — e.g. jsdom,
+    // which has no layout, or a click on the very first pixel of the editor.
+    // A caret on a boundary is not inside inline content, so the next
+    // keystroke would land in the wrong block; it must be snapped via near().
+    mockPosAtCoords.mockReturnValue({ pos: 0 })
+    mockDocResolveParentIsTextblock = false
+
+    render(
+      <RichTextEditor
+        ariaLabel="Document body editor"
+        onChange={vi.fn()}
+        value=""
+      />,
+    )
+
+    fireEvent.pointerDown(screen.getByLabelText('Document body editor'), {
+      button: 0,
+      clientX: 4,
+      clientY: 4,
+    })
+
+    expect(mockNear).toHaveBeenCalledWith(expect.objectContaining({ parent: { isTextblock: false } }), 1)
+    expect(mockSetSelection).toHaveBeenCalledWith('selection')
     expect(mockDispatch).toHaveBeenCalledWith('transaction')
   })
 

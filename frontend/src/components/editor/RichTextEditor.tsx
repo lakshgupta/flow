@@ -394,7 +394,21 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
       ? view.state.doc.content.size
       : 0
     const selectionPos = coords?.pos ?? fallbackPos
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, selectionPos)))
+    // posAtCoords can report a boundary position (e.g. the doc start/end or a
+    // block edge) that is not inside inline content — notably in jsdom where
+    // there is no layout, but also for clicks on the very first/last pixel of
+    // the editor. TextSelection.create would warn ("endpoint not pointing into
+    // a node with inline content") and leave the caret on a boundary where the
+    // next keystroke lands in the wrong block. Snap to the nearest valid text
+    // position instead. (ProseMirror's own click handler snaps via near() too;
+    // this capture-phase dispatch runs first, so it must not leave an invalid
+    // selection behind.)
+    const clampedPos = clampSelectionPosition(selectionPos, view.state.doc.content.size)
+    const resolved = view.state.doc.resolve(clampedPos)
+    const caretPos = resolved.parent.isTextblock
+      ? clampedPos
+      : TextSelection.near(resolved, 1).from
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, caretPos)))
 
     if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
       window.requestAnimationFrame(() => view.focus())
