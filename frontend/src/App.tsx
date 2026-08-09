@@ -46,7 +46,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "./components/ui/s
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./components/ui/tooltip";
 import { requestJSON, deregisterLocalWorkspace, loadCalendarDocuments, loadGraphValidation, loadWorkspaceSnapshot, selectWorkspace, uploadGraphFiles } from "./lib/api";
-import { getWailsCreateGraph, getWailsDeleteGraph, getWailsRenameGraph, getWailsUpdateGraphCanvasDisabled, getWailsUpdateGraphColor } from "./lib/imageUploader";
+import { getWailsCreate, getWailsCreateGraph, getWailsDelete, getWailsDeleteGraph, getWailsMerge, getWailsRenameGraph, getWailsUpdate, getWailsUpdateGraphCanvasDisabled, getWailsUpdateGraphColor, getWailsUpdateHome, type WailsUpdateDocumentPatch } from "./lib/imageUploader";
 import { useGraphCanvasSurfaceActions } from "./hooks/useGraphCanvasSurfaceActions";
 import { useHomeSurfaceActions } from "./hooks/useHomeSurfaceActions";
 import { useRightRailDocumentActions } from "./hooks/useRightRailDocumentActions";
@@ -1422,10 +1422,15 @@ function FlowApp() {
     }
 
     try {
-      const updatedDocument = await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(nodeId)}`, {
-        method: "PUT",
-        body: JSON.stringify({ description: nextDescription }),
-      });
+      // In the desktop app, document updates bypass the HTTP layer and call the
+      // Wails binding directly (same shape as the HTTP response).
+      const wailsUpdate = getWailsUpdate();
+      const updatedDocument = wailsUpdate !== null
+        ? await wailsUpdate({ documentID: nodeId, patch: { description: nextDescription } })
+        : await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(nodeId)}`, {
+            method: "PUT",
+            body: JSON.stringify({ description: nextDescription }),
+          });
 
       setGraphCanvasData((current) => {
         if (current === null) {
@@ -3086,10 +3091,15 @@ function FlowApp() {
     try {
       clearMutationFeedback();
       const colorValue = colorId ?? "";
-      const updatedDocument = await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(nodeId)}`, {
-        method: "PUT",
-        body: JSON.stringify({ color: colorValue }),
-      });
+      // In the desktop app, node color updates bypass the HTTP layer and call
+      // the Wails binding directly.
+      const wailsUpdate = getWailsUpdate();
+      const updatedDocument = wailsUpdate !== null
+        ? await wailsUpdate({ documentID: nodeId, patch: { color: colorValue } })
+        : await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(nodeId)}`, {
+            method: "PUT",
+            body: JSON.stringify({ color: colorValue }),
+          });
 
       if (selectedDocumentRef.current?.id === updatedDocument.id) {
         syncSelectedDocumentState(updatedDocument, { preserveFormState: false });
@@ -3180,10 +3190,15 @@ function FlowApp() {
       clearMutationFeedback();
       await flushPendingActiveEditorSave();
 
-      const updatedDocument = await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(file.id)}`, {
-        method: "PUT",
-        body: JSON.stringify({ graph: targetGraphPath }),
-      });
+      // In the desktop app, node moves bypass the HTTP layer and call the
+      // Wails binding directly.
+      const wailsUpdate = getWailsUpdate();
+      const updatedDocument = wailsUpdate !== null
+        ? await wailsUpdate({ documentID: file.id, patch: { graph: targetGraphPath } })
+        : await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(file.id)}`, {
+            method: "PUT",
+            body: JSON.stringify({ graph: targetGraphPath }),
+          });
 
       if (selectedDocumentId === updatedDocument.id) {
         await refreshShellViews({ nextDocument: updatedDocument, nextDocumentId: updatedDocument.id });
@@ -3266,10 +3281,15 @@ function FlowApp() {
     try {
       setGraphCreatePendingType(type);
       setGraphCreateError("");
-      const createdDocument = await requestJSON<DocumentResponse>("/api/documents", {
-        method: "POST",
-        body: JSON.stringify(createGraphDocumentPayload(type, graphPath, trimmed)),
-      });
+      // In the desktop app, node creation bypasses the HTTP layer and calls the
+      // Wails binding directly, which returns the same DocumentResponse shape.
+      const wailsCreate = getWailsCreate();
+      const createdDocument = wailsCreate !== null
+        ? await wailsCreate(createGraphDocumentPayload(type, graphPath, trimmed))
+        : await requestJSON<DocumentResponse>("/api/documents", {
+            method: "POST",
+            body: JSON.stringify(createGraphDocumentPayload(type, graphPath, trimmed)),
+          });
       setSelectedDocumentOpenMode("right-rail");
       setRightPanelTab("document");
       setRightRailCollapsed(false);
@@ -3353,10 +3373,15 @@ function FlowApp() {
         setMutationSuccess(`Graph renamed to ${trimmed}.`);
         setLastSaveAt(Date.now());
       } else {
-        const updatedDocument = await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(renameDialog.documentId)}`, {
-          method: "PUT",
-          body: JSON.stringify({ fileName: trimmed }),
-        });
+        // In the desktop app, file renames go through the Wails UpdateDocument
+        // binding (a fileName patch) instead of the HTTP layer.
+        const wailsUpdate = getWailsUpdate();
+        const updatedDocument = wailsUpdate !== null
+          ? await wailsUpdate({ documentID: renameDialog.documentId, patch: { fileName: trimmed } })
+          : await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(renameDialog.documentId)}`, {
+              method: "PUT",
+              body: JSON.stringify({ fileName: trimmed }),
+            });
 
         setRenameDialog(null);
         if (selectedDocumentId === updatedDocument.id) {
@@ -3603,11 +3628,18 @@ function FlowApp() {
         payload.color = state.color;
 
         const payloadJSON = JSON.stringify(payload);
-        const updatedDocument = await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(doc.id)}`, {
-          method: "PUT",
-          ...(keepalive && new Blob([payloadJSON]).size <= KEEPALIVE_MAX_BODY_BYTES ? { keepalive: true } : {}),
-          body: payloadJSON,
-        });
+        // In the desktop app, autosaves bypass the HTTP layer and call the
+        // Wails UpdateDocument binding directly. The unload flush (keepalive)
+        // intentionally stays on HTTP: keepalive fetches are designed to
+        // survive page teardown, which a Go-JS binding call cannot guarantee.
+        const wailsUpdate = getWailsUpdate();
+        const updatedDocument = wailsUpdate !== null && !keepalive
+          ? await wailsUpdate({ documentID: doc.id, patch: payload as WailsUpdateDocumentPatch })
+          : await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(doc.id)}`, {
+              method: "PUT",
+              ...(keepalive && new Blob([payloadJSON]).size <= KEEPALIVE_MAX_BODY_BYTES ? { keepalive: true } : {}),
+              body: payloadJSON,
+            });
 
         if (selectedDocumentRef.current?.id === updatedDocument.id) {
           syncSelectedDocumentState(updatedDocument, { preserveFormState: true });
@@ -3649,16 +3681,23 @@ function FlowApp() {
       setHomeMutationError("");
 
       try {
-        const payloadJSON = JSON.stringify({
+        const homePayload = {
           title: state.title,
           description: state.description,
           body: normalizeHomeBodyForSave(state.body),
-        });
-        const updatedHome = await requestJSON<HomeResponse>("/api/home", {
-          method: "PUT",
-          ...(keepalive && new Blob([payloadJSON]).size <= KEEPALIVE_MAX_BODY_BYTES ? { keepalive: true } : {}),
-          body: payloadJSON,
-        });
+        };
+        const payloadJSON = JSON.stringify(homePayload);
+        // In the desktop app, home saves bypass the HTTP layer and call the
+        // Wails UpdateHome binding directly. The unload flush (keepalive)
+        // intentionally stays on HTTP for the same reason as document saves.
+        const wailsUpdateHome = getWailsUpdateHome();
+        const updatedHome = wailsUpdateHome !== null && !keepalive
+          ? await wailsUpdateHome(homePayload)
+          : await requestJSON<HomeResponse>("/api/home", {
+              method: "PUT",
+              ...(keepalive && new Blob([payloadJSON]).size <= KEEPALIVE_MAX_BODY_BYTES ? { keepalive: true } : {}),
+              body: payloadJSON,
+            });
 
         setGraphTree((current) => (current === null ? current : { ...current, home: updatedHome }));
         setLastSaveAt(Date.now());
@@ -3976,11 +4015,16 @@ function FlowApp() {
     if (shiftSelectedNodes.length < 2) return;
     try {
       clearMutationFeedback();
-      const mergedDocument = await requestJSON<DocumentResponse>("/api/documents/merge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ documentIds: shiftSelectedNodes }),
-      });
+      // In the desktop app, merges bypass the HTTP layer and call the Wails
+      // binding directly, which returns the same DocumentResponse shape.
+      const wailsMerge = getWailsMerge();
+      const mergedDocument = wailsMerge !== null
+        ? await wailsMerge({ documentIds: shiftSelectedNodes })
+        : await requestJSON<DocumentResponse>("/api/documents/merge", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ documentIds: shiftSelectedNodes }),
+          });
       const snapshot = await loadWorkspaceSnapshot();
       setGraphTree(snapshot.graphTreeData);
       setShiftSelectedNodes([]);
@@ -3996,7 +4040,7 @@ function FlowApp() {
     }
   }
 
-  async function handleDeleteDocument(): Promise<void> {
+  async function handleDeleteDocument(force = false): Promise<void> {
     if (deleteDialogTarget === null) {
       return;
     }
@@ -4005,9 +4049,21 @@ function FlowApp() {
       setDeletingDocument(true);
       clearMutationFeedback();
 
-      const response = await requestJSON<DeleteDocumentResponse>(`/api/documents/${encodeURIComponent(deleteDialogTarget.id)}`, {
-        method: "DELETE",
-      });
+      // In the desktop app, deletes bypass the HTTP layer and call the Wails
+      // binding directly (mirroring how image uploads work). The binding
+      // returns the stripped-referencer paths in the same shape as the HTTP
+      // response, so normalize it into DeleteDocumentResponse.
+      const wailsDelete = getWailsDelete();
+      let response: DeleteDocumentResponse;
+      if (wailsDelete !== null) {
+        const wailsResult = await wailsDelete({ documentID: deleteDialogTarget.id, force });
+        response = { deleted: true, id: deleteDialogTarget.id, path: wailsResult.path, strippedReferences: wailsResult.strippedReferences };
+      } else {
+        response = await requestJSON<DeleteDocumentResponse>(`/api/documents/${encodeURIComponent(deleteDialogTarget.id)}`, {
+          method: "DELETE",
+          ...(force ? { body: JSON.stringify({ force: true }) } : {}),
+        });
+      }
 
       const deletedSelectedDocument = selectedDocumentId === deleteDialogTarget.id;
       if (documentThreadRef.current.some((entry) => entry.documentId === deleteDialogTarget.id)) {
@@ -4021,7 +4077,12 @@ function FlowApp() {
       } else {
         await refreshShellViews();
       }
-      setMutationSuccess(`${formatDocumentType(deleteDialogTarget.type)} deleted from ${response.path}.`);
+      const strippedFrom = response.strippedReferences ?? [];
+      setMutationSuccess(force && strippedFrom.length > 0
+        ? `${formatDocumentType(deleteDialogTarget.type)} deleted; dangling references stripped from ${strippedFrom.map((refPath) => refPath.split("/").pop()).join(", ")}.`
+        : force
+          ? `${formatDocumentType(deleteDialogTarget.type)} deleted; dangling references stripped from referencers.`
+          : `${formatDocumentType(deleteDialogTarget.type)} deleted from ${response.path}.`);
     } catch (mutationFailure) {
       setMutationError(toErrorMessage(mutationFailure));
     } finally {
@@ -4339,13 +4400,19 @@ function FlowApp() {
     void deleteDocumentDialogActionRefs.current.handleDeleteDocument();
   }, []);
 
+  const handleDeleteDocumentDialogConfirmForce = useCallback(() => {
+    void deleteDocumentDialogActionRefs.current.handleDeleteDocument(true);
+  }, []);
+
   const deleteDocumentDialogActions = useMemo(() => ({
     setOpen: handleDeleteDocumentDialogOpenChange,
     cancel: handleDeleteDocumentDialogCancel,
     confirm: handleDeleteDocumentDialogConfirm,
+    confirmForce: handleDeleteDocumentDialogConfirmForce,
   }), [
     handleDeleteDocumentDialogCancel,
     handleDeleteDocumentDialogConfirm,
+    handleDeleteDocumentDialogConfirmForce,
     handleDeleteDocumentDialogOpenChange,
   ]);
 

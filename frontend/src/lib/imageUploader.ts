@@ -1,5 +1,7 @@
 import type { Uploader } from 'prosekit/extensions/file'
 
+import type { CreateDocumentPayload, DocumentResponse, HomeResponse, NodeLink } from '../types'
+
 const CHUNK_SIZE = 0x8000 // 32 KB — stays under the call stack limit
 
 /**
@@ -62,6 +64,95 @@ export interface WailsGraphFileNoteResponse {
   fileName: string
 }
 
+export interface WailsDeleteDocumentRequest {
+  documentID: string
+  force?: boolean
+}
+
+export interface WailsDeleteDocumentResult {
+  path: string
+  strippedReferences?: string[]
+}
+
+/**
+ * Access the Wails Go binding for the App.DeleteDocument method. Returns null
+ * when the frontend is not running inside a Wails v2 webview. In the desktop
+ * app deletes bypass the HTTP layer and call the Go binding directly, which
+ * carries the stripped-referencer paths back to the frontend.
+ */
+export function getWailsDelete(): ((request: WailsDeleteDocumentRequest) => Promise<WailsDeleteDocumentResult>) | null {
+  const app = getWailsApp()
+  const del = app?.DeleteDocument as ((request: WailsDeleteDocumentRequest) => Promise<WailsDeleteDocumentResult>) | undefined
+  return del ?? null
+}
+
+/**
+ * Access the Wails Go binding for the App.CreateDocument method. Returns null
+ * when the frontend is not running inside a Wails v2 webview. In the desktop
+ * app node creation bypasses the HTTP layer and calls the Go binding directly,
+ * which returns the full document view-model in the same JSON shape as the
+ * HTTP API response.
+ */
+export function getWailsCreate(): ((request: CreateDocumentPayload) => Promise<DocumentResponse>) | null {
+  const app = getWailsApp()
+  const create = app?.CreateDocument as ((request: CreateDocumentPayload) => Promise<DocumentResponse>) | undefined
+  return create ?? null
+}
+
+/**
+ * Mirror of the HTTP update payload keys, used by the App.UpdateDocument Wails
+ * binding. All fields are optional; the Go side applies only the ones present.
+ */
+export type WailsUpdateDocumentPatch = {
+  id?: string
+  graph?: string
+  fileName?: string
+  title?: string
+  description?: string
+  tags?: string[]
+  createdAt?: string
+  updatedAt?: string
+  body?: string
+  status?: string
+  links?: NodeLink[]
+  name?: string
+  env?: Record<string, string>
+  run?: string
+  color?: string
+}
+
+export interface WailsUpdateDocumentRequest {
+  documentID: string
+  patch: WailsUpdateDocumentPatch
+}
+
+/**
+ * Access the Wails Go binding for the App.UpdateDocument method. Returns null
+ * when the frontend is not running inside a Wails v2 webview. Used by rename
+ * (and potentially autosave) mutations in the desktop app.
+ */
+export function getWailsUpdate(): ((request: WailsUpdateDocumentRequest) => Promise<DocumentResponse>) | null {
+  const app = getWailsApp()
+  const update = app?.UpdateDocument as ((request: WailsUpdateDocumentRequest) => Promise<DocumentResponse>) | undefined
+  return update ?? null
+}
+
+export interface WailsMergeDocumentsRequest {
+  documentIds: string[]
+}
+
+/**
+ * Access the Wails Go binding for the App.MergeDocuments method. Returns null
+ * when the frontend is not running inside a Wails v2 webview. The binding
+ * returns the merged document view-model in the same shape as the HTTP merge
+ * response.
+ */
+export function getWailsMerge(): ((request: WailsMergeDocumentsRequest) => Promise<DocumentResponse>) | null {
+  const app = getWailsApp()
+  const merge = app?.MergeDocuments as ((request: WailsMergeDocumentsRequest) => Promise<DocumentResponse>) | undefined
+  return merge ?? null
+}
+
 export interface WailsRenameGraphRequest {
   currentName: string
   nextName: string
@@ -79,6 +170,24 @@ export function getWailsRenameGraph(): ((request: WailsRenameGraphRequest) => Pr
   const app = getWailsApp()
   const rename = app?.RenameGraph as ((request: WailsRenameGraphRequest) => Promise<WailsRenameGraphResult>) | undefined
   return rename ?? null
+}
+
+export interface WailsUpdateHomeRequest {
+  title: string
+  description: string
+  body: string
+}
+
+/**
+ * Access the Wails Go binding for the App.UpdateHome method. Returns null when
+ * the frontend is not running inside a Wails v2 webview. The binding returns
+ * the reloaded home view-model in the same shape as the HTTP update-home
+ * response.
+ */
+export function getWailsUpdateHome(): ((request: WailsUpdateHomeRequest) => Promise<HomeResponse>) | null {
+  const app = getWailsApp()
+  const update = app?.UpdateHome as ((request: WailsUpdateHomeRequest) => Promise<HomeResponse>) | undefined
+  return update ?? null
 }
 
 export interface WailsCreateGraphRequest {

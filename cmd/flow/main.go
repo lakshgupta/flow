@@ -332,7 +332,10 @@ func writeUpdateHelp(w io.Writer) {
 }
 
 func writeDeleteHelp(w io.Writer) {
-	fmt.Fprintln(w, "Usage: flow delete --path <relative-path>")
+	fmt.Fprintln(w, "Usage: flow delete --path <relative-path> [--force]")
+	fmt.Fprintln(w, "Options:")
+	fmt.Fprintln(w, "  --path <relative-path>   document path relative to .flow")
+	fmt.Fprintln(w, "  --force                  strip dangling [[...]] references from referencers and delete anyway")
 }
 
 func writeNodeHelp(w io.Writer) {
@@ -1205,6 +1208,7 @@ func runDelete(global bool, args []string, env commandEnv) error {
 	}
 
 	pathValue := flagSet.String("path", "", "document path relative to .flow")
+	force := flagSet.Bool("force", false, "strip dangling [[...]] references from referencers and delete anyway")
 	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeDeleteHelp)
 	if err != nil {
 		return err
@@ -1222,12 +1226,26 @@ func runDelete(global bool, args []string, env commandEnv) error {
 		return err
 	}
 
-	relativePath, err := workspace.DeleteDocumentByPath(root, *pathValue)
+	var relativePath string
+	var strippedReferences []string
+	if *force {
+		relativePath, strippedReferences, err = workspace.ForceDeleteDocumentByPath(root, *pathValue)
+	} else {
+		relativePath, err = workspace.DeleteDocumentByPath(root, *pathValue)
+	}
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintf(env.stdout, "Deleted document at %s\n", relativePath)
+	if *force {
+		if len(strippedReferences) > 0 {
+			fmt.Fprintf(env.stdout, "Force deleted document at %s (stripped dangling references from %s)\n", relativePath, strings.Join(strippedReferences, ", "))
+		} else {
+			fmt.Fprintf(env.stdout, "Force deleted document at %s\n", relativePath)
+		}
+	} else {
+		fmt.Fprintf(env.stdout, "Deleted document at %s\n", relativePath)
+	}
 	return nil
 }
 

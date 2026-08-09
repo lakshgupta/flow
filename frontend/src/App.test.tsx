@@ -1821,6 +1821,347 @@ describe("App graph canvas flows", () => {
     });
   });
 
+  it("autosaves through the Wails UpdateDocument binding when running inside the desktop app", async () => {
+    const documentResponse = {
+      id: "note-1",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Overview",
+      description: "Execution overview",
+      path: "data/content/execution/overview.md",
+      tags: [],
+      body: "Overview body\n",
+      links: [],
+      relatedNoteIds: [],
+    };
+
+    const updatedDocumentResponse = {
+      ...documentResponse,
+      title: "Overview updated",
+    };
+
+    const wailsUpdate = vi.fn(async (_request: { documentID: string; patch: Record<string, unknown> }) => updatedDocumentResponse);
+    vi.stubGlobal("go", { desktop: { App: { UpdateDocument: wailsUpdate } } });
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/documents/note-1") {
+        return documentResponse;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Execution");
+    await expandSidebarGraph("Execution");
+
+    const fileButton = (await screen.findByText("overview.md")).closest('[data-sidebar="menu-sub-button"]');
+    if (fileButton === null) {
+      throw new Error("missing overview file button");
+    }
+
+    await user.click(fileButton);
+
+    const titleInput = await screen.findByRole("textbox", { name: "Document title" });
+
+    // Same idle-gap trigger as the HTTP autosave test: move the fake clock
+    // past the max autosave gap so the first edit saves immediately.
+    vi.useFakeTimers();
+    vi.setSystemTime(1_717_171_717_000 + 10_000);
+    await act(async () => {
+      fireEvent.change(titleInput, { target: { value: "Overview updated" } });
+    });
+
+    expect(wailsUpdate).toHaveBeenCalled();
+    const callArgs = wailsUpdate.mock.calls[0][0];
+    expect(callArgs.documentID).toBe("note-1");
+    expect(callArgs.patch).toMatchObject({ title: "Overview updated" });
+    expect(callArgs.patch.body).toContain("Overview body");
+
+    // Autosaves never hit the HTTP PUT endpoint in the desktop app.
+    const httpPut = fetchMock.mock.calls.some(([requestURL, requestInit]) => {
+      const urlString = typeof requestURL === "string" ? requestURL : requestURL instanceof URL ? requestURL.toString() : requestURL.url;
+      return urlString === "/api/documents/note-1" && (requestInit?.method ?? "GET") === "PUT";
+    });
+    expect(httpPut).toBe(false);
+  });
+
+  it("keeps the unload flush on HTTP with keepalive even when the Wails binding is present", async () => {
+    const documentResponse = {
+      id: "note-1",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Overview",
+      description: "Execution overview",
+      path: "data/content/execution/overview.md",
+      tags: [],
+      body: "Overview body\n",
+      links: [],
+      relatedNoteIds: [],
+    };
+
+    const wailsUpdate = vi.fn(async () => documentResponse);
+    vi.stubGlobal("go", { desktop: { App: { UpdateDocument: wailsUpdate } } });
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/documents/note-1") {
+        return documentResponse;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Execution");
+    await expandSidebarGraph("Execution");
+
+    const fileButton = (await screen.findByText("overview.md")).closest('[data-sidebar="menu-sub-button"]');
+    if (fileButton === null) {
+      throw new Error("missing overview file button");
+    }
+
+    await user.click(fileButton);
+
+    const titleInput = await screen.findByRole("textbox", { name: "Document title" });
+
+    // Edit with a pending debounce save, then fire the page-hide flush before
+    // the debounce elapses.
+    vi.useFakeTimers();
+    await act(async () => {
+      fireEvent.change(titleInput, { target: { value: "Overview updated" } });
+    });
+    await act(async () => {
+      fireEvent(window, new Event("pagehide"));
+    });
+
+    // The flush dispatches a keepalive fetch — a Go-JS binding call cannot
+    // survive page teardown, so this path deliberately stays on HTTP.
+    const keepalivePut = fetchMock.mock.calls.find(([requestURL, requestInit]) => {
+      const urlString = typeof requestURL === "string" ? requestURL : requestURL instanceof URL ? requestURL.toString() : requestURL.url;
+      return urlString === "/api/documents/note-1" && (requestInit?.method ?? "GET") === "PUT";
+    });
+    expect(keepalivePut).toBeDefined();
+    expect(keepalivePut?.[1]?.keepalive).toBe(true);
+    expect(wailsUpdate).not.toHaveBeenCalled();
+  });
+
+  it("saves home content through the Wails UpdateHome binding when running inside the desktop app", async () => {
+    const updatedHomeResponse = {
+      id: "home",
+      type: "home",
+      title: "Home",
+      description: "",
+      path: "data/home.md",
+      body: "# Local workspace home\n\nHello from home",
+    };
+    const wailsUpdateHome = vi.fn(async (_request: { title: string; description: string; body: string }) => updatedHomeResponse);
+    vi.stubGlobal("go", { desktop: { App: { UpdateHome: wailsUpdateHome } } });
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    const homeEditor = await screen.findByLabelText("Home body editor");
+    await user.click(homeEditor);
+    await user.type(homeEditor, "Hello from home");
+
+    await waitFor(() => {
+      expect(wailsUpdateHome).toHaveBeenCalled();
+    });
+    const callArgs = wailsUpdateHome.mock.calls[0][0];
+    expect(callArgs.body).toContain("Hello from home");
+
+    // Home saves never hit the HTTP PUT endpoint in the desktop app.
+    const httpPut = fetchMock.mock.calls.some(([requestURL, requestInit]) => {
+      const urlString = typeof requestURL === "string" ? requestURL : requestURL instanceof URL ? requestURL.toString() : requestURL.url;
+      return urlString === "/api/home" && (requestInit?.method ?? "GET") === "PUT";
+    });
+    expect(httpPut).toBe(false);
+  });
+
+  it("creates a graph through the Wails CreateGraph binding when running inside the desktop app", async () => {
+    const wailsCreateGraph = vi.fn(async () => ({ name: "execution/archived" }));
+    vi.stubGlobal("go", { desktop: { App: { CreateGraph: wailsCreateGraph } } });
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Execution");
+
+    await user.click(screen.getByRole("button", { name: "More actions for Execution" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Add subdirectory" }));
+    const subdirInput = await screen.findByLabelText("New subdirectory name");
+    await user.type(subdirInput, "archived");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(wailsCreateGraph).toHaveBeenCalledWith({ name: "execution/archived" });
+    });
+
+    // Graph creation never hits the HTTP API in the desktop app.
+    const httpCreate = fetchMock.mock.calls.some(([requestURL, requestInit]) => {
+      const urlString = typeof requestURL === "string" ? requestURL : requestURL instanceof URL ? requestURL.toString() : requestURL.url;
+      return urlString === "/api/graphs" && (requestInit?.method ?? "GET") === "POST";
+    });
+    expect(httpCreate).toBe(false);
+  });
+
+  it("deletes a graph through the Wails DeleteGraph binding when running inside the desktop app", async () => {
+    const wailsDeleteGraph = vi.fn(async () => ({ deleted: true, name: "execution" }));
+    vi.stubGlobal("go", { desktop: { App: { DeleteGraph: wailsDeleteGraph } } });
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Execution");
+
+    await user.click(screen.getByRole("button", { name: "More actions for Execution" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(wailsDeleteGraph).toHaveBeenCalledWith({ name: "execution" });
+    });
+
+    // Graph deletion never hits the HTTP API in the desktop app.
+    const httpDelete = fetchMock.mock.calls.some(([requestURL, requestInit]) => {
+      const urlString = typeof requestURL === "string" ? requestURL : requestURL instanceof URL ? requestURL.toString() : requestURL.url;
+      return urlString === "/api/graphs/execution" && (requestInit?.method ?? "GET") === "DELETE";
+    });
+    expect(httpDelete).toBe(false);
+  });
+
+  it("toggles the canvas view through the Wails binding when running inside the desktop app", async () => {
+    const wailsToggleCanvas = vi.fn(async () => ({ name: "execution", canvasDisabled: true }));
+    vi.stubGlobal("go", { desktop: { App: { UpdateGraphCanvasDisabled: wailsToggleCanvas } } });
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Execution");
+
+    await user.click(screen.getByRole("button", { name: "More actions for Execution" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Disable canvas view" }));
+
+    await waitFor(() => {
+      expect(wailsToggleCanvas).toHaveBeenCalledWith({ graphPath: "execution", disabled: true });
+    });
+
+    const httpToggle = fetchMock.mock.calls.some(([requestURL, requestInit]) => {
+      const urlString = typeof requestURL === "string" ? requestURL : requestURL instanceof URL ? requestURL.toString() : requestURL.url;
+      return urlString === "/api/graphs/execution/canvas-disabled" && (requestInit?.method ?? "GET") === "PUT";
+    });
+    expect(httpToggle).toBe(false);
+  });
+
+  it("sets a graph color through the Wails binding when running inside the desktop app", async () => {
+    const wailsSetGraphColor = vi.fn(async () => ({ name: "execution", color: "rose" }));
+    vi.stubGlobal("go", { desktop: { App: { UpdateGraphColor: wailsSetGraphColor } } });
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Execution");
+
+    await user.click(screen.getByRole("button", { name: "More actions for Execution" }));
+    await user.hover(await screen.findByRole("menuitem", { name: "Color" }));
+    // fireEvent.click instead of user.click: userEvent's pointer simulation does
+    // not propagate Radix radio-item selection inside a dropdown submenu in
+    // jsdom, so the value change never reaches onSetGraphColor.
+    const roseRadio = await screen.findByRole("menuitemradio", { name: "Rose" });
+    fireEvent.click(roseRadio);
+
+    await waitFor(() => {
+      expect(wailsSetGraphColor).toHaveBeenCalledWith({ graphPath: "execution", color: "rose" });
+    });
+
+    const httpColor = fetchMock.mock.calls.some(([requestURL, requestInit]) => {
+      const urlString = typeof requestURL === "string" ? requestURL : requestURL instanceof URL ? requestURL.toString() : requestURL.url;
+      return urlString === "/api/graphs/execution/color" && (requestInit?.method ?? "GET") === "PUT";
+    });
+    expect(httpColor).toBe(false);
+  });
+
   it("shows a header Saving… chip while autosaving and a Saved flash when it lands", async () => {
     const documentResponse = {
       id: "note-1",
@@ -3099,6 +3440,478 @@ describe("App graph canvas flows", () => {
     await waitFor(() => {
       expect(screen.queryByText(/cannot delete node "note-1"/)).not.toBeInTheDocument();
     });
+  });
+
+  it("force deletes a blocked node and strips dangling references", async () => {
+    let currentGraphTree = graphTreeResponse;
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return currentGraphTree;
+      }
+
+      if (url === "/api/documents/note-1" && (init?.method ?? "GET") === "DELETE") {
+        const parsedBody = init?.body == null ? null : JSON.parse(String(init.body));
+        if (parsedBody?.force === true) {
+          currentGraphTree = {
+            ...graphTreeResponse,
+            graphs: [
+              {
+                ...graphTreeResponse.graphs[0],
+                directCount: 0,
+                totalCount: 0,
+                countLabel: "0 direct / 0 total",
+                files: [],
+              },
+            ],
+          };
+          return { deleted: true, id: "note-1", path: "data/content/execution/overview.md", strippedReferences: ["data/content/notes/reference.md"] };
+        }
+
+        return jsonResponse({ error: "cannot delete node \"note-1\": it is referenced by \"Overview\" (data/content/execution/overview.md); remove or update the inline reference before deleting" }, { status: 400 });
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Execution");
+    await expandSidebarGraph("Execution");
+    await screen.findByText("overview.md");
+
+    await user.click(screen.getByRole("button", { name: "More actions for overview.md" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    expect(await screen.findByText("This removes Overview from the workspace.")).toBeInTheDocument();
+
+    // First attempt is blocked and the reason is shown in the dialog.
+    await user.click(screen.getByRole("button", { name: "Delete document" }));
+    await screen.findByText(/cannot delete node "note-1"/);
+    expect(screen.getByText(/referenced by/)).toBeInTheDocument();
+
+    // The force delete path sends {force: true} and succeeds.
+    await user.click(screen.getByRole("button", { name: "Force delete & strip references" }));
+
+    await waitFor(() => {
+      const forceCall = fetchMock.mock.calls.find(([requestURL, requestInit]) => {
+        const urlString = typeof requestURL === "string" ? requestURL : requestURL instanceof URL ? requestURL.toString() : requestURL.url;
+        const initBody = requestInit?.body == null ? null : String(requestInit.body);
+        return urlString === "/api/documents/note-1"
+          && (requestInit?.method ?? "GET") === "DELETE"
+          && initBody != null
+          && JSON.parse(initBody).force === true;
+      });
+      expect(forceCall).toBeDefined();
+    });
+
+    // The node is removed from the tree and the dialog closes.
+    await waitFor(() => {
+      expect(screen.queryByText("overview.md")).not.toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.queryByText(/Force delete & strip references/)).not.toBeInTheDocument();
+    });
+
+    // The success message names the document that was cleaned up.
+    await screen.findByText(/dangling references stripped from reference\.md/);
+  });
+
+  it("deletes through the Wails binding when running inside the desktop app", async () => {
+    let currentGraphTree = graphTreeResponse;
+    const wailsDelete = vi.fn(async (request: { documentID: string; force?: boolean }) => {
+      if (!request.force) {
+        throw new Error("cannot delete node \"note-1\": it is referenced by \"Overview\" (data/content/execution/overview.md); remove or update the inline reference before deleting");
+      }
+      currentGraphTree = {
+        ...graphTreeResponse,
+        graphs: [
+          {
+            ...graphTreeResponse.graphs[0],
+            directCount: 0,
+            totalCount: 0,
+            countLabel: "0 direct / 0 total",
+            files: [],
+          },
+        ],
+      };
+      return { path: "data/content/execution/overview.md", strippedReferences: ["data/content/notes/reference.md"] };
+    });
+    vi.stubGlobal("go", { desktop: { App: { DeleteDocument: wailsDelete } } });
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return currentGraphTree;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Execution");
+    await expandSidebarGraph("Execution");
+    await screen.findByText("overview.md");
+
+    await user.click(screen.getByRole("button", { name: "More actions for overview.md" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    expect(await screen.findByText("This removes Overview from the workspace.")).toBeInTheDocument();
+
+    // The first (non-force) call rejects with the blocking reason, shown in the dialog.
+    await user.click(screen.getByRole("button", { name: "Delete document" }));
+    await screen.findByText(/cannot delete node "note-1"/);
+    expect(screen.getByText(/referenced by/)).toBeInTheDocument();
+
+    // Force delete goes through the binding and names the stripped referencer.
+    await user.click(screen.getByRole("button", { name: "Force delete & strip references" }));
+
+    await waitFor(() => {
+      expect(wailsDelete).toHaveBeenCalledWith({ documentID: "note-1", force: true });
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("overview.md")).not.toBeInTheDocument();
+    });
+    await screen.findByText(/dangling references stripped from reference\.md/);
+
+    // Deletes never hit the HTTP API in the desktop app.
+    const httpDelete = fetchMock.mock.calls.some(([requestURL, requestInit]) => {
+      const urlString = typeof requestURL === "string" ? requestURL : requestURL instanceof URL ? requestURL.toString() : requestURL.url;
+      return urlString.startsWith("/api/documents/") && (requestInit?.method ?? "GET") === "DELETE";
+    });
+    expect(httpDelete).toBe(false);
+  });
+
+  it("creates a node through the Wails binding when running inside the desktop app", async () => {
+    const wailsCreate = vi.fn(async (request: { id: string; type: string; graph: string; fileName: string; title: string; featureSlug: string }) => ({
+      id: request.id,
+      type: request.type,
+      featureSlug: request.featureSlug,
+      graph: request.graph,
+      title: request.title,
+      description: "",
+      path: `data/content/${request.graph}/${request.fileName}.md`,
+      body: "",
+      links: [],
+      relatedNoteIds: [],
+    }));
+    vi.stubGlobal("go", { desktop: { App: { CreateDocument: wailsCreate } } });
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/graph-canvas?graph=execution") {
+        return {
+          selectedGraph: "execution",
+          availableGraphs: ["execution"],
+          layerGuidance: { magneticThresholdPx: 18, guides: [] },
+          nodes: [],
+          edges: [],
+        };
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Execution");
+
+    await user.click(screen.getByRole("button", { name: "More actions for Execution" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Add note" }));
+
+    const input = await screen.findByLabelText("File name");
+    await user.type(input, "shipping");
+    await user.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(wailsCreate).toHaveBeenCalled();
+    });
+    const payload = wailsCreate.mock.calls[0][0];
+    expect(payload).toMatchObject({ type: "note", graph: "execution", fileName: "shipping" });
+
+    // Creates never hit the HTTP API in the desktop app.
+    const httpCreate = fetchMock.mock.calls.some(([requestURL, requestInit]) => {
+      const urlString = typeof requestURL === "string" ? requestURL : requestURL instanceof URL ? requestURL.toString() : requestURL.url;
+      return urlString === "/api/documents" && (requestInit?.method ?? "GET") === "POST";
+    });
+    expect(httpCreate).toBe(false);
+  });
+
+  it("merges selected nodes through the Wails binding when running inside the desktop app", async () => {
+    const graphCanvasResponse = {
+      selectedGraph: "execution",
+      availableGraphs: ["execution"],
+      layerGuidance: {
+        magneticThresholdPx: 18,
+        guides: [
+          { layer: 0, x: 140 },
+          { layer: 1, x: 460 },
+        ],
+      },
+      nodes: [
+        {
+          id: "note-1",
+          type: "note",
+          graph: "execution",
+          title: "Overview",
+          description: "Execution overview",
+          path: "data/graphs/execution/overview.md",
+          featureSlug: "execution",
+          position: { x: 140, y: 120 },
+          positionPersisted: false,
+        },
+        {
+          id: "note-2",
+          type: "note",
+          graph: "execution",
+          title: "Follow Up",
+          description: "Execution follow-up",
+          path: "data/graphs/execution/follow-up.md",
+          featureSlug: "execution",
+          position: { x: 460, y: 120 },
+          positionPersisted: false,
+        },
+      ],
+      edges: [],
+    };
+    const mergedDocumentResponse = {
+      id: "note-1",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Overview",
+      description: "Execution overview",
+      path: "data/graphs/execution/overview.md",
+      body: "Overview body\nFollow-up body\n",
+      links: [],
+      relatedNoteIds: [],
+    };
+    const wailsMerge = vi.fn(async () => mergedDocumentResponse);
+    vi.stubGlobal("go", { desktop: { App: { MergeDocuments: wailsMerge } } });
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/graphs/note") {
+        return noteGraphs("execution");
+      }
+
+      if (url === "/api/graphs/task") {
+        return emptyGraphLists.tasks;
+      }
+
+      if (url === "/api/graphs/command") {
+        return emptyGraphLists.commands;
+      }
+
+      if (url === "/api/graph-canvas?graph=execution") {
+        return graphCanvasResponse;
+      }
+
+      if (url === "/api/documents/note-1") {
+        return mergedDocumentResponse;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Content");
+
+    const executionButton = (await screen.findByText("Execution")).closest('[data-sidebar="menu-sub-button"]');
+    if (executionButton === null) {
+      throw new Error("missing execution graph button");
+    }
+
+    await user.click(executionButton);
+    await screen.findByTestId("flow-node-note-1");
+
+    const firstNode = document.querySelector('[data-nodeid="note-1"]');
+    const secondNode = document.querySelector('[data-nodeid="note-2"]');
+    if (!(firstNode instanceof HTMLElement) || !(secondNode instanceof HTMLElement)) {
+      throw new Error("missing graph overlay nodes");
+    }
+
+    fireEvent.click(firstNode, { ctrlKey: true });
+    fireEvent.click(secondNode, { ctrlKey: true });
+
+    await screen.findByText("2 selected");
+    await user.click(screen.getByRole("button", { name: "Merge" }));
+
+    await waitFor(() => {
+      expect(wailsMerge).toHaveBeenCalledWith(expect.objectContaining({ documentIds: expect.arrayContaining(["note-1", "note-2"]) }));
+    });
+
+    // Merges never hit the HTTP API in the desktop app.
+    const httpMerge = fetchMock.mock.calls.some(([requestURL, requestInit]) => {
+      const urlString = typeof requestURL === "string" ? requestURL : requestURL instanceof URL ? requestURL.toString() : requestURL.url;
+      return urlString === "/api/documents/merge" && (requestInit?.method ?? "GET") === "POST";
+    });
+    expect(httpMerge).toBe(false);
+  });
+
+  it("renames a graph through the Wails binding when running inside the desktop app", async () => {
+    const wailsRenameGraph = vi.fn(async () => ({ name: "Shipping" }));
+    vi.stubGlobal("go", { desktop: { App: { RenameGraph: wailsRenameGraph } } });
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Execution");
+
+    await user.click(screen.getByRole("button", { name: "More actions for Execution" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Rename" }));
+
+    const input = await screen.findByLabelText("Graph path");
+    await user.clear(input);
+    await user.type(input, "Shipping");
+    await user.click(screen.getByRole("button", { name: "Rename" }));
+
+    await waitFor(() => {
+      expect(wailsRenameGraph).toHaveBeenCalledWith({ currentName: "execution", nextName: "Shipping" });
+    });
+    await screen.findByText(/Graph renamed to Shipping\./);
+
+    // Graph renames never hit the HTTP API in the desktop app.
+    const httpRename = fetchMock.mock.calls.some(([requestURL, requestInit]) => {
+      const urlString = typeof requestURL === "string" ? requestURL : requestURL instanceof URL ? requestURL.toString() : requestURL.url;
+      return urlString.startsWith("/api/graphs/") && (requestInit?.method ?? "GET") === "PATCH";
+    });
+    expect(httpRename).toBe(false);
+  });
+
+  it("surfaces Wails binding errors in the rename dialog", async () => {
+    const wailsRenameGraph = vi.fn(async () => {
+      throw new Error("graph directory rename failed");
+    });
+    vi.stubGlobal("go", { desktop: { App: { RenameGraph: wailsRenameGraph } } });
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Execution");
+
+    await user.click(screen.getByRole("button", { name: "More actions for Execution" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Rename" }));
+
+    const input = await screen.findByLabelText("Graph path");
+    await user.clear(input);
+    await user.type(input, "Shipping");
+    await user.click(screen.getByRole("button", { name: "Rename" }));
+
+    // The binding rejection surfaces in the dialog, which stays open.
+    await screen.findByText("graph directory rename failed");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    // No HTTP fallback happened.
+    const httpRename = fetchMock.mock.calls.some(([requestURL, requestInit]) => {
+      const urlString = typeof requestURL === "string" ? requestURL : requestURL instanceof URL ? requestURL.toString() : requestURL.url;
+      return urlString.startsWith("/api/graphs/") && (requestInit?.method ?? "GET") === "PATCH";
+    });
+    expect(httpRename).toBe(false);
+  });
+
+  it("renames a node through the Wails UpdateDocument binding when running inside the desktop app", async () => {
+    const wailsUpdate = vi.fn(async () => ({
+      id: "note-1",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Overview",
+      description: "",
+      path: "data/content/execution/summary-plan.md",
+      body: "Overview body",
+      links: [],
+      relatedNoteIds: [],
+    }));
+    vi.stubGlobal("go", { desktop: { App: { UpdateDocument: wailsUpdate } } });
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Execution");
+    await expandSidebarGraph("Execution");
+    await screen.findByText("overview.md");
+
+    await user.click(screen.getByRole("button", { name: "More actions for overview.md" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Rename" }));
+
+    const input = await screen.findByLabelText("File name");
+    await user.clear(input);
+    await user.type(input, "Summary-Plan");
+    await user.click(screen.getByRole("button", { name: "Rename" }));
+
+    await waitFor(() => {
+      expect(wailsUpdate).toHaveBeenCalledWith({ documentID: "note-1", patch: { fileName: "Summary-Plan" } });
+    });
+    await screen.findByText(/renamed to summary-plan\.md/);
+
+    // Node renames never hit the HTTP API in the desktop app.
+    const httpUpdate = fetchMock.mock.calls.some(([requestURL, requestInit]) => {
+      const urlString = typeof requestURL === "string" ? requestURL : requestURL instanceof URL ? requestURL.toString() : requestURL.url;
+      return urlString === "/api/documents/note-1" && (requestInit?.method ?? "GET") === "PUT";
+    });
+    expect(httpUpdate).toBe(false);
   });
 
   it("persists appearance changes from the settings dialog", async () => {
@@ -4484,195 +5297,3 @@ describe("App graph canvas flows", () => {
     expect(screen.getByText("Execution")).toBeInTheDocument();
   });
 });
-
-  it("creates a graph through the Wails CreateGraph binding when running inside the desktop app", async () => {
-    const wailsCreateGraph = vi.fn(async () => ({ name: "execution/archived" }));
-    vi.stubGlobal("go", { desktop: { App: { CreateGraph: wailsCreateGraph } } });
-
-    const fetchMock = installFetchMock((url, init) => {
-      if (url === "/api/workspace") {
-        return workspaceResponse;
-      }
-
-      if (url === "/api/graphs") {
-        return graphTreeResponse;
-      }
-
-      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
-    });
-
-    const user = userEvent.setup();
-    render(<ThemeProvider><App /></ThemeProvider>);
-
-    await screen.findByText("Execution");
-
-    await user.click(screen.getByRole("button", { name: "More actions for Execution" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Add subdirectory" }));
-    const subdirInput = await screen.findByLabelText("New subdirectory name");
-    await user.type(subdirInput, "archived");
-    await user.keyboard("{Enter}");
-
-    await waitFor(() => {
-      expect(wailsCreateGraph).toHaveBeenCalledWith({ name: "execution/archived" });
-    });
-
-    // Graph creation never hits the HTTP API in the desktop app.
-    const httpCreate = fetchMock.mock.calls.some(([requestURL, requestInit]) => {
-      const urlString = typeof requestURL === "string" ? requestURL : requestURL instanceof URL ? requestURL.toString() : requestURL.url;
-      return urlString === "/api/graphs" && (requestInit?.method ?? "GET") === "POST";
-    });
-    expect(httpCreate).toBe(false);
-  });
-
-  it("deletes a graph through the Wails DeleteGraph binding when running inside the desktop app", async () => {
-    const wailsDeleteGraph = vi.fn(async () => ({ deleted: true, name: "execution" }));
-    vi.stubGlobal("go", { desktop: { App: { DeleteGraph: wailsDeleteGraph } } });
-
-    const fetchMock = installFetchMock((url, init) => {
-      if (url === "/api/workspace") {
-        return workspaceResponse;
-      }
-
-      if (url === "/api/graphs") {
-        return graphTreeResponse;
-      }
-
-      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
-    });
-
-    const user = userEvent.setup();
-    render(<ThemeProvider><App /></ThemeProvider>);
-
-    await screen.findByText("Execution");
-
-    await user.click(screen.getByRole("button", { name: "More actions for Execution" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
-
-    await waitFor(() => {
-      expect(wailsDeleteGraph).toHaveBeenCalledWith({ name: "execution" });
-    });
-
-    // Graph deletion never hits the HTTP API in the desktop app.
-    const httpDelete = fetchMock.mock.calls.some(([requestURL, requestInit]) => {
-      const urlString = typeof requestURL === "string" ? requestURL : requestURL instanceof URL ? requestURL.toString() : requestURL.url;
-      return urlString === "/api/graphs/execution" && (requestInit?.method ?? "GET") === "DELETE";
-    });
-    expect(httpDelete).toBe(false);
-  });
-
-  it("toggles the canvas view through the Wails binding when running inside the desktop app", async () => {
-    const wailsToggleCanvas = vi.fn(async () => ({ name: "execution", canvasDisabled: true }));
-    vi.stubGlobal("go", { desktop: { App: { UpdateGraphCanvasDisabled: wailsToggleCanvas } } });
-
-    const fetchMock = installFetchMock((url, init) => {
-      if (url === "/api/workspace") {
-        return workspaceResponse;
-      }
-
-      if (url === "/api/graphs") {
-        return graphTreeResponse;
-      }
-
-      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
-    });
-
-    const user = userEvent.setup();
-    render(<ThemeProvider><App /></ThemeProvider>);
-
-    await screen.findByText("Execution");
-
-    await user.click(screen.getByRole("button", { name: "More actions for Execution" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Disable canvas view" }));
-
-    await waitFor(() => {
-      expect(wailsToggleCanvas).toHaveBeenCalledWith({ graphPath: "execution", disabled: true });
-    });
-
-    const httpToggle = fetchMock.mock.calls.some(([requestURL, requestInit]) => {
-      const urlString = typeof requestURL === "string" ? requestURL : requestURL instanceof URL ? requestURL.toString() : requestURL.url;
-      return urlString === "/api/graphs/execution/canvas-disabled" && (requestInit?.method ?? "GET") === "PUT";
-    });
-    expect(httpToggle).toBe(false);
-  });
-
-  it("sets a graph color through the Wails binding when running inside the desktop app", async () => {
-    const wailsSetGraphColor = vi.fn(async () => ({ name: "execution", color: "rose" }));
-    vi.stubGlobal("go", { desktop: { App: { UpdateGraphColor: wailsSetGraphColor } } });
-
-    const fetchMock = installFetchMock((url, init) => {
-      if (url === "/api/workspace") {
-        return workspaceResponse;
-      }
-
-      if (url === "/api/graphs") {
-        return graphTreeResponse;
-      }
-
-      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
-    });
-
-    const user = userEvent.setup();
-    render(<ThemeProvider><App /></ThemeProvider>);
-
-    await screen.findByText("Execution");
-
-    await user.click(screen.getByRole("button", { name: "More actions for Execution" }));
-    await user.hover(await screen.findByRole("menuitem", { name: "Color" }));
-    // fireEvent.click instead of user.click: userEvent's pointer simulation does
-    // not propagate Radix radio-item selection inside a dropdown submenu in
-    // jsdom, so the value change never reaches onSetGraphColor.
-    const roseRadio = await screen.findByRole("menuitemradio", { name: "Rose" });
-    fireEvent.click(roseRadio);
-
-    await waitFor(() => {
-      expect(wailsSetGraphColor).toHaveBeenCalledWith({ graphPath: "execution", color: "rose" });
-    });
-
-    const httpColor = fetchMock.mock.calls.some(([requestURL, requestInit]) => {
-      const urlString = typeof requestURL === "string" ? requestURL : requestURL instanceof URL ? requestURL.toString() : requestURL.url;
-      return urlString === "/api/graphs/execution/color" && (requestInit?.method ?? "GET") === "PUT";
-    });
-    expect(httpColor).toBe(false);
-  });
-
-  it("renames a graph through the Wails binding when running inside the desktop app", async () => {
-    const wailsRenameGraph = vi.fn(async () => ({ name: "Shipping" }));
-    vi.stubGlobal("go", { desktop: { App: { RenameGraph: wailsRenameGraph } } });
-
-    const fetchMock = installFetchMock((url, init) => {
-      if (url === "/api/workspace") {
-        return workspaceResponse;
-      }
-
-      if (url === "/api/graphs") {
-        return graphTreeResponse;
-      }
-
-      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
-    });
-
-    const user = userEvent.setup();
-    render(<ThemeProvider><App /></ThemeProvider>);
-
-    await screen.findByText("Execution");
-
-    await user.click(screen.getByRole("button", { name: "More actions for Execution" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Rename" }));
-
-    const input = await screen.findByLabelText("Graph path");
-    await user.clear(input);
-    await user.type(input, "Shipping");
-    await user.click(screen.getByRole("button", { name: "Rename" }));
-
-    await waitFor(() => {
-      expect(wailsRenameGraph).toHaveBeenCalledWith({ currentName: "execution", nextName: "Shipping" });
-    });
-    await screen.findByText(/Graph renamed to Shipping\./);
-
-    // Graph renames never hit the HTTP API in the desktop app.
-    const httpRename = fetchMock.mock.calls.some(([requestURL, requestInit]) => {
-      const urlString = typeof requestURL === "string" ? requestURL : requestURL instanceof URL ? requestURL.toString() : requestURL.url;
-      return urlString.startsWith("/api/graphs/") && (requestInit?.method ?? "GET") === "PATCH";
-    });
-    expect(httpRename).toBe(false);
-  });

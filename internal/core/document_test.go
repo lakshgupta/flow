@@ -133,7 +133,7 @@ func TestUpdateDocumentPropagatesUpdatedDocument(t *testing.T) {
 func TestDeleteDocumentRequiresDeleter(t *testing.T) {
 	t.Parallel()
 
-	_, err := DeleteDocument(DeleteDocumentRequest{DocumentID: "note-1"}, nil)
+	_, _, err := DeleteDocument(DeleteDocumentRequest{DocumentID: "note-1"}, nil)
 	if err == nil {
 		t.Fatal("DeleteDocument() error = nil, want error")
 	}
@@ -146,12 +146,12 @@ func TestDeleteDocumentPropagatesDeletionResult(t *testing.T) {
 	t.Parallel()
 
 	called := false
-	path, err := DeleteDocument(DeleteDocumentRequest{DocumentID: "note-1"}, func(documentID string) (string, error) {
+	path, strippedReferences, err := DeleteDocument(DeleteDocumentRequest{DocumentID: "note-1"}, func(documentID string) (string, []string, error) {
 		called = true
 		if documentID != "note-1" {
-			return "", errors.New("unexpected document id")
+			return "", nil, errors.New("unexpected document id")
 		}
-		return "data/content/notes/note-1.md", nil
+		return "data/content/notes/note-1.md", []string{"data/content/notes/ref.md"}, nil
 	})
 	if err != nil {
 		t.Fatalf("DeleteDocument() error = %v", err)
@@ -161,5 +161,8 @@ func TestDeleteDocumentPropagatesDeletionResult(t *testing.T) {
 	}
 	if path != "data/content/notes/note-1.md" {
 		t.Fatalf("DeleteDocument() path = %q, want deleted document path", path)
+	}
+	if len(strippedReferences) != 1 || strippedReferences[0] != "data/content/notes/ref.md" {
+		t.Fatalf("DeleteDocument() strippedReferences = %v, want propagated referencer paths", strippedReferences)
 	}
 }

@@ -98,7 +98,7 @@ func TestNewMuxServesWorkspaceAndReadQueryAPIs(t *testing.T) {
 		t.Fatalf("graphCanvas.Nodes[0] layout = %#v, want width=420 height=260 zIndex=5", graphCanvas.Nodes[0])
 	}
 
-	document := performJSONRequest[documentResponse](t, handler, http.MethodGet, "/api/documents/note-1")
+	document := performJSONRequest[DocumentResponse](t, handler, http.MethodGet, "/api/documents/note-1")
 	if document.ID != "note-1" {
 		t.Fatalf("document.ID = %q, want note-1", document.ID)
 	}
@@ -142,7 +142,7 @@ func TestNewMuxServesHomeAndGraphTreeAPIs(t *testing.T) {
 		t.Fatalf("workspaceResponse.PanelWidths = %#v, want 0.31/0.22/default toc", workspaceResponse.PanelWidths)
 	}
 
-	home := performJSONRequest[homeResponse](t, handler, http.MethodGet, "/api/home")
+	home := performJSONRequest[HomeResponse](t, handler, http.MethodGet, "/api/home")
 	if home.ID != "home" || home.Type != "home" || home.Path != "data/home.md" {
 		t.Fatalf("home = %#v", home)
 	}
@@ -189,7 +189,7 @@ func TestNewMuxServesHomeAndGraphTreeAPIs(t *testing.T) {
 		t.Fatalf("results[0].Description = %q, want empty", results[0].Description)
 	}
 
-	document := performJSONRequest[documentResponse](t, handler, http.MethodGet, "/api/documents/task-1")
+	document := performJSONRequest[DocumentResponse](t, handler, http.MethodGet, "/api/documents/task-1")
 	if document.Description != "Build graph task" {
 		t.Fatalf("document.Description = %q, want Build graph task", document.Description)
 	}
@@ -228,7 +228,7 @@ func TestNewMuxKeepsMalformedDocumentInTreeAndReturnsOpenError(t *testing.T) {
 		t.Fatalf("executionNode.Files = %#v, want malformed file entry", executionNode.Files)
 	}
 
-	valid := performJSONRequest[documentResponse](t, handler, http.MethodGet, "/api/documents/task-1")
+	valid := performJSONRequest[DocumentResponse](t, handler, http.MethodGet, "/api/documents/task-1")
 	if valid.ID != "task-1" {
 		t.Fatalf("valid.ID = %q, want task-1", valid.ID)
 	}
@@ -263,7 +263,7 @@ func TestNewMuxServesHomeInlineReferencesWithoutFrontmatter(t *testing.T) {
 		t.Fatalf("NewMux() error = %v", err)
 	}
 
-	home := performJSONRequest[homeResponse](t, handler, http.MethodGet, "/api/home")
+	home := performJSONRequest[HomeResponse](t, handler, http.MethodGet, "/api/home")
 	if len(home.InlineReferences) != 1 {
 		t.Fatalf("len(home.InlineReferences) = %d, want 1", len(home.InlineReferences))
 	}
@@ -281,7 +281,7 @@ func TestNewMuxUpdatesHomeAndReindexes(t *testing.T) {
 		t.Fatalf("NewMux() error = %v", err)
 	}
 
-	updated := performJSONRequestWithBody[homeResponse](t, handler, http.MethodPut, "/api/home", map[string]any{
+	updated := performJSONRequestWithBody[HomeResponse](t, handler, http.MethodPut, "/api/home", map[string]any{
 		"title":       "Workspace Home",
 		"description": "Workspace overview",
 		"body":        "# Workspace Home\n\nStart here.\n",
@@ -575,7 +575,7 @@ func TestNewMuxGraphValidationRefreshesAfterLinkMutation(t *testing.T) {
 	// Quick-fix the edge through the mutation endpoint. The write rebuilds the
 	// derived index, so the persisted violation list must refresh: the next
 	// validation query reports no violations.
-	updated := performJSONRequestWithBody[documentResponse](t, handler, http.MethodPatch, "/api/links", map[string]any{
+	updated := performJSONRequestWithBody[DocumentResponse](t, handler, http.MethodPatch, "/api/links", map[string]any{
 		"fromId":        "task-violation",
 		"toId":          "note-1",
 		"relationships": []string{"relates-to"},
@@ -1068,7 +1068,7 @@ func TestNewMuxMutatesDocumentsAndReindexes(t *testing.T) {
 		t.Fatalf("NewMux() error = %v", err)
 	}
 
-	created := performJSONRequestWithBody[documentResponse](t, handler, http.MethodPost, "/api/documents", map[string]any{
+	created := performJSONRequestWithBody[DocumentResponse](t, handler, http.MethodPost, "/api/documents", map[string]any{
 		"type":        "task",
 		"featureSlug": "demo",
 		"fileName":    "publish",
@@ -1087,7 +1087,7 @@ func TestNewMuxMutatesDocumentsAndReindexes(t *testing.T) {
 		t.Fatalf("Stat(created file) error = %v", err)
 	}
 
-	updated := performJSONRequestWithBody[documentResponse](t, handler, http.MethodPut, "/api/documents/task-2", map[string]any{
+	updated := performJSONRequestWithBody[DocumentResponse](t, handler, http.MethodPut, "/api/documents/task-2", map[string]any{
 		"title":  "Publish release build",
 		"status": "Done",
 		"body":   "Updated publish task body\n",
@@ -1096,7 +1096,7 @@ func TestNewMuxMutatesDocumentsAndReindexes(t *testing.T) {
 		t.Fatalf("updated = %#v", updated)
 	}
 
-	renamed := performJSONRequestWithBody[documentResponse](t, handler, http.MethodPut, "/api/documents/task-2", map[string]any{
+	renamed := performJSONRequestWithBody[DocumentResponse](t, handler, http.MethodPut, "/api/documents/task-2", map[string]any{
 		"fileName": "publish-release",
 	})
 	if renamed.Path != "data/content/release/publish-release.md" {
@@ -1359,7 +1359,7 @@ func TestNewMuxDeleteNoteCleansUpReferences(t *testing.T) {
 		t.Fatalf("deleted = %#v", deleted)
 	}
 
-	followUp := performJSONRequest[documentResponse](t, handler, http.MethodGet, "/api/documents/note-2")
+	followUp := performJSONRequest[DocumentResponse](t, handler, http.MethodGet, "/api/documents/note-2")
 	if len(followUp.Links) != 0 {
 		t.Fatalf("followUp.Links = %#v, want empty", followUp.Links)
 	}
@@ -1367,7 +1367,7 @@ func TestNewMuxDeleteNoteCleansUpReferences(t *testing.T) {
 		t.Fatalf("followUp.RelatedNoteIDs = %#v, want empty", followUp.RelatedNoteIDs)
 	}
 
-	task := performJSONRequest[documentResponse](t, handler, http.MethodGet, "/api/documents/task-1")
+	task := performJSONRequest[DocumentResponse](t, handler, http.MethodGet, "/api/documents/task-1")
 	if len(task.Links) != 1 || task.Links[0].Node != "task-0" {
 		t.Fatalf("task.Links = %#v, want [task-0]", task.Links)
 	}
@@ -1412,9 +1412,43 @@ func TestNewMuxDeleteDocumentBlockedByInlineReferences(t *testing.T) {
 	}
 
 	// The referenced node must still exist and be readable.
-	stillThere := performJSONRequest[documentResponse](t, handler, http.MethodGet, "/api/documents/task-1")
+	stillThere := performJSONRequest[DocumentResponse](t, handler, http.MethodGet, "/api/documents/task-1")
 	if stillThere.ID != "task-1" {
 		t.Fatalf("stillThere.ID = %q, want task-1 after blocked delete", stillThere.ID)
+	}
+}
+
+func TestNewMuxForceDeleteDocumentStripsInlineReferences(t *testing.T) {
+	t.Parallel()
+
+	root := createHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	// note-1 (Architecture) references task-1 via [[task-1]], so a plain
+	// delete is blocked; a force delete must strip the dangling reference.
+	deleted := performJSONRequestWithBody[deleteDocumentResponse](t, handler, http.MethodDelete, "/api/documents/task-1", map[string]bool{"force": true})
+	if !deleted.Deleted || deleted.ID != "task-1" {
+		t.Fatalf("deleted = %#v, want deleted task-1", deleted)
+	}
+	if len(deleted.StrippedReferences) != 1 || deleted.StrippedReferences[0] != "data/content/notes/architecture.md" {
+		t.Fatalf("deleted.StrippedReferences = %v, want data/content/notes/architecture.md", deleted.StrippedReferences)
+	}
+
+	// The node is gone.
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/documents/task-1", nil)
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d after force delete", recorder.Code, http.StatusNotFound)
+	}
+
+	// The referencer's body no longer contains the dangling [[task-1]].
+	referencer := performJSONRequest[DocumentResponse](t, handler, http.MethodGet, "/api/documents/note-1")
+	if strings.Contains(referencer.Body, "[[task-1]]") {
+		t.Fatalf("referencer body = %q, want [[task-1]] stripped", referencer.Body)
 	}
 }
 
@@ -1827,7 +1861,7 @@ func TestNewMuxCreateDocumentAddsCanvasNodeForNewGraph(t *testing.T) {
 		t.Fatalf("NewMux() error = %v", err)
 	}
 
-	created := performJSONRequestWithBody[documentResponse](t, handler, http.MethodPost, "/api/documents", map[string]any{
+	created := performJSONRequestWithBody[DocumentResponse](t, handler, http.MethodPost, "/api/documents", map[string]any{
 		"type":        "note",
 		"featureSlug": "execution",
 		"fileName":    "first-note",
@@ -2909,7 +2943,7 @@ func TestNewMuxLinksAPIAddsAndRemovesInlineLink(t *testing.T) {
 	}
 
 	// Add a link from note-1 to note-2 with context and relationship tag metadata.
-	resp := performJSONRequestWithBody[documentResponse](t, handler, http.MethodPost, "/api/links", map[string]any{
+	resp := performJSONRequestWithBody[DocumentResponse](t, handler, http.MethodPost, "/api/links", map[string]any{
 		"fromId":        "note-1",
 		"toId":          "note-2",
 		"context":       "informs",
@@ -2926,7 +2960,7 @@ func TestNewMuxLinksAPIAddsAndRemovesInlineLink(t *testing.T) {
 	}
 
 	// Update the link metadata via PATCH.
-	respPatch := performJSONRequestWithBody[documentResponse](t, handler, http.MethodPatch, "/api/links", map[string]any{
+	respPatch := performJSONRequestWithBody[DocumentResponse](t, handler, http.MethodPatch, "/api/links", map[string]any{
 		"fromId":        "note-1",
 		"toId":          "note-2",
 		"context":       "runtime dependency",
@@ -2943,7 +2977,7 @@ func TestNewMuxLinksAPIAddsAndRemovesInlineLink(t *testing.T) {
 	}
 
 	// Remove the link.
-	resp2 := performJSONRequestWithBody[documentResponse](t, handler, http.MethodDelete, "/api/links", map[string]any{
+	resp2 := performJSONRequestWithBody[DocumentResponse](t, handler, http.MethodDelete, "/api/links", map[string]any{
 		"fromId": "note-1",
 		"toId":   "note-2",
 	})
@@ -2954,7 +2988,7 @@ func TestNewMuxLinksAPIAddsAndRemovesInlineLink(t *testing.T) {
 	}
 
 	// Add a link with empty context.
-	resp3 := performJSONRequestWithBody[documentResponse](t, handler, http.MethodPost, "/api/links", map[string]any{
+	resp3 := performJSONRequestWithBody[DocumentResponse](t, handler, http.MethodPost, "/api/links", map[string]any{
 		"fromId": "note-1",
 		"toId":   "note-2",
 	})

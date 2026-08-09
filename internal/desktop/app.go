@@ -5,6 +5,7 @@ import (
 
 	"github.com/lex/flow/internal/config"
 	"github.com/lex/flow/internal/core"
+	"github.com/lex/flow/internal/httpapi"
 	"github.com/lex/flow/internal/index"
 	"github.com/lex/flow/internal/markdown"
 )
@@ -64,7 +65,30 @@ func (app *App) GraphTree() (GraphTreeSnapshot, error) {
 	return app.backend.GraphTree()
 }
 
-// CreateDocument delegates document creation to the shared backend.
+// CreateDocument delegates document creation to the shared backend and returns
+// the full document view-model (same JSON shape as the HTTP API).
+func (app *App) CreateDocument(request core.CreateDocumentRequest) (httpapi.DocumentResponse, error) {
+	return app.backend.CreateDocument(request)
+}
+
+// UpdateDocument delegates document updates to the shared backend and returns
+// the full document view-model.
+func (app *App) UpdateDocument(request core.UpdateDocumentRequest) (httpapi.DocumentResponse, error) {
+	return app.backend.UpdateDocument(request)
+}
+
+// MergeDocuments merges the ordered document list into the first document and
+// returns the merged document view-model.
+func (app *App) MergeDocuments(request MergeDocumentsRequest) (httpapi.DocumentResponse, error) {
+	return app.backend.MergeDocuments(request)
+}
+
+// UpdateHome writes the workspace home document and returns the reloaded home
+// view-model, mirroring the HTTP update-home response.
+func (app *App) UpdateHome(request httpapi.HomeUpdateRequest) (httpapi.HomeResponse, error) {
+	return app.backend.UpdateHome(request)
+}
+
 // CreateGraph creates a graph directory and returns the created name.
 func (app *App) CreateGraph(request CreateGraphRequest) (CreateGraphResult, error) {
 	return app.backend.CreateGraph(request)
@@ -98,18 +122,19 @@ func (app *App) RenameGraph(request RenameGraphRequest) (RenameGraphResult, erro
 	return RenameGraphResult{Name: request.NextName}, err
 }
 
-func (app *App) CreateDocument(request core.CreateDocumentRequest) (markdown.WorkspaceDocument, error) {
-	return app.backend.CreateDocument(request)
+// DeleteDocumentResult is the Wails-facing result of a document delete,
+// mirroring the HTTP delete response so desktop consumers see the same shape.
+type DeleteDocumentResult struct {
+	Path               string   `json:"path"`
+	StrippedReferences []string `json:"strippedReferences,omitempty"`
 }
 
-// UpdateDocument delegates document updates to the shared backend.
-func (app *App) UpdateDocument(request core.UpdateDocumentRequest) (markdown.WorkspaceDocument, error) {
-	return app.backend.UpdateDocument(request)
-}
-
-// DeleteDocument delegates document deletion to the shared backend.
-func (app *App) DeleteDocument(request core.DeleteDocumentRequest) (string, error) {
-	return app.backend.DeleteDocument(request)
+// DeleteDocument delegates document deletion to the shared backend. When
+// request.Force is set, dangling [[...]] inline references are stripped from
+// referencers and their paths are returned in the result.
+func (app *App) DeleteDocument(request core.DeleteDocumentRequest) (DeleteDocumentResult, error) {
+	path, strippedReferences, err := app.backend.DeleteDocument(request)
+	return DeleteDocumentResult{Path: path, StrippedReferences: strippedReferences}, err
 }
 
 // UploadFile saves uploaded file content to the workspace and returns the

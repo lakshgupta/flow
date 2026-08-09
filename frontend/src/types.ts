@@ -155,6 +155,7 @@ export type DeleteDocumentResponse = {
   deleted: boolean;
   id: string;
   path: string;
+  strippedReferences?: string[];
 };
 
 export type WorkspaceSnapshot = {

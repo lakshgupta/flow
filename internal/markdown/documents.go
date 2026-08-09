@@ -26,10 +26,13 @@ const (
 )
 
 // NodeLink is a stored link from one document to another, with optional context.
+// The JSON tags mirror the HTTP node-reference payload shape so transport
+// bindings (e.g. the Wails Go-JS bridge) decode links with the same camelCase
+// keys the frontend sends.
 type NodeLink struct {
-	Node          string   `yaml:"node"`
-	Context       string   `yaml:"context,omitempty"`
-	Relationships []string `yaml:"relationships,omitempty"`
+	Node          string   `yaml:"node" json:"node"`
+	Context       string   `yaml:"context,omitempty" json:"context,omitempty"`
+	Relationships []string `yaml:"relationships,omitempty" json:"relationships,omitempty"`
 }
 
 // UnmarshalYAML implements custom decoding so that a plain scalar string (legacy format) is

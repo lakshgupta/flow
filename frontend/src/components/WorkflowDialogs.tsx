@@ -17,6 +17,7 @@ type DeleteDocumentDialogActions = {
   setOpen: (open: boolean) => void;
   cancel: () => void;
   confirm: () => void;
+  confirmForce: () => void;
 };
 
 export type DeleteDocumentDialogProps = {
@@ -47,11 +48,29 @@ function DeleteDocumentDialogComponent({
               : `This removes ${target.title} from the workspace.`}
           </DialogDescription>
         </DialogHeader>
-        {error !== "" ? <p className="status-line status-line-error">{error}</p> : null}
+        {error !== "" ? (
+          <div className="shell-dialog-error-block">
+            <p className="status-line status-line-error">{error}</p>
+            <p className="status-line">
+              Force delete strips the dangling [[...]] references from the
+              referencing documents and deletes the node anyway.
+            </p>
+          </div>
+        ) : null}
         <div className="shell-dialog-actions">
           <Button onClick={actions.cancel} type="button" variant="secondary">
             Cancel
           </Button>
+          {error !== "" ? (
+            <Button
+              disabled={savingDocument || deletingDocument || target === null}
+              onClick={actions.confirmForce}
+              type="button"
+              variant="secondary"
+            >
+              {deletingDocument ? "Deleting..." : "Force delete & strip references"}
+            </Button>
+          ) : null}
           <Button
             disabled={savingDocument || deletingDocument || target === null}
             onClick={actions.confirm}

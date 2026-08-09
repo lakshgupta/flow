@@ -17,8 +17,9 @@ import (
 	"github.com/lex/flow/internal/workspace"
 )
 
-// Backend exposes transport-agnostic workspace mutations that a future Wails
-// adapter can bind without depending on HTTP handlers.
+// Backend exposes workspace mutations that the Wails adapter binds. Document
+// mutations reuse the shared view-model loader from the HTTP API layer so
+// desktop and web consumers see the exact same document JSON shape.
 type Backend struct {
 	root workspace.Root
 }
@@ -205,6 +206,58 @@ func (backend Backend) GraphTree() (GraphTreeSnapshot, error) {
 
 // CreateDocument runs the shared create workflow against canonical workspace
 // storage.
+// CreateDocument runs the shared create workflow against canonical workspace
+// storage and returns the full document view-model so desktop consumers see
+// the exact same JSON shape as the HTTP API.
+func (backend Backend) CreateDocument(request core.CreateDocumentRequest) (httpapi.DocumentResponse, error) {
+	workspaceDocument, err := core.CreateDocument(request, func(request core.CreateDocumentRequest) (markdown.WorkspaceDocument, error) {
+		return workspace.CreateDocumentFromCoreRequest(backend.root, request)
+	})
+	if err != nil {
+		return httpapi.DocumentResponse{}, err
+	}
+	return httpapi.LoadDocumentResponse(backend.root, workspaceDocument.Document.ID())
+}
+
+// UpdateDocument runs the shared update workflow against canonical workspace
+// storage and returns the full document view-model.
+func (backend Backend) UpdateDocument(request core.UpdateDocumentRequest) (httpapi.DocumentResponse, error) {
+	workspaceDocument, err := core.UpdateDocument(request, func(documentID string, patch core.UpdateDocumentPatch) (markdown.WorkspaceDocument, error) {
+		return workspace.UpdateDocumentByIDFromCorePatch(backend.root, documentID, patch)
+	})
+	if err != nil {
+		return httpapi.DocumentResponse{}, err
+	}
+	return httpapi.LoadDocumentResponse(backend.root, workspaceDocument.Document.ID())
+}
+
+// MergeDocumentsRequest is the Wails-facing input for merging documents,
+// mirroring the HTTP merge payload.
+type MergeDocumentsRequest struct {
+	DocumentIDs []string `json:"documentIds"`
+}
+
+// MergeDocuments merges the ordered document list into the first document and
+// returns the merged document view-model, matching the HTTP merge handler.
+func (backend Backend) MergeDocuments(request MergeDocumentsRequest) (httpapi.DocumentResponse, error) {
+	merged, err := workspace.MergeDocuments(backend.root, workspace.MergeDocumentsInput{
+		DocumentIDs: request.DocumentIDs,
+	})
+	if err != nil {
+		return httpapi.DocumentResponse{}, err
+	}
+	return httpapi.LoadDocumentResponse(backend.root, merged.Document.ID())
+}
+
+// UpdateHome writes the workspace home document and returns the reloaded home
+// view-model, matching the HTTP update-home handler.
+func (backend Backend) UpdateHome(request httpapi.HomeUpdateRequest) (httpapi.HomeResponse, error) {
+	if err := httpapi.WriteHomeDocument(backend.root, request); err != nil {
+		return httpapi.HomeResponse{}, err
+	}
+	return httpapi.LoadHomeResponse(backend.root)
+}
+
 // CreateGraphRequest is the Wails-facing input for creating a graph.
 type CreateGraphRequest struct {
 	Name string `json:"name"`
@@ -375,25 +428,18 @@ func (backend Backend) RenameGraph(request RenameGraphRequest) error {
 	})
 }
 
-func (backend Backend) CreateDocument(request core.CreateDocumentRequest) (markdown.WorkspaceDocument, error) {
-	return core.CreateDocument(request, func(request core.CreateDocumentRequest) (markdown.WorkspaceDocument, error) {
-		return workspace.CreateDocumentFromCoreRequest(backend.root, request)
-	})
-}
-
-// UpdateDocument runs the shared update workflow against canonical workspace
-// storage.
-func (backend Backend) UpdateDocument(request core.UpdateDocumentRequest) (markdown.WorkspaceDocument, error) {
-	return core.UpdateDocument(request, func(documentID string, patch core.UpdateDocumentPatch) (markdown.WorkspaceDocument, error) {
-		return workspace.UpdateDocumentByIDFromCorePatch(backend.root, documentID, patch)
-	})
-}
-
 // DeleteDocument runs the shared delete workflow against canonical workspace
-// storage.
-func (backend Backend) DeleteDocument(request core.DeleteDocumentRequest) (string, error) {
-	return core.DeleteDocument(request, func(documentID string) (string, error) {
-		return workspace.DeleteDocumentByID(backend.root, documentID)
+// storage. When request.Force is set, dangling [[...]] inline references are
+// stripped from referencers instead of blocking the delete. It returns the
+// deleted relative path and the paths of every referencer whose body was
+// modified by the strip (empty for plain deletes).
+func (backend Backend) DeleteDocument(request core.DeleteDocumentRequest) (string, []string, error) {
+	return core.DeleteDocument(request, func(documentID string) (string, []string, error) {
+		if request.Force {
+			return workspace.ForceDeleteDocumentByID(backend.root, documentID)
+		}
+		relativePath, err := workspace.DeleteDocumentByID(backend.root, documentID)
+		return relativePath, nil, err
 	})
 }
 

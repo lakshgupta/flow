@@ -75,7 +75,7 @@ type updatePanelWidthsRequest struct {
 	DocumentTOCRatio *float64 `json:"documentTOCRatio"`
 }
 
-type homeResponse struct {
+type HomeResponse struct {
 	ID               string                    `json:"id"`
 	Type             string                    `json:"type"`
 	Title            string                    `json:"title"`
@@ -120,7 +120,7 @@ type graphTreeFileResponse struct {
 }
 
 type graphTreeResponse struct {
-	Home   homeResponse            `json:"home"`
+	Home   HomeResponse            `json:"home"`
 	Graphs []graphTreeNodeResponse `json:"graphs"`
 }
 
@@ -160,7 +160,7 @@ type graphLayoutResponse struct {
 	Viewport  *graphLayoutViewportRequest  `json:"viewport,omitempty"`
 }
 
-type documentResponse struct {
+type DocumentResponse struct {
 	ID          string                  `json:"id"`
 	Type        string                  `json:"type"`
 	FeatureSlug string                  `json:"featureSlug"`
@@ -247,7 +247,7 @@ type updateDocumentRequest struct {
 	Color *string `json:"color"`
 }
 
-type updateHomeRequest struct {
+type HomeUpdateRequest struct {
 	Title       *string `json:"title"`
 	Description *string `json:"description"`
 	Body        *string `json:"body"`
@@ -267,7 +267,7 @@ type createGraphRequest struct {
 }
 
 type createGraphFilesResponse struct {
-	Created []documentResponse       `json:"created"`
+	Created []DocumentResponse       `json:"created"`
 	Failed  []createGraphFileFailure `json:"failed,omitempty"`
 }
 
@@ -302,10 +302,15 @@ type updateGraphCanvasDisabledResponse struct {
 	CanvasDisabled bool   `json:"canvasDisabled"`
 }
 
+type deleteDocumentRequest struct {
+	Force bool `json:"force"`
+}
+
 type deleteDocumentResponse struct {
-	Deleted bool   `json:"deleted"`
-	ID      string `json:"id"`
-	Path    string `json:"path"`
+	Deleted            bool     `json:"deleted"`
+	ID                 string   `json:"id"`
+	Path               string   `json:"path"`
+	StrippedReferences []string `json:"strippedReferences,omitempty"`
 }
 
 type deleteGraphResponse struct {
@@ -492,7 +497,7 @@ func (handler *apiHandler) handleCreateDocument(writer http.ResponseWriter, requ
 		return
 	}
 
-	response, err := loadDocumentResponse(handler.resolvedRoot(), documentIDForResponse(workspaceDocument.Document))
+	response, err := LoadDocumentResponse(handler.resolvedRoot(), documentIDForResponse(workspaceDocument.Document))
 	if err != nil {
 		writeMutationError(writer, err)
 		return
@@ -764,7 +769,7 @@ func (handler *apiHandler) handleRebuildIndex(writer http.ResponseWriter, _ *htt
 }
 
 func (handler *apiHandler) handleHome(writer http.ResponseWriter, _ *http.Request) {
-	home, err := loadHomeResponse(handler.resolvedRoot())
+	home, err := LoadHomeResponse(handler.resolvedRoot())
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
@@ -774,18 +779,18 @@ func (handler *apiHandler) handleHome(writer http.ResponseWriter, _ *http.Reques
 }
 
 func (handler *apiHandler) handleUpdateHome(writer http.ResponseWriter, request *http.Request) {
-	var payload updateHomeRequest
+	var payload HomeUpdateRequest
 	if err := decodeJSONRequest(request, &payload); err != nil {
 		writeError(writer, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	if err := writeHomeDocument(handler.resolvedRoot(), payload); err != nil {
+	if err := WriteHomeDocument(handler.resolvedRoot(), payload); err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	home, err := loadHomeResponse(handler.resolvedRoot())
+	home, err := LoadHomeResponse(handler.resolvedRoot())
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
@@ -861,7 +866,7 @@ func (handler *apiHandler) handleCreateGraphFiles(writer http.ResponseWriter, re
 		return
 	}
 
-	response := createGraphFilesResponse{Created: make([]documentResponse, 0, len(fileHeaders))}
+	response := createGraphFilesResponse{Created: make([]DocumentResponse, 0, len(fileHeaders))}
 	for _, header := range fileHeaders {
 		created, err := handler.createGraphFileNote(graphName, header)
 		if err != nil {
@@ -880,10 +885,10 @@ func (handler *apiHandler) handleCreateGraphFiles(writer http.ResponseWriter, re
 	writeJSON(writer, http.StatusCreated, response)
 }
 
-func (handler *apiHandler) createGraphFileNote(graphName string, header *multipart.FileHeader) (documentResponse, error) {
+func (handler *apiHandler) createGraphFileNote(graphName string, header *multipart.FileHeader) (DocumentResponse, error) {
 	originalFileName := filepath.Base(strings.TrimSpace(header.Filename))
 	if originalFileName == "" || originalFileName == "." {
-		return documentResponse{}, fmt.Errorf("invalid file name")
+		return DocumentResponse{}, fmt.Errorf("invalid file name")
 	}
 
 	assetFileName := makeUniqueFileName(handler.resolvedRoot(), graphName, workspace.SanitizeAssetFileName(originalFileName))
@@ -891,25 +896,25 @@ func (handler *apiHandler) createGraphFileNote(graphName string, header *multipa
 	assetAbsolutePath := filepath.Join(handler.resolvedRoot().FlowPath, filepath.FromSlash(assetRelativePath))
 
 	if err := os.MkdirAll(filepath.Dir(assetAbsolutePath), 0o755); err != nil {
-		return documentResponse{}, fmt.Errorf("create file directory: %w", err)
+		return DocumentResponse{}, fmt.Errorf("create file directory: %w", err)
 	}
 
 	source, err := header.Open()
 	if err != nil {
-		return documentResponse{}, fmt.Errorf("open uploaded file: %w", err)
+		return DocumentResponse{}, fmt.Errorf("open uploaded file: %w", err)
 	}
 	defer source.Close()
 
 	target, err := os.Create(assetAbsolutePath)
 	if err != nil {
-		return documentResponse{}, fmt.Errorf("create workspace file: %w", err)
+		return DocumentResponse{}, fmt.Errorf("create workspace file: %w", err)
 	}
 	if _, err := io.Copy(target, source); err != nil {
 		_ = target.Close()
-		return documentResponse{}, fmt.Errorf("write workspace file: %w", err)
+		return DocumentResponse{}, fmt.Errorf("write workspace file: %w", err)
 	}
 	if err := target.Close(); err != nil {
-		return documentResponse{}, fmt.Errorf("close workspace file: %w", err)
+		return DocumentResponse{}, fmt.Errorf("close workspace file: %w", err)
 	}
 
 	noteSlug := makeUniqueNoteSlug(handler.resolvedRoot(), graphName, strings.TrimSuffix(assetFileName, filepath.Ext(assetFileName)))
@@ -928,10 +933,10 @@ func (handler *apiHandler) createGraphFileNote(graphName string, header *multipa
 		Body:        body,
 	}, handler.createDocument)
 	if err != nil {
-		return documentResponse{}, err
+		return DocumentResponse{}, err
 	}
 
-	return loadDocumentResponse(handler.resolvedRoot(), documentIDForResponse(createdDocument.Document))
+	return LoadDocumentResponse(handler.resolvedRoot(), documentIDForResponse(createdDocument.Document))
 }
 
 // createDocumentRequestFromPayload keeps HTTP-specific decoding at the edge
@@ -1081,9 +1086,9 @@ func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.R
 		files = nil
 	}
 
-	home, err := loadHomeResponse(handler.resolvedRoot())
+	home, err := LoadHomeResponse(handler.resolvedRoot())
 	if err != nil {
-		home = homeResponse{ID: "home", Type: "home", Title: "Home", Path: filepath.ToSlash(filepath.Join(workspace.DataDirName, workspace.HomeFileName))}
+		home = HomeResponse{ID: "home", Type: "home", Title: "Home", Path: filepath.ToSlash(filepath.Join(workspace.DataDirName, workspace.HomeFileName))}
 	}
 
 	filesByGraph := make(map[string][]graphTreeFileResponse)
@@ -1533,7 +1538,7 @@ func (handler *apiHandler) handleUpdateDocument(writer http.ResponseWriter, requ
 		return
 	}
 
-	response, err := loadDocumentResponse(handler.resolvedRoot(), documentIDForResponse(workspaceDocument.Document))
+	response, err := LoadDocumentResponse(handler.resolvedRoot(), documentIDForResponse(workspaceDocument.Document))
 	if err != nil {
 		writeMutationError(writer, err)
 		return
@@ -1746,15 +1751,29 @@ func (handler *apiHandler) handleDeleteDocument(writer http.ResponseWriter, requ
 		return
 	}
 
-	relativePath, err := core.DeleteDocument(core.DeleteDocumentRequest{DocumentID: strings.TrimSpace(documentID)}, func(id string) (string, error) {
-		return workspace.DeleteDocumentByID(handler.resolvedRoot(), id)
+	var payload deleteDocumentRequest
+	// ContentLength is -1 for chunked/unknown-length bodies, which may still
+	// carry a payload, so only skip decoding when the body is provably empty.
+	if request.Body != nil && request.ContentLength != 0 {
+		if err := decodeJSONRequest(request, &payload); err != nil {
+			writeError(writer, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
+	relativePath, strippedReferences, err := core.DeleteDocument(core.DeleteDocumentRequest{DocumentID: strings.TrimSpace(documentID), Force: payload.Force}, func(id string) (string, []string, error) {
+		if payload.Force {
+			return workspace.ForceDeleteDocumentByID(handler.resolvedRoot(), id)
+		}
+		relativePath, err := workspace.DeleteDocumentByID(handler.resolvedRoot(), id)
+		return relativePath, nil, err
 	})
 	if err != nil {
 		writeMutationError(writer, err)
 		return
 	}
 
-	writeJSON(writer, http.StatusOK, deleteDocumentResponse{Deleted: true, ID: strings.TrimSpace(documentID), Path: relativePath})
+	writeJSON(writer, http.StatusOK, deleteDocumentResponse{Deleted: true, ID: strings.TrimSpace(documentID), Path: relativePath, StrippedReferences: strippedReferences})
 }
 
 func (handler *apiHandler) handleMergeDocuments(writer http.ResponseWriter, request *http.Request) {
@@ -1772,7 +1791,7 @@ func (handler *apiHandler) handleMergeDocuments(writer http.ResponseWriter, requ
 		return
 	}
 
-	response, err := loadDocumentResponse(handler.resolvedRoot(), documentIDForResponse(merged.Document))
+	response, err := LoadDocumentResponse(handler.resolvedRoot(), documentIDForResponse(merged.Document))
 	if err != nil {
 		writeMutationError(writer, err)
 		return
@@ -1793,7 +1812,7 @@ func (handler *apiHandler) handleAddReference(writer http.ResponseWriter, reques
 		return
 	}
 
-	response, err := loadDocumentResponse(handler.resolvedRoot(), payload.FromID)
+	response, err := LoadDocumentResponse(handler.resolvedRoot(), payload.FromID)
 	if err != nil {
 		writeMutationError(writer, err)
 		return
@@ -1814,7 +1833,7 @@ func (handler *apiHandler) handleRemoveReference(writer http.ResponseWriter, req
 		return
 	}
 
-	response, err := loadDocumentResponse(handler.resolvedRoot(), payload.FromID)
+	response, err := LoadDocumentResponse(handler.resolvedRoot(), payload.FromID)
 	if err != nil {
 		writeMutationError(writer, err)
 		return
@@ -1835,7 +1854,7 @@ func (handler *apiHandler) handleUpdateReferenceContext(writer http.ResponseWrit
 		return
 	}
 
-	response, err := loadDocumentResponse(handler.resolvedRoot(), payload.FromID)
+	response, err := LoadDocumentResponse(handler.resolvedRoot(), payload.FromID)
 	if err != nil {
 		writeMutationError(writer, err)
 		return
@@ -2390,19 +2409,19 @@ func PersistWorkspaceConfig(root workspace.Root, workspaceConfig config.Workspac
 	return syncWorkspaceGUIStateToIndex(root, workspaceConfig)
 }
 
-func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteGraphView, documents []markdown.WorkspaceDocument) (documentResponse, bool, error) {
+func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteGraphView, documents []markdown.WorkspaceDocument) (DocumentResponse, bool, error) {
 	inlineReferences, err := resolveInlineReferenceResponses(documents, item)
 	if err != nil {
-		return documentResponse{}, false, err
+		return DocumentResponse{}, false, err
 	}
 
 	featureSlug, err := featureSlugFromPath(item.Path)
 	if err != nil {
-		return documentResponse{}, false, err
+		return DocumentResponse{}, false, err
 	}
 
 	d := item.Document
-	base := documentResponse{
+	base := DocumentResponse{
 		ID:               d.ID(),
 		Type:             string(d.Kind()),
 		FeatureSlug:      featureSlug,
@@ -2569,23 +2588,23 @@ func decodeJSONRequest(request *http.Request, destination any) error {
 	return nil
 }
 
-func loadDocumentResponse(root workspace.Root, documentID string) (documentResponse, error) {
+func LoadDocumentResponse(root workspace.Root, documentID string) (DocumentResponse, error) {
 	parseFailure, found, err := index.ReadDocumentParseFailureWorkspace(root.IndexPath, root.FlowPath, documentID)
 	if err != nil {
-		return documentResponse{}, err
+		return DocumentResponse{}, err
 	}
 	if found {
-		return documentResponse{}, fmt.Errorf("document file %s has invalid format: %s", parseFailure.Path, parseFailure.ParseError)
+		return DocumentResponse{}, fmt.Errorf("document file %s has invalid format: %s", parseFailure.Path, parseFailure.ParseError)
 	}
 
 	documents, _, err := workspace.LoadDocumentsBestEffort(root.FlowPath)
 	if err != nil {
-		return documentResponse{}, err
+		return DocumentResponse{}, err
 	}
 
 	noteView, err := graph.BuildNoteGraphView(documents)
 	if err != nil {
-		return documentResponse{}, err
+		return DocumentResponse{}, err
 	}
 
 	var matchedItem markdown.WorkspaceDocument
@@ -2599,12 +2618,12 @@ func loadDocumentResponse(root workspace.Root, documentID string) (documentRespo
 	}
 
 	if !matched {
-		return documentResponse{}, workspace.DocumentNotFoundError{Selector: documentID}
+		return DocumentResponse{}, workspace.DocumentNotFoundError{Selector: documentID}
 	}
 
 	response, _, err := buildDocumentResponse(matchedItem, noteView, documents)
 	if err != nil {
-		return documentResponse{}, err
+		return DocumentResponse{}, err
 	}
 
 	return response, nil
@@ -2687,26 +2706,26 @@ func documentIDForResponse(document markdown.Document) string {
 	return document.ID()
 }
 
-func loadHomeResponse(root workspace.Root) (homeResponse, error) {
+func LoadHomeResponse(root workspace.Root) (HomeResponse, error) {
 	relativePath := filepath.ToSlash(filepath.Join(workspace.DataDirName, workspace.HomeFileName))
 	data, err := os.ReadFile(root.HomePath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return homeResponse{ID: "home", Type: "home", Title: "Home", Description: "", Path: relativePath, Body: ""}, nil
+			return HomeResponse{ID: "home", Type: "home", Title: "Home", Description: "", Path: relativePath, Body: ""}, nil
 		}
-		return homeResponse{}, fmt.Errorf("read home document: %w", err)
+		return HomeResponse{}, fmt.Errorf("read home document: %w", err)
 	}
 
 	home, err := parseHomeResponse(data)
 	if err != nil {
-		return homeResponse{}, fmt.Errorf("parse home document: %w", err)
+		return HomeResponse{}, fmt.Errorf("parse home document: %w", err)
 	}
 
 	home.Path = relativePath
 
 	documents, _, err := workspace.LoadDocumentsBestEffort(root.FlowPath)
 	if err != nil {
-		return homeResponse{}, fmt.Errorf("load workspace documents: %w", err)
+		return HomeResponse{}, fmt.Errorf("load workspace documents: %w", err)
 	}
 
 	homeItem := markdown.WorkspaceDocument{
@@ -2724,17 +2743,17 @@ func loadHomeResponse(root workspace.Root) (homeResponse, error) {
 
 	inlineReferences, err := resolveInlineReferenceResponses(documents, homeItem)
 	if err != nil {
-		return homeResponse{}, fmt.Errorf("resolve home inline references: %w", err)
+		return HomeResponse{}, fmt.Errorf("resolve home inline references: %w", err)
 	}
 	home.InlineReferences = inlineReferences
 
 	return home, nil
 }
 
-func parseHomeResponse(data []byte) (homeResponse, error) {
+func parseHomeResponse(data []byte) (HomeResponse, error) {
 	if !markdown.LooksLikeFlowDocument(data) {
 		body := markdown.NormalizeMarkdownText(string(data))
-		return homeResponse{
+		return HomeResponse{
 			ID:          "home",
 			Type:        string(markdown.HomeType),
 			Title:       markdown.DeriveHomeTitle(body),
@@ -2745,12 +2764,12 @@ func parseHomeResponse(data []byte) (homeResponse, error) {
 
 	document, err := markdown.ParseDocument([]byte(markdown.NormalizeMarkdownText(string(data))))
 	if err != nil {
-		return homeResponse{}, err
+		return HomeResponse{}, err
 	}
 
 	homeDocument, ok := document.(markdown.HomeDocument)
 	if !ok {
-		return homeResponse{}, fmt.Errorf("home.md must use type %q", markdown.HomeType)
+		return HomeResponse{}, fmt.Errorf("home.md must use type %q", markdown.HomeType)
 	}
 
 	id := strings.TrimSpace(homeDocument.Metadata.ID)
@@ -2762,7 +2781,7 @@ func parseHomeResponse(data []byte) (homeResponse, error) {
 		title = markdown.DeriveHomeTitle(homeDocument.Body)
 	}
 
-	return homeResponse{
+	return HomeResponse{
 		ID:          id,
 		Type:        string(markdown.HomeType),
 		Title:       title,
@@ -2771,7 +2790,7 @@ func parseHomeResponse(data []byte) (homeResponse, error) {
 	}, nil
 }
 
-func writeHomeDocument(root workspace.Root, payload updateHomeRequest) error {
+func WriteHomeDocument(root workspace.Root, payload HomeUpdateRequest) error {
 	title := "Home"
 	if payload.Title != nil && strings.TrimSpace(*payload.Title) != "" {
 		title = *payload.Title

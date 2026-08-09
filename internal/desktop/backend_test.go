@@ -8,8 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lex/flow/internal/core"
 	"github.com/lex/flow/internal/config"
+	"github.com/lex/flow/internal/core"
+	"github.com/lex/flow/internal/httpapi"
 	"github.com/lex/flow/internal/index"
 	"github.com/lex/flow/internal/markdown"
 	"github.com/lex/flow/internal/workspace"
@@ -71,16 +72,87 @@ func TestBackendUpdateAndDeleteDocumentReuseCoreWorkflows(t *testing.T) {
 		t.Fatalf("UpdateDocument() path = %q, want data/content/execution/parser-updated.md", updated.Path)
 	}
 
-	deletedPath, err := backend.DeleteDocument(core.DeleteDocumentRequest{DocumentID: "task-1"})
+	deletedPath, strippedReferences, err := backend.DeleteDocument(core.DeleteDocumentRequest{DocumentID: "task-1"})
 	if err != nil {
 		t.Fatalf("DeleteDocument() error = %v", err)
 	}
 	if deletedPath != "data/content/execution/parser-updated.md" {
 		t.Fatalf("DeleteDocument() path = %q, want data/content/execution/parser-updated.md", deletedPath)
 	}
+	if strippedReferences != nil {
+		t.Fatalf("DeleteDocument() strippedReferences = %v, want nil for plain delete", strippedReferences)
+	}
 	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "content", "execution", "parser-updated.md")); !os.IsNotExist(err) {
 		t.Fatalf("Stat(deleted file) error = %v, want not exist", err)
 	}
+}
+
+// TestBackendForceDeleteDocumentReturnsStrippedReferences verifies that a force
+// delete surfaces the referencer paths modified by the strip through the
+// desktop backend.
+func TestBackendForceDeleteDocumentReturnsStrippedReferences(t *testing.T) {
+	t.Parallel()
+
+	root, err := workspace.ResolveLocal(t.TempDir())
+	if err != nil {
+		t.Fatalf("ResolveLocal() error = %v", err)
+	}
+
+	// note-1 references task-1 via [[task-1]], so a plain delete is blocked and
+	// a force delete strips the dangling reference.
+	writeDesktopBackendDocument(t, filepath.Join(root.FlowPath, "data", "content", "notes", "architecture.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "note-1", Type: markdown.NoteType, Graph: "notes", Title: "Architecture"},
+		},
+		Body: "Architecture body references [[task-1]].\n",
+	})
+	writeDesktopBackendDocument(t, filepath.Join(root.FlowPath, "data", "content", "execution", "parser.md"), markdown.TaskDocument{
+		Metadata: markdown.TaskMetadata{
+			CommonFields: markdown.CommonFields{ID: "task-1", Type: markdown.TaskType, Graph: "execution", Title: "Parser"},
+			Status:       "Running",
+		},
+		Body: "Parser body\n",
+	})
+
+	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {
+		t.Fatalf("index.Rebuild() error = %v", err)
+	}
+
+	backend := NewBackend(root)
+	deletedPath, strippedReferences, err := backend.DeleteDocument(core.DeleteDocumentRequest{DocumentID: "task-1", Force: true})
+	if err != nil {
+		t.Fatalf("DeleteDocument() error = %v", err)
+	}
+	if deletedPath != "data/content/execution/parser.md" {
+		t.Fatalf("DeleteDocument() path = %q, want data/content/execution/parser.md", deletedPath)
+	}
+	if len(strippedReferences) != 1 || strippedReferences[0] != "data/content/notes/architecture.md" {
+		t.Fatalf("DeleteDocument() strippedReferences = %v, want data/content/notes/architecture.md", strippedReferences)
+	}
+
+	// The deleted node is gone from disk.
+	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "content", "execution", "parser.md")); !os.IsNotExist(err) {
+		t.Fatalf("Stat(parser.md) error = %v, want gone after force delete", err)
+	}
+
+	// The referencer's body no longer contains the dangling reference.
+	referencer, err := readDesktopBackendDocument(t, filepath.Join(root.FlowPath, "data", "content", "notes", "architecture.md"))
+	if err != nil {
+		t.Fatalf("readDesktopBackendDocument() error = %v", err)
+	}
+	if strings.Contains(referencer.BodyContent(), "[[task-1]]") {
+		t.Fatalf("referencer body = %q, want [[task-1]] stripped", referencer.BodyContent())
+	}
+}
+
+func readDesktopBackendDocument(t *testing.T, path string) (markdown.Document, error) {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return markdown.ParseDocument(data)
 }
 
 func TestBackendReadQueriesExposeWorkspaceState(t *testing.T) {
@@ -743,6 +815,50 @@ func TestBackendCreateGraphFileNoteFromPathRejectsMissingGraph(t *testing.T) {
 	}
 }
 
+func TestBackendMergeDocumentsReturnsLoadedResponse(t *testing.T) {
+	t.Parallel()
+
+	root := createDesktopBackendTestWorkspace(t)
+	backend := NewBackend(root)
+
+	createNote := func(fileName string, id string, title string, body string) {
+		t.Helper()
+		_, err := backend.CreateDocument(core.CreateDocumentRequest{
+			Type:        markdown.NoteType,
+			FeatureSlug: "release",
+			FileName:    fileName,
+			ID:          id,
+			Graph:       "release",
+			Title:       title,
+			Body:        body,
+		})
+		if err != nil {
+			t.Fatalf("CreateDocument(%s) error = %v", fileName, err)
+		}
+	}
+	createNote("alpha", "release/alpha", "Alpha", "Alpha body\n")
+	createNote("beta", "release/beta", "Beta", "Beta body\n")
+
+	merged, err := backend.MergeDocuments(MergeDocumentsRequest{
+		DocumentIDs: []string{"release/alpha", "release/beta"},
+	})
+	if err != nil {
+		t.Fatalf("MergeDocuments() error = %v", err)
+	}
+	if merged.ID != "release/alpha" {
+		t.Fatalf("MergeDocuments() id = %q, want release/alpha", merged.ID)
+	}
+	if merged.Path != "data/content/release/alpha.md" {
+		t.Fatalf("MergeDocuments() path = %q, want data/content/release/alpha.md", merged.Path)
+	}
+	if !strings.Contains(merged.Body, "Alpha body") || !strings.Contains(merged.Body, "Beta body") {
+		t.Fatalf("MergeDocuments() body = %q, want both Alpha and Beta content", merged.Body)
+	}
+	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "content", "release", "beta.md")); !os.IsNotExist(err) {
+		t.Fatalf("MergeDocuments() beta.md still exists (stat err = %v), want deleted", err)
+	}
+}
+
 func TestBackendRenameGraphRemapsDirectoryColors(t *testing.T) {
 	t.Parallel()
 
@@ -786,6 +902,42 @@ func TestBackendRenameGraphRemapsDirectoryColors(t *testing.T) {
 		if updated.GUI.GraphDirectoryColors[graphPath] != color {
 			t.Fatalf("RenameGraph() color[%q] = %q, want %q", graphPath, updated.GUI.GraphDirectoryColors[graphPath], color)
 		}
+	}
+}
+
+func TestBackendUpdateHomeWritesAndReloads(t *testing.T) {
+	t.Parallel()
+
+	root := createDesktopBackendTestWorkspace(t)
+	backend := NewBackend(root)
+
+	title := "My Home"
+	description := "Home description"
+	body := "Welcome to my workspace.\n"
+	updated, err := backend.UpdateHome(httpapi.HomeUpdateRequest{
+		Title:       &title,
+		Description: &description,
+		Body:        &body,
+	})
+	if err != nil {
+		t.Fatalf("UpdateHome() error = %v", err)
+	}
+	if updated.ID != "home" {
+		t.Fatalf("UpdateHome() id = %q, want home", updated.ID)
+	}
+	if updated.Title != "My Home" {
+		t.Fatalf("UpdateHome() title = %q, want My Home", updated.Title)
+	}
+	if !strings.Contains(updated.Body, "Welcome to my workspace.") {
+		t.Fatalf("UpdateHome() body = %q, want welcome text", updated.Body)
+	}
+
+	raw, err := os.ReadFile(root.HomePath)
+	if err != nil {
+		t.Fatalf("ReadFile(home) error = %v", err)
+	}
+	if !strings.Contains(string(raw), "Welcome to my workspace.") {
+		t.Fatalf("home.md does not contain the written body")
 	}
 }
 

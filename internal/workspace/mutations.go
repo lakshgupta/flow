@@ -292,33 +292,48 @@ func UpdateDocumentByID(root Root, documentID string, patch DocumentPatch) (mark
 }
 
 // DeleteDocumentByPath deletes an existing document selected by canonical relative path.
+// Deletion is blocked when another document references it inline; use
+// ForceDeleteDocumentByPath to strip those references and delete anyway.
 func DeleteDocumentByPath(root Root, pathValue string) (string, error) {
+	relativePath, _, err := deleteDocumentByPath(root, pathValue, false)
+	return relativePath, err
+}
+
+// ForceDeleteDocumentByPath deletes the document at pathValue even when other
+// documents reference it inline, stripping the dangling [[...]] references
+// from referencers first. It returns the deleted path and the workspace-relative
+// paths of every document whose body was modified by the strip.
+func ForceDeleteDocumentByPath(root Root, pathValue string) (string, []string, error) {
+	return deleteDocumentByPath(root, pathValue, true)
+}
+
+func deleteDocumentByPath(root Root, pathValue string, force bool) (string, []string, error) {
 	absolutePath, relativePath, err := resolveDocumentFilePath(root.FlowPath, pathValue)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	if _, err := os.Stat(absolutePath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return "", DocumentNotFoundError{Selector: pathValue}
+			return "", nil, DocumentNotFoundError{Selector: pathValue}
 		}
-		return "", fmt.Errorf("stat document path: %w", err)
+		return "", nil, fmt.Errorf("stat document path: %w", err)
 	}
 
 	workspaceDocuments, err := LoadDocuments(root.FlowPath)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	targetDocument, ok := findWorkspaceDocumentByPath(workspaceDocuments, relativePath)
 	if !ok {
-		return "", DocumentNotFoundError{Selector: pathValue}
+		return "", nil, DocumentNotFoundError{Selector: pathValue}
 	}
 
 	cleanupWrites := map[string]markdown.Document{}
-	deletionTargets, err := prepareDeletionDocuments(relativePath, targetDocument.Document, workspaceDocuments)
+	deletionTargets, strippedReferencers, err := prepareDeletionDocuments(relativePath, targetDocument.Document, workspaceDocuments, force)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	for _, item := range deletionTargets {
 		if item.Path == relativePath {
@@ -331,29 +346,44 @@ func DeleteDocumentByPath(root Root, pathValue string) (string, error) {
 	for cleanupPath, document := range cleanupWrites {
 		absoluteCleanupPath := filepath.Join(root.FlowPath, filepath.FromSlash(cleanupPath))
 		if err := writeDocumentFile(absoluteCleanupPath, document, false); err != nil {
-			return "", err
+			return "", nil, err
 		}
 	}
 
 	if err := os.Remove(absolutePath); err != nil {
-		return "", fmt.Errorf("delete document: %w", err)
+		return "", nil, fmt.Errorf("delete document: %w", err)
 	}
 
 	if err := rebuildIndex(root); err != nil {
-		return "", err
+		return "", nil, err
 	}
 
-	return relativePath, nil
+	return relativePath, strippedReferencers, nil
 }
 
 // DeleteDocumentByID deletes an existing document selected by document ID.
+// Deletion is blocked when another document references it inline; use
+// ForceDeleteDocumentByID to strip those references and delete anyway.
 func DeleteDocumentByID(root Root, documentID string) (string, error) {
+	relativePath, _, err := deleteDocumentByID(root, documentID, false)
+	return relativePath, err
+}
+
+// ForceDeleteDocumentByID deletes the document with the given ID even when
+// other documents reference it inline, stripping the dangling [[...]]
+// references from referencers first. It returns the deleted path and the
+// workspace-relative paths of every document whose body was modified.
+func ForceDeleteDocumentByID(root Root, documentID string) (string, []string, error) {
+	return deleteDocumentByID(root, documentID, true)
+}
+
+func deleteDocumentByID(root Root, documentID string, force bool) (string, []string, error) {
 	workspaceDocument, err := findDocumentByID(root.FlowPath, documentID)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
-	return DeleteDocumentByPath(root, workspaceDocument.Path)
+	return deleteDocumentByPath(root, workspaceDocument.Path, force)
 }
 
 func documentBody(doc markdown.Document) string {
@@ -919,34 +949,89 @@ func documentIDForCleanup(document markdown.Document) string {
 	return document.ID()
 }
 
-func prepareDeletionDocuments(relativePath string, document markdown.Document, workspaceDocuments []markdown.WorkspaceDocument) ([]markdown.WorkspaceDocument, error) {
+func prepareDeletionDocuments(relativePath string, document markdown.Document, workspaceDocuments []markdown.WorkspaceDocument, force bool) ([]markdown.WorkspaceDocument, []string, error) {
 	targets := make([]markdown.WorkspaceDocument, 0, len(workspaceDocuments))
 
 	deletedID := documentIDForCleanup(document)
 
-	if deletedID != "" {
+	if deletedID != "" && !force {
 		if referencers, err := findInlineReferenceSources(workspaceDocuments, relativePath, deletedID); err != nil {
-			return nil, InvalidMutationError{Err: err}
+			return nil, nil, InvalidMutationError{Err: err}
 		} else if len(referencers) > 0 {
-			return nil, InvalidMutationError{Err: fmt.Errorf("cannot delete node %q: it is referenced by %s; remove or update the inline reference before deleting", deletedID, strings.Join(referencers, ", "))}
+			return nil, nil, InvalidMutationError{Err: fmt.Errorf("cannot delete node %q: it is referenced by %s; remove or update the inline reference before deleting", deletedID, strings.Join(referencers, ", "))}
 		}
 	}
 
+	// In force mode, normalize the document set once so reference resolution
+	// uses path-derived graphs, exactly matching findInlineReferenceSources.
+	// This keeps the set of flagged references and the set of stripped
+	// references identical even when frontmatter graphs are stale.
+	var normalizedDocuments []markdown.WorkspaceDocument
+	if force && deletedID != "" {
+		normalizedDocuments = make([]markdown.WorkspaceDocument, 0, len(workspaceDocuments))
+		for _, item := range workspaceDocuments {
+			normalizedItem, err := markdown.NormalizeWorkspaceDocument(item)
+			if err != nil {
+				return nil, nil, InvalidMutationError{Err: err}
+			}
+			normalizedDocuments = append(normalizedDocuments, normalizedItem)
+		}
+	}
+
+	var strippedReferencers []string
 	for _, item := range workspaceDocuments {
 		if item.Path == relativePath {
 			continue
 		}
 		if deletedID != "" {
 			item, _ = removeReferenceFromWorkspaceDocument(item, deletedID)
+			if force {
+				var changed bool
+				item.Document, changed = stripInlineReferencesTo(item, normalizedDocuments, deletedID)
+				if changed {
+					strippedReferencers = append(strippedReferencers, item.Path)
+				}
+			}
 		}
 		targets = append(targets, item)
 	}
 
 	if err := markdown.ValidateWorkspaceDocuments(targets); err != nil {
-		return nil, InvalidMutationError{Err: fmt.Errorf("validate workspace documents: %w", err)}
+		return nil, nil, InvalidMutationError{Err: fmt.Errorf("validate workspace documents: %w", err)}
 	}
 
-	return targets, nil
+	return targets, strippedReferencers, nil
+}
+
+// stripInlineReferencesTo removes inline references in item's body that resolve
+// to deletedID, reporting whether the body changed. Only note/task/command
+// documents carry references that validation checks (mirroring
+// findInlineReferenceSources), so other kinds are left untouched.
+// normalizedDocuments must be the normalized workspace set (the same one the
+// blocker uses) so the stripped token set matches exactly.
+func stripInlineReferencesTo(item markdown.WorkspaceDocument, normalizedDocuments []markdown.WorkspaceDocument, deletedID string) (markdown.Document, bool) {
+	switch item.Document.(type) {
+	case markdown.NoteDocument, markdown.TaskDocument, markdown.CommandDocument:
+	default:
+		return item.Document, false
+	}
+
+	// Use the normalized source graph (path-derived) for resolution, mirroring
+	// findInlineReferenceSources.
+	sourceGraph := ""
+	for _, normalizedItem := range normalizedDocuments {
+		if normalizedItem.Path == item.Path {
+			sourceGraph = documentGraph(normalizedItem.Document)
+			break
+		}
+	}
+
+	body := documentBody(item.Document)
+	stripped := markdown.RemoveInlineReferencesTo(body, normalizedDocuments, sourceGraph, deletedID)
+	if stripped == body {
+		return item.Document, false
+	}
+	return setDocumentBody(item.Document, stripped), true
 }
 
 // findInlineReferenceSources returns human-readable labels of documents whose

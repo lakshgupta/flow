@@ -25,6 +25,38 @@ func RewriteInlineReferenceTargets(body string, replacements map[string]string) 
 	})
 }
 
+// RemoveInlineReferencesTo drops inline reference tokens in body whose resolved
+// target is deletedID, returning the modified body. Tokens that resolve to a
+// different document (or cannot be resolved) are preserved. Escaped tokens
+// (\\[[...]]) are normalized like InlineReferenceIDs so the removed token set
+// matches what validation reports. When nothing resolves to deletedID the
+// original body is returned unchanged.
+func RemoveInlineReferencesTo(body string, documents []WorkspaceDocument, sourceGraph string, deletedID string) string {
+	if body == "" || deletedID == "" {
+		return body
+	}
+
+	normalized := NormalizeInlineReferenceTokens(body)
+	var output strings.Builder
+	last := 0
+	removed := false
+	for _, loc := range inlineReferencePattern.FindAllStringIndex(normalized, -1) {
+		token := normalized[loc[0]:loc[1]]
+		rawTarget := strings.TrimSpace(token[2 : len(token)-2])
+		resolved, ok, err := ResolveReferenceTarget(documents, rawTarget, sourceGraph)
+		if err == nil && ok && resolved.ID == deletedID {
+			output.WriteString(normalized[last:loc[0]])
+			last = loc[1]
+			removed = true
+		}
+	}
+	if !removed {
+		return body
+	}
+	output.WriteString(normalized[last:])
+	return output.String()
+}
+
 // ReferenceTarget describes one graph-backed document that can be resolved from an inline reference token.
 type ReferenceTarget struct {
 	ID         string       `json:"id"`

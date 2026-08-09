@@ -658,6 +658,217 @@ func TestDeleteDocumentByPathBlockedByCrossGraphBreadcrumbReference(t *testing.T
 	}
 }
 
+// TestForceDeleteDocumentByPathStripsInlineReferences verifies that force
+// deletion strips the dangling [[...]] reference from the referencer (leaving
+// unrelated references intact), removes the node, and leaves the workspace
+// valid.
+func TestForceDeleteDocumentByPathStripsInlineReferences(t *testing.T) {
+	t.Parallel()
+
+	root, err := ResolveLocal(t.TempDir())
+	if err != nil {
+		t.Fatalf("ResolveLocal() error = %v", err)
+	}
+
+	// Node B lives in graph "proj".
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "proj", "node-b.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "proj/node-b", Type: markdown.NoteType, Graph: "proj", Title: "Node B"},
+		},
+		Body: "Node B body\n",
+	})
+	// Node A lives in graph "other", references Node B via a cross-graph
+	// breadcrumb, and also references a surviving node that must be preserved.
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "other", "node-a.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "other/node-a", Type: markdown.NoteType, Graph: "other", Title: "Node A"},
+		},
+		Body: "References [[proj > Node B]] and [[other > Survivor]] here.\n",
+	})
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "other", "survivor.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "other/survivor", Type: markdown.NoteType, Graph: "other", Title: "Survivor"},
+		},
+		Body: "Survivor body\n",
+	})
+
+	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {
+		t.Fatalf("index.Rebuild() error = %v", err)
+	}
+
+	relativePath, strippedReferences, err := ForceDeleteDocumentByPath(root, "data/content/proj/node-b.md")
+	if err != nil {
+		t.Fatalf("ForceDeleteDocumentByPath() error = %v", err)
+	}
+	if relativePath != "data/content/proj/node-b.md" {
+		t.Fatalf("ForceDeleteDocumentByPath() path = %q, want data/content/proj/node-b.md", relativePath)
+	}
+	if len(strippedReferences) != 1 || strippedReferences[0] != "data/content/other/node-a.md" {
+		t.Fatalf("ForceDeleteDocumentByPath() strippedReferences = %v, want data/content/other/node-a.md", strippedReferences)
+	}
+
+	// The deleted node is gone from disk.
+	if _, statErr := os.Stat(filepath.Join(root.FlowPath, "data", "content", "proj", "node-b.md")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("Stat(node-b.md) error = %v, want gone after force delete", statErr)
+	}
+
+	// The referencer's dangling reference is stripped, but the unrelated
+	// reference to the surviving node is preserved.
+	referencer, err := readDocumentFile(filepath.Join(root.FlowPath, "data", "content", "other", "node-a.md"))
+	if err != nil {
+		t.Fatalf("readDocumentFile(node-a) error = %v", err)
+	}
+	if strings.Contains(referencer.BodyContent(), "[[proj > Node B]]") {
+		t.Fatalf("referencer body = %q, want dangling reference stripped", referencer.BodyContent())
+	}
+	if !strings.Contains(referencer.BodyContent(), "[[other > Survivor]]") {
+		t.Fatalf("referencer body = %q, want unrelated reference preserved", referencer.BodyContent())
+	}
+
+	// The workspace must validate: no dangling references remain.
+	documents, err := LoadDocuments(root.FlowPath)
+	if err != nil {
+		t.Fatalf("LoadDocuments() error = %v", err)
+	}
+	if err := markdown.ValidateWorkspaceDocuments(documents); err != nil {
+		t.Fatalf("ValidateWorkspaceDocuments() error = %v, want valid workspace after force delete", err)
+	}
+}
+
+// TestForceDeleteDocumentByIDWithNoReferencers returns a nil stripped list so
+// the HTTP response omits strippedReferences and the frontend falls back to the
+// generic force message.
+func TestForceDeleteDocumentByIDWithNoReferencers(t *testing.T) {
+	t.Parallel()
+
+	root, err := ResolveLocal(t.TempDir())
+	if err != nil {
+		t.Fatalf("ResolveLocal() error = %v", err)
+	}
+
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "proj", "node-b.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "proj/node-b", Type: markdown.NoteType, Graph: "proj", Title: "Node B"},
+		},
+		Body: "Node B body\n",
+	})
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "proj", "node-c.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "proj/node-c", Type: markdown.NoteType, Graph: "proj", Title: "Node C"},
+		},
+		Body: "Node C body\n",
+	})
+
+	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {
+		t.Fatalf("index.Rebuild() error = %v", err)
+	}
+
+	_, strippedReferences, err := ForceDeleteDocumentByID(root, "proj/node-b")
+	if err != nil {
+		t.Fatalf("ForceDeleteDocumentByID() error = %v", err)
+	}
+	if strippedReferences != nil {
+		t.Fatalf("ForceDeleteDocumentByID() strippedReferences = %v, want nil when nothing was stripped", strippedReferences)
+	}
+}
+
+// TestForceDeleteDocumentByIDDoesNotReportHardLinkOnlyReferencers verifies that
+// a document whose only link to the deleted node is a frontmatter hard link
+// (cleaned without touching the body) is NOT reported in the stripped list.
+func TestForceDeleteDocumentByIDDoesNotReportHardLinkOnlyReferencers(t *testing.T) {
+	t.Parallel()
+
+	root, err := ResolveLocal(t.TempDir())
+	if err != nil {
+		t.Fatalf("ResolveLocal() error = %v", err)
+	}
+
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "proj", "node-b.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "proj/node-b", Type: markdown.NoteType, Graph: "proj", Title: "Node B"},
+		},
+		Body: "Node B body\n",
+	})
+	// Node A links to Node B via frontmatter only; its body is untouched.
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "proj", "node-a.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "proj/node-a", Type: markdown.NoteType, Graph: "proj", Title: "Node A"},
+			Links: []markdown.NodeLink{{Node: "proj/node-b"}},
+		},
+		Body: "Node A body\n",
+	})
+
+	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {
+		t.Fatalf("index.Rebuild() error = %v", err)
+	}
+
+	_, strippedReferences, err := ForceDeleteDocumentByID(root, "proj/node-b")
+	if err != nil {
+		t.Fatalf("ForceDeleteDocumentByID() error = %v", err)
+	}
+	if strippedReferences != nil {
+		t.Fatalf("ForceDeleteDocumentByID() strippedReferences = %v, want nil for hard-link-only referencers", strippedReferences)
+	}
+
+	// The hard link was still cleaned up even though it is not reported.
+	referencer, err := readDocumentFile(filepath.Join(root.FlowPath, "data", "content", "proj", "node-a.md"))
+	if err != nil {
+		t.Fatalf("readDocumentFile(node-a) error = %v", err)
+	}
+	if len(referencer.Links()) != 0 {
+		t.Fatalf("referencer links = %v, want cleaned hard link", referencer.Links())
+	}
+}
+
+// TestForceDeleteDocumentByIDStripsSameGraphTitleReference verifies that a
+// title-only inline reference ([[Title]], no graph prefix) written in a
+// document whose frontmatter graph is stale is still stripped on force delete.
+// The blocker resolves references against path-derived graphs, so the stripper
+// must use the same normalized context or the force delete would fail
+// validation with a dangling reference.
+func TestForceDeleteDocumentByIDStripsSameGraphTitleReference(t *testing.T) {
+	t.Parallel()
+
+	root, err := ResolveLocal(t.TempDir())
+	if err != nil {
+		t.Fatalf("ResolveLocal() error = %v", err)
+	}
+
+	// Node B lives in graph "proj" (path-derived), id proj/node-b.
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "proj", "node-b.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "proj/node-b", Type: markdown.NoteType, Graph: "proj", Title: "Node B"},
+		},
+		Body: "Node B body\n",
+	})
+	// Node A lives in the same graph (path-derived "proj") but its frontmatter
+	// graph is stale, and it references Node B by title only.
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "proj", "node-a.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "proj/node-a", Type: markdown.NoteType, Graph: "wrong", Title: "Node A"},
+		},
+		Body: "Depends on [[Node B]] here.\n",
+	})
+
+	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {
+		t.Fatalf("index.Rebuild() error = %v", err)
+	}
+
+	if _, strippedReferences, err := ForceDeleteDocumentByID(root, "proj/node-b"); err != nil {
+		t.Fatalf("ForceDeleteDocumentByID() error = %v", err)
+	} else if len(strippedReferences) != 1 || strippedReferences[0] != "data/content/proj/node-a.md" {
+		t.Fatalf("ForceDeleteDocumentByID() strippedReferences = %v, want data/content/proj/node-a.md", strippedReferences)
+	}
+
+	referencer, err := readDocumentFile(filepath.Join(root.FlowPath, "data", "content", "proj", "node-a.md"))
+	if err != nil {
+		t.Fatalf("readDocumentFile(node-a) error = %v", err)
+	}
+	if strings.Contains(referencer.BodyContent(), "[[Node B]]") {
+		t.Fatalf("referencer body = %q, want [[Node B]] stripped via normalized graph resolution", referencer.BodyContent())
+	}
+}
+
 func TestMergeDocumentsTransfersAndRetargetsLinks(t *testing.T) {
 	t.Parallel()
 

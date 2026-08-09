@@ -95,6 +95,73 @@ func TestLookupReferenceTargetsPrefersSameGraphTitleMatches(t *testing.T) {
 	}
 }
 
+func TestRemoveInlineReferencesTo(t *testing.T) {
+	t.Parallel()
+
+	documents := []WorkspaceDocument{
+		{
+			Path: "data/content/proj/node-b.md",
+			Document: NoteDocument{
+				Metadata: NoteMetadata{
+					CommonFields: CommonFields{ID: "proj/node-b", Type: NoteType, Graph: "proj", Title: "Node B"},
+				},
+			},
+		},
+		{
+			Path: "data/content/proj/survivor.md",
+			Document: NoteDocument{
+				Metadata: NoteMetadata{
+					CommonFields: CommonFields{ID: "proj/survivor", Type: NoteType, Graph: "proj", Title: "Survivor"},
+				},
+			},
+		},
+	}
+
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "strips only matching reference",
+			body: "See [[proj > Node B]] and [[proj > Survivor]].\n",
+			want: "See  and [[proj > Survivor]].\n",
+		},
+		{
+			name: "strips id-form reference",
+			body: "Track [[proj/node-b]] now.\n",
+			want: "Track  now.\n",
+		},
+		{
+			name: "strips all occurrences",
+			body: "[[Node B]] then [[proj > Node B]] again.\n",
+			want: " then  again.\n",
+		},
+		{
+			name: "no-op when nothing matches",
+			body: "Only [[proj > Survivor]] remains.\n",
+			want: "Only [[proj > Survivor]] remains.\n",
+		},
+		{
+			name: "no-op when body empty",
+			body: "",
+			want: "",
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := RemoveInlineReferencesTo(test.body, documents, "proj", "proj/node-b")
+			if got != test.want {
+				t.Fatalf("RemoveInlineReferencesTo() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestResolveInlineReferencesReturnsResolvedTargets(t *testing.T) {
 	t.Parallel()
 
