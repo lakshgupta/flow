@@ -37,13 +37,6 @@ func SkillMarkdown() string {
 	return markdown
 }
 
-// GraphEngineeringSkillMarkdown returns the graph-engineering skill guide
-// embedded at build time.
-func GraphEngineeringSkillMarkdown() string {
-	markdown, _ := skillMarkdownByName("graph-engineering")
-	return markdown
-}
-
 // SkillMarkdownByName returns the embedded skill markdown for a named skill.
 // "record-keeping" is accepted as an alias for the "flow" skill. The second
 // return value is false when the name is not a known skill.

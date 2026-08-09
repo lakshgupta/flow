@@ -264,40 +264,32 @@ Flow's own development follows a stage-based workflow with behavior governed by 
 
 ### Skill Directory Structure
 
-All Flow skills live in a single canonical directory that is both the agent-visible source of truth and the embed source for the binary:
+All Flow skill content lives in a single canonical directory that is both the agent-visible source of truth and the embed source for the binary:
 
 ```
 packaging/skills/
-  flow/SKILL.md           — Flow CLI record-keeping protocol (naming, statuses, edges, commit ids)
-  design/SKILL.md         — Feature design proposal and architecture.md update workflow
-  plan/SKILL.md           — Feature planning and Flow task-node creation
-  implement/SKILL.md      — Feature implementation from Flow task nodes
-  fix/SKILL.md            — Issue fixing workflow
-  refactor/SKILL.md       — Behavior-preserving structural cleanup
-  test/SKILL.md           — Validation and test execution
-  review/SKILL.md         — Code review workflow
-  commit/SKILL.md         — Commit creation and Flow record sync
-  graph-engineering/SKILL.md — Node-edge graph design and mutation discipline
+  flow/SKILL.md           — The complete Flow agent skill: record-keeping protocol, all stage workflows (design, plan, implement, fix, refactor, test, review, commit), and graph engineering
 ```
 
-Each skill file is a self-contained Markdown document with YAML frontmatter (`name`, `description`, `user-invocable`, `allowed-tools`, `argument-hint`) followed by the full stage-specific workflow instructions.
+The single skill file is a self-contained Markdown document with YAML frontmatter (`name`, `description`, `user-invocable`, `allowed-tools`, `argument-hint`) followed by a stage-routing table and the full workflow instructions as internal sections.
 
 Key related files:
 
-- `AGENTS.md` — Project-level routing table that maps work stages to skill files and defines persistent rules
+- `AGENTS.md` — Project-level routing table that maps work stages to the matching section of the single skill file and defines persistent rules
 - `skillcontent.go` — Embeds the whole `packaging/skills/` tree into the flow binary at build time (single `embed.FS`), exposing `SkillNames()`, `SkillMarkdownByName()`, and `flow skill content --skill <name>`
 - `skills-lock.json` — Lock file tracking installed skills with their source type and hash
 - `.agents/skills/` — Generated install location (not committed); produced by `flow skill init --project`
 
 ### Skill Distribution
 
-An installed `flow` binary carries every skill. Users materialize them for their agent with:
+An installed `flow` binary carries the skill. Users materialize it for their agent with:
 
 ```bash
-flow skill list                     # enumerate embedded skills
-flow skill content --skill design   # print any skill
-flow skill init                     # write all skills to ~/.agents/skills/
-flow skill init --project           # write all skills to ./.agents/skills/
+flow skill list                     # enumerate embedded skills (flow)
+flow skill content                  # print the merged skill (default)
+flow skill content --skill flow     # print the merged skill explicitly
+flow skill init                     # write the skill to ~/.agents/skills/
+flow skill init --project           # write the skill to ./.agents/skills/
 flow skill init --project --force   # overwrite existing files
 ```
 
@@ -305,16 +297,17 @@ flow skill init --project --force   # overwrite existing files
 
 ### Stage Routing
 
-`AGENTS.md` serves as the routing table. When a user request does not explicitly name a stage, the agent infers the correct stage and applies the matching skill file:
+`AGENTS.md` serves as the routing table. When a user request does not explicitly name a stage, the agent infers the correct stage and applies the matching section of the single flow skill:
 
-- New feature design → design skill
-- Feature planning with task nodes → plan skill
-- Feature implementation from task nodes → implement skill
-- Bug fixes → fix skill
-- Structural cleanup without behavior change → refactor skill
-- Test execution and validation → test skill
-- Code review → review skill
-- Commit and Flow record sync → commit skill
+- New feature design → Section 2.1 Design
+- Feature planning with task nodes → Section 2.2 Plan
+- Feature implementation from task nodes → Section 2.3 Implement
+- Bug fixes → Section 2.4 Fix
+- Structural cleanup without behavior change → Section 2.5 Refactor
+- Test execution and validation → Section 2.6 Test
+- Code review → Section 2.7 Review
+- Commit and Flow record sync → Section 2.8 Commit
+- Graph structure, node/edge engineering, and dependency ordering → Section 3 Graph Engineering
 
 ### Flow Record Keeping
 

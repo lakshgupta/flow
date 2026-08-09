@@ -821,7 +821,7 @@ func TestFlowSkillContentReturnsEmbeddedSkill(t *testing.T) {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
 
-	if !strings.Contains(stdout, "# Skill: Flow-First Record Keeping") {
+	if !strings.Contains(stdout, "# Skill: Flow — Complete Workspace Workflow") {
 		t.Fatalf("stdout missing embedded skill title, got %q", stdout)
 	}
 }
@@ -832,7 +832,7 @@ func TestFlowSkillContentSupportsGraphOverride(t *testing.T) {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
 
-	if !strings.Contains(stdout, "# Skill: Flow-First Record Keeping") {
+	if !strings.Contains(stdout, "# Skill: Flow — Complete Workspace Workflow") {
 		t.Fatalf("stdout missing embedded skill title, got %q", stdout)
 	}
 }
@@ -870,27 +870,29 @@ func TestFlowSkillListListsEmbeddedSkills(t *testing.T) {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
 
-	for _, expected := range []string{"commit", "design", "fix", "flow", "graph-engineering", "implement", "plan", "refactor", "review", "test"} {
-		if !strings.Contains(stdout, expected) {
-			t.Fatalf("stdout missing skill %q, got %q", expected, stdout)
-		}
+	// The ten-skill set was merged into a single flow skill.
+	if !strings.Contains(stdout, "flow") {
+		t.Fatalf("stdout missing merged flow skill, got %q", stdout)
+	}
+	if strings.Contains(stdout, "design") || strings.Contains(stdout, "commit") || strings.Contains(stdout, "graph-engineering") {
+		t.Fatalf("stdout unexpectedly lists legacy skills, got %q", stdout)
 	}
 }
 
 func TestFlowSkillContentByName(t *testing.T) {
-	stdout, stderr := runForTest(t, []string{"skill", "content", "--skill", "design"}, t.TempDir())
+	stdout, stderr := runForTest(t, []string{"skill", "content", "--skill", "flow"}, t.TempDir())
 	if stderr != "" {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
-	if !strings.Contains(stdout, "name: design") {
-		t.Fatalf("stdout missing design skill, got %q", stdout)
+	if !strings.Contains(stdout, "name: flow") {
+		t.Fatalf("stdout missing flow skill, got %q", stdout)
 	}
 
 	stdout, stderr = runForTest(t, []string{"skill", "content", "--skill", "record-keeping"}, t.TempDir())
 	if stderr != "" {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
-	if !strings.Contains(stdout, "# Skill: Flow-First Record Keeping") {
+	if !strings.Contains(stdout, "# Skill: Flow — Complete Workspace Workflow") {
 		t.Fatalf("stdout missing record-keeping alias content, got %q", stdout)
 	}
 }
@@ -908,20 +910,18 @@ func TestFlowSkillInitWritesToGlobalSkillsDir(t *testing.T) {
 	if stderr != "" {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
-	if !strings.Contains(stdout, "10 skill file(s)") {
+	if !strings.Contains(stdout, "1 skill file(s)") {
 		t.Fatalf("stdout missing init summary, got %q", stdout)
 	}
 
-	for _, expected := range []string{"flow", "design", "graph-engineering"} {
-		target := filepath.Join(homeDir, ".agents", "skills", expected, "SKILL.md")
-		if _, err := os.Stat(target); err != nil {
-			t.Fatalf("expected skill file %s: %v", target, err)
-		}
+	target := filepath.Join(homeDir, ".agents", "skills", "flow", "SKILL.md")
+	if _, err := os.Stat(target); err != nil {
+		t.Fatalf("expected skill file %s: %v", target, err)
 	}
 
 	count := initializerCount(t, filepath.Join(homeDir, ".agents", "skills"))
-	if count != 10 {
-		t.Fatalf("global init wrote %d skill dirs, want 10", count)
+	if count != 1 {
+		t.Fatalf("global init wrote %d skill dirs, want 1", count)
 	}
 
 	// Rerun is idempotent: no files changed, all skipped.
@@ -929,7 +929,7 @@ func TestFlowSkillInitWritesToGlobalSkillsDir(t *testing.T) {
 	if stderr != "" {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
-	if !strings.Contains(stdout, "0 skill file(s), 10 skipped") {
+	if !strings.Contains(stdout, "0 skill file(s), 1 skipped") {
 		t.Fatalf("stdout missing idempotent summary, got %q", stdout)
 	}
 }

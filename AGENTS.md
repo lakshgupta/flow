@@ -3,21 +3,23 @@
 ## Default Workflow
 
 - When the user does not explicitly choose a prompt, infer the correct stage of work and follow this project workflow: design, plan, implement or fix or refactor, test, review, then commit.
-- Treat the skill files in [packaging/skills/](packaging/skills/) as the source of truth for stage-specific behavior even when the user does not invoke them explicitly.
-- Reuse the matching skill workflow by default rather than reinterpreting the process from scratch.
-- For record-keeping behavior, follow [packaging/skills/flow/SKILL.md](packaging/skills/flow/SKILL.md) as the authoritative protocol when prompt wording differs.
+- Treat the single skill file [packaging/skills/flow/SKILL.md](packaging/skills/flow/SKILL.md) as the source of truth for stage-specific behavior even when the user does not invoke it explicitly.
+- Reuse the matching skill section by default rather than reinterpreting the process from scratch.
+- For record-keeping behavior, follow Section 1 of the skill file as the authoritative protocol when prompt wording differs.
 
 ## Stage Routing
 
-- New feature design or behavior change: follow [design skill](packaging/skills/design/SKILL.md)
-- Feature planning and Flow task-node creation: follow [plan skill](packaging/skills/plan/SKILL.md)
-- Feature implementation from Flow task nodes: follow [implement skill](packaging/skills/implement/SKILL.md)
-- Issue fixing: follow [fix skill](packaging/skills/fix/SKILL.md)
-- Behavior-preserving structural cleanup: follow [refactor skill](packaging/skills/refactor/SKILL.md)
-- Validation and test execution: follow [test skill](packaging/skills/test/SKILL.md)
-- Code review: follow [review skill](packaging/skills/review/SKILL.md)
-- Commit creation and Flow record sync: follow [commit skill](packaging/skills/commit/SKILL.md)
-- Graph structure, node/edge engineering, and dependency ordering: follow [graph-engineering skill](packaging/skills/graph-engineering/SKILL.md)
+Use the matching section of the single skill file [packaging/skills/flow/SKILL.md](packaging/skills/flow/SKILL.md):
+
+- New feature design or behavior change: follow [Section 2.1 Design](packaging/skills/flow/SKILL.md)
+- Feature planning and Flow task-node creation: follow [Section 2.2 Plan](packaging/skills/flow/SKILL.md)
+- Feature implementation from Flow task nodes: follow [Section 2.3 Implement](packaging/skills/flow/SKILL.md)
+- Issue fixing: follow [Section 2.4 Fix](packaging/skills/flow/SKILL.md)
+- Behavior-preserving structural cleanup: follow [Section 2.5 Refactor](packaging/skills/flow/SKILL.md)
+- Validation and test execution: follow [Section 2.6 Test](packaging/skills/flow/SKILL.md)
+- Code review: follow [Section 2.7 Review](packaging/skills/flow/SKILL.md)
+- Commit creation and Flow record sync: follow [Section 2.8 Commit](packaging/skills/flow/SKILL.md)
+- Graph structure, node/edge engineering, and dependency ordering: follow [Section 3 Graph Engineering](packaging/skills/flow/SKILL.md)
 
 ## Flow Record Keeping
 

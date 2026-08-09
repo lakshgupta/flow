@@ -1,47 +1,7 @@
 {
   "version": 1,
   "skills": {
-    "design": {
-      "source": "local",
-      "sourceType": "local",
-      "computedHash": ""
-    },
-    "plan": {
-      "source": "local",
-      "sourceType": "local",
-      "computedHash": ""
-    },
-    "implement": {
-      "source": "local",
-      "sourceType": "local",
-      "computedHash": ""
-    },
-    "fix": {
-      "source": "local",
-      "sourceType": "local",
-      "computedHash": ""
-    },
-    "refactor": {
-      "source": "local",
-      "sourceType": "local",
-      "computedHash": ""
-    },
-    "test": {
-      "source": "local",
-      "sourceType": "local",
-      "computedHash": ""
-    },
-    "review": {
-      "source": "local",
-      "sourceType": "local",
-      "computedHash": ""
-    },
-    "commit": {
-      "source": "local",
-      "sourceType": "local",
-      "computedHash": ""
-    },
-    "graph-engineering": {
+    "flow": {
       "source": "local",
       "sourceType": "local",
       "computedHash": ""
