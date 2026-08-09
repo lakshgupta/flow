@@ -1225,7 +1225,7 @@ func pruneWorkspaceGraphDirectoryColors(root workspace.Root, nodes []index.Graph
 	}
 
 	workspaceConfig.GUI.GraphDirectoryColors = nextColors
-	if err := persistWorkspaceConfig(root, workspaceConfig); err != nil {
+	if err := PersistWorkspaceConfig(root, workspaceConfig); err != nil {
 		return nil, err
 	}
 
@@ -1266,7 +1266,7 @@ func pruneWorkspaceGraphCanvasEnabled(root workspace.Root, nodes []index.GraphNo
 	}
 
 	workspaceConfig.GUI.GraphCanvasEnabled = nextEnabled
-	if err := persistWorkspaceConfig(root, workspaceConfig); err != nil {
+	if err := PersistWorkspaceConfig(root, workspaceConfig); err != nil {
 		return nil, err
 	}
 
@@ -1587,7 +1587,7 @@ func (handler *apiHandler) handleRenameGraph(writer http.ResponseWriter, request
 		CurrentName: graphName,
 		NextName:    payload.Name,
 		AfterRename: func() error {
-			return remapGraphDirectoryColors(handler.resolvedRoot(), graphName, payload.Name)
+			return RemapGraphDirectoryColors(handler.resolvedRoot(), graphName, payload.Name)
 		},
 	}, func(currentName string, nextName string) error {
 		return workspace.RenameGraph(handler.resolvedRoot(), currentName, nextName)
@@ -1621,7 +1621,7 @@ func (handler *apiHandler) handleDeleteGraph(writer http.ResponseWriter, request
 	if err := core.DeleteGraph(core.DeleteGraphRequest{
 		Name: graphName,
 		AfterDelete: func() error {
-			return deleteGraphDirectoryColors(handler.resolvedRoot(), graphName)
+			return DeleteGraphDirectoryColors(handler.resolvedRoot(), graphName)
 		},
 	}, func(name string) error {
 		return workspace.DeleteGraph(handler.resolvedRoot(), name)
@@ -2296,7 +2296,7 @@ func makeUniqueNoteSlug(root workspace.Root, graphPath string, candidate string)
 	}
 }
 
-func remapGraphDirectoryColors(root workspace.Root, currentGraph string, nextGraph string) error {
+func RemapGraphDirectoryColors(root workspace.Root, currentGraph string, nextGraph string) error {
 	workspaceConfig, err := readWorkspaceConfig(root)
 	if err != nil {
 		return err
@@ -2318,14 +2318,14 @@ func remapGraphDirectoryColors(root workspace.Root, currentGraph string, nextGra
 	}
 
 	workspaceConfig.GUI.GraphDirectoryColors = nextColors
-	if err := persistWorkspaceConfig(root, workspaceConfig); err != nil {
+	if err := PersistWorkspaceConfig(root, workspaceConfig); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func deleteGraphDirectoryColors(root workspace.Root, graphName string) error {
+func DeleteGraphDirectoryColors(root workspace.Root, graphName string) error {
 	workspaceConfig, err := readWorkspaceConfig(root)
 	if err != nil {
 		return err
@@ -2344,7 +2344,7 @@ func deleteGraphDirectoryColors(root workspace.Root, graphName string) error {
 	}
 
 	workspaceConfig.GUI.GraphDirectoryColors = nextColors
-	if err := persistWorkspaceConfig(root, workspaceConfig); err != nil {
+	if err := PersistWorkspaceConfig(root, workspaceConfig); err != nil {
 		return err
 	}
 
@@ -2382,7 +2382,7 @@ func (handler *apiHandler) persistWorkspaceConfigForRequest(writer http.Response
 	return true
 }
 
-func persistWorkspaceConfig(root workspace.Root, workspaceConfig config.Workspace) error {
+func PersistWorkspaceConfig(root workspace.Root, workspaceConfig config.Workspace) error {
 	if err := config.Write(root.ConfigPath, workspaceConfig); err != nil {
 		return err
 	}

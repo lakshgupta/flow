@@ -51,3 +51,42 @@ func TestAppDelegatesDocumentMutations(t *testing.T) {
 		t.Fatalf("DeleteDocument() path = %q, want data/content/release/app-plan.md", deletedPath)
 	}
 }
+
+func TestAppGraphMutationsDelegateToBackend(t *testing.T) {
+	t.Parallel()
+
+	root := createDesktopBackendTestWorkspace(t)
+	app := NewApp(NewBackend(root))
+
+	created, err := app.CreateGraph(CreateGraphRequest{Name: "releases"})
+	if err != nil {
+		t.Fatalf("CreateGraph() error = %v", err)
+	}
+	if created.Name != "releases" {
+		t.Fatalf("CreateGraph() name = %q, want releases", created.Name)
+	}
+
+	colored, err := app.UpdateGraphColor(UpdateGraphColorRequest{GraphPath: "execution", Color: "sky"})
+	if err != nil {
+		t.Fatalf("UpdateGraphColor() error = %v", err)
+	}
+	if colored.Color != "sky" {
+		t.Fatalf("UpdateGraphColor() color = %q, want sky", colored.Color)
+	}
+
+	disabled, err := app.UpdateGraphCanvasDisabled(UpdateGraphCanvasDisabledRequest{GraphPath: "execution", Disabled: true})
+	if err != nil {
+		t.Fatalf("UpdateGraphCanvasDisabled() error = %v", err)
+	}
+	if !disabled.CanvasDisabled {
+		t.Fatalf("UpdateGraphCanvasDisabled() canvasDisabled = false, want true")
+	}
+
+	deleted, err := app.DeleteGraph(DeleteGraphRequest{Name: "releases"})
+	if err != nil {
+		t.Fatalf("DeleteGraph() error = %v", err)
+	}
+	if !deleted.Deleted || deleted.Name != "releases" {
+		t.Fatalf("DeleteGraph() = %+v, want deleted releases", deleted)
+	}
+}

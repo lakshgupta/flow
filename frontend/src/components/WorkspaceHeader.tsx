@@ -30,6 +30,8 @@ export type WorkspaceHeaderProps = {
   savingHome?: boolean;
   /** Epoch ms of the last successful autosave — flashes a brief "Saved" confirmation. */
   lastSaveAt?: number;
+  /** Persistent mutation feedback (e.g. "deleted; references stripped from …"). */
+  mutationSuccess?: string;
 };
 
 function graphPathSegments(graphPath: string): string[] {
@@ -56,6 +58,7 @@ function WorkspaceHeaderComponent({
   savingDocument = false,
   savingHome = false,
   lastSaveAt = 0,
+  mutationSuccess = "",
 }: WorkspaceHeaderProps) {
   const pathSegments = graphPathSegments(selectedGraphPath);
 
@@ -162,6 +165,17 @@ function WorkspaceHeaderComponent({
                 <span>Saved</span>
               </>
             )}
+          </div>
+        )}
+        {mutationSuccess !== "" && (
+          <div
+            className="save-status-indicator mutation-status-indicator"
+            role="status"
+            aria-live="polite"
+            title={mutationSuccess}
+          >
+            <Check className="save-status-icon" size={13} aria-hidden="true" />
+            <span className="mutation-status-text">{mutationSuccess}</span>
           </div>
         )}
         <RightRailControls

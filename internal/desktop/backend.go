@@ -11,6 +11,7 @@ import (
 	"github.com/lex/flow/internal/config"
 	"github.com/lex/flow/internal/core"
 	"github.com/lex/flow/internal/graph"
+	"github.com/lex/flow/internal/httpapi"
 	"github.com/lex/flow/internal/index"
 	"github.com/lex/flow/internal/markdown"
 	"github.com/lex/flow/internal/workspace"
@@ -204,6 +205,176 @@ func (backend Backend) GraphTree() (GraphTreeSnapshot, error) {
 
 // CreateDocument runs the shared create workflow against canonical workspace
 // storage.
+// CreateGraphRequest is the Wails-facing input for creating a graph.
+type CreateGraphRequest struct {
+	Name string `json:"name"`
+}
+
+// CreateGraphResult mirrors the HTTP create-graph response.
+type CreateGraphResult struct {
+	Name string `json:"name"`
+}
+
+// CreateGraph creates a graph directory through the shared core workflow and
+// returns the created name.
+func (backend Backend) CreateGraph(request CreateGraphRequest) (CreateGraphResult, error) {
+	err := core.CreateGraph(core.CreateGraphRequest{
+		Name:      request.Name,
+		IndexPath: backend.root.IndexPath,
+		FlowPath:  backend.root.FlowPath,
+	}, func(name string) error {
+		return workspace.CreateGraph(backend.root, workspace.CreateGraphInput{Name: name})
+	})
+	return CreateGraphResult{Name: request.Name}, err
+}
+
+// DeleteGraphRequest is the Wails-facing input for deleting a graph.
+type DeleteGraphRequest struct {
+	Name string `json:"name"`
+}
+
+// DeleteGraphResult mirrors the HTTP delete-graph response.
+type DeleteGraphResult struct {
+	Deleted bool   `json:"deleted"`
+	Name    string `json:"name"`
+}
+
+// DeleteGraph deletes a graph directory, cleaning up persisted graph directory
+// colors the same way the HTTP delete handler does.
+func (backend Backend) DeleteGraph(request DeleteGraphRequest) (DeleteGraphResult, error) {
+	err := core.DeleteGraph(core.DeleteGraphRequest{
+		Name: request.Name,
+		AfterDelete: func() error {
+			return httpapi.DeleteGraphDirectoryColors(backend.root, request.Name)
+		},
+	}, func(name string) error {
+		return workspace.DeleteGraph(backend.root, name)
+	})
+	return DeleteGraphResult{Deleted: true, Name: request.Name}, err
+}
+
+// UpdateGraphColorRequest is the Wails-facing input for setting a graph color.
+type UpdateGraphColorRequest struct {
+	GraphPath string `json:"graphPath"`
+	Color     string `json:"color"`
+}
+
+// UpdateGraphColorResult mirrors the HTTP update-graph-color response.
+type UpdateGraphColorResult struct {
+	Name  string `json:"name"`
+	Color string `json:"color,omitempty"`
+}
+
+// UpdateGraphColor sets or clears the persisted graph directory color, matching
+// the HTTP handler including the index GUI-state sync.
+func (backend Backend) UpdateGraphColor(request UpdateGraphColorRequest) (UpdateGraphColorResult, error) {
+	if err := requireGraphDirectory(backend.root, request.GraphPath); err != nil {
+		return UpdateGraphColorResult{}, err
+	}
+
+	workspaceConfig, err := workspace.ReadOrDefaultConfig(backend.root.ConfigPath)
+	if err != nil {
+		return UpdateGraphColorResult{}, err
+	}
+
+	color := strings.TrimSpace(request.Color)
+	if color == "" {
+		if len(workspaceConfig.GUI.GraphDirectoryColors) > 0 {
+			delete(workspaceConfig.GUI.GraphDirectoryColors, request.GraphPath)
+		}
+	} else {
+		if workspaceConfig.GUI.GraphDirectoryColors == nil {
+			workspaceConfig.GUI.GraphDirectoryColors = map[string]string{}
+		}
+		workspaceConfig.GUI.GraphDirectoryColors[request.GraphPath] = color
+	}
+
+	if err := httpapi.PersistWorkspaceConfig(backend.root, workspaceConfig); err != nil {
+		return UpdateGraphColorResult{}, err
+	}
+
+	return UpdateGraphColorResult{Name: request.GraphPath, Color: color}, nil
+}
+
+// UpdateGraphCanvasDisabledRequest is the Wails-facing input for toggling a
+// graph's canvas view.
+type UpdateGraphCanvasDisabledRequest struct {
+	GraphPath string `json:"graphPath"`
+	Disabled  bool   `json:"disabled"`
+}
+
+// UpdateGraphCanvasDisabledResult mirrors the HTTP canvas-disabled response.
+type UpdateGraphCanvasDisabledResult struct {
+	Name           string `json:"name"`
+	CanvasDisabled bool   `json:"canvasDisabled"`
+}
+
+// UpdateGraphCanvasDisabled toggles the persisted canvas enablement flag. Like
+// the HTTP handler, this is config-only state and deliberately skips the index
+// GUI-state sync to avoid transient index contention.
+func (backend Backend) UpdateGraphCanvasDisabled(request UpdateGraphCanvasDisabledRequest) (UpdateGraphCanvasDisabledResult, error) {
+	if err := requireGraphDirectory(backend.root, request.GraphPath); err != nil {
+		return UpdateGraphCanvasDisabledResult{}, err
+	}
+
+	workspaceConfig, err := workspace.ReadOrDefaultConfig(backend.root.ConfigPath)
+	if err != nil {
+		return UpdateGraphCanvasDisabledResult{}, err
+	}
+
+	if request.Disabled {
+		if len(workspaceConfig.GUI.GraphCanvasEnabled) > 0 {
+			delete(workspaceConfig.GUI.GraphCanvasEnabled, request.GraphPath)
+		}
+	} else {
+		if workspaceConfig.GUI.GraphCanvasEnabled == nil {
+			workspaceConfig.GUI.GraphCanvasEnabled = map[string]bool{}
+		}
+		workspaceConfig.GUI.GraphCanvasEnabled[request.GraphPath] = true
+	}
+
+	if err := config.Write(backend.root.ConfigPath, workspaceConfig); err != nil {
+		return UpdateGraphCanvasDisabledResult{}, err
+	}
+
+	return UpdateGraphCanvasDisabledResult{Name: request.GraphPath, CanvasDisabled: !workspaceConfig.GUI.GraphCanvasEnabled[request.GraphPath]}, nil
+}
+
+// requireGraphDirectory returns an error when the graph directory does not
+// exist, mirroring the HTTP handler's not-found check.
+func requireGraphDirectory(root workspace.Root, graphPath string) error {
+	graphDir := filepath.Join(root.GraphsPath, filepath.FromSlash(graphPath))
+	if _, err := os.Stat(graphDir); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("graph %q not found", graphPath)
+		}
+		return err
+	}
+	return nil
+}
+
+// RenameGraphRequest is the Wails-facing input for renaming a graph.
+type RenameGraphRequest struct {
+	CurrentName string `json:"currentName"`
+	NextName    string `json:"nextName"`
+}
+
+// RenameGraph renames a graph directory and remaps persisted graph directory
+// colors, matching the HTTP rename handler (including server-side trimming of
+// the next name).
+func (backend Backend) RenameGraph(request RenameGraphRequest) error {
+	request.NextName = strings.TrimSpace(request.NextName)
+	return core.RenameGraph(core.RenameGraphRequest{
+		CurrentName: request.CurrentName,
+		NextName:    request.NextName,
+		AfterRename: func() error {
+			return httpapi.RemapGraphDirectoryColors(backend.root, request.CurrentName, request.NextName)
+		},
+	}, func(currentName string, nextName string) error {
+		return workspace.RenameGraph(backend.root, currentName, nextName)
+	})
+}
+
 func (backend Backend) CreateDocument(request core.CreateDocumentRequest) (markdown.WorkspaceDocument, error) {
 	return core.CreateDocument(request, func(request core.CreateDocumentRequest) (markdown.WorkspaceDocument, error) {
 		return workspace.CreateDocumentFromCoreRequest(backend.root, request)

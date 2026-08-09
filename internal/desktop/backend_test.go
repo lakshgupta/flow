@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/lex/flow/internal/core"
+	"github.com/lex/flow/internal/config"
 	"github.com/lex/flow/internal/index"
 	"github.com/lex/flow/internal/markdown"
 	"github.com/lex/flow/internal/workspace"
@@ -739,5 +740,196 @@ func TestBackendCreateGraphFileNoteFromPathRejectsMissingGraph(t *testing.T) {
 	_, err := backend.CreateGraphFileNoteFromPath("file://"+sourcePath, "nonexistent-graph")
 	if err == nil {
 		t.Fatal("CreateGraphFileNoteFromPath(nonexistent) error = nil, want non-nil")
+	}
+}
+
+func TestBackendRenameGraphRemapsDirectoryColors(t *testing.T) {
+	t.Parallel()
+
+	root := createDesktopBackendTestWorkspace(t)
+	backend := NewBackend(root)
+
+	if err := config.Write(root.ConfigPath, config.Workspace{
+		GUI: config.GUI{
+			GraphDirectoryColors: map[string]string{
+				"execution":        "amber",
+				"execution/parser": "sky",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("config.Write() error = %v", err)
+	}
+
+	if err := backend.RenameGraph(RenameGraphRequest{
+		CurrentName: "execution",
+		NextName:    "execution-2026",
+	}); err != nil {
+		t.Fatalf("RenameGraph() error = %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "content", "execution", "parser.md")); !os.IsNotExist(err) {
+		t.Fatalf("RenameGraph() old path still exists (stat err = %v), want moved", err)
+	}
+	if _, err := os.Stat(filepath.Join(root.FlowPath, "data", "content", "execution-2026", "parser.md")); err != nil {
+		t.Fatalf("RenameGraph() new path missing: %v", err)
+	}
+
+	updated, err := config.Read(root.ConfigPath)
+	if err != nil {
+		t.Fatalf("config.Read() error = %v", err)
+	}
+	wantColors := map[string]string{
+		"execution-2026":        "amber",
+		"execution-2026/parser": "sky",
+	}
+	for graphPath, color := range wantColors {
+		if updated.GUI.GraphDirectoryColors[graphPath] != color {
+			t.Fatalf("RenameGraph() color[%q] = %q, want %q", graphPath, updated.GUI.GraphDirectoryColors[graphPath], color)
+		}
+	}
+}
+
+func TestBackendCreateGraphCreatesDirectory(t *testing.T) {
+	t.Parallel()
+
+	root := createDesktopBackendTestWorkspace(t)
+	backend := NewBackend(root)
+
+	created, err := backend.CreateGraph(CreateGraphRequest{Name: "notes-2026"})
+	if err != nil {
+		t.Fatalf("CreateGraph() error = %v", err)
+	}
+	if created.Name != "notes-2026" {
+		t.Fatalf("CreateGraph() name = %q, want notes-2026", created.Name)
+	}
+	if _, err := os.Stat(filepath.Join(root.GraphsPath, "notes-2026")); err != nil {
+		t.Fatalf("CreateGraph() graph directory missing: %v", err)
+	}
+}
+
+func TestBackendDeleteGraphRemovesDirectoryAndColors(t *testing.T) {
+	t.Parallel()
+
+	root := createDesktopBackendTestWorkspace(t)
+	backend := NewBackend(root)
+
+	if err := config.Write(root.ConfigPath, config.Workspace{
+		GUI: config.GUI{
+			GraphDirectoryColors: map[string]string{
+				"execution":        "amber",
+				"execution/parser": "sky",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("config.Write() error = %v", err)
+	}
+
+	deleted, err := backend.DeleteGraph(DeleteGraphRequest{Name: "execution"})
+	if err != nil {
+		t.Fatalf("DeleteGraph() error = %v", err)
+	}
+	if !deleted.Deleted || deleted.Name != "execution" {
+		t.Fatalf("DeleteGraph() = %+v, want deleted execution", deleted)
+	}
+	if _, err := os.Stat(filepath.Join(root.GraphsPath, "execution")); !os.IsNotExist(err) {
+		t.Fatalf("DeleteGraph() graph directory still exists (stat err = %v)", err)
+	}
+
+	updated, err := config.Read(root.ConfigPath)
+	if err != nil {
+		t.Fatalf("config.Read() error = %v", err)
+	}
+	if len(updated.GUI.GraphDirectoryColors) != 0 {
+		t.Fatalf("DeleteGraph() colors = %v, want cleared", updated.GUI.GraphDirectoryColors)
+	}
+}
+
+func TestBackendUpdateGraphColorPersistsConfig(t *testing.T) {
+	t.Parallel()
+
+	root := createDesktopBackendTestWorkspace(t)
+	backend := NewBackend(root)
+
+	updated, err := backend.UpdateGraphColor(UpdateGraphColorRequest{GraphPath: "execution", Color: "rose"})
+	if err != nil {
+		t.Fatalf("UpdateGraphColor() error = %v", err)
+	}
+	if updated.Name != "execution" || updated.Color != "rose" {
+		t.Fatalf("UpdateGraphColor() = %+v, want execution/rose", updated)
+	}
+
+	cfg, err := config.Read(root.ConfigPath)
+	if err != nil {
+		t.Fatalf("config.Read() error = %v", err)
+	}
+	if cfg.GUI.GraphDirectoryColors["execution"] != "rose" {
+		t.Fatalf("UpdateGraphColor() persisted color = %q, want rose", cfg.GUI.GraphDirectoryColors["execution"])
+	}
+
+	// Clearing with an empty color removes the entry.
+	cleared, err := backend.UpdateGraphColor(UpdateGraphColorRequest{GraphPath: "execution", Color: ""})
+	if err != nil {
+		t.Fatalf("UpdateGraphColor(clear) error = %v", err)
+	}
+	if cleared.Color != "" {
+		t.Fatalf("UpdateGraphColor(clear) color = %q, want empty", cleared.Color)
+	}
+	cfg, err = config.Read(root.ConfigPath)
+	if err != nil {
+		t.Fatalf("config.Read() error = %v", err)
+	}
+	if _, exists := cfg.GUI.GraphDirectoryColors["execution"]; exists {
+		t.Fatalf("UpdateGraphColor(clear) entry still present: %v", cfg.GUI.GraphDirectoryColors)
+	}
+}
+
+func TestBackendUpdateGraphColorRejectsMissingGraph(t *testing.T) {
+	t.Parallel()
+
+	root := createDesktopBackendTestWorkspace(t)
+	backend := NewBackend(root)
+
+	_, err := backend.UpdateGraphColor(UpdateGraphColorRequest{GraphPath: "nonexistent", Color: "rose"})
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("UpdateGraphColor(nonexistent) error = %v, want not-found", err)
+	}
+}
+
+func TestBackendUpdateGraphCanvasDisabledPersistsConfig(t *testing.T) {
+	t.Parallel()
+
+	root := createDesktopBackendTestWorkspace(t)
+	backend := NewBackend(root)
+
+	disabled, err := backend.UpdateGraphCanvasDisabled(UpdateGraphCanvasDisabledRequest{GraphPath: "execution", Disabled: true})
+	if err != nil {
+		t.Fatalf("UpdateGraphCanvasDisabled() error = %v", err)
+	}
+	if !disabled.CanvasDisabled || disabled.Name != "execution" {
+		t.Fatalf("UpdateGraphCanvasDisabled() = %+v, want disabled execution", disabled)
+	}
+
+	cfg, err := config.Read(root.ConfigPath)
+	if err != nil {
+		t.Fatalf("config.Read() error = %v", err)
+	}
+	if _, enabled := cfg.GUI.GraphCanvasEnabled["execution"]; enabled {
+		t.Fatalf("UpdateGraphCanvasDisabled() execution still enabled: %v", cfg.GUI.GraphCanvasEnabled)
+	}
+
+	// Re-enabling sets the flag to true.
+	enabled, err := backend.UpdateGraphCanvasDisabled(UpdateGraphCanvasDisabledRequest{GraphPath: "execution", Disabled: false})
+	if err != nil {
+		t.Fatalf("UpdateGraphCanvasDisabled(enable) error = %v", err)
+	}
+	if enabled.CanvasDisabled {
+		t.Fatalf("UpdateGraphCanvasDisabled(enable) canvasDisabled = true, want false")
+	}
+	cfg, err = config.Read(root.ConfigPath)
+	if err != nil {
+		t.Fatalf("config.Read() error = %v", err)
+	}
+	if cfg.GUI.GraphCanvasEnabled["execution"] != true {
+		t.Fatalf("UpdateGraphCanvasDisabled(enable) execution not enabled: %v", cfg.GUI.GraphCanvasEnabled)
 	}
 }

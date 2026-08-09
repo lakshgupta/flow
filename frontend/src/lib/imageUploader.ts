@@ -62,6 +62,102 @@ export interface WailsGraphFileNoteResponse {
   fileName: string
 }
 
+export interface WailsRenameGraphRequest {
+  currentName: string
+  nextName: string
+}
+
+export interface WailsRenameGraphResult {
+  name: string
+}
+
+/**
+ * Access the Wails Go binding for the App.RenameGraph method. Returns null
+ * when the frontend is not running inside a Wails v2 webview.
+ */
+export function getWailsRenameGraph(): ((request: WailsRenameGraphRequest) => Promise<WailsRenameGraphResult>) | null {
+  const app = getWailsApp()
+  const rename = app?.RenameGraph as ((request: WailsRenameGraphRequest) => Promise<WailsRenameGraphResult>) | undefined
+  return rename ?? null
+}
+
+export interface WailsCreateGraphRequest {
+  name: string
+}
+
+export interface WailsCreateGraphResult {
+  name: string
+}
+
+/**
+ * Access the Wails Go binding for the App.CreateGraph method. Returns null
+ * when the frontend is not running inside a Wails v2 webview.
+ */
+export function getWailsCreateGraph(): ((request: WailsCreateGraphRequest) => Promise<WailsCreateGraphResult>) | null {
+  const app = getWailsApp()
+  const create = app?.CreateGraph as ((request: WailsCreateGraphRequest) => Promise<WailsCreateGraphResult>) | undefined
+  return create ?? null
+}
+
+export interface WailsDeleteGraphRequest {
+  name: string
+}
+
+export interface WailsDeleteGraphResult {
+  deleted: boolean
+  name: string
+}
+
+/**
+ * Access the Wails Go binding for the App.DeleteGraph method. Returns null
+ * when the frontend is not running inside a Wails v2 webview.
+ */
+export function getWailsDeleteGraph(): ((request: WailsDeleteGraphRequest) => Promise<WailsDeleteGraphResult>) | null {
+  const app = getWailsApp()
+  const del = app?.DeleteGraph as ((request: WailsDeleteGraphRequest) => Promise<WailsDeleteGraphResult>) | undefined
+  return del ?? null
+}
+
+export interface WailsUpdateGraphColorRequest {
+  graphPath: string
+  color: string
+}
+
+export interface WailsUpdateGraphColorResult {
+  name: string
+  color?: string
+}
+
+/**
+ * Access the Wails Go binding for the App.UpdateGraphColor method. Returns
+ * null when the frontend is not running inside a Wails v2 webview.
+ */
+export function getWailsUpdateGraphColor(): ((request: WailsUpdateGraphColorRequest) => Promise<WailsUpdateGraphColorResult>) | null {
+  const app = getWailsApp()
+  const update = app?.UpdateGraphColor as ((request: WailsUpdateGraphColorRequest) => Promise<WailsUpdateGraphColorResult>) | undefined
+  return update ?? null
+}
+
+export interface WailsUpdateGraphCanvasDisabledRequest {
+  graphPath: string
+  disabled: boolean
+}
+
+export interface WailsUpdateGraphCanvasDisabledResult {
+  name: string
+  canvasDisabled: boolean
+}
+
+/**
+ * Access the Wails Go binding for the App.UpdateGraphCanvasDisabled method.
+ * Returns null when the frontend is not running inside a Wails v2 webview.
+ */
+export function getWailsUpdateGraphCanvasDisabled(): ((request: WailsUpdateGraphCanvasDisabledRequest) => Promise<WailsUpdateGraphCanvasDisabledResult>) | null {
+  const app = getWailsApp()
+  const update = app?.UpdateGraphCanvasDisabled as ((request: WailsUpdateGraphCanvasDisabledRequest) => Promise<WailsUpdateGraphCanvasDisabledResult>) | undefined
+  return update ?? null
+}
+
 /**
  * Access the Wails Go binding for the App.CreateGraphFileNoteFromPath method.
  * Returns null when the frontend is not running inside a Wails v2 webview.

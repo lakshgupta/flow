@@ -65,6 +65,39 @@ func (app *App) GraphTree() (GraphTreeSnapshot, error) {
 }
 
 // CreateDocument delegates document creation to the shared backend.
+// CreateGraph creates a graph directory and returns the created name.
+func (app *App) CreateGraph(request CreateGraphRequest) (CreateGraphResult, error) {
+	return app.backend.CreateGraph(request)
+}
+
+// DeleteGraph deletes a graph directory, cleaning up persisted graph colors.
+func (app *App) DeleteGraph(request DeleteGraphRequest) (DeleteGraphResult, error) {
+	return app.backend.DeleteGraph(request)
+}
+
+// UpdateGraphColor sets or clears a graph's persisted directory color.
+func (app *App) UpdateGraphColor(request UpdateGraphColorRequest) (UpdateGraphColorResult, error) {
+	return app.backend.UpdateGraphColor(request)
+}
+
+// UpdateGraphCanvasDisabled toggles a graph's canvas enablement flag.
+func (app *App) UpdateGraphCanvasDisabled(request UpdateGraphCanvasDisabledRequest) (UpdateGraphCanvasDisabledResult, error) {
+	return app.backend.UpdateGraphCanvasDisabled(request)
+}
+
+// RenameGraphResult is the Wails-facing result of a graph rename, mirroring
+// the HTTP create/rename graph response shape.
+type RenameGraphResult struct {
+	Name string `json:"name"`
+}
+
+// RenameGraph renames a graph directory, remapping persisted graph directory
+// colors the same way the HTTP rename handler does.
+func (app *App) RenameGraph(request RenameGraphRequest) (RenameGraphResult, error) {
+	err := app.backend.RenameGraph(request)
+	return RenameGraphResult{Name: request.NextName}, err
+}
+
 func (app *App) CreateDocument(request core.CreateDocumentRequest) (markdown.WorkspaceDocument, error) {
 	return app.backend.CreateDocument(request)
 }

@@ -46,6 +46,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "./components/ui/s
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./components/ui/tooltip";
 import { requestJSON, deregisterLocalWorkspace, loadCalendarDocuments, loadGraphValidation, loadWorkspaceSnapshot, selectWorkspace, uploadGraphFiles } from "./lib/api";
+import { getWailsCreateGraph, getWailsDeleteGraph, getWailsRenameGraph, getWailsUpdateGraphCanvasDisabled, getWailsUpdateGraphColor } from "./lib/imageUploader";
 import { useGraphCanvasSurfaceActions } from "./hooks/useGraphCanvasSurfaceActions";
 import { useHomeSurfaceActions } from "./hooks/useHomeSurfaceActions";
 import { useRightRailDocumentActions } from "./hooks/useRightRailDocumentActions";
@@ -3040,10 +3041,17 @@ function FlowApp() {
 
   async function handleSidebarCreateGraph(name: string): Promise<void> {
     try {
-      await requestJSON<{ name: string }>("/api/graphs", {
-        method: "POST",
-        body: JSON.stringify({ name }),
-      });
+      // In the desktop app, graph creation bypasses the HTTP layer and calls
+      // the Wails binding directly.
+      const wailsCreateGraph = getWailsCreateGraph();
+      if (wailsCreateGraph !== null) {
+        await wailsCreateGraph({ name });
+      } else {
+        await requestJSON<{ name: string }>("/api/graphs", {
+          method: "POST",
+          body: JSON.stringify({ name }),
+        });
+      }
       const snapshot = await loadWorkspaceSnapshot();
       setGraphTree(snapshot.graphTreeData);
     } catch (err) {
@@ -3054,10 +3062,17 @@ function FlowApp() {
   async function handleSidebarSetGraphColor(graphPath: string, color: string | null): Promise<void> {
     try {
       clearMutationFeedback();
-      await requestJSON<{ name: string; color?: string }>(`/api/graphs/${encodeURIComponent(graphPath)}/color`, {
-        method: "PUT",
-        body: JSON.stringify({ color: color ?? "" }),
-      });
+      // In the desktop app, graph color updates bypass the HTTP layer and call
+      // the Wails binding directly.
+      const wailsSetGraphColor = getWailsUpdateGraphColor();
+      if (wailsSetGraphColor !== null) {
+        await wailsSetGraphColor({ graphPath, color: color ?? "" });
+      } else {
+        await requestJSON<{ name: string; color?: string }>(`/api/graphs/${encodeURIComponent(graphPath)}/color`, {
+          method: "PUT",
+          body: JSON.stringify({ color: color ?? "" }),
+        });
+      }
 
       const snapshot = await loadWorkspaceSnapshot();
       setGraphTree(snapshot.graphTreeData);
@@ -3089,10 +3104,17 @@ function FlowApp() {
   async function handleSidebarSetGraphCanvasDisabled(graphPath: string, disabled: boolean): Promise<void> {
     try {
       clearMutationFeedback();
-      await requestJSON<{ name: string; canvasDisabled: boolean }>(`/api/graphs/${encodeURIComponent(graphPath)}/canvas-disabled`, {
-        method: "PUT",
-        body: JSON.stringify({ disabled }),
-      });
+      // In the desktop app, the canvas toggle bypasses the HTTP layer and calls
+      // the Wails binding directly.
+      const wailsSetGraphCanvasDisabled = getWailsUpdateGraphCanvasDisabled();
+      if (wailsSetGraphCanvasDisabled !== null) {
+        await wailsSetGraphCanvasDisabled({ graphPath, disabled });
+      } else {
+        await requestJSON<{ name: string; canvasDisabled: boolean }>(`/api/graphs/${encodeURIComponent(graphPath)}/canvas-disabled`, {
+          method: "PUT",
+          body: JSON.stringify({ disabled }),
+        });
+      }
 
       const snapshot = await loadWorkspaceSnapshot();
       setGraphTree(snapshot.graphTreeData);
@@ -3189,10 +3211,16 @@ function FlowApp() {
       clearMutationFeedback();
       await flushPendingActiveEditorSave();
 
-      await requestJSON<{ name: string }>(`/api/graphs/${encodeURIComponent(sourceGraphPath)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ name: nextPath }),
-      });
+      // Graph moves reuse the rename binding — the endpoint is the same PATCH.
+      const wailsRenameGraph = getWailsRenameGraph();
+      if (wailsRenameGraph !== null) {
+        await wailsRenameGraph({ currentName: sourceGraphPath, nextName: nextPath });
+      } else {
+        await requestJSON<{ name: string }>(`/api/graphs/${encodeURIComponent(sourceGraphPath)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ name: nextPath }),
+        });
+      }
 
       const selectedDocumentGraphPath = selectedDocument?.graph ?? documentGraphById.get(selectedDocumentId) ?? "";
       const selectedDocumentAffected =
@@ -3289,10 +3317,17 @@ function FlowApp() {
     setRenamePending(true);
     try {
       if (renameDialog.kind === "graph") {
-        await requestJSON<{ name: string }>(`/api/graphs/${encodeURIComponent(renameDialog.graphPath)}`, {
-          method: "PATCH",
-          body: JSON.stringify({ name: trimmed }),
-        });
+        // In the desktop app, graph renames bypass the HTTP layer and call the
+        // Wails binding directly.
+        const wailsRenameGraph = getWailsRenameGraph();
+        if (wailsRenameGraph !== null) {
+          await wailsRenameGraph({ currentName: renameDialog.graphPath, nextName: trimmed });
+        } else {
+          await requestJSON<{ name: string }>(`/api/graphs/${encodeURIComponent(renameDialog.graphPath)}`, {
+            method: "PATCH",
+            body: JSON.stringify({ name: trimmed }),
+          });
+        }
 
         const selectedDocumentGraphPath = selectedDocument?.graph ?? documentGraphById.get(selectedDocumentId) ?? "";
         const selectedDocumentAffected =
@@ -3343,9 +3378,16 @@ function FlowApp() {
 
   async function handleSidebarDeleteGraph(graphPath: string): Promise<void> {
     try {
-      await requestJSON<{ deleted: boolean }>(`/api/graphs/${encodeURIComponent(graphPath)}`, {
-        method: "DELETE",
-      });
+      // In the desktop app, graph deletion bypasses the HTTP layer and calls
+      // the Wails binding directly.
+      const wailsDeleteGraph = getWailsDeleteGraph();
+      if (wailsDeleteGraph !== null) {
+        await wailsDeleteGraph({ name: graphPath });
+      } else {
+        await requestJSON<{ deleted: boolean }>(`/api/graphs/${encodeURIComponent(graphPath)}`, {
+          method: "DELETE",
+        });
+      }
       const snapshot = await loadWorkspaceSnapshot();
       setGraphTree(snapshot.graphTreeData);
       if (activeSurface.kind === "graph" && (activeSurface.graphPath === graphPath || activeSurface.graphPath.startsWith(graphPath + "/"))) {
@@ -4556,6 +4598,7 @@ function FlowApp() {
           savingDocument={savingDocument}
           savingHome={savingHome}
           lastSaveAt={lastSaveAt}
+          mutationSuccess={mutationSuccess}
           onOpenViolations={handleOpenViolationsPanel}
           showViolationsButton={activeSurface.kind === "graph"}
           violationsActive={rightPanelTab === "violations" && !rightRailCollapsed}
