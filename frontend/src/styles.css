@@ -3003,6 +3003,13 @@ pre {
   background: rgba(255, 244, 240, 0.5);
 }
 
+.shell-dialog-error-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
 .status-line-success {
   border-color: rgba(26, 174, 57, 0.2);
   color: rgba(26, 174, 57, 0.9);
@@ -3164,6 +3171,19 @@ pre {
   color: var(--success);
   /* Duration is paired with SAVED_FLASH_MS in WorkspaceHeader.tsx. */
   animation: saveStatusSavedInOut 2s ease-out forwards;
+}
+
+.mutation-status-indicator {
+  color: var(--success);
+  border: 1px solid color-mix(in oklab, var(--success) 22%, transparent);
+  background: color-mix(in oklab, var(--success) 8%, transparent);
+  max-width: 18rem;
+}
+
+.mutation-status-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @keyframes saveStatusIn {

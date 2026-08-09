@@ -43,6 +43,7 @@ internal/httpapi/static/**
 # Go binaries
 bin/
 dist/
+Flow
 flow
 
 # Editor/IDE
