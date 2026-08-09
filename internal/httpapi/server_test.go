@@ -1381,6 +1381,43 @@ func TestNewMuxDeleteNoteCleansUpReferences(t *testing.T) {
 	}
 }
 
+func TestNewMuxDeleteDocumentBlockedByInlineReferences(t *testing.T) {
+	t.Parallel()
+
+	root := createHTTPAPITestWorkspace(t)
+	handler, err := NewMux(Options{Root: root})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	// note-1 (Architecture) has an inline reference [[task-1]] in its body, so
+	// deleting task-1 must be blocked with an actionable message.
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodDelete, "/api/documents/task-1", nil)
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		body, _ := io.ReadAll(recorder.Body)
+		t.Fatalf("status = %d, want %d, body = %s", recorder.Code, http.StatusBadRequest, string(body))
+	}
+
+	var payload errorResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&payload); err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if !strings.Contains(payload.Error, "cannot delete node \"task-1\"") || !strings.Contains(payload.Error, "referenced by") {
+		t.Fatalf("payload.Error = %q, want referencing message", payload.Error)
+	}
+	if !strings.Contains(payload.Error, "data/content/notes/architecture.md") {
+		t.Fatalf("payload.Error = %q, want referencing node path", payload.Error)
+	}
+
+	// The referenced node must still exist and be readable.
+	stillThere := performJSONRequest[documentResponse](t, handler, http.MethodGet, "/api/documents/task-1")
+	if stillThere.ID != "task-1" {
+		t.Fatalf("stillThere.ID = %q, want task-1 after blocked delete", stillThere.ID)
+	}
+}
+
 func TestNewMuxUpdatesGraphCanvasDisabledAndPreservesFilesInTree(t *testing.T) {
 	t.Parallel()
 

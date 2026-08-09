@@ -3973,6 +3973,7 @@ function FlowApp() {
         applyDocumentThread(deleteIndex > 0 ? documentThreadRef.current.slice(0, deleteIndex) : []);
       }
       setDeleteDialogTarget(null);
+      setDeleteDialogOpen(false);
       if (deletedSelectedDocument) {
         await refreshShellViews({ nextDocument: null, nextDocumentId: "" });
       } else {
@@ -4267,17 +4268,21 @@ function FlowApp() {
   const deleteDocumentDialogActionRefs = useRef({
     setDeleteDialogOpen,
     setDeleteDialogTarget,
+    setMutationError,
     handleDeleteDocument,
   });
 
   deleteDocumentDialogActionRefs.current.setDeleteDialogOpen = setDeleteDialogOpen;
   deleteDocumentDialogActionRefs.current.setDeleteDialogTarget = setDeleteDialogTarget;
+  deleteDocumentDialogActionRefs.current.setMutationError = setMutationError;
   deleteDocumentDialogActionRefs.current.handleDeleteDocument = handleDeleteDocument;
 
   const handleDeleteDocumentDialogOpenChange = useCallback((open: boolean) => {
     deleteDocumentDialogActionRefs.current.setDeleteDialogOpen(open);
     if (!open) {
       deleteDocumentDialogActionRefs.current.setDeleteDialogTarget(null);
+    } else {
+      deleteDocumentDialogActionRefs.current.setMutationError("");
     }
   }, []);
 
@@ -4287,7 +4292,8 @@ function FlowApp() {
   }, []);
 
   const handleDeleteDocumentDialogConfirm = useCallback(() => {
-    deleteDocumentDialogActionRefs.current.setDeleteDialogOpen(false);
+    // Keep the dialog open while the delete runs: on failure the error is
+    // shown inside the dialog so the user knows why the delete was blocked.
     void deleteDocumentDialogActionRefs.current.handleDeleteDocument();
   }, []);
 
@@ -4559,6 +4565,7 @@ function FlowApp() {
             target={deleteDialogTarget}
             savingDocument={savingDocument}
             deletingDocument={deletingDocument}
+            error={mutationError}
             actions={deleteDocumentDialogActions}
           />
 

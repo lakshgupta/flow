@@ -528,6 +528,57 @@ func TestDeleteDocumentByIDCleansUpReferencesInChildCommands(t *testing.T) {
 // TestDeleteDocumentByIDCleansUpReferencesToDeletedTaskOrCommand verifies that when a
 // task or command is deleted, every document that listed it in references has the
 // deleted ID removed.
+func TestDeleteDocumentByIDBlockedByInlineReferences(t *testing.T) {
+	t.Parallel()
+
+	// createInlineReferenceMutationWorkspace: note-1 and note-2 both reference
+	// task-1 (parser) through [[...]] inline references in their bodies.
+	root := createInlineReferenceMutationWorkspace(t)
+
+	_, err := DeleteDocumentByID(root, "task-1")
+	if err == nil {
+		t.Fatalf("DeleteDocumentByID() error = nil, want inline-reference block")
+	}
+	var invalid InvalidMutationError
+	if !errors.As(err, &invalid) {
+		t.Fatalf("DeleteDocumentByID() error = %v, want InvalidMutationError", err)
+	}
+	if !strings.Contains(err.Error(), "cannot delete node \"task-1\"") || !strings.Contains(err.Error(), "referenced by") {
+		t.Fatalf("DeleteDocumentByID() error = %q, want referencing message", err.Error())
+	}
+	if !strings.Contains(err.Error(), "data/content/demo/notes/reference.md") || !strings.Contains(err.Error(), "data/content/external/reference.md") {
+		t.Fatalf("DeleteDocumentByID() error = %q, want both referencer paths", err.Error())
+	}
+
+	// The referenced node must still exist on disk.
+	if _, statErr := os.Stat(filepath.Join(root.FlowPath, "data", "content", "demo", "execution", "parser.md")); statErr != nil {
+		t.Fatalf("Stat(parser.md) error = %v, want still present after blocked delete", statErr)
+	}
+}
+
+func TestDeleteDocumentByIDNotBlockedByHomeReferences(t *testing.T) {
+	t.Parallel()
+
+	root := createInlineReferenceMutationWorkspace(t)
+
+	// home.md references are never validated by ValidateWorkspaceDocuments
+	// (mirror linkTargets), so they must not block a delete either.
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "home.md"), markdown.HomeDocument{
+		Metadata: markdown.CommonFields{ID: "home", Type: markdown.HomeType, Title: "Home"},
+		Body:     "Manual entry referencing [[demo/execution > Parser]].\n",
+	})
+
+	_, err := DeleteDocumentByID(root, "task-1")
+	if err == nil {
+		t.Fatalf("DeleteDocumentByID() error = nil, want inline-reference block (notes still reference task-1)")
+	}
+
+	// The error must name only the note referencers, never home.md.
+	if strings.Contains(err.Error(), "home.md") {
+		t.Fatalf("DeleteDocumentByID() error = %q, must not blame home.md for the block", err.Error())
+	}
+}
+
 func TestDeleteDocumentByIDCleansUpReferencesToDeletedTaskOrCommand(t *testing.T) {
 	t.Parallel()
 
@@ -549,6 +600,61 @@ func TestDeleteDocumentByIDCleansUpReferencesToDeletedTaskOrCommand(t *testing.T
 	}
 	if len(refNote.Metadata.Links) != 0 {
 		t.Fatalf("refNote.Metadata.Links = %v, want empty after target deletion", refNote.Metadata.Links)
+	}
+}
+
+// TestDeleteDocumentByPathBlockedByCrossGraphBreadcrumbReference verifies that a
+// [[other-graph > Title]] breadcrumb reference written in a different graph
+// blocks deletion of the referenced node with an actionable message naming the
+// referencer. The other blocking tests use DeleteDocumentByID with breadcrumb
+// refs that resolve inside the same graph or plain node IDs; this exercises the
+// path-based entry point against a genuinely cross-graph breadcrumb.
+func TestDeleteDocumentByPathBlockedByCrossGraphBreadcrumbReference(t *testing.T) {
+	t.Parallel()
+
+	root, err := ResolveLocal(t.TempDir())
+	if err != nil {
+		t.Fatalf("ResolveLocal() error = %v", err)
+	}
+
+	// Node B lives in graph "proj".
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "proj", "node-b.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "proj/node-b", Type: markdown.NoteType, Graph: "proj", Title: "Node B"},
+		},
+		Body: "Node B body\n",
+	})
+	// Node A lives in graph "other" and references Node B through a cross-graph
+	// breadcrumb ([[other-graph > Title]]) rather than a node ID.
+	writeMutationDocument(t, filepath.Join(root.FlowPath, "data", "content", "other", "node-a.md"), markdown.NoteDocument{
+		Metadata: markdown.NoteMetadata{
+			CommonFields: markdown.CommonFields{ID: "other/node-a", Type: markdown.NoteType, Graph: "other", Title: "Node A"},
+		},
+		Body: "References [[proj > Node B]] here.\n",
+	})
+
+	if err := index.Rebuild(root.IndexPath, root.FlowPath); err != nil {
+		t.Fatalf("index.Rebuild() error = %v", err)
+	}
+
+	_, err = DeleteDocumentByPath(root, "data/content/proj/node-b.md")
+	if err == nil {
+		t.Fatalf("DeleteDocumentByPath() error = nil, want cross-graph breadcrumb block")
+	}
+	var invalid InvalidMutationError
+	if !errors.As(err, &invalid) {
+		t.Fatalf("DeleteDocumentByPath() error = %v, want InvalidMutationError", err)
+	}
+	if !strings.Contains(err.Error(), "cannot delete node \"proj/node-b\"") || !strings.Contains(err.Error(), "referenced by") {
+		t.Fatalf("DeleteDocumentByPath() error = %q, want referencing message", err.Error())
+	}
+	if !strings.Contains(err.Error(), "\"Node A\" (data/content/other/node-a.md)") {
+		t.Fatalf("DeleteDocumentByPath() error = %q, want referencer label with title and path", err.Error())
+	}
+
+	// The referenced node must still exist on disk.
+	if _, statErr := os.Stat(filepath.Join(root.FlowPath, "data", "content", "proj", "node-b.md")); statErr != nil {
+		t.Fatalf("Stat(node-b.md) error = %v, want still present after blocked delete", statErr)
 	}
 }
 

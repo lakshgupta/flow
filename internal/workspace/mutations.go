@@ -924,6 +924,14 @@ func prepareDeletionDocuments(relativePath string, document markdown.Document, w
 
 	deletedID := documentIDForCleanup(document)
 
+	if deletedID != "" {
+		if referencers, err := findInlineReferenceSources(workspaceDocuments, relativePath, deletedID); err != nil {
+			return nil, InvalidMutationError{Err: err}
+		} else if len(referencers) > 0 {
+			return nil, InvalidMutationError{Err: fmt.Errorf("cannot delete node %q: it is referenced by %s; remove or update the inline reference before deleting", deletedID, strings.Join(referencers, ", "))}
+		}
+	}
+
 	for _, item := range workspaceDocuments {
 		if item.Path == relativePath {
 			continue
@@ -939,6 +947,71 @@ func prepareDeletionDocuments(relativePath string, document markdown.Document, w
 	}
 
 	return targets, nil
+}
+
+// findInlineReferenceSources returns human-readable labels of documents whose
+// body contains an inline reference ([[...]]) that resolves to targetID. Hard
+// links are not considered here: they are removed automatically by the deletion
+// cleanup, so they never block a delete. Inline references are prose inside a
+// body and cannot be rewritten safely, so they must be reported so the caller
+// can block the deletion with an actionable message.
+func findInlineReferenceSources(workspaceDocuments []markdown.WorkspaceDocument, deletedPath string, targetID string) ([]string, error) {
+	// Normalize once so reference resolution uses path-derived graphs, matching
+	// ValidateWorkspaceDocuments behavior.
+	normalizedDocuments := make([]markdown.WorkspaceDocument, 0, len(workspaceDocuments))
+	for _, item := range workspaceDocuments {
+		normalizedItem, err := markdown.NormalizeWorkspaceDocument(item)
+		if err != nil {
+			return nil, err
+		}
+		normalizedDocuments = append(normalizedDocuments, normalizedItem)
+	}
+
+	var referencers []string
+	for _, item := range normalizedDocuments {
+		if item.Path == deletedPath {
+			continue
+		}
+
+		// Only note/task/command documents carry references that validation
+		// checks (mirror linkTargets). HomeDocument and other kinds are never
+		// validated for references, so they must not block a delete.
+		switch item.Document.(type) {
+		case markdown.NoteDocument, markdown.TaskDocument, markdown.CommandDocument:
+		default:
+			continue
+		}
+
+		body := documentBody(item.Document)
+		rawTargets := markdown.InlineReferenceIDs(body)
+		if len(rawTargets) == 0 {
+			continue
+		}
+
+		sourceGraph := documentGraph(item.Document)
+		for _, rawTarget := range rawTargets {
+			resolved, ok, err := markdown.ResolveReferenceTarget(normalizedDocuments, rawTarget, sourceGraph)
+			if err != nil {
+				return nil, err
+			}
+			if ok && resolved.ID == targetID {
+				referencers = append(referencers, describeReferencer(item))
+				break
+			}
+		}
+	}
+
+	return referencers, nil
+}
+
+// describeReferencer renders a human-friendly label for a document that blocks
+// a delete: "Title" (path) when a title is available, otherwise just the path.
+func describeReferencer(item markdown.WorkspaceDocument) string {
+	title := strings.TrimSpace(item.Document.Title())
+	if title == "" {
+		return item.Path
+	}
+	return fmt.Sprintf("%q (%s)", title, item.Path)
 }
 func removeReferenceFromWorkspaceDocument(item markdown.WorkspaceDocument, referenceID string) (markdown.WorkspaceDocument, bool) {
 	d := item.Document

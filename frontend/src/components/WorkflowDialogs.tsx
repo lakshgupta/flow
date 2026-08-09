@@ -24,6 +24,7 @@ export type DeleteDocumentDialogProps = {
   target: { title: string } | null;
   savingDocument: boolean;
   deletingDocument: boolean;
+  error: string;
   actions: DeleteDocumentDialogActions;
 };
 
@@ -32,6 +33,7 @@ function DeleteDocumentDialogComponent({
   target,
   savingDocument,
   deletingDocument,
+  error,
   actions,
 }: DeleteDocumentDialogProps) {
   return (
@@ -45,6 +47,7 @@ function DeleteDocumentDialogComponent({
               : `This removes ${target.title} from the workspace.`}
           </DialogDescription>
         </DialogHeader>
+        {error !== "" ? <p className="status-line status-line-error">{error}</p> : null}
         <div className="shell-dialog-actions">
           <Button onClick={actions.cancel} type="button" variant="secondary">
             Cancel

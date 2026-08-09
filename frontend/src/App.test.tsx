@@ -3055,6 +3055,52 @@ describe("App graph canvas flows", () => {
     });
   });
 
+  it("shows the blocking reason inside the delete dialog when delete fails", async () => {
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/documents/note-1" && (init?.method ?? "GET") === "DELETE") {
+        return jsonResponse({ error: "cannot delete node \"note-1\": it is referenced by \"Overview\" (data/content/execution/overview.md); remove or update the inline reference before deleting" }, { status: 400 });
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Execution");
+    await expandSidebarGraph("Execution");
+
+    await screen.findByText("overview.md");
+
+    await user.click(screen.getByRole("button", { name: "More actions for overview.md" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    expect(await screen.findByText("This removes Overview from the workspace.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Delete document" }));
+
+    // The dialog stays open and shows the backend's blocking reason.
+    await screen.findByText(/cannot delete node "note-1"/);
+    expect(screen.getByText(/referenced by/)).toBeInTheDocument();
+    // The node must not have been removed from the tree.
+    expect(screen.getByText("overview.md")).toBeInTheDocument();
+
+    // Reopening the dialog clears the stale error.
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "More actions for overview.md" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    await waitFor(() => {
+      expect(screen.queryByText(/cannot delete node "note-1"/)).not.toBeInTheDocument();
+    });
+  });
+
   it("persists appearance changes from the settings dialog", async () => {
     let persistedWorkspace = workspaceResponse;
 
