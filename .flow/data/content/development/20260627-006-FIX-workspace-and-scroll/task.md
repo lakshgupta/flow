@@ -1,13 +1,13 @@
 ---
-id: 20260627-006-FIX-workspace-and-scroll/task
-title: Fix workspace dropdown errors and editor scroll
+id: development/20260627-006-FIX-workspace-and-scroll/task
 type: task
-status: Done
-commit: 9ca5712
+graph: development/20260627-006-FIX-workspace-and-scroll
+title: Fix workspace dropdown errors and editor scroll
 tags:
-  - fix
-  - workspace
-  - scroll
+    - fix
+    - workspace
+    - scroll
+status: Done
 ---
 
 # Fix workspace dropdown errors and editor scroll

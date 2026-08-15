@@ -3,15 +3,14 @@ id: development/20260802-001-FIX-mermaid-arrow-navigation/commit-notes
 type: note
 graph: development/20260802-001-FIX-mermaid-arrow-navigation
 title: Commit mapping for mermaid arrow-key navigation
-status: Success
 tags:
-  - commit
-  - bugfix
+    - commit
+    - bugfix
 links:
-  - node: development/20260802-001-FIX-mermaid-arrow-navigation/arrow-navigation
-    context: Notes on mermaid arrow-key navigation
-    relationships:
-      - maps-to
+    - node: development/20260802-001-FIX-mermaid-arrow-navigation/arrow-navigation
+      context: Notes on mermaid arrow-key navigation
+      relationships:
+        - maps-to
 ---
 
 ## Commit Scope

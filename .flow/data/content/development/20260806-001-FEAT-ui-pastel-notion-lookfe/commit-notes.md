@@ -3,39 +3,38 @@ id: development/20260806-001-FEAT-ui-pastel-notion-lookfe/commit-notes
 type: note
 graph: development/20260806-001-FEAT-ui-pastel-notion-lookfe
 title: Commit mapping for pastel UI refresh
-status: Success
 tags:
-  - commit
-  - ui
+    - commit
+    - ui
 links:
-  - node: development/20260806-001-FEAT-ui-pastel-notion-lookfe/palette-tokens
-    context: Pastel token palette in styles.css :root/.dark
-    relationships:
-      - maps-to
-  - node: development/20260806-001-FEAT-ui-pastel-notion-lookfe/app-frame-spacing
-    context: Compact app frame and header spacing
-    relationships:
-      - maps-to
-  - node: development/20260806-001-FEAT-ui-pastel-notion-lookfe/surfaces-flat
-    context: Hairline flat card surfaces
-    relationships:
-      - maps-to
-  - node: development/20260806-001-FEAT-ui-pastel-notion-lookfe/sidebar-compact
-    context: Compact sidebar navigation
-    relationships:
-      - maps-to
-  - node: development/20260806-001-FEAT-ui-pastel-notion-lookfe/graph-canvas-pastel
-    context: Pastel graph canvas nodes
-    relationships:
-      - maps-to
-  - node: development/20260806-001-FEAT-ui-pastel-notion-lookfe/editor-document-tint
-    context: Pastel-tinted editor and document panes
-    relationships:
-      - maps-to
-  - node: development/20260806-001-FEAT-ui-pastel-notion-lookfe/tests-visual
-    context: Visual baselines regenerated and suite green
-    relationships:
-      - maps-to
+    - node: development/20260806-001-FEAT-ui-pastel-notion-lookfe/palette-tokens
+      context: Pastel token palette in styles.css :root/.dark
+      relationships:
+        - maps-to
+    - node: development/20260806-001-FEAT-ui-pastel-notion-lookfe/app-frame-spacing
+      context: Compact app frame and header spacing
+      relationships:
+        - maps-to
+    - node: development/20260806-001-FEAT-ui-pastel-notion-lookfe/surfaces-flat
+      context: Hairline flat card surfaces
+      relationships:
+        - maps-to
+    - node: development/20260806-001-FEAT-ui-pastel-notion-lookfe/sidebar-compact
+      context: Compact sidebar navigation
+      relationships:
+        - maps-to
+    - node: development/20260806-001-FEAT-ui-pastel-notion-lookfe/graph-canvas-pastel
+      context: Pastel graph canvas nodes
+      relationships:
+        - maps-to
+    - node: development/20260806-001-FEAT-ui-pastel-notion-lookfe/editor-document-tint
+      context: Pastel-tinted editor and document panes
+      relationships:
+        - maps-to
+    - node: development/20260806-001-FEAT-ui-pastel-notion-lookfe/tests-visual
+      context: Visual baselines regenerated and suite green
+      relationships:
+        - maps-to
 ---
 
 ## Commit Scope

@@ -5,8 +5,8 @@ graph: development/20260601-002-UI-dialog-and-theme-refinements
 title: Commit Notes
 description: Records the full scope of the commit including all files changed and Flow node mapping
 tags:
-  - commit
-  - refactor
+    - commit
+    - refactor
 ---
 
 ## Commit Scope

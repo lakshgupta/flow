@@ -9,10 +9,10 @@ tags:
     - performance
     - backend
 status: Done
-commit: 332374f
 links:
     - node: development/20260712-001-REFACTOR-backend-performance/note
       context: Captures scope, included task mapping, and validation status
       relationships:
         - documents
 ---
+

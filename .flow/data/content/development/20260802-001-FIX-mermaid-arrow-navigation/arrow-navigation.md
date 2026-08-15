@@ -4,12 +4,12 @@ type: task
 graph: development/20260802-001-FIX-mermaid-arrow-navigation
 title: Arrow-key navigation around collapsed mermaid diagram sections
 description: 'Arrow keys and Backspace navigate over collapsed/open mermaid diagram edges (Down/Right/Enter to write after, Up/Left/Backspace to move the section up) (commit: 85971ff)'
-status: Done
 tags:
     - bugfix
     - editor
     - mermaid
     - navigation
+status: Done
 ---
 
 When a mermaid diagram is the last block on the page the caret could not reach the right side of the collapsed section to press Enter and write after it; when it is the first block the caret could not reach the left side to press Backspace and move the whole section up.

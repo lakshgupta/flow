@@ -5,7 +5,6 @@ graph: development/20260806-001-FEAT-ui-pastel-notion-lookfe
 title: Test and regenerate visual regression baselines
 description: Run cd frontend && npm test (vitest); regenerate visual regression snapshots with npm run test:visual and confirm diffs are the intended pastel restyle; run go build/test as needed
 status: Done
-commit: 5b55233
 ---
 
 Done — 20260806. Validated the full pastel restyle:

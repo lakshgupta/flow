@@ -5,16 +5,16 @@ graph: development/20260601-002-UI-dialog-and-theme-refinements
 title: Implement settings dialog and theme refinements
 description: Code splitting, lazy excalidraw loading, settings dialog popup refactor, Tailwind v4 @theme block, dialog backdrop blur, sidebar CSS variable fixes
 tags:
-  - refactor
-  - fix
+    - refactor
+    - fix
 status: Done
 links:
-  - node: development/20260601-002-UI-dialog-and-theme-refinements/commit-notes
-    relationships:
-      - captures
-  - node: development/20260601-001-REFACTOR-frontend-performance-optimizations/perform-optimizations
-    relationships:
-      - extends
+    - node: development/20260601-002-UI-dialog-and-theme-refinements/commit-notes
+      relationships:
+        - captures
+    - node: development/20260601-001-REFACTOR-frontend-performance-optimizations/perform-optimizations
+      relationships:
+        - extends
 ---
 
 # Dialog and Theme Refinements

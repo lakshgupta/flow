@@ -2,7 +2,7 @@
 id: manual/gui
 type: note
 graph: manual
-title: GUI & Desktop
+title: GUI & s
 description: Use the browser web service or the native desktop app.
 links:
     - node: manual/graphs
@@ -76,70 +76,71 @@ flow desktop stop
 
 ### Desktop vs web service
 
-| 
+|
+
 <p><br></p>
 
- | 
+|
 
 Web Service
 
- | 
+|
 
 Desktop App
 
- |
-| --- | --- | --- |
-| 
+|  
+| --- | --- | --- |  
+|
 
 Requires browser
 
- | 
+|
 
 Yes
 
- | 
+|
 
 No
 
- |
-| 
+|  
+|
 
 Runs on loopback
 
- | 
+|
 
 Yes
 
- | 
+|
 
 Yes
 
- |
-| 
+|  
+|
 
 Native window feel
 
- | 
+|
 
 No
 
- | 
+|
 
 Yes
 
- |
-| 
+|  
+|
 
 Image drag-and-drop
 
- | 
+|
 
 Browser native
 
- | 
+|
 
 Via Wails file binding
 
- |
+|
 
 Both interfaces read and write the same `.flow/` workspace on disk, so you can switch between them freely.

@@ -5,7 +5,6 @@ graph: development/20260806-001-FEAT-ui-pastel-notion-lookfe
 title: Compact sidebar navigation
 description: Reduce .ui-sidebar-menu-button/sub-button vertical padding to ~0.45rem; flat pastel-tinted active state; keep collapsible tree and brand block
 status: Done
-commit: 5b55233
 links:
     - node: development/20260806-001-FEAT-ui-pastel-notion-lookfe/tests-visual
       context: verify sidebar

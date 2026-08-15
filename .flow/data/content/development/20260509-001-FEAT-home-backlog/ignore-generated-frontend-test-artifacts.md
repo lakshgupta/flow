@@ -11,7 +11,9 @@ status: Success
 ---
 
 - Added `frontend/playwright-report/` and `frontend/test-results/` to `.gitignore`.
+    
 - Removed the tracked generated files under those directories from git.
+    
 
 Validation
 

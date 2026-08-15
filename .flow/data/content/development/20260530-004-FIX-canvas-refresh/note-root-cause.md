@@ -5,9 +5,9 @@ graph: development/20260530-004-FIX-canvas-refresh
 title: Root cause — canvas not refreshing after file drop
 description: handleRefreshGraphTree and reloadCanvas were parameters of useGraphCanvasSurfaceActions but missing from actionRefs, so the drop handler silently never called them
 tags:
-  - analysis
-  - desktop
-  - canvas
+    - analysis
+    - desktop
+    - canvas
 ---
 
 handleGraphCanvasFilesDropFromURIsBridge calls actionRefs.current.handleRefreshGraphTree() and

@@ -12,6 +12,7 @@ links:
       relationships:
         - evolves-to
 ---
+
 In the desktop application (Linux/Wails), the application runs under custom protocols like `wails://` which are not recognized as secure contexts. As a result, `window.isSecureContext` evaluates to `false`, and `window.crypto.subtle` is `undefined`.
 
 When `@excalidraw/excalidraw` is imported/rendered, it attempts to access `window.crypto.subtle` during module initialization or setup. This throws a `TypeError` which bubbles up through the React `lazy` / `Suspense` boundary. Since there is no Error Boundary enclosing `<LazyExcalidraw>`, the crash bubbles to the root editor component, making the entire editor go blank (and removing existing elements like Mermaid).

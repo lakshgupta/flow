@@ -1,12 +1,16 @@
 ---
-title: Commit mapping for home transition optimization
+id: development/20260627-004-FIX-home-transition-perf/commit-notes
 type: note
-status: Success
+graph: development/20260627-004-FIX-home-transition-perf
+title: Commit mapping for home transition optimization
 tags:
-  - commit
-  - performance
+    - commit
+    - performance
 links:
-  - "20260627-004-FIX-home-transition-perf"
+    - node: development/20260627-004-FIX-home-transition-perf/optimize-home-transition
+      context: Notes on home transition optimization
+      relationships:
+        - maps-to
 ---
 
 ## Commit Scope

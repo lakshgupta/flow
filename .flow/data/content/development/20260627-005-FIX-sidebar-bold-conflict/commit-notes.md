@@ -1,12 +1,16 @@
 ---
-title: Commit mapping for sidebar bold conflict fix
+id: development/20260627-005-FIX-sidebar-bold-conflict/commit-notes
 type: note
-status: Success
+graph: development/20260627-005-FIX-sidebar-bold-conflict
+title: Commit mapping for sidebar bold conflict fix
 tags:
-  - commit
-  - bugfix
+    - commit
+    - bugfix
 links:
-  - "20260627-005-FIX-sidebar-bold-conflict"
+    - node: development/20260627-005-FIX-sidebar-bold-conflict/fix-sidebar-bold-conflict
+      context: Notes on sidebar bold conflict fix
+      relationships:
+        - maps-to
 ---
 
 ## Commit Scope

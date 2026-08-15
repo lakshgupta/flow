@@ -3,7 +3,6 @@ id: development/20260802-002-FEAT-graph-path-traversal/commit-notes
 type: note
 graph: development/20260802-002-FEAT-graph-path-traversal
 title: Commit mapping for graph path traversal
-status: Success
 tags:
     - commit
     - feat

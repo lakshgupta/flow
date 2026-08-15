@@ -1,12 +1,13 @@
 ---
-id: 20260627-007-FIX-heading-dropdown-dark-mode/task
-title: Fix heading dropdown invisible in dark mode
+id: development/20260627-007-FIX-heading-dropdown-dark-mode/task
 type: task
-status: Done
+graph: development/20260627-007-FIX-heading-dropdown-dark-mode
+title: Fix heading dropdown invisible in dark mode
 tags:
-  - fix
-  - ui
-  - dark-mode
+    - fix
+    - ui
+    - dark-mode
+status: Done
 ---
 
 # Fix heading dropdown invisible in dark mode

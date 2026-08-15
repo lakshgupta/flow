@@ -1,13 +1,13 @@
 ---
-title: Optimize home page transition performance
+id: development/20260627-004-FIX-home-transition-perf/optimize-home-transition
 type: task
-status: Done
+graph: development/20260627-004-FIX-home-transition-perf
+title: Optimize home page transition performance
 tags:
-  - performance
-  - frontend
-  - navigation
-links:
-  - "20260627-004-FIX-home-transition-perf"
+    - performance
+    - frontend
+    - navigation
+status: Done
 ---
 
 The home page transition was slow due to two bottlenecks:

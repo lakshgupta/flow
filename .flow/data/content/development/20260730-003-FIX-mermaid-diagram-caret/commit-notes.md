@@ -3,19 +3,18 @@ id: development/20260730-003-FIX-mermaid-diagram-caret/commit-notes
 type: note
 graph: development/20260730-003-FIX-mermaid-diagram-caret
 title: Commit mapping for mermaid diagram caret fix
-status: Success
 tags:
-  - commit
-  - bugfix
+    - commit
+    - bugfix
 links:
-  - node: development/20260730-003-FIX-mermaid-diagram-caret/fix-mermaid-diagram-caret
-    context: Notes on mermaid diagram caret fix
-    relationships:
-      - maps-to
-  - node: development/20260730-003-FIX-mermaid-diagram-caret/root-cause
-    context: Root cause analysis for this fix
-    relationships:
-      - relates-to
+    - node: development/20260730-003-FIX-mermaid-diagram-caret/fix-mermaid-diagram-caret
+      context: Notes on mermaid diagram caret fix
+      relationships:
+        - maps-to
+    - node: development/20260730-003-FIX-mermaid-diagram-caret/root-cause
+      context: Root cause analysis for this fix
+      relationships:
+        - relates-to
 ---
 
 ## Commit Scope

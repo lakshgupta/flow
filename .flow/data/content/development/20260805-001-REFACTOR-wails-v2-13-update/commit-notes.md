@@ -3,14 +3,14 @@ id: development/20260805-001-REFACTOR-wails-v2-13-update/commit-notes
 type: note
 graph: development/20260805-001-REFACTOR-wails-v2-13-update
 title: Commit mapping for Wails v2.13.0 update
+tags:
+    - commit
+    - refactor
 links:
     - node: development/20260805-001-REFACTOR-wails-v2-13-update/update-wails
       context: Task implemented by this commit
       relationships:
         - maps-to
-tags:
-    - commit
-    - refactor
 ---
 
 ## Commit Scope

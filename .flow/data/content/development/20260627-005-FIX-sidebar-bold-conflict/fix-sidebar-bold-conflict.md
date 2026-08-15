@@ -1,14 +1,14 @@
 ---
-title: Fix Ctrl+B sidebar toggle conflict with editor bold
+id: development/20260627-005-FIX-sidebar-bold-conflict/fix-sidebar-bold-conflict
 type: task
-status: Done
+graph: development/20260627-005-FIX-sidebar-bold-conflict
+title: Fix Ctrl+B sidebar toggle conflict with editor bold
 tags:
-  - bug
-  - keyboard
-  - sidebar
-  - editor
-links:
-  - "20260627-005-FIX-sidebar-bold-conflict"
+    - bug
+    - keyboard
+    - sidebar
+    - editor
+status: Done
 ---
 
 When text is selected in the editor and Ctrl+B/Cmd+B is pressed, the text becomes bold but the left sidebar also collapses.

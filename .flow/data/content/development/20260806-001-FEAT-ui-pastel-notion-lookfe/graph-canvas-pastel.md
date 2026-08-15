@@ -5,7 +5,6 @@ graph: development/20260806-001-FEAT-ui-pastel-notion-lookfe
 title: Pastel graph canvas nodes
 description: Soft pastel node fills with tinted borders matching per-graph directory colors; keep edges dimmed (--graph-edge-dim); ensure node styling reads pastel in both themes
 status: Done
-commit: 5b55233
 links:
     - node: development/20260806-001-FEAT-ui-pastel-notion-lookfe/tests-visual
       context: verify canvas

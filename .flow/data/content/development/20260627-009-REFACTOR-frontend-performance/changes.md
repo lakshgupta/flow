@@ -16,3 +16,11 @@ tags:
 
 3. **useGraphCanvasSurfaceActions.ts** — Add `dragPositionRef` to skip intermediate React state updates during node drag; the final position is applied once on drag stop. Reduces re-renders per frame during canvas node drag.
 
+## Follow-up Fix (commit c8ddc58)
+
+**MiddleContent.tsx** — Fixed home page vertical scrolling by making the wrapper div around `HomeSurface` a flex item (`flex: 1 1 auto; display: flex; min-height: 0`). Without this, `.home-surface`'s `overflow-y: auto` never had a constrained height, so the page couldn't scroll.
+
+## Follow-up Fix (commit 05603cf)
+
+**WorkspaceSidebarPanels.tsx** — Removed `lastFiredRef` dedup and redundant `onInput` handler from the workspace `<select>`. The dual event handlers caused subsequent workspace selections to fail after the first switch. Now `onChange` calls `actions.selectWorkspace` directly.
+

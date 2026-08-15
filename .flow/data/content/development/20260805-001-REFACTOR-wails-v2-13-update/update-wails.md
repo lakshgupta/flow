@@ -12,8 +12,6 @@ status: Done
 links:
     - node: development/20260805-001-REFACTOR-wails-v2-13-update/commit-notes
       context: Commit mapping and validation record
-      relationships:
-        - maps-to
 ---
 
 # Update Wails to v2.13.0

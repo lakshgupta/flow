@@ -5,7 +5,6 @@ graph: development/20260806-001-FEAT-ui-pastel-notion-lookfe
 title: Pastel-tinted editor and document panes
 description: Apply pastel graph-directory tint to document/thread panes and home surface; keep editor measure comfortable; preserve tint via graphDirectoryColors, no markup change
 status: Done
-commit: 5b55233
 links:
     - node: development/20260806-001-FEAT-ui-pastel-notion-lookfe/tests-visual
       context: verify editor panes

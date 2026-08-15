@@ -1,11 +1,12 @@
 ---
-id: 20260627-006-FIX-workspace-and-scroll/note
-title: Fix notes for workspace and scroll
+id: development/20260627-006-FIX-workspace-and-scroll/note
 type: note
+graph: development/20260627-006-FIX-workspace-and-scroll
+title: Fix notes for workspace and scroll
 tags:
-  - fix
-  - workspace
-  - scroll
+    - fix
+    - workspace
+    - scroll
 ---
 
 # Fix Notes
