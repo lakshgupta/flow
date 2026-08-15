@@ -12,6 +12,7 @@ import { render as renderKaTeX } from 'katex'
 import { createFlowImageUploader } from '../../lib/imageUploader'
 import { defineCodeBlockExitKeymap } from './code-block-exit-keymap'
 import { defineHeadingExitKeymap } from './heading-exit-keymap'
+import { defineTableExitKeymap } from './table-exit-keymap'
 import { defineImageIndentKeymap } from './image-indent-keymap'
 import { defineCodeBlockView } from './ui/code-block-view'
 import { defineImageView } from './ui/image-view'
@@ -52,6 +53,7 @@ export function defineEditorExtension(
     }),
     defineCodeBlockExitKeymap(),
     defineHeadingExitKeymap(),
+    defineTableExitKeymap(),
     defineImageIndentKeymap(),
     defineHorizontalRule(),
     defineImageView(),
