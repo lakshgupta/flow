@@ -55,6 +55,10 @@ vi.mock('./ui/block-handle', () => ({
   BlockHandle: () => null,
 }))
 
+vi.mock('./ui/table-handle', () => ({
+  TableHandle: () => null,
+}))
+
 vi.mock('./define-editor-extension', () => ({
   defineEditorExtension: () => ({ mocked: true }),
 }))

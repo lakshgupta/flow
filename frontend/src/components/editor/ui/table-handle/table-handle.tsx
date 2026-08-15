@@ -1,6 +1,7 @@
 import type { Editor } from 'prosekit/core'
 import type { TableExtension } from 'prosekit/extensions/table'
 import { useEditorDerivedValue } from 'prosekit/react'
+import { TableMap } from 'prosemirror-tables'
 import {
   TableHandleColumnRoot,
   TableHandleColumnTrigger,
@@ -13,7 +14,24 @@ import {
   TableHandleRowTrigger,
 } from 'prosekit/react/table-handle'
 
-function getTableHandleState(editor: Editor<TableExtension>) {
+// Number of rows and columns of the table containing the current selection, or
+// null when the caret is not inside a table. Used to disable Delete Row/Column
+// when they would leave an empty table — prosemirror-tables reports those
+// commands as executable but silently does nothing at a 1x1 table.
+function getTableShape(editor: Editor<TableExtension>): { rows: number; cols: number } | null {
+  const { $head } = editor.state.selection
+  for (let depth = $head.depth; depth >= 0; depth--) {
+    const node = $head.node(depth)
+    if ((node.type.spec as { tableRole?: string }).tableRole === 'table') {
+      const map = TableMap.get(node)
+      return { rows: map.height, cols: map.width }
+    }
+  }
+  return null
+}
+
+export function getTableHandleState(editor: Editor<TableExtension>) {
+  const shape = getTableShape(editor)
   return {
     addTableColumnBefore: {
       canExec: editor.commands.addTableColumnBefore.canExec(),
@@ -28,7 +46,7 @@ function getTableHandleState(editor: Editor<TableExtension>) {
       command: () => editor.commands.deleteCellSelection(),
     },
     deleteTableColumn: {
-      canExec: editor.commands.deleteTableColumn.canExec(),
+      canExec: editor.commands.deleteTableColumn.canExec() && (shape === null || shape.cols > 1),
       command: () => editor.commands.deleteTableColumn(),
     },
     addTableRowAbove: {
@@ -40,7 +58,7 @@ function getTableHandleState(editor: Editor<TableExtension>) {
       command: () => editor.commands.addTableRowBelow(),
     },
     deleteTableRow: {
-      canExec: editor.commands.deleteTableRow.canExec(),
+      canExec: editor.commands.deleteTableRow.canExec() && (shape === null || shape.rows > 1),
       command: () => editor.commands.deleteTableRow(),
     },
     deleteTable: {

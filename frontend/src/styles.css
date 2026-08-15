@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* The app theme is class-based: ThemeProvider toggles `.dark` on <html> and
+   switches the CSS variables in `.dark {}`. Tailwind's default `dark:` variant
+   follows `prefers-color-scheme`, which drifts out of sync with the app theme
+   (e.g. app dark + OS light renders white text on white popovers). Rebase the
+   variant on the `.dark` class so `dark:` utilities follow the app theme. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @font-face {
   font-family: 'Major Mono Display';
   font-style: normal;

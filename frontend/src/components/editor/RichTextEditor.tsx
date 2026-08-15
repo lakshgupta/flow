@@ -20,6 +20,7 @@ import type { InlineReference } from '../../types'
 import { getWailsUpload, getWailsUploadFromPath, createFlowImageUploader } from '../../lib/imageUploader'
 import { hasImageExtension } from './image-utils'
 import { BlockHandle } from './ui/block-handle'
+import { TableHandle } from './ui/table-handle'
 import { defineEditorExtension } from './define-editor-extension'
 import { DropDiagBanner } from './ui/drop-diag-banner'
 import type { DropDiagEntry } from './ui/drop-diag-banner'
@@ -752,6 +753,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
           <ReferenceMenu graphPath={referenceLookupGraph} />
           <SlashMenu onDateRequest={handleDateRequest} uploader={createFlowImageUploader(getDocumentPath)} />
           <BlockHandle />
+          <TableHandle />
           <DropIndicator />
           <DocChangeTracker onHtmlChange={handleDocChange} />
         </div>
