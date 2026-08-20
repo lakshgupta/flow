@@ -11,7 +11,6 @@ title: Home
     - UI look and feel: sleek, modern, pastel, Notion-inspired; no wasted space — done (20260806-001-FEAT-ui-pastel-notion-lookfe, approved): pastel palette, flat hairline surfaces, compact frame/header/sidebar, docs/DESIGN.md created; visual baselines regenerated
         
 - Fix
-    - the text screen flickers a lot. how does other notes app like obsidian makes saving and rendering efficient?
     
 - Tagging
     

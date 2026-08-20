@@ -157,7 +157,12 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
   const lastEmittedRef = useRef(value)
   const inlineReferenceRenderKey = createInlineReferenceRenderKey(inlineReferences)
   const lastSyncedInlineReferencesKeyRef = useRef(inlineReferenceRenderKey)
-  const renderedHTML = useMemo(() => markdownToHTML(value, inlineReferences), [inlineReferenceRenderKey, inlineReferences, value])
+  // Only the render key matters for output, not the array identity: the parent
+  // recreates the inlineReferences array on every autosave echo with identical
+  // content, and re-running markdownToHTML for the whole document on each save
+  // stalls rendering on larger documents.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- inlineReferenceRenderKey fully encodes inlineReferences
+  const renderedHTML = useMemo(() => markdownToHTML(value, inlineReferences), [inlineReferenceRenderKey, value])
   const lastRenderedHTMLRef = useRef(renderedHTML)
   // Set to true briefly while we programmatically set content so we can
   // suppress the resulting useDocChange callback.

@@ -323,6 +323,21 @@ function updateGraphCanvasDocumentEntry(graphCanvas: GraphCanvasResponse | null,
   return changed ? { ...graphCanvas, nodes: nextNodes } : graphCanvas;
 }
 
+/** True when two link sets describe the same edges (order-insensitive). Used to
+ *  decide whether a document save changed the canvas graph (edges), which the
+ *  in-place node update cannot represent. */
+function nodeLinksEqual(left: DocumentResponse["links"] | undefined, right: DocumentResponse["links"] | undefined): boolean {
+  const leftLinks = left ?? [];
+  const rightLinks = right ?? [];
+  if (leftLinks.length !== rightLinks.length) {
+    return false;
+  }
+
+  const linkKey = (link: NodeLink): string => `${link.node}\u0001${link.context ?? ""}\u0001${(link.relationships ?? []).join(",")}`;
+  const leftKeys = leftLinks.map(linkKey).sort();
+  const rightKeys = rightLinks.map(linkKey).sort();
+  return leftKeys.every((value, index) => value === rightKeys[index]);
+}
 
 function FlowApp() {
   const { theme, setTheme } = useTheme();
@@ -3649,7 +3664,17 @@ function FlowApp() {
         }
         setGraphTree((current) => updateGraphTreeDocumentEntry(current, doc, updatedDocument));
         setGraphCanvasData((current) => updateGraphCanvasDocumentEntry(current, doc, updatedDocument));
-        setGraphCanvasReloadToken((current) => current + 1);
+        // The in-place canvas update above covers node content (title, body
+        // preview, tags, status, color), so a routine text save must not reload
+        // the whole canvas — that swaps the visible graph for a loading
+        // skeleton and re-applies node positions on every autosave, which reads
+        // as a screen flicker while typing. Only reload when the save changed
+        // something the in-place update cannot represent: the node's graph
+        // (moved) or its link set (edges).
+        const canvasNeedsReload = doc.graph !== updatedDocument.graph || !nodeLinksEqual(doc.links, updatedDocument.links);
+        if (canvasNeedsReload) {
+          setGraphCanvasReloadToken((current) => current + 1);
+        }
         setLastSaveAt(Date.now());
       } catch (mutationFailure) {
         setMutationError(toErrorMessage(mutationFailure));
