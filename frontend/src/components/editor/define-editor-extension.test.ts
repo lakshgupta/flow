@@ -13,6 +13,7 @@ const {
   defineCodeBlockExitKeymap,
   defineHeadingExitKeymap,
   defineTableExitKeymap,
+  defineTableDeleteKeymap,
   defineDoubleClickWordSelection,
   defineImageIndentKeymap,
   defineCodeBlockView,
@@ -32,6 +33,7 @@ const {
   defineCodeBlockExitKeymap: vi.fn(() => 'code-block-exit-keymap-extension'),
   defineHeadingExitKeymap: vi.fn(() => 'heading-exit-keymap-extension'),
   defineTableExitKeymap: vi.fn(() => 'table-exit-keymap-extension'),
+  defineTableDeleteKeymap: vi.fn(() => 'table-delete-keymap-extension'),
   defineDoubleClickWordSelection: vi.fn(() => 'double-click-word-selection-extension'),
   defineImageIndentKeymap: vi.fn(() => 'image-indent-keymap-extension'),
   defineCodeBlockView: vi.fn(() => 'code-block-view-extension'),
@@ -89,6 +91,10 @@ vi.mock('./table-exit-keymap', () => ({
   defineTableExitKeymap,
 }))
 
+vi.mock('./table-delete-keymap', () => ({
+  defineTableDeleteKeymap,
+}))
+
 vi.mock('./double-click-word-selection', () => ({
   defineDoubleClickWordSelection,
 }))
@@ -138,6 +144,7 @@ describe('defineEditorExtension', () => {
       'image-view-extension',
       'code-block-view-extension',
       'image-upload-handler-extension',
+      'table-delete-keymap-extension',
     )
     expect(extension).toEqual([
       'basic-extension',
@@ -155,6 +162,7 @@ describe('defineEditorExtension', () => {
       'image-view-extension',
       'code-block-view-extension',
       'image-upload-handler-extension',
+      'table-delete-keymap-extension',
     ])
 
     expect(createFlowImageUploader).toHaveBeenCalledTimes(1)

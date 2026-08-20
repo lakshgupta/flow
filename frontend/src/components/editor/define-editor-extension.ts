@@ -13,6 +13,7 @@ import { createFlowImageUploader } from '../../lib/imageUploader'
 import { defineCodeBlockExitKeymap } from './code-block-exit-keymap'
 import { defineHeadingExitKeymap } from './heading-exit-keymap'
 import { defineTableExitKeymap } from './table-exit-keymap'
+import { defineTableDeleteKeymap } from './table-delete-keymap'
 import { defineDoubleClickWordSelection } from './double-click-word-selection'
 import { defineImageIndentKeymap } from './image-indent-keymap'
 import { defineCodeBlockView } from './ui/code-block-view'
@@ -66,6 +67,10 @@ export function defineEditorExtension(
       canPaste: canPasteImage,
       onError: onImageUploadError,
     }),
+    // Registered last so it has the highest keymap priority: it must preempt
+    // the tables plugin's Backspace/Delete handling (deleteCellSelection)
+    // for whole-table selections.
+    defineTableDeleteKeymap(),
   )
 }
 
