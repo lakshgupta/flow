@@ -22,8 +22,12 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       output: {
-        manualChunks: {
-          "vendor-xyflow": ["@xyflow/react"],
+        // Function form is required by Vite 8 (Rolldown); the object form
+        // that Rollup accepted is rejected there.
+        manualChunks(id) {
+          if (id.includes("@xyflow/react")) {
+            return "vendor-xyflow";
+          }
         },
       },
     },

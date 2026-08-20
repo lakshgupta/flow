@@ -56,7 +56,7 @@ describe("createFlowImageUploader", () => {
 	it("POSTs to /api/files and resolves with the returned URL on success", async () => {
 		const xhr = createMockXHR(201, JSON.stringify({ url: "/api/files?path=data/uploads/photo.png" }));
 
-		const XHRConstructor = vi.fn(() => xhr) as unknown as typeof XMLHttpRequest;
+		const XHRConstructor = vi.fn(function () { return xhr; }) as unknown as typeof XMLHttpRequest;
 		vi.stubGlobal("XMLHttpRequest", XHRConstructor);
 
 		const uploader = createFlowImageUploader(() => undefined);
@@ -80,7 +80,7 @@ describe("createFlowImageUploader", () => {
 	it("includes documentPath query parameter when provided", async () => {
 		const xhr = createMockXHR(201, JSON.stringify({ url: "/api/files?path=data/content/design/photo.png" }));
 
-		const XHRConstructor = vi.fn(() => xhr) as unknown as typeof XMLHttpRequest;
+		const XHRConstructor = vi.fn(function () { return xhr; }) as unknown as typeof XMLHttpRequest;
 		vi.stubGlobal("XMLHttpRequest", XHRConstructor);
 
 		const uploader = createFlowImageUploader(() => "data/content/design/note.md");
@@ -101,7 +101,7 @@ describe("createFlowImageUploader", () => {
 	it("rejects when the server returns a non-201 status", async () => {
 		const xhr = createMockXHR(400, JSON.stringify({ error: "no file was provided" }));
 
-		const XHRConstructor = vi.fn(() => xhr) as unknown as typeof XMLHttpRequest;
+		const XHRConstructor = vi.fn(function () { return xhr; }) as unknown as typeof XMLHttpRequest;
 		vi.stubGlobal("XMLHttpRequest", XHRConstructor);
 
 		const uploader = createFlowImageUploader(() => undefined);
@@ -117,7 +117,7 @@ describe("createFlowImageUploader", () => {
 	it("rejects when the response status is not 201 and the body is not JSON", async () => {
 		const xhr = createMockXHR(500, "Internal Server Error");
 
-		const XHRConstructor = vi.fn(() => xhr) as unknown as typeof XMLHttpRequest;
+		const XHRConstructor = vi.fn(function () { return xhr; }) as unknown as typeof XMLHttpRequest;
 		vi.stubGlobal("XMLHttpRequest", XHRConstructor);
 
 		const uploader = createFlowImageUploader(() => undefined);
@@ -133,7 +133,7 @@ describe("createFlowImageUploader", () => {
 	it("rejects when the 201 response is not valid JSON", async () => {
 		const xhr = createMockXHR(201, "not-json");
 
-		const XHRConstructor = vi.fn(() => xhr) as unknown as typeof XMLHttpRequest;
+		const XHRConstructor = vi.fn(function () { return xhr; }) as unknown as typeof XMLHttpRequest;
 		vi.stubGlobal("XMLHttpRequest", XHRConstructor);
 
 		const uploader = createFlowImageUploader(() => undefined);
@@ -149,7 +149,7 @@ describe("createFlowImageUploader", () => {
 	it("rejects on network error", async () => {
 		const xhr = createMockXHR(0, "");
 
-		const XHRConstructor = vi.fn(() => xhr) as unknown as typeof XMLHttpRequest;
+		const XHRConstructor = vi.fn(function () { return xhr; }) as unknown as typeof XMLHttpRequest;
 		vi.stubGlobal("XMLHttpRequest", XHRConstructor);
 
 		const uploader = createFlowImageUploader(() => undefined);
@@ -165,7 +165,7 @@ describe("createFlowImageUploader", () => {
 	it("calls onProgress with uploaded bytes when progress is computable", async () => {
 		const xhr = createMockXHR(201, JSON.stringify({ url: "/api/files?path=data/uploads/photo.png" }));
 
-		const XHRConstructor = vi.fn(() => xhr) as unknown as typeof XMLHttpRequest;
+		const XHRConstructor = vi.fn(function () { return xhr; }) as unknown as typeof XMLHttpRequest;
 		vi.stubGlobal("XMLHttpRequest", XHRConstructor);
 
 		const uploader = createFlowImageUploader(() => undefined);
@@ -183,7 +183,7 @@ describe("createFlowImageUploader", () => {
 	it("does not call onProgress when the progress event is not computable", async () => {
 		const xhr = createMockXHR(201, JSON.stringify({ url: "/api/files?path=data/uploads/photo.png" }));
 
-		const XHRConstructor = vi.fn(() => xhr) as unknown as typeof XMLHttpRequest;
+		const XHRConstructor = vi.fn(function () { return xhr; }) as unknown as typeof XMLHttpRequest;
 		vi.stubGlobal("XMLHttpRequest", XHRConstructor);
 
 		const uploader = createFlowImageUploader(() => undefined);

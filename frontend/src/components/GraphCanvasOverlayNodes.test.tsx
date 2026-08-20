@@ -33,7 +33,7 @@ function makeNode(id: string, type: string, overrides?: Partial<GraphCanvasFlowN
   } as Node<GraphCanvasFlowNodeData>;
 }
 
-function makeController(node: Node<GraphCanvasFlowNodeData>, onStatusChange: ReturnType<typeof vi.fn>): GraphCanvasOverlayController {
+function makeController(node: Node<GraphCanvasFlowNodeData>, onStatusChange: GraphCanvasOverlayActions["onNodeStatusChange"]): GraphCanvasOverlayController {
   const noop = vi.fn();
   const actions: GraphCanvasOverlayActions = {
     clearEdgeClickTimer: noop,

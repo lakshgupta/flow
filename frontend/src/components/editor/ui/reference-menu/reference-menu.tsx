@@ -83,7 +83,7 @@ export default function ReferenceMenu({ graphPath }: { graphPath?: string }) {
             className="relative flex min-w-40 flex-col scroll-my-1 rounded-sm px-3 py-1.5 box-border cursor-default select-none outline-hidden data-focused:bg-accent data-focused:text-accent-foreground"
             onSelect={() => handleReferenceInsert(target)}
           >
-            <span>{target.title}</span>
+            <span>{target.title}</span>{' '}
             <span className="text-xs text-muted-foreground data-focused:text-accent-foreground/80">{target.breadcrumb}</span>
           </AutocompleteItem>
         ))}
