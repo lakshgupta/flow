@@ -3,16 +3,15 @@ id: development/20260815-002-FIX-table-handle-color-contrast/fix-notes
 type: note
 graph: development/20260815-002-FIX-table-handle-color-contrast
 title: Root cause and validation for table handle color contrast fix
-status: Success
 tags:
-  - bugfix
-  - frontend
-  - ui
+    - bugfix
+    - frontend
+    - ui
 links:
-  - node: development/20260815-002-FIX-table-handle-color-contrast/fix-table-handle-color-contrast
-    context: Fix task
-    relationships:
-      - maps-to
+    - node: development/20260815-002-FIX-table-handle-color-contrast/fix-table-handle-color-contrast
+      context: Fix task
+      relationships:
+        - maps-to
 ---
 
 ## Root Cause

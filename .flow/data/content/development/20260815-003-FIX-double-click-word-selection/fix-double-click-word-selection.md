@@ -3,7 +3,7 @@ id: development/20260815-003-FIX-double-click-word-selection/fix-double-click-wo
 type: task
 graph: development/20260815-003-FIX-double-click-word-selection
 title: Double-click a word selects the whole paragraph instead of the word
-description: PM view flush on selectionchange resets the browser native word selection; select the word under the cursor via handleDoubleClick instead
+description: 'PM view flush on selectionchange resets the browser native word selection; select the word under the cursor via handleDoubleClick instead (commit: 5a32792)'
 tags:
     - bugfix
     - editor
