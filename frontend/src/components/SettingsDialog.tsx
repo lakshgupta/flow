@@ -1,4 +1,4 @@
-import { FolderTree, Info, PaintbrushVertical, Trash2, TriangleAlert } from "lucide-react";
+import { FolderTree, Info, Keyboard, PaintbrushVertical, Trash2, TriangleAlert } from "lucide-react";
 import { memo } from "react";
 
 import {
@@ -30,7 +30,7 @@ import {
 
 import type { WorkspaceResponse } from "../types";
 
-type SettingsTab = "general" | "workspaces" | "about" | "theme" | "stop";
+type SettingsTab = "general" | "workspaces" | "about" | "theme" | "keyboard" | "stop";
 
 type SettingsDialogActions = {
   setOpen: (open: boolean) => void;
@@ -54,11 +54,92 @@ export type SettingsDialogProps = {
   actions: SettingsDialogActions;
 };
 
+type ShortcutEntry = {
+  keys: string;
+  action: string;
+};
+
+type ShortcutGroup = {
+  title: string;
+  shortcuts: ShortcutEntry[];
+};
+
+const KEYBOARD_SHORTCUTS: ShortcutGroup[] = [
+  {
+    title: "General",
+    shortcuts: [
+      { keys: "Ctrl/Cmd + B", action: "Toggle the left sidebar" },
+      { keys: "Alt + ← / Alt + →", action: "Switch between open threads" },
+      { keys: "Alt + Shift + F", action: "Fix all edge violations in the current graph" },
+      { keys: "Ctrl/Cmd + click", action: "Add a node to the selection (multi-select)" },
+    ],
+  },
+  {
+    title: "Canvas",
+    shortcuts: [
+      { keys: "Ctrl/Cmd + scroll (pinch)", action: "Zoom the canvas in and out" },
+      { keys: "↑ / ↓", action: "Navigate node search results" },
+      { keys: "Shift + Enter", action: "Jump to the previous search match" },
+      { keys: "Enter", action: "Jump to the next search match" },
+    ],
+  },
+  {
+    title: "Text formatting",
+    shortcuts: [
+      { keys: "Ctrl/Cmd + B", action: "Bold" },
+      { keys: "Ctrl/Cmd + I", action: "Italic" },
+      { keys: "Ctrl/Cmd + U", action: "Underline" },
+      { keys: "Ctrl/Cmd + S", action: "Strikethrough" },
+      { keys: "Ctrl/Cmd + E", action: "Inline code" },
+      { keys: "Ctrl/Cmd + Shift + B", action: "Blockquote" },
+      { keys: "Ctrl/Cmd + Alt + 1–6", action: "Apply heading level 1–6" },
+      { keys: "Ctrl/Cmd + Alt + 0", action: "Set paragraph text" },
+      { keys: "Ctrl/Cmd + [ / ]", action: "Decrease / increase list indent" },
+      { keys: "Ctrl/Cmd + Enter", action: "Insert a hard line break" },
+      { keys: "Ctrl/Cmd + Z", action: "Undo" },
+      { keys: "Ctrl/Cmd + Shift + Z (or Ctrl/Cmd + Y)", action: "Redo" },
+      { keys: "Ctrl/Cmd + click on link", action: "Open the link in the browser" },
+    ],
+  },
+  {
+    title: "Markdown shortcuts (type at the start of a line)",
+    shortcuts: [
+      { keys: "# / ## / ###", action: "Heading 1 / 2 / 3" },
+      { keys: "-", action: "Bullet list" },
+      { keys: "1.", action: "Ordered list" },
+      { keys: "[]", action: "Task list" },
+      { keys: ">>", action: "Toggle list" },
+      { keys: ">", action: "Quote" },
+      { keys: "---", action: "Horizontal divider" },
+      { keys: "```", action: "Code block" },
+      { keys: "/code", action: "Insert a code block (slash menu)" },
+      { keys: "/mermaid", action: "Insert a Mermaid diagram (slash menu)" },
+    ],
+  },
+  {
+    title: "Tables",
+    shortcuts: [
+      { keys: "Tab / Shift + Tab", action: "Move to the next / previous cell" },
+      { keys: "Arrow keys", action: "Move between cells" },
+      { keys: "Ctrl/Cmd + A", action: "Select the whole table" },
+      { keys: "Backspace / Delete at the table edge", action: "Delete the whole table" },
+    ],
+  },
+  {
+    title: "Images & diagrams",
+    shortcuts: [
+      { keys: "Tab / Shift + Tab (image selected)", action: "Indent / outdent the image" },
+      { keys: "Alt + ↑ / ↓ (diagram selected)", action: "Move the diagram up / down" },
+    ],
+  },
+];
+
 const SETTINGS_ITEMS = [
   { value: "general" as const, label: "General", icon: Info },
   { value: "workspaces" as const, label: "Workspaces", icon: FolderTree },
   { value: "about" as const, label: "About", icon: Info },
   { value: "theme" as const, label: "Appearance", icon: PaintbrushVertical },
+  { value: "keyboard" as const, label: "Keyboard", icon: Keyboard },
   { value: "stop" as const, label: "Advanced", icon: TriangleAlert },
 ];
 
@@ -122,6 +203,8 @@ function SettingsDialogComponent({
                             ? "About"
                           : settingsTab === "theme"
                             ? "Appearance"
+                          : settingsTab === "keyboard"
+                            ? "Keyboard"
                             : "Advanced"}
                     </BreadcrumbPage>
                   </BreadcrumbItem>
@@ -257,6 +340,23 @@ function SettingsDialogComponent({
                 ) : (
                   <p className="text-sm text-muted-foreground">No workspace loaded.</p>
                 )
+              )}
+              {settingsTab === "keyboard" && (
+                <div className="flex flex-col gap-4">
+                  {KEYBOARD_SHORTCUTS.map((group) => (
+                    <div key={group.title} className="flex flex-col gap-2">
+                      <h3 className="text-sm font-medium">{group.title}</h3>
+                      <div className="flex flex-col divide-y rounded-lg border">
+                        {group.shortcuts.map((shortcut) => (
+                          <div key={`${group.title}-${shortcut.keys}`} className="flex items-center justify-between gap-4 px-3 py-2">
+                            <span className="text-sm text-muted-foreground">{shortcut.action}</span>
+                            <kbd className="shrink-0 rounded border bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">{shortcut.keys}</kbd>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
               {settingsTab === "stop" && (
                 <div className="flex flex-col gap-4">
