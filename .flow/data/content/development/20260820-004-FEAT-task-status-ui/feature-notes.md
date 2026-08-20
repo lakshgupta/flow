@@ -3,7 +3,7 @@ id: development/20260820-004-FEAT-task-status-ui/feature-notes
 type: note
 graph: development/20260820-004-FEAT-task-status-ui
 title: Implementation and validation for task status tracking UI
-description: 'Status controls added to center header, right-rail editor, and canvas nodes; persisted via existing document PUT path (commit: TBD)'
+description: 'Status controls added to center header, right-rail editor, and canvas nodes; persisted via existing document PUT path (commit: ecddd8b)'
 tags:
     - feature
     - frontend
