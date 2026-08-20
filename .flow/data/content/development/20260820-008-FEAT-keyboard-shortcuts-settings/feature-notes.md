@@ -87,3 +87,30 @@ Fix in `SettingsDialog.tsx`:
 Verified in headless Chromium at 700px viewport: the Keyboard tab scrolls to
 `scrollTop == maxScroll`, the last shortcut row is fully visible, and the
 General/About/Advanced tabs render unchanged.
+
+## Follow-up fix (conflicting key mappings)
+
+The user reported that `Ctrl/Cmd+B` was bound to both Bold (editor, prosekit
+`Mod-b`) and the sidebar toggle (`sidebar.tsx`), and asked for distinct,
+generally-used editor bindings. Audit of every app-wide binding found exactly
+one duplicate plus one mislabeled entry:
+
+- **`Ctrl/Cmd+B` — Bold vs sidebar toggle.** The editor keeps the standard
+  Bold binding. The sidebar toggle moved to `Ctrl/Cmd+\` (`SIDEBAR_KEYBOARD_SHORTCUT`
+  in `ui/sidebar.tsx` changed from `"b"` to `"\\"`), the convention used by
+  Notion, Slack, and Discord.
+- **Mislabeled strikethrough.** The strike keymap binds `Mod-S` (i.e.
+  `Ctrl/Cmd+Shift+S`), but the settings list said `Ctrl/Cmd+S`. Corrected to
+  `Ctrl/Cmd + Shift + S`.
+
+All other bindings were checked and are already distinct or context-specific
+by design (e.g. `Ctrl/Cmd+A` selects all text, or the whole table when the
+caret is inside one; `Tab` moves between table cells or indents a selected
+image; canvas node deletion with `Backspace`/`Delete` only applies to selected
+canvas nodes).
+
+Verified in headless Chromium: `Ctrl+B` inside the editor bolds the selected
+text and leaves the sidebar expanded; `Ctrl+B` outside the editor no longer
+toggles the sidebar; `Ctrl+\` toggles the sidebar; the settings Keyboard tab
+shows `Ctrl/Cmd + \` for the sidebar, `Ctrl/Cmd + B` for bold, and
+`Ctrl/Cmd + Shift + S` for strikethrough.

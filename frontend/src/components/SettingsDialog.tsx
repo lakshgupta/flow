@@ -68,7 +68,7 @@ const KEYBOARD_SHORTCUTS: ShortcutGroup[] = [
   {
     title: "General",
     shortcuts: [
-      { keys: "Ctrl/Cmd + B", action: "Toggle the left sidebar" },
+      { keys: "Ctrl/Cmd + \\", action: "Toggle the left sidebar" },
       { keys: "Alt + ← / Alt + →", action: "Switch between open threads" },
       { keys: "Alt + Shift + F", action: "Fix all edge violations in the current graph" },
       { keys: "Ctrl/Cmd + click", action: "Add a node to the selection (multi-select)" },
@@ -89,7 +89,7 @@ const KEYBOARD_SHORTCUTS: ShortcutGroup[] = [
       { keys: "Ctrl/Cmd + B", action: "Bold" },
       { keys: "Ctrl/Cmd + I", action: "Italic" },
       { keys: "Ctrl/Cmd + U", action: "Underline" },
-      { keys: "Ctrl/Cmd + S", action: "Strikethrough" },
+      { keys: "Ctrl/Cmd + Shift + S", action: "Strikethrough" },
       { keys: "Ctrl/Cmd + E", action: "Inline code" },
       { keys: "Ctrl/Cmd + Shift + B", action: "Blockquote" },
       { keys: "Ctrl/Cmd + Alt + 1–6", action: "Apply heading level 1–6" },

@@ -29,7 +29,10 @@ const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH = "16rem"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
-const SIDEBAR_KEYBOARD_SHORTCUT = "b"
+// Ctrl/Cmd+\ toggles the sidebar (the common convention in Notion, Slack,
+// and Discord). Ctrl/Cmd+B is intentionally free so the text editor can keep
+// the standard Bold binding.
+const SIDEBAR_KEYBOARD_SHORTCUT = "\\"
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed"
