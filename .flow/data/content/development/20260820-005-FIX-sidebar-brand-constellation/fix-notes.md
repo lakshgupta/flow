@@ -3,7 +3,7 @@ id: development/20260820-005-FIX-sidebar-brand-constellation/fix-notes
 type: note
 graph: development/20260820-005-FIX-sidebar-brand-constellation
 title: Root cause and validation for sidebar brand constellation
-description: 'Wordmark bolded via text stroke (font has no bold weight); constellation SVG restored behind hero (commit: TBD)'
+description: 'Wordmark bolded via text stroke (font has no bold weight); constellation SVG restored behind hero (commit: f23c1da)'
 tags:
     - ui
     - frontend
