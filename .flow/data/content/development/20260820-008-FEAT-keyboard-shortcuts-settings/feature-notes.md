@@ -3,7 +3,7 @@ id: development/20260820-008-FEAT-keyboard-shortcuts-settings/feature-notes
 type: note
 graph: development/20260820-008-FEAT-keyboard-shortcuts-settings
 title: Implementation and validation for the settings Keyboard tab
-description: 'New Keyboard tab in the settings dialog listing all app keyboard shortcuts in six groups (commit: TBD)'
+description: 'New Keyboard tab in the settings dialog listing all app keyboard shortcuts in six groups (commit: 6c22e1c)'
 tags:
     - feature
     - frontend
