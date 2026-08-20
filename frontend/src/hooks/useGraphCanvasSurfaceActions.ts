@@ -8,6 +8,7 @@ import {
 } from "react";
 import type { Edge, Node, NodeChange, ReactFlowInstance } from "@xyflow/react";
 
+import { canvasZoomAroundPoint } from "../lib/canvasZoom";
 import { getWailsCreateGraphFileNote } from "../lib/imageUploader";
 import type { GraphCanvasSurfaceProps } from "../components/GraphCanvasSurface";
 import type { GraphCanvasFlowEdgeData } from "../lib/graphCanvasUtils";
@@ -340,6 +341,25 @@ export function useGraphCanvasSurfaceActions({
     graphCanvasFlowRef.current = instance;
   }, [graphCanvasFlowRef]);
 
+  // Zoom the canvas viewport around the pointer, mirroring React Flow's own
+  // wheel-zoom math (zoomOnScroll). Used when the pinch gesture originates over
+  // the graph overlay (nodes are rendered above the React Flow pane), where
+  // React Flow's wheel handler never fires — without this the webview would
+  // zoom the whole page instead of the canvas.
+  const handleGraphCanvasZoomByWheel = useCallback((deltaY: number, deltaMode: number, clientX: number, clientY: number) => {
+    const instance = graphCanvasFlowRef.current;
+    if (!instance) {
+      return;
+    }
+    // Keep the flow point under the cursor fixed while zooming.
+    const flowPoint = instance.screenToFlowPosition({ x: clientX, y: clientY });
+    const nextViewport = canvasZoomAroundPoint(instance.getViewport(), deltaY, deltaMode, flowPoint);
+    if (nextViewport === null) {
+      return;
+    }
+    instance.setViewport(nextViewport);
+  }, [graphCanvasFlowRef]);
+
   const handleGraphCanvasNodesChangeBridge = useCallback((changes: NodeChange<Node<GraphCanvasFlowNodeData>>[]) => {
     actionRefs.current.handleGraphCanvasNodesChange(changes);
   }, []);
@@ -505,6 +525,7 @@ export function useGraphCanvasSurfaceActions({
     clearCanvasSelection: handleGraphCanvasPaneClickSurface,
     persistViewport: handleGraphCanvasPersistViewportSurface,
     deleteEdgeFromId: handleGraphCanvasDeleteEdgeFromID,
+    zoomCanvasByWheel: handleGraphCanvasZoomByWheel,
   }), [
     handleGraphCanvasContextMenuSurface,
     handleGraphCanvasDeleteEdgeFromID,
@@ -523,6 +544,7 @@ export function useGraphCanvasSurfaceActions({
     handleGraphCanvasSearchTermChange,
     handleGraphCanvasSetDragActive,
     handleGraphCanvasSetFlowInstance,
+    handleGraphCanvasZoomByWheel,
   ]);
 
   return {
