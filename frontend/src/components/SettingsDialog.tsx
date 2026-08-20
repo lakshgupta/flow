@@ -158,12 +158,16 @@ function SettingsDialogComponent({
     <Dialog open={open} onOpenChange={actions.setOpen}>
       <DialogContent
         showCloseButton={false}
-        className="w-full p-0 gap-0 max-h-[85vh] overflow-hidden"
+        className="w-full p-0 gap-0 max-h-[85vh] overflow-hidden grid-rows-[minmax(0,1fr)]"
         style={{ maxWidth: 'min(1200px, calc(100vw - 2rem))' }}
       >
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <DialogDescription className="sr-only">Customize your settings here.</DialogDescription>
-        <SidebarProvider className="items-start bg-background h-full min-h-[500px]">
+        {/* The sidebar provider's base class forces min-height: 100svh, which
+            stretches the layout taller than this dialog's max-h-[85vh] and clips
+            the scroll area below the visible edge. Override the floor with an
+            inline style so tall tabs (e.g. Keyboard) scroll to the end. */}
+        <SidebarProvider className="items-start bg-background" style={{ height: "85vh", minHeight: "500px" }}>
           <Sidebar collapsible="none" className="hidden md:flex">
             <SidebarContent>
               <SidebarGroup>

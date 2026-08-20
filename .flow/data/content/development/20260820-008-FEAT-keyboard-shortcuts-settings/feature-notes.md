@@ -64,3 +64,26 @@ Shortcut inventory was gathered from the actual code paths:
 - Headless Chromium end-to-end: opens Settings, clicks the Keyboard tab, and
   confirms all six groups render with 50 `<kbd>` chips and the dialog content
   scrolls; no console or page errors.
+
+## Follow-up fix (clipped scroll area)
+
+The user reported the Keyboard list was cut off: the scrollbar ended but the
+last rows were unreachable. Root cause: `SidebarProvider`'s base class sets
+`min-height: 100svh` (700px), which stretched the settings layout taller than
+the dialog's `max-h-[85vh]` (595px). The grid row resolved to 700px, so the
+scroll viewport's bottom ~105px sat below the dialog's clipped edge — content
+below that was unreachable even at max scroll.
+
+Fix in `SettingsDialog.tsx`:
+
+- The dialog content now uses `grid-rows-[minmax(0,1fr)]` so the grid row
+  can never exceed the dialog's height.
+- The `SidebarProvider` gets an inline `height: 85vh` (matching the dialog's
+  max height) with `minHeight: 500px` replacing the previous `h-full
+  min-h-[500px]` classes. The inline style overrides the base `min-h-svh`;
+  the wrapper, main, and scroll area now cascade to the dialog's real height
+  (595px → 539px scroll area).
+
+Verified in headless Chromium at 700px viewport: the Keyboard tab scrolls to
+`scrollTop == maxScroll`, the last shortcut row is fully visible, and the
+General/About/Advanced tabs render unchanged.
