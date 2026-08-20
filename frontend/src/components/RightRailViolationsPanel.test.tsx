@@ -27,6 +27,7 @@ function renderPanel(props: Partial<RightRailViolationsPanelProps> = {}) {
     onFixViolation: vi.fn(),
     onFixAll: vi.fn(),
     onSelectViolation: vi.fn(),
+    onClose: vi.fn(),
     ...props,
   };
   render(<RightRailViolationsPanel {...panelProps} />);
@@ -102,5 +103,13 @@ describe("RightRailViolationsPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /fix all \(2\)/i }));
     expect(onFixAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onClose from the header close button", () => {
+    const onClose = vi.fn();
+    renderPanel({ violations: [violation()], onClose });
+
+    fireEvent.click(screen.getByRole("button", { name: "Close edge violations" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

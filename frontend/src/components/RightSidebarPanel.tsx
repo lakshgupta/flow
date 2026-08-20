@@ -67,6 +67,7 @@ type RightSidebarPanelProps = {
   handleViolationSelect: RightRailViolationsPanelProps["onSelectViolation"];
   handleViolationFix: RightRailViolationsPanelProps["onFixViolation"];
   handleViolationsFixAll: RightRailViolationsPanelProps["onFixAll"];
+  handleCloseViolations: RightRailViolationsPanelProps["onClose"];
 };
 
 function RightSidebarPanelComponent({
@@ -123,6 +124,7 @@ function RightSidebarPanelComponent({
   handleViolationSelect,
   handleViolationFix,
   handleViolationsFixAll,
+  handleCloseViolations,
 }: RightSidebarPanelProps) {
   return (
     <aside
@@ -213,6 +215,7 @@ function RightSidebarPanelComponent({
             onFixViolation={handleViolationFix}
             onFixAll={handleViolationsFixAll}
             onSelectViolation={handleViolationSelect}
+            onClose={handleCloseViolations}
           />
         ) : null)}
       </div>

@@ -4775,6 +4775,7 @@ function FlowApp() {
           handleViolationSelect={handleSidebarSelectViolation}
           handleViolationFix={handleSidebarFixViolation}
           handleViolationsFixAll={handleFixAllEdgeViolations}
+          handleCloseViolations={collapseRightRail}
         />
         </div>
       </SidebarInset>
