@@ -19,15 +19,16 @@ vi.mock('prosekit/react/autocomplete', async () => {
   const React = await import('react')
 
   return {
-    AutocompletePopover: ({ children, onOpenChange, onQueryChange }: { children: React.ReactNode; onOpenChange?: (open: boolean) => void; onQueryChange?: (query: string) => void }) => {
+    AutocompleteRoot: ({ children, onOpenChange, onQueryChange }: { children: React.ReactNode; onOpenChange?: (event: { detail: boolean }) => void; onQueryChange?: (event: { detail: string }) => void }) => {
       useEffect(() => {
-        onOpenChange?.(true)
-        onQueryChange?.('par')
+        onOpenChange?.({ detail: true })
+        onQueryChange?.({ detail: 'par' })
       }, [onOpenChange, onQueryChange])
 
       return <div>{children}</div>
     },
-    AutocompleteList: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+    AutocompletePositioner: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+    AutocompletePopup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
     AutocompleteEmpty: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
     AutocompleteItem: ({ children, onSelect }: { children: React.ReactNode; onSelect?: () => void }) => (
       <button type="button" onClick={onSelect}>

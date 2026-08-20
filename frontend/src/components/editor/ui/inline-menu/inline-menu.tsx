@@ -2,7 +2,7 @@ import type { Editor } from 'prosekit/core'
 import type { LinkAttrs } from 'prosekit/extensions/link'
 import type { EditorState } from 'prosekit/pm/state'
 import { useEditor, useEditorDerivedValue } from 'prosekit/react'
-import { InlinePopover } from 'prosekit/react/inline-popover'
+import { InlinePopoverPopup, InlinePopoverPositioner, InlinePopoverRoot } from 'prosekit/react/inline-popover'
 import { useState } from 'react'
 
 import { GRAPH_DIRECTORY_COLOR_OPTIONS } from '../../../../lib/graphColors'
@@ -263,11 +263,9 @@ export default function InlineMenu() {
 
   return (
     <>
-      <InlinePopover
-        data-testid="inline-menu-main"
-        className="z-10 box-border border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-lg [&:not([data-state])]:hidden relative flex min-w-32 space-x-1 overflow-auto whitespace-nowrap rounded-md p-1"
-        onOpenChange={(open) => {
-          if (!open) {
+      <InlinePopoverRoot
+        onOpenChange={(event) => {
+          if (!event.detail) {
             setLinkMenuOpen(false)
             setTextColorMenuOpen(false)
             setBackgroundColorMenuOpen(false)
@@ -275,228 +273,249 @@ export default function InlineMenu() {
           }
         }}
       >
-        {items.bold && (
-          <Button
-            pressed={items.bold.isActive}
-            disabled={!items.bold.canExec}
-            onClick={items.bold.command}
-            tooltip="Bold"
+        <InlinePopoverPositioner className="z-10">
+          <InlinePopoverPopup
+            data-testid="inline-menu-main"
+            className="box-border border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-lg [&:not([data-state])]:hidden relative flex min-w-32 space-x-1 overflow-auto whitespace-nowrap rounded-md p-1"
           >
-            <div className="i-lucide-bold size-5 block"></div>
-          </Button>
-        )}
-        {items.italic && (
-          <Button
-            pressed={items.italic.isActive}
-            disabled={!items.italic.canExec}
-            onClick={items.italic.command}
-            tooltip="Italic"
-          >
-            <div className="i-lucide-italic size-5 block"></div>
-          </Button>
-        )}
-        {items.underline && (
-          <Button
-            pressed={items.underline.isActive}
-            disabled={!items.underline.canExec}
-            onClick={items.underline.command}
-            tooltip="Underline"
-          >
-            <div className="i-lucide-underline size-5 block"></div>
-          </Button>
-        )}
-        {items.strike && (
-          <Button
-            pressed={items.strike.isActive}
-            disabled={!items.strike.canExec}
-            onClick={items.strike.command}
-            tooltip="Strikethrough"
-          >
-            <div className="i-lucide-strikethrough size-5 block"></div>
-          </Button>
-        )}
-        {items.code && (
-          <Button
-            pressed={items.code.isActive}
-            disabled={!items.code.canExec}
-            onClick={items.code.command}
-            tooltip="Code"
-          >
-            <div className="i-lucide-code size-5 block"></div>
-          </Button>
-        )}
-        {items.link && items.link.canExec && (
-          <Button
-            pressed={items.link.isActive}
-            onClick={() => {
-              items.link?.command?.()
-              toggleLinkMenuOpen()
-            }}
-            tooltip="Link"
-          >
-            <div className="i-lucide-link size-5 block"></div>
-          </Button>
-        )}
-        {items.textColor && items.textColor.canExec && (
-          <Button
-            pressed={items.textColor.isActive}
-            onClick={() => {
-              setLinkMenuOpen(false)
-              setBackgroundColorMenuOpen(false)
-              toggleTextColorMenuOpen()
-            }}
-            tooltip="Text color"
-          >
-            <span className="relative flex h-5 w-5 items-center justify-center text-sm font-semibold text-gray-900 dark:text-gray-50">
-              <span aria-hidden="true">A</span>
-              <span
-                aria-hidden="true"
-                className="absolute bottom-0 left-0 h-1 w-full rounded-full border border-black/8 dark:border-white/10"
-                style={{ backgroundColor: items.textColor.color }}
-              />
-            </span>
-          </Button>
-        )}
-        {items.backgroundColor && items.backgroundColor.canExec && (
-          <Button
-            pressed={items.backgroundColor.isActive}
-            onClick={() => {
-              setLinkMenuOpen(false)
-              setTextColorMenuOpen(false)
-              toggleBackgroundColorMenuOpen()
-            }}
-            tooltip="Background color"
-          >
-            <span
-              className="flex h-5 w-5 items-center justify-center rounded-sm border border-gray-300 bg-white text-[11px] font-semibold text-gray-900 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-50"
-              style={{ boxShadow: `inset 0 -0.65rem 0 ${items.backgroundColor.color}` }}
-            >
-              A
-              <span className="sr-only">Background color</span>
-            </span>
-          </Button>
-        )}
+            {items.bold && (
+              <Button
+                pressed={items.bold.isActive}
+                disabled={!items.bold.canExec}
+                onClick={items.bold.command}
+                tooltip="Bold"
+              >
+                <div className="i-lucide-bold size-5 block"></div>
+              </Button>
+            )}
+            {items.italic && (
+              <Button
+                pressed={items.italic.isActive}
+                disabled={!items.italic.canExec}
+                onClick={items.italic.command}
+                tooltip="Italic"
+              >
+                <div className="i-lucide-italic size-5 block"></div>
+              </Button>
+            )}
+            {items.underline && (
+              <Button
+                pressed={items.underline.isActive}
+                disabled={!items.underline.canExec}
+                onClick={items.underline.command}
+                tooltip="Underline"
+              >
+                <div className="i-lucide-underline size-5 block"></div>
+              </Button>
+            )}
+            {items.strike && (
+              <Button
+                pressed={items.strike.isActive}
+                disabled={!items.strike.canExec}
+                onClick={items.strike.command}
+                tooltip="Strikethrough"
+              >
+                <div className="i-lucide-strikethrough size-5 block"></div>
+              </Button>
+            )}
+            {items.code && (
+              <Button
+                pressed={items.code.isActive}
+                disabled={!items.code.canExec}
+                onClick={items.code.command}
+                tooltip="Code"
+              >
+                <div className="i-lucide-code size-5 block"></div>
+              </Button>
+            )}
+            {items.link && items.link.canExec && (
+              <Button
+                pressed={items.link.isActive}
+                onClick={() => {
+                  items.link?.command?.()
+                  toggleLinkMenuOpen()
+                }}
+                tooltip="Link"
+              >
+                <div className="i-lucide-link size-5 block"></div>
+              </Button>
+            )}
+            {items.textColor && items.textColor.canExec && (
+              <Button
+                pressed={items.textColor.isActive}
+                onClick={() => {
+                  setLinkMenuOpen(false)
+                  setBackgroundColorMenuOpen(false)
+                  toggleTextColorMenuOpen()
+                }}
+                tooltip="Text color"
+              >
+                <span className="relative flex h-5 w-5 items-center justify-center text-sm font-semibold text-gray-900 dark:text-gray-50">
+                  <span aria-hidden="true">A</span>
+                  <span
+                    aria-hidden="true"
+                    className="absolute bottom-0 left-0 h-1 w-full rounded-full border border-black/8 dark:border-white/10"
+                    style={{ backgroundColor: items.textColor.color }}
+                  />
+                </span>
+              </Button>
+            )}
+            {items.backgroundColor && items.backgroundColor.canExec && (
+              <Button
+                pressed={items.backgroundColor.isActive}
+                onClick={() => {
+                  setLinkMenuOpen(false)
+                  setTextColorMenuOpen(false)
+                  toggleBackgroundColorMenuOpen()
+                }}
+                tooltip="Background color"
+              >
+                <span
+                  className="flex h-5 w-5 items-center justify-center rounded-sm border border-gray-300 bg-white text-[11px] font-semibold text-gray-900 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-50"
+                  style={{ boxShadow: `inset 0 -0.65rem 0 ${items.backgroundColor.color}` }}
+                >
+                  A
+                  <span className="sr-only">Background color</span>
+                </span>
+              </Button>
+            )}
 
-        {items.heading && items.heading.canExec && (
-          <Button
-            pressed={headingMenuOpen}
-            onClick={toggleHeadingMenuOpen}
-            tooltip="Heading"
-          >
-            <span className="flex items-center gap-1 text-xs font-medium">
-              {items.heading.level === 0 ? 'Normal' : `H${items.heading.level}`}
-            </span>
-          </Button>
-        )}
-      </InlinePopover>
+            {items.heading && items.heading.canExec && (
+              <Button
+                pressed={headingMenuOpen}
+                onClick={toggleHeadingMenuOpen}
+                tooltip="Heading"
+              >
+                <span className="flex items-center gap-1 text-xs font-medium">
+                  {items.heading.level === 0 ? 'Normal' : `H${items.heading.level}`}
+                </span>
+              </Button>
+            )}
+          </InlinePopoverPopup>
+        </InlinePopoverPositioner>
+      </InlinePopoverRoot>
 
       {items.heading && items.heading.canExec && (
-        <InlinePopover
-          placement="bottom"
+        <InlinePopoverRoot
           defaultOpen={false}
           open={headingMenuOpen}
-          onOpenChange={setHeadingMenuOpen}
-          className="z-10 box-border border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-lg [&:not([data-state])]:hidden relative flex flex-col rounded-lg p-1 gap-y-0.5 items-stretch"
+          onOpenChange={(event) => setHeadingMenuOpen(event.detail)}
         >
-          {[
-            { level: 0 as const, label: 'Normal' },
-            { level: 1 as const, label: 'Heading 1' },
-            { level: 2 as const, label: 'Heading 2' },
-            { level: 3 as const, label: 'Heading 3' },
-          ].map((option) => (
-            <button
-              key={option.level}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => applyHeadingLevel(option.level)}
-              className={`flex items-center rounded-md px-3 py-1.5 text-sm text-left whitespace-nowrap ${
-                items.heading?.level === option.level
-                  ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-50 font-medium'
-                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-              }`}
-            >
-              {option.label}
-            </button>
-          ))}
-        </InlinePopover>
+          <InlinePopoverPositioner placement="bottom" className="z-10">
+            <InlinePopoverPopup className="box-border border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-lg [&:not([data-state])]:hidden relative flex flex-col rounded-lg p-1 gap-y-0.5 items-stretch">
+              {[
+                { level: 0 as const, label: 'Normal' },
+                { level: 1 as const, label: 'Heading 1' },
+                { level: 2 as const, label: 'Heading 2' },
+                { level: 3 as const, label: 'Heading 3' },
+              ].map((option) => (
+                <button
+                  key={option.level}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => applyHeadingLevel(option.level)}
+                  className={`flex items-center rounded-md px-3 py-1.5 text-sm text-left whitespace-nowrap ${
+                    items.heading?.level === option.level
+                      ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-50 font-medium'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </InlinePopoverPopup>
+          </InlinePopoverPositioner>
+        </InlinePopoverRoot>
       )}
 
       {items.link && (
-        <InlinePopover
-          placement="bottom"
+        <InlinePopoverRoot
           defaultOpen={false}
           open={linkMenuOpen}
-          onOpenChange={setLinkMenuOpen}
-          data-testid="inline-menu-link"
-          className="z-10 box-border border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-lg [&:not([data-state])]:hidden relative flex flex-col w-xs rounded-lg p-4 gap-y-2 items-stretch"
+          onOpenChange={(event) => setLinkMenuOpen(event.detail)}
         >
-          {linkMenuOpen && (
-            <form
-              onSubmit={(event) => {
-                event.preventDefault()
-                const target = event.target as HTMLFormElement | null
-                const href = target?.querySelector('input')?.value?.trim()
-                handleLinkUpdate(href)
-              }}
+          <InlinePopoverPositioner placement="bottom" className="z-10">
+            <InlinePopoverPopup
+              data-testid="inline-menu-link"
+              className="box-border border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-lg [&:not([data-state])]:hidden relative flex flex-col w-xs rounded-lg p-4 gap-y-2 items-stretch"
             >
-              <input
-                placeholder="Paste the link..."
-                defaultValue={items.link.currentLink}
-                className="flex h-9 rounded-md w-full bg-white dark:bg-gray-950 px-3 py-2 text-sm placeholder:text-gray-500 dark:placeholder:text-gray-500 transition border box-border border-gray-200 dark:border-gray-800 border-solid ring-0 ring-transparent focus-visible:ring-2 focus-visible:ring-gray-900 dark:focus-visible:ring-gray-300 focus-visible:ring-offset-0 outline-hidden focus-visible:outline-hidden file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:cursor-not-allowed disabled:opacity-50"
-              />
-            </form>
-          )}
-          {items.link.isActive && (
-            <button
-              onClick={() => handleLinkUpdate()}
-              onMouseDown={(event) => event.preventDefault()}
-              className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-white dark:ring-offset-gray-950 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-gray-900 dark:focus-visible:ring-gray-300 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border-0 bg-gray-900 dark:bg-gray-50 text-gray-50 dark:text-gray-900 hover:bg-gray-900/90 dark:hover:bg-gray-50/90 h-9 px-3"
-            >
-              Remove link
-            </button>
-          )}
-        </InlinePopover>
+              {linkMenuOpen && (
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    const target = event.target as HTMLFormElement | null
+                    const href = target?.querySelector('input')?.value?.trim()
+                    handleLinkUpdate(href)
+                  }}
+                >
+                  <input
+                    placeholder="Paste the link..."
+                    defaultValue={items.link.currentLink}
+                    className="flex h-9 rounded-md w-full bg-white dark:bg-gray-950 px-3 py-2 text-sm placeholder:text-gray-500 dark:placeholder:text-gray-500 transition border box-border border-gray-200 dark:border-gray-800 border-solid ring-0 ring-transparent focus-visible:ring-2 focus-visible:ring-gray-900 dark:focus-visible:ring-gray-300 focus-visible:ring-offset-0 outline-hidden focus-visible:outline-hidden file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                </form>
+              )}
+              {items.link.isActive && (
+                <button
+                  onClick={() => handleLinkUpdate()}
+                  onMouseDown={(event) => event.preventDefault()}
+                  className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-white dark:ring-offset-gray-950 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-gray-900 dark:focus-visible:ring-gray-300 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border-0 bg-gray-900 dark:bg-gray-50 text-gray-50 dark:text-gray-900 hover:bg-gray-900/90 dark:hover:bg-gray-50/90 h-9 px-3"
+                >
+                  Remove link
+                </button>
+              )}
+            </InlinePopoverPopup>
+          </InlinePopoverPositioner>
+        </InlinePopoverRoot>
       )}
 
       {items.textColor && (
-        <InlinePopover
-          placement="bottom"
+        <InlinePopoverRoot
           defaultOpen={false}
           open={textColorMenuOpen}
-          onOpenChange={setTextColorMenuOpen}
-          data-testid="inline-menu-text-color"
-          className="z-10 box-border border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-lg [&:not([data-state])]:hidden relative flex flex-col w-44 rounded-lg p-4 gap-y-3 items-stretch"
+          onOpenChange={(event) => setTextColorMenuOpen(event.detail)}
         >
-          {textColorMenuOpen && (
-            <ColorPaletteList
-              menuLabel="Text color"
-              selectedColor={items.textColor.color}
-              onSelect={applyTextColor}
-              clearLabel="Clear text color"
-              onClear={clearTextColor}
-            />
-          )}
-        </InlinePopover>
+          <InlinePopoverPositioner placement="bottom" className="z-10">
+            <InlinePopoverPopup
+              data-testid="inline-menu-text-color"
+              className="box-border border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-lg [&:not([data-state])]:hidden relative flex flex-col w-44 rounded-lg p-4 gap-y-3 items-stretch"
+            >
+              {textColorMenuOpen && (
+                <ColorPaletteList
+                  menuLabel="Text color"
+                  selectedColor={items.textColor.color}
+                  onSelect={applyTextColor}
+                  clearLabel="Clear text color"
+                  onClear={clearTextColor}
+                />
+              )}
+            </InlinePopoverPopup>
+          </InlinePopoverPositioner>
+        </InlinePopoverRoot>
       )}
 
       {items.backgroundColor && (
-        <InlinePopover
-          placement="bottom"
+        <InlinePopoverRoot
           defaultOpen={false}
           open={backgroundColorMenuOpen}
-          onOpenChange={setBackgroundColorMenuOpen}
-          data-testid="inline-menu-background-color"
-          className="z-10 box-border border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-lg [&:not([data-state])]:hidden relative flex flex-col w-48 rounded-lg p-4 gap-y-3 items-stretch"
+          onOpenChange={(event) => setBackgroundColorMenuOpen(event.detail)}
         >
-          {backgroundColorMenuOpen && (
-            <ColorPaletteList
-              menuLabel="Background color"
-              selectedColor={items.backgroundColor.color}
-              onSelect={applyBackgroundColor}
-              clearLabel="Clear background color"
-              onClear={clearBackgroundColor}
-            />
-          )}
-        </InlinePopover>
+          <InlinePopoverPositioner placement="bottom" className="z-10">
+            <InlinePopoverPopup
+              data-testid="inline-menu-background-color"
+              className="box-border border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-lg [&:not([data-state])]:hidden relative flex flex-col w-48 rounded-lg p-4 gap-y-3 items-stretch"
+            >
+              {backgroundColorMenuOpen && (
+                <ColorPaletteList
+                  menuLabel="Background color"
+                  selectedColor={items.backgroundColor.color}
+                  onSelect={applyBackgroundColor}
+                  clearLabel="Clear background color"
+                  onClear={clearBackgroundColor}
+                />
+              )}
+            </InlinePopoverPopup>
+          </InlinePopoverPositioner>
+        </InlinePopoverRoot>
       )}
     </>
   )

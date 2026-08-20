@@ -2,7 +2,7 @@ import type { BasicExtension } from 'prosekit/basic'
 import { canUseRegexLookbehind } from 'prosekit/core'
 import { useDeferredValue, useEffect, useRef, useState } from 'react'
 import { useEditor } from 'prosekit/react'
-import { AutocompleteEmpty, AutocompleteItem, AutocompleteList, AutocompletePopover } from 'prosekit/react/autocomplete'
+import { AutocompleteEmpty, AutocompleteItem, AutocompletePopup, AutocompletePositioner, AutocompleteRoot } from 'prosekit/react/autocomplete'
 
 import { loadReferenceTargets } from '../../../../lib/api'
 import type { ReferenceTargetResponse } from '../../../../types'
@@ -65,13 +65,13 @@ export default function ReferenceMenu({ graphPath }: { graphPath?: string }) {
   }
 
   return (
-    <AutocompletePopover
+    <AutocompleteRoot
       regex={regex}
-      className="relative block max-h-100 min-w-72 select-none overflow-auto whitespace-nowrap p-1 z-10 box-border rounded-lg border border-border bg-popover text-popover-foreground shadow-lg [&:not([data-state])]:hidden"
-      onOpenChange={setOpen}
-      onQueryChange={setQuery}
+      onOpenChange={(event) => setOpen(event.detail)}
+      onQueryChange={(event) => setQuery(event.detail)}
     >
-      <AutocompleteList>
+      <AutocompletePositioner className="z-10">
+      <AutocompletePopup className="relative block max-h-100 min-w-72 select-none overflow-auto whitespace-nowrap p-1 box-border rounded-lg border border-border bg-popover text-popover-foreground shadow-lg [&:not([data-state])]:hidden">
         <AutocompleteEmpty className="relative flex items-center justify-between min-w-32 scroll-my-1 rounded-sm px-3 py-1.5 box-border cursor-default select-none whitespace-nowrap outline-hidden text-muted-foreground">
           <span>{loading ? 'Loading references...' : deferredQuery === '' ? 'Type to search references' : 'No references found'}</span>
         </AutocompleteEmpty>
@@ -80,14 +80,15 @@ export default function ReferenceMenu({ graphPath }: { graphPath?: string }) {
           <AutocompleteItem
             key={target.id}
             value={`${target.title} ${target.breadcrumb} ${target.id}`}
-            className="relative flex min-w-40 flex-col scroll-my-1 rounded-sm px-3 py-1.5 box-border cursor-default select-none outline-hidden data-focused:bg-accent data-focused:text-accent-foreground"
+            className="relative flex min-w-40 flex-col scroll-my-1 rounded-sm px-3 py-1.5 box-border cursor-default select-none outline-hidden data-highlighted:bg-accent data-highlighted:text-accent-foreground"
             onSelect={() => handleReferenceInsert(target)}
           >
             <span>{target.title}</span>{' '}
-            <span className="text-xs text-muted-foreground data-focused:text-accent-foreground/80">{target.breadcrumb}</span>
+            <span className="text-xs text-muted-foreground data-highlighted:text-accent-foreground/80">{target.breadcrumb}</span>
           </AutocompleteItem>
         ))}
-      </AutocompleteList>
-    </AutocompletePopover>
+      </AutocompletePopup>
+      </AutocompletePositioner>
+    </AutocompleteRoot>
   )
 }

@@ -65,7 +65,9 @@ vi.mock('prosekit/react', () => ({
 }))
 
 vi.mock('prosekit/react/inline-popover', () => ({
-  InlinePopover: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  InlinePopoverRoot: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  InlinePopoverPositioner: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  InlinePopoverPopup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
 
 vi.mock('../button/button', () => ({

@@ -1,7 +1,7 @@
 import type { BasicExtension } from 'prosekit/basic'
 import type { Uploader } from 'prosekit/extensions/file'
 import { useEditor } from 'prosekit/react'
-import { AutocompleteList, AutocompletePopover } from 'prosekit/react/autocomplete'
+import { AutocompletePopup, AutocompletePositioner, AutocompleteRoot } from 'prosekit/react/autocomplete'
 import { useCallback, useRef } from 'react'
 
 import SlashMenuEmpty from './slash-menu-empty'
@@ -27,8 +27,9 @@ export default function SlashMenu({ onDateRequest, uploader }: { onDateRequest?:
 
   return (
     <>
-    <AutocompletePopover regex={regex} className="relative block max-h-100 min-w-60 select-none overflow-auto whitespace-nowrap p-1 z-10 box-border rounded-lg border border-border bg-popover text-popover-foreground shadow-lg [&:not([data-state])]:hidden">
-      <AutocompleteList>
+    <AutocompleteRoot regex={regex}>
+      <AutocompletePositioner className="z-10">
+      <AutocompletePopup className="relative block max-h-100 min-w-60 select-none overflow-auto whitespace-nowrap p-1 box-border rounded-lg border border-border bg-popover text-popover-foreground shadow-lg [&:not([data-state])]:hidden">
         <SlashMenuItem
           label="Text"
           onSelect={() => editor.commands.setParagraph()}
@@ -122,8 +123,9 @@ export default function SlashMenu({ onDateRequest, uploader }: { onDateRequest?:
         )}
 
         <SlashMenuEmpty />
-      </AutocompleteList>
-    </AutocompletePopover>
+      </AutocompletePopup>
+      </AutocompletePositioner>
+    </AutocompleteRoot>
     <input
       ref={fileInputRef}
       type="file"
