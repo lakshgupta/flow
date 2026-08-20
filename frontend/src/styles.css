@@ -2065,6 +2065,9 @@ pre {
 
 .shell-sidebar-header {
   display: grid;
+  /* Single full-width column so the brand hero spans the whole sidebar
+     (an auto-sized grid column would collapse to the wordmark's width). */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0;
   padding: 0 !important;
   /* Override shadcn SidebarHeader p-2 so hero reaches all edges */
@@ -2094,9 +2097,26 @@ pre {
   background: transparent;
 }
 
-/* SVG constellation pattern — moved to full sidebar background */
+/* Constellation backdrop behind the brand — connected graph nodes (nodes +
+   edges + star sparkles) rendered as a subtle data-URI SVG, faded toward the
+   bottom so it reads as texture behind the wordmark. */
 .shell-sidebar-brand-hero::before {
-  display: none;
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 100% at 15% 0%, color-mix(in srgb, var(--primary) 12%, transparent) 0%, transparent 62%),
+    url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27560%27 height=%2788%27 viewBox=%270 0 560 88%27%3E%3Cg stroke=%27%238b93b8%27 stroke-width=%271%27 stroke-opacity=%270.4%27 stroke-linecap=%27round%27%3E%3Cline x1=%2728%27 y1=%2742%27 x2=%27132%27 y2=%2774%27/%3E%3Cline x1=%2762%27 y1=%2724%27 x2=%27132%27 y2=%2774%27/%3E%3Cline x1=%2728%27 y1=%2742%27 x2=%2762%27 y2=%2724%27/%3E%3Cline x1=%2728%27 y1=%2742%27 x2=%2798%27 y2=%2750%27/%3E%3Cline x1=%27136%27 y1=%2730%27 x2=%27210%27 y2=%2736%27/%3E%3Cline x1=%2762%27 y1=%2724%27 x2=%27174%27 y2=%2754%27/%3E%3Cline x1=%27210%27 y1=%2736%27 x2=%27246%27 y2=%2752%27/%3E%3Cline x1=%27210%27 y1=%2736%27 x2=%27282%27 y2=%2726%27/%3E%3Cline x1=%27246%27 y1=%2752%27 x2=%27230%27 y2=%2770%27/%3E%3Cline x1=%27282%27 y1=%2726%27 x2=%27352%27 y2=%2732%27/%3E%3Cline x1=%27174%27 y1=%2754%27 x2=%27282%27 y2=%2726%27/%3E%3Cline x1=%27318%27 y1=%2750%27 x2=%27300%27 y2=%2772%27/%3E%3Cline x1=%27318%27 y1=%2750%27 x2=%27388%27 y2=%2754%27/%3E%3Cline x1=%27318%27 y1=%2750%27 x2=%27352%27 y2=%2732%27/%3E%3Cline x1=%27352%27 y1=%2732%27 x2=%27444%27 y2=%2776%27/%3E%3Cline x1=%27352%27 y1=%2732%27 x2=%27388%27 y2=%2754%27/%3E%3Cline x1=%27388%27 y1=%2754%27 x2=%27376%27 y2=%2772%27/%3E%3Cline x1=%27422%27 y1=%2728%27 x2=%27492%27 y2=%2732%27/%3E%3Cline x1=%27422%27 y1=%2728%27 x2=%27458%27 y2=%2750%27/%3E%3Cline x1=%27492%27 y1=%2732%27 x2=%27526%27 y2=%2750%27/%3E%3Cline x1=%27458%27 y1=%2750%27 x2=%27526%27 y2=%2750%27/%3E%3Cline x1=%27526%27 y1=%2750%27 x2=%27512%27 y2=%2768%27/%3E%3Cline x1=%2728%27 y1=%2742%27 x2=%2788%27 y2=%2768%27/%3E%3Cline x1=%27174%27 y1=%2754%27 x2=%27132%27 y2=%2774%27/%3E%3Cline x1=%27132%27 y1=%2774%27 x2=%27230%27 y2=%2770%27/%3E%3Cline x1=%27174%27 y1=%2754%27 x2=%27230%27 y2=%2770%27/%3E%3Cline x1=%27388%27 y1=%2754%27 x2=%27300%27 y2=%2772%27/%3E%3Cline x1=%27376%27 y1=%2772%27 x2=%27444%27 y2=%2776%27/%3E%3Cline x1=%27352%27 y1=%2732%27 x2=%27376%27 y2=%2772%27/%3E%3Cline x1=%27388%27 y1=%2754%27 x2=%27444%27 y2=%2776%27/%3E%3Cline x1=%27492%27 y1=%2732%27 x2=%27444%27 y2=%2776%27/%3E%3Cline x1=%27388%27 y1=%2754%27 x2=%27512%27 y2=%2768%27/%3E%3Cline x1=%27246%27 y1=%2752%27 x2=%27444%27 y2=%2776%27/%3E%3Cline x1=%27210%27 y1=%2736%27 x2=%27388%27 y2=%2754%27/%3E%3Cline x1=%27246%27 y1=%2752%27 x2=%27352%27 y2=%2732%27/%3E%3Cline x1=%27352%27 y1=%2732%27 x2=%27492%27 y2=%2732%27/%3E%3Cline x1=%27318%27 y1=%2750%27 x2=%27376%27 y2=%2772%27/%3E%3C/g%3E%3Ccircle cx=%2728%27 cy=%2742%27 r=%276%27 fill=%27%237c8cf8%27 fill-opacity=%270.67%27/%3E%3Ccircle cx=%2762%27 cy=%2724%27 r=%275%27 fill=%27%237fd1b9%27 fill-opacity=%270.71%27/%3E%3Ccircle cx=%2798%27 cy=%2750%27 r=%277%27 fill=%27%23f291b2%27 fill-opacity=%270.63%27/%3E%3Ccircle cx=%27136%27 cy=%2730%27 r=%275%27 fill=%27%237ab8f5%27 fill-opacity=%270.71%27/%3E%3Ccircle cx=%27174%27 cy=%2754%27 r=%276%27 fill=%27%23f2c14e%27 fill-opacity=%270.67%27/%3E%3Ccircle cx=%27210%27 cy=%2736%27 r=%274.5%27 fill=%27%237c8cf8%27 fill-opacity=%270.73%27/%3E%3Ccircle cx=%27246%27 cy=%2752%27 r=%275%27 fill=%27%237fd1b9%27 fill-opacity=%270.71%27/%3E%3Ccircle cx=%27282%27 cy=%2726%27 r=%274.5%27 fill=%27%23f291b2%27 fill-opacity=%270.73%27/%3E%3Ccircle cx=%27318%27 cy=%2750%27 r=%275.5%27 fill=%27%237ab8f5%27 fill-opacity=%270.69%27/%3E%3Ccircle cx=%27352%27 cy=%2732%27 r=%275%27 fill=%27%23f2c14e%27 fill-opacity=%270.71%27/%3E%3Ccircle cx=%27388%27 cy=%2754%27 r=%274.5%27 fill=%27%237c8cf8%27 fill-opacity=%270.73%27/%3E%3Ccircle cx=%27422%27 cy=%2728%27 r=%274%27 fill=%27%237fd1b9%27 fill-opacity=%270.75%27/%3E%3Ccircle cx=%27458%27 cy=%2750%27 r=%275%27 fill=%27%23f291b2%27 fill-opacity=%270.71%27/%3E%3Ccircle cx=%27492%27 cy=%2732%27 r=%274%27 fill=%27%237ab8f5%27 fill-opacity=%270.75%27/%3E%3Ccircle cx=%27526%27 cy=%2750%27 r=%274.5%27 fill=%27%23f2c14e%27 fill-opacity=%270.73%27/%3E%3Ccircle cx=%2788%27 cy=%2768%27 r=%274%27 fill=%27%23f2c14e%27 fill-opacity=%270.75%27/%3E%3Ccircle cx=%27132%27 cy=%2774%27 r=%273.5%27 fill=%27%237fd1b9%27 fill-opacity=%270.77%27/%3E%3Ccircle cx=%27230%27 cy=%2770%27 r=%273.5%27 fill=%27%237ab8f5%27 fill-opacity=%270.77%27/%3E%3Ccircle cx=%27300%27 cy=%2772%27 r=%273.5%27 fill=%27%23f2c14e%27 fill-opacity=%270.77%27/%3E%3Ccircle cx=%27376%27 cy=%2772%27 r=%273.5%27 fill=%27%237fd1b9%27 fill-opacity=%270.77%27/%3E%3Ccircle cx=%27444%27 cy=%2776%27 r=%273%27 fill=%27%23f291b2%27 fill-opacity=%270.79%27/%3E%3Ccircle cx=%27512%27 cy=%2768%27 r=%273%27 fill=%27%237c8cf8%27 fill-opacity=%270.79%27/%3E%3Cpath d=%27M188 16 l2.2 -3.08 l2.2 3.08 l-2.2 -2.2z%27 fill=%27%237ab8f5%27 fill-opacity=%270.6%27/%3E%3Cpath d=%27M188 16 l2.2 3.08 l2.2 -3.08 l-2.2 2.2z%27 fill=%27%237ab8f5%27 fill-opacity=%270.6%27/%3E%3Cpath d=%27M188 16 l-3.08 2.2 l3.08 2.2 l-2.2 -2.2z%27 fill=%27%237ab8f5%27 fill-opacity=%270.45%27/%3E%3Cpath d=%27M188 16 l3.08 2.2 l-3.08 2.2 l2.2 -2.2z%27 fill=%27%237ab8f5%27 fill-opacity=%270.45%27/%3E%3Cpath d=%27M330 12 l1.8 -2.52 l1.8 2.52 l-1.8 -1.8z%27 fill=%27%23f291b2%27 fill-opacity=%270.6%27/%3E%3Cpath d=%27M330 12 l1.8 2.52 l1.8 -2.52 l-1.8 1.8z%27 fill=%27%23f291b2%27 fill-opacity=%270.6%27/%3E%3Cpath d=%27M330 12 l-2.52 1.8 l2.52 1.8 l-1.8 -1.8z%27 fill=%27%23f291b2%27 fill-opacity=%270.45%27/%3E%3Cpath d=%27M330 12 l2.52 1.8 l-2.52 1.8 l1.8 -1.8z%27 fill=%27%23f291b2%27 fill-opacity=%270.45%27/%3E%3Cpath d=%27M488 62 l2 -2.8 l2 2.8 l-2 -2z%27 fill=%27%23f2c14e%27 fill-opacity=%270.6%27/%3E%3Cpath d=%27M488 62 l2 2.8 l2 -2.8 l-2 2z%27 fill=%27%23f2c14e%27 fill-opacity=%270.6%27/%3E%3Cpath d=%27M488 62 l-2.8 2 l2.8 2 l-2 -2z%27 fill=%27%23f2c14e%27 fill-opacity=%270.45%27/%3E%3Cpath d=%27M488 62 l2.8 2 l-2.8 2 l2 -2z%27 fill=%27%23f2c14e%27 fill-opacity=%270.45%27/%3E%3Cpath d=%27M56 10 l1.6 -2.2399999999999998 l1.6 2.2399999999999998 l-1.6 -1.6z%27 fill=%27%237fd1b9%27 fill-opacity=%270.6%27/%3E%3Cpath d=%27M56 10 l1.6 2.2399999999999998 l1.6 -2.2399999999999998 l-1.6 1.6z%27 fill=%27%237fd1b9%27 fill-opacity=%270.6%27/%3E%3Cpath d=%27M56 10 l-2.2399999999999998 1.6 l2.2399999999999998 1.6 l-1.6 -1.6z%27 fill=%27%237fd1b9%27 fill-opacity=%270.45%27/%3E%3Cpath d=%27M56 10 l2.2399999999999998 1.6 l-2.2399999999999998 1.6 l1.6 -1.6z%27 fill=%27%237fd1b9%27 fill-opacity=%270.45%27/%3E%3Cpath d=%27M408 80 l2.2 -3.08 l2.2 3.08 l-2.2 -2.2z%27 fill=%27%237ab8f5%27 fill-opacity=%270.6%27/%3E%3Cpath d=%27M408 80 l2.2 3.08 l2.2 -3.08 l-2.2 2.2z%27 fill=%27%237ab8f5%27 fill-opacity=%270.6%27/%3E%3Cpath d=%27M408 80 l-3.08 2.2 l3.08 2.2 l-2.2 -2.2z%27 fill=%27%237ab8f5%27 fill-opacity=%270.45%27/%3E%3Cpath d=%27M408 80 l3.08 2.2 l-3.08 2.2 l2.2 -2.2z%27 fill=%27%237ab8f5%27 fill-opacity=%270.45%27/%3E%3Cpath d=%27M252 8 l1.8 -2.52 l1.8 2.52 l-1.8 -1.8z%27 fill=%27%23f291b2%27 fill-opacity=%270.6%27/%3E%3Cpath d=%27M252 8 l1.8 2.52 l1.8 -2.52 l-1.8 1.8z%27 fill=%27%23f291b2%27 fill-opacity=%270.6%27/%3E%3Cpath d=%27M252 8 l-2.52 1.8 l2.52 1.8 l-1.8 -1.8z%27 fill=%27%23f291b2%27 fill-opacity=%270.45%27/%3E%3Cpath d=%27M252 8 l2.52 1.8 l-2.52 1.8 l1.8 -1.8z%27 fill=%27%23f291b2%27 fill-opacity=%270.45%27/%3E%3Cpath d=%27M24 74 l2 -2.8 l2 2.8 l-2 -2z%27 fill=%27%23f2c14e%27 fill-opacity=%270.6%27/%3E%3Cpath d=%27M24 74 l2 2.8 l2 -2.8 l-2 2z%27 fill=%27%23f2c14e%27 fill-opacity=%270.6%27/%3E%3Cpath d=%27M24 74 l-2.8 2 l2.8 2 l-2 -2z%27 fill=%27%23f2c14e%27 fill-opacity=%270.45%27/%3E%3Cpath d=%27M24 74 l2.8 2 l-2.8 2 l2 -2z%27 fill=%27%23f2c14e%27 fill-opacity=%270.45%27/%3E%3Cpath d=%27M500 84 l1.6 -2.2399999999999998 l1.6 2.2399999999999998 l-1.6 -1.6z%27 fill=%27%237fd1b9%27 fill-opacity=%270.6%27/%3E%3Cpath d=%27M500 84 l1.6 2.2399999999999998 l1.6 -2.2399999999999998 l-1.6 1.6z%27 fill=%27%237fd1b9%27 fill-opacity=%270.6%27/%3E%3Cpath d=%27M500 84 l-2.2399999999999998 1.6 l2.2399999999999998 1.6 l-1.6 -1.6z%27 fill=%27%237fd1b9%27 fill-opacity=%270.45%27/%3E%3Cpath d=%27M500 84 l2.2399999999999998 1.6 l-2.2399999999999998 1.6 l1.6 -1.6z%27 fill=%27%237fd1b9%27 fill-opacity=%270.45%27/%3E%3Cpath d=%27M136 46 l2.2 -3.08 l2.2 3.08 l-2.2 -2.2z%27 fill=%27%237ab8f5%27 fill-opacity=%270.6%27/%3E%3Cpath d=%27M136 46 l2.2 3.08 l2.2 -3.08 l-2.2 2.2z%27 fill=%27%237ab8f5%27 fill-opacity=%270.6%27/%3E%3Cpath d=%27M136 46 l-3.08 2.2 l3.08 2.2 l-2.2 -2.2z%27 fill=%27%237ab8f5%27 fill-opacity=%270.45%27/%3E%3Cpath d=%27M136 46 l3.08 2.2 l-3.08 2.2 l2.2 -2.2z%27 fill=%27%237ab8f5%27 fill-opacity=%270.45%27/%3E%3Ccircle cx=%27120%27 cy=%2712%27 r=%271.4%27 fill=%27%237c8cf8%27 fill-opacity=%270.4%27/%3E%3Ccircle cx=%27300%27 cy=%2782%27 r=%271.4%27 fill=%27%23f291b2%27 fill-opacity=%270.37%27/%3E%3Ccircle cx=%27348%27 cy=%278%27 r=%271.4%27 fill=%27%23f2c14e%27 fill-opacity=%270.34%27/%3E%3Ccircle cx=%27460%27 cy=%2786%27 r=%271.4%27 fill=%27%237fd1b9%27 fill-opacity=%270.4%27/%3E%3Ccircle cx=%2738%27 cy=%2780%27 r=%271.4%27 fill=%27%237ab8f5%27 fill-opacity=%270.37%27/%3E%3Ccircle cx=%27222%27 cy=%276%27 r=%271.4%27 fill=%27%237c8cf8%27 fill-opacity=%270.34%27/%3E%3Ccircle cx=%27176%27 cy=%2780%27 r=%271.4%27 fill=%27%23f291b2%27 fill-opacity=%270.4%27/%3E%3Ccircle cx=%27540%27 cy=%2720%27 r=%271.4%27 fill=%27%23f2c14e%27 fill-opacity=%270.37%27/%3E%3Ccircle cx=%2772%27 cy=%2784%27 r=%271.4%27 fill=%27%237fd1b9%27 fill-opacity=%270.34%27/%3E%3Ccircle cx=%2714%27 cy=%2730%27 r=%271.4%27 fill=%27%237ab8f5%27 fill-opacity=%270.4%27/%3E%3Ccircle cx=%27280%27 cy=%2782%27 r=%271.4%27 fill=%27%237c8cf8%27 fill-opacity=%270.37%27/%3E%3Ccircle cx=%27512%27 cy=%2712%27 r=%271.4%27 fill=%27%23f291b2%27 fill-opacity=%270.34%27/%3E%3C/svg%3E")
+    no-repeat left top / auto 100%;
+  opacity: 0.7;
+  -webkit-mask-image: linear-gradient(180deg, black 55%, transparent 100%);
+  mask-image: linear-gradient(180deg, black 55%, transparent 100%);
+}
+
+.dark .shell-sidebar-brand-hero::before {
+  opacity: 0.45;
+  filter: saturate(0.85) brightness(1.15);
 }
 
 .dark .app-left-sidebar {
@@ -2118,10 +2138,12 @@ pre {
 
 .shell-sidebar-brand {
   margin: 0;
-  font-size: 1.8rem;
-  font-weight: 800;
+  font-size: 2rem;
+  /* Major Mono Display ships only a Regular weight; the stroke thickens the
+     glyphs so the wordmark reads bold against the constellation backdrop. */
+  -webkit-text-stroke: 1.25px color-mix(in srgb, var(--primary) 62%, #b9aef7);
   font-family: 'Major Mono Display', monospace;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   background: linear-gradient(135deg, var(--primary) 30%, #cdc4fa 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -2139,6 +2161,7 @@ pre {
   background: linear-gradient(135deg, #b0b8f7 20%, #c9c2f7 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 1.25px color-mix(in srgb, #aab0f5 65%, #cfc9f7);
 }
 
 .shell-sidebar-brand-hero[data-collapsed="true"] {
@@ -2162,6 +2185,7 @@ pre {
   padding: 0 !important;
   font-family: 'Major Mono Display', monospace;
   font-weight: 800;
+  -webkit-text-stroke: 1.1px color-mix(in srgb, var(--primary) 60%, #b9aef7);
 }
 
 .dark .shell-sidebar-brand-collapsed {

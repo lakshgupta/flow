@@ -45,7 +45,7 @@ Same structure under `.dark`, desaturated: near-black surfaces (`#141417` family
 
 - **UI + body font:** Plus Jakarta Sans (loaded via Google Fonts in `frontend/index.html`). It is the app-wide font.
 - **Monospace:** IBM Plex Mono for code blocks and editor code.
-- **Brand wordmark:** Major Mono Display, used only for the "Flow" sidebar brand block.
+- **Brand wordmark:** Major Mono Display, used only for the "Flow" sidebar brand block. The wordmark is faux-bolded with a 1.25px text stroke (the typeface ships only a Regular weight) and sits in the sidebar hero over a **constellation backdrop** — a pastel SVG of connected graph nodes (nodes + edges + star sparkles) faded toward the bottom, echoing the graph canvas. The backdrop is a 560×88 tile painted at natural aspect (`auto 100%`, anchored left) — it fills the whole panel edge-to-edge at any width, reveals more sky as the panel is widened, and stays behind the wordmark; the hero fills the whole sidebar via a `minmax(0, 1fr)` header grid column. Light and dark variants tuned via `.shell-sidebar-brand-hero::before`.
 - Type scale and weights follow the existing conventions in `frontend/src/styles.css`; keep body text at a comfortable reading size with relaxed line-height in the editor.
 
 ## Spacing & Layout
