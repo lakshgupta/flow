@@ -4,6 +4,8 @@ import type { EditorView } from 'prosekit/pm/view'
 import type { Node, ResolvedPos } from 'prosekit/pm/model'
 
 const DIAGRAM_LANGUAGE = 'mermaid'
+const EXCALIDRAW_LANGUAGE = 'excalidraw'
+const DIAGRAM_LANGUAGES = new Set([DIAGRAM_LANGUAGE, EXCALIDRAW_LANGUAGE])
 
 function isCodeBlockSelection(commandState: Parameters<Command>[0]): boolean {
   if (!commandState.selection.empty) {
@@ -20,14 +22,24 @@ function isDiagramSelection(commandState: Parameters<Command>[0]): boolean {
   }
 
   const { $head } = commandState.selection
-  return ($head.parent.attrs as { language?: string }).language === DIAGRAM_LANGUAGE
+  return DIAGRAM_LANGUAGES.has(($head.parent.attrs as { language?: string }).language ?? '')
+}
+
+function isExcalidrawSelection(commandState: Parameters<Command>[0]): boolean {
+  if (!isCodeBlockSelection(commandState)) {
+    return false
+  }
+
+  const { $head } = commandState.selection
+  return ($head.parent.attrs as { language?: string }).language === EXCALIDRAW_LANGUAGE
 }
 
 // Mermaid diagrams hide their source editor behind a collapsed section. When
 // the caret sits inside the code block text of a collapsed diagram it is not
 // visible, so Enter must create a paragraph next to the section instead of
 // editing the source. When the source editor is open the caret is visible and
-// Enter keeps inserting source lines.
+// Enter keeps inserting source lines. Excalidraw sections have no source
+// editor at all, so they count as always collapsed.
 function isDiagramSourceCollapsed(view: EditorView, pos: number): boolean {
   const domAtPos = view.domAtPos(pos)
   const element = domAtPos.node instanceof Element
@@ -37,7 +49,8 @@ function isDiagramSourceCollapsed(view: EditorView, pos: number): boolean {
       : null
   const sourceWrapper = element?.closest('.flow-diagram-block-source')
   if (sourceWrapper === null || sourceWrapper === undefined) {
-    return false
+    // No visible source editor (e.g. excalidraw sections) — treat as collapsed.
+    return true
   }
 
   return sourceWrapper.classList.contains('hidden')
@@ -55,7 +68,7 @@ function nextDiagramNode($head: ResolvedPos): { pos: number; node: Node } | null
   if (next.type.spec.code !== true) {
     return null
   }
-  if ((next.attrs as { language?: string }).language !== DIAGRAM_LANGUAGE) {
+  if (!DIAGRAM_LANGUAGES.has((next.attrs as { language?: string }).language ?? '')) {
     return null
   }
   return { pos: $head.after(), node: next }
@@ -73,7 +86,7 @@ function prevDiagramNode($head: ResolvedPos): { pos: number; node: Node } | null
   if (prev.type.spec.code !== true) {
     return null
   }
-  if ((prev.attrs as { language?: string }).language !== DIAGRAM_LANGUAGE) {
+  if (!DIAGRAM_LANGUAGES.has((prev.attrs as { language?: string }).language ?? '')) {
     return null
   }
   return { pos: $head.before() - prev.nodeSize, node: prev }
@@ -312,12 +325,16 @@ export const moveCaretToDiagramStartOnArrowLeft: Command = (state, dispatch, vie
 // Backspace at the left edge of a mermaid diagram removes the block above,
 // moving the whole section up one line (the paragraph that was above it is
 // deleted, never merged into the diagram source). This applies whether the
-// source editor is collapsed or open.
+// source editor is collapsed or open. Excalidraw sections are handled by
+// deleteExcalidrawSection instead (they delete the section itself).
 export const moveDiagramUpOnBackspace: Command = (state, dispatch, view) => {
   if (!view) {
     return false
   }
   if (!isDiagramSelection(state)) {
+    return false
+  }
+  if (isExcalidrawSelection(state)) {
     return false
   }
 
@@ -421,13 +438,97 @@ export const handleArrowUp: Command = (state, dispatch, view) => {
   return false
 }
 
+// The excalidraw section adjacent to the caret, when the caret is either on an
+// edge of the (hidden) scene text or at the boundary of the paragraph before or
+// after the section. Returns the section's content range, or null.
+function findExcalidrawTarget($head: ResolvedPos): { start: number; end: number } | null {
+  // Caret inside the hidden scene text at either edge.
+  if (isExcalidrawSelectionFromPos($head)) {
+    if ($head.parentOffset === 0 || $head.parentOffset === $head.parent.content.size) {
+      return { start: $head.before(), end: $head.after() }
+    }
+    return null
+  }
+
+  if (!$head.parent.isTextblock) {
+    return null
+  }
+
+  const grandParent = $head.node(-1)
+
+  // Caret at the end of the paragraph right above the section.
+  if ($head.parentOffset === $head.parent.content.size) {
+    const index = $head.indexAfter(-1)
+    if (index < grandParent.childCount) {
+      const next = grandParent.child(index)
+      if (next.type.spec.code === true && (next.attrs as { language?: string }).language === EXCALIDRAW_LANGUAGE) {
+        return { start: $head.after(), end: $head.after() + next.nodeSize }
+      }
+    }
+  }
+
+  // Caret at the start of the paragraph right below the section.
+  if ($head.parentOffset === 0) {
+    const index = $head.index(-1)
+    if (index > 0) {
+      const prev = grandParent.child(index - 1)
+      if (prev.type.spec.code === true && (prev.attrs as { language?: string }).language === EXCALIDRAW_LANGUAGE) {
+        return { start: $head.before() - prev.nodeSize, end: $head.before() }
+      }
+    }
+  }
+
+  return null
+}
+
+function isExcalidrawSelectionFromPos($head: ResolvedPos): boolean {
+  return $head.parent.isTextblock
+    && $head.parent.type.spec.code === true
+    && ($head.parent.attrs as { language?: string }).language === EXCALIDRAW_LANGUAGE
+}
+
+// Backspace or Delete with the caret on (but not inside) an excalidraw section
+// deletes the whole section instead of joining/editing its hidden scene text.
+export const deleteExcalidrawSection: Command = (state, dispatch, view) => {
+  if (!view) {
+    return false
+  }
+  if (!state.selection.empty) {
+    return false
+  }
+
+  const target = findExcalidrawTarget(state.selection.$head)
+  if (target === null) {
+    return false
+  }
+
+  if (dispatch) {
+    const tr = state.tr.delete(target.start, target.end)
+    tr.setSelection(TextSelection.near(tr.doc.resolve(target.start), 1))
+    dispatch(tr.scrollIntoView())
+  }
+
+  return true
+}
+
+const handleBackspace: Command = (state, dispatch, view) => {
+  if (!view) {
+    return false
+  }
+  if (deleteExcalidrawSection(state, dispatch, view)) {
+    return true
+  }
+  return moveDiagramUpOnBackspace(state, dispatch, view)
+}
+
 export function defineCodeBlockExitKeymap(): PlainExtension {
   return defineKeymap({
     ArrowDown: handleArrowDown,
     ArrowUp: handleArrowUp,
     ArrowRight: moveCaretToDiagramEndOnArrowRight,
     ArrowLeft: moveCaretToDiagramStartOnArrowLeft,
-    Backspace: moveDiagramUpOnBackspace,
+    Backspace: handleBackspace,
+    Delete: deleteExcalidrawSection,
     Enter: moveCursorOutOfDiagramOnEnter,
   })
 }

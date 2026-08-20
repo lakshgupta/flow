@@ -115,10 +115,29 @@ export default function DiagramSection(props: ReactNodeViewProps) {
   const handleDelete = useCallback(() => {
     const pos = typeof getPos === "function" ? getPos() : undefined;
     if (pos === undefined) return;
-    const tr = view.state.tr.delete(pos, pos + node.nodeSize);
+    const tr = view.state.tr;
+    // Resolve the section from the *current* doc rather than the React node
+    // prop, which can lag the last transaction.
+    const $pos = tr.doc.resolve(pos);
+    const targetNode = $pos.nodeAfter;
+    if (!targetNode || targetNode.type.spec.code !== true) return;
+    const start = pos;
+    const end = pos + targetNode.nodeSize;
+    if (tr.doc.content.size === targetNode.nodeSize) {
+      // Deleting the only block would leave an invalid empty document;
+      // keep a single empty paragraph instead.
+      const paragraph = view.state.schema.nodes.paragraph?.createAndFill();
+      if (paragraph) {
+        tr.replaceWith(start, end, paragraph);
+      } else {
+        tr.delete(start, end);
+      }
+    } else {
+      tr.delete(start, end);
+    }
     view.dispatch(tr);
     view.focus();
-  }, [getPos, view, node]);
+  }, [getPos, view]);
 
   const handleSectionKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {

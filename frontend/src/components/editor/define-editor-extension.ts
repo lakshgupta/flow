@@ -1,7 +1,6 @@
 import { defineBasicExtension } from 'prosekit/basic'
 import { union } from 'prosekit/core'
 import { defineBackgroundColor } from 'prosekit/extensions/background-color'
-import { defineCodeBlockShiki } from 'prosekit/extensions/code-block'
 import { defineHorizontalRule } from 'prosekit/extensions/horizontal-rule'
 import { defineImageUploadHandler, type ImageCanDropPredicate, type ImageCanPastePredicate } from 'prosekit/extensions/image'
 import { defineMath } from 'prosekit/extensions/math'
@@ -11,6 +10,7 @@ import { render as renderKaTeX } from 'katex'
 
 import { createFlowImageUploader } from '../../lib/imageUploader'
 import { defineCodeBlockExitKeymap } from './code-block-exit-keymap'
+import { defineEditorCodeBlockHighlight } from './define-editor-highlight'
 import { defineHeadingExitKeymap } from './heading-exit-keymap'
 import { defineTableExitKeymap } from './table-exit-keymap'
 import { defineTableDeleteKeymap } from './table-delete-keymap'
@@ -43,12 +43,11 @@ export function defineEditorExtension(
     defineTextColor(),
     defineBackgroundColor(),
     definePlaceholder({ placeholder }),
-    // Keep the Shiki extension mounted but avoid parsing custom diagram languages
-    // as regular code blocks.
-    // `nodeTypes` here is the list of ProseMirror node types that receive
-    // Shiki syntax highlighting decorations, not a list of languages. The
-    // default is `['codeBlock', 'mathBlock']`, which is what we want.
-    defineCodeBlockShiki(),
+    // Keep the Shiki highlighter mounted but skip custom diagram languages
+    // (mermaid, excalidraw) — their source is rendered as labeled sections, and
+    // shiki cannot resolve the `excalidraw` language. `nodeTypes` stays the
+    // default `['codeBlock', 'mathBlock']`.
+    defineEditorCodeBlockHighlight(),
     defineMath({
       renderMathBlock: (text, element) => renderKaTeX(text, element, { displayMode: true, throwOnError: false, output: 'mathml' }),
       renderMathInline: (text, element) => renderKaTeX(text, element, { displayMode: false, throwOnError: false, output: 'mathml' }),

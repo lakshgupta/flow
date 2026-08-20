@@ -4535,6 +4535,31 @@ pre {
   color: var(--muted-foreground);
 }
 
+/* Excalidraw section canvas */
+.flow-excalidraw-canvas {
+  position: relative;
+  height: 480px;
+  min-height: 320px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--warm-border) 74%, transparent);
+  border-radius: 0.9rem;
+  background: #fff;
+}
+
+.flow-excalidraw-canvas .excalidraw {
+  position: absolute;
+  inset: 0;
+}
+
+.flow-excalidraw-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--muted-foreground);
+  font-size: 0.85rem;
+}
+
 /* Date links inserted via the / trigger */
 .flow-date-link {
   color: var(--primary);

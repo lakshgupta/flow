@@ -6,6 +6,7 @@ const {
   definePlugin,
   defineBackgroundColor,
   defineCodeBlockShiki,
+  defineCodeBlockHighlight,
   defineHorizontalRule,
   defineMath,
   definePlaceholder,
@@ -26,6 +27,7 @@ const {
   definePlugin: vi.fn(() => 'plugin-extension'),
   defineBackgroundColor: vi.fn(() => 'background-color-extension'),
   defineCodeBlockShiki: vi.fn(() => 'code-block-shiki-extension'),
+  defineCodeBlockHighlight: vi.fn(() => 'code-block-shiki-extension'),
   defineHorizontalRule: vi.fn(() => 'horizontal-rule-extension'),
   defineMath: vi.fn(() => 'math-extension'),
   definePlaceholder: vi.fn(({ placeholder }: { placeholder: string }) => `placeholder:${placeholder}`),
@@ -57,6 +59,7 @@ vi.mock('prosekit/extensions/background-color', () => ({
 
 vi.mock('prosekit/extensions/code-block', () => ({
   defineCodeBlockShiki,
+  defineCodeBlockHighlight,
 }))
 
 vi.mock('prosekit/extensions/horizontal-rule', () => ({
@@ -126,7 +129,11 @@ describe('defineEditorExtension', () => {
     const extension = defineEditorExtension('Image ready')
 
     expect(defineImageView).toHaveBeenCalledTimes(1)
-    expect(defineCodeBlockShiki).toHaveBeenCalledWith()
+    // The highlight extension skips diagram languages, so it is built by
+    // defineEditorCodeBlockHighlight (which wraps defineCodeBlockHighlight)
+    // instead of prosekit's defineCodeBlockShiki.
+    expect(defineCodeBlockHighlight).toHaveBeenCalledTimes(1)
+    expect(defineCodeBlockShiki).not.toHaveBeenCalled()
     expect(defineMath).toHaveBeenCalledTimes(1)
     expect(union).toHaveBeenCalledWith(
       'basic-extension',

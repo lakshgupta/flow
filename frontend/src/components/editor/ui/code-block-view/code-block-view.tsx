@@ -3,12 +3,17 @@ import { shikiBundledLanguagesInfo } from 'prosekit/extensions/code-block'
 import type { ReactNodeViewProps } from 'prosekit/react'
 
 import DiagramSection from '../diagram-section/diagram-section'
+import { ExcalidrawSection } from '../excalidraw-section'
 
-const DIAGRAM_LANGUAGES = new Set(['mermaid'])
+const DIAGRAM_LANGUAGES = new Set(['mermaid', 'excalidraw'])
 
 export default function CodeBlockView(props: ReactNodeViewProps) {
   const attrs = props.node.attrs as CodeBlockAttrs
   const language = attrs.language
+
+  if (language === 'excalidraw') {
+    return <ExcalidrawSection {...props} />
+  }
 
   if (typeof language === 'string' && DIAGRAM_LANGUAGES.has(language)) {
     return <DiagramSection {...props} />

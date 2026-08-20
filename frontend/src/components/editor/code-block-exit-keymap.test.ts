@@ -4,6 +4,7 @@ import { EditorState, TextSelection, type Command, type Transaction } from 'pros
 import type { EditorView } from 'prosekit/pm/view'
 
 import {
+  deleteExcalidrawSection,
   handleArrowDown,
   handleArrowUp,
   moveCaretToDiagramEndOnArrowRight,
@@ -87,6 +88,106 @@ function run(cmd: Command, state: EditorState, collapsed: boolean): { result: bo
   }, fakeView(collapsed))
   return { result, tr }
 }
+
+const EXCALIDRAW_SCENE = '{"type":"excalidraw","version":2,"source":"https://excalidraw.com","flowTitle":"","elements":[],"appState":{},"files":{}}'
+
+// doc: p("Intro") + codeBlock(excalidraw, SCENE) + p("After")
+function makeExcalidrawDoc() {
+  const para = schema.nodes.paragraph.create(null, schema.text('Intro'))
+  const code = schema.nodes.codeBlock.create({ language: 'excalidraw' }, schema.text(EXCALIDRAW_SCENE))
+  const after = schema.nodes.paragraph.create(null, schema.text('After'))
+  return schema.nodes.doc.create(null, [para, code, after])
+}
+
+function excalidrawSourceRange(doc: Node): { start: number; end: number } {
+  let range: { start: number; end: number } | null = null
+  doc.forEach((node, offset) => {
+    if (node.type.spec.code === true && node.attrs.language === 'excalidraw') {
+      range = { start: offset + 1, end: offset + node.nodeSize - 1 }
+    }
+  })
+  if (range === null) {
+    throw new Error('test document has no excalidraw section')
+  }
+  return range
+}
+
+// A view whose domAtPos has no source editor wrapper — excalidraw sections
+// have no visible source, so the keymap treats them as always collapsed.
+function fakeViewNoSource(): EditorView {
+  return { domAtPos: () => ({ node: document.createElement('div'), offset: 0 }) } as unknown as EditorView
+}
+
+describe('excalidraw section keymap', () => {
+  const doc = makeExcalidrawDoc()
+  const { start, end } = excalidrawSourceRange(doc)
+
+  it('ArrowDown from the paragraph above lands at the start of the hidden scene text', () => {
+    const caret = doc.child(0).nodeSize - 1
+    const { result, tr } = run(handleArrowDown, makeState(doc, caret), true)
+    expect(result).toBe(true)
+    expect(tr!.selection.$head.pos).toBe(start)
+  })
+
+  it('ArrowUp from the paragraph below lands at the end of the hidden scene text', () => {
+    const caret = doc.content.size - 1
+    const { result, tr } = run(handleArrowUp, makeState(doc, caret), true)
+    expect(result).toBe(true)
+    expect(tr!.selection.$head.pos).toBe(end)
+  })
+
+  it('Backspace at the left edge of the section deletes the whole section', () => {
+    const { result, tr } = run(deleteExcalidrawSection, makeState(doc, start), true)
+    expect(result).toBe(true)
+    expect(tr).not.toBeNull()
+    const types = tr!.doc.content.content.map((child) => child.type.name)
+    expect(types).toEqual(['paragraph', 'paragraph'])
+    expect(tr!.doc.content.child(0).textContent).toBe('Intro')
+    expect(tr!.doc.content.child(1).textContent).toBe('After')
+  })
+
+  it('Delete at the right edge of the section deletes the whole section', () => {
+    const { result, tr } = run(deleteExcalidrawSection, makeState(doc, end), true)
+    expect(result).toBe(true)
+    const types = tr!.doc.content.content.map((child) => child.type.name)
+    expect(types).toEqual(['paragraph', 'paragraph'])
+  })
+
+  it('Delete at the end of the paragraph above the section deletes the section', () => {
+    const caret = doc.child(0).nodeSize - 1
+    const { result, tr } = run(deleteExcalidrawSection, makeState(doc, caret), true)
+    expect(result).toBe(true)
+    const types = tr!.doc.content.content.map((child) => child.type.name)
+    expect(types).toEqual(['paragraph', 'paragraph'])
+  })
+
+  it('Backspace at the start of the paragraph below the section deletes the section', () => {
+    const boundary = doc.child(0).nodeSize + doc.child(1).nodeSize
+    // Mirror the editor's navigation: the caret normalizes into the following
+    // paragraph (TextSelection.near with bias 1).
+    const state = EditorState.create({ doc, selection: TextSelection.near(doc.resolve(boundary), 1) })
+    const { result, tr } = run(deleteExcalidrawSection, state, true)
+    expect(result).toBe(true)
+    const types = tr!.doc.content.content.map((child) => child.type.name)
+    expect(types).toEqual(['paragraph', 'paragraph'])
+  })
+
+  it('does not delete when the caret is inside the scene text away from the edges', () => {
+    const middle = Math.floor((start + end) / 2)
+    const { result, tr } = run(deleteExcalidrawSection, makeState(doc, middle), true)
+    expect(result).toBe(false)
+    expect(tr).toBeNull()
+  })
+
+  it('Backspace keeps mermaid behavior and does not delete the mermaid section', () => {
+    const mermaidDoc = makeDocWithGap()
+    const sourceStart = diagramSourceRange(mermaidDoc).start
+    const { result, tr } = run(moveDiagramUpOnBackspace, makeState(mermaidDoc, sourceStart), true)
+    expect(result).toBe(true)
+    // The empty paragraph above is removed, the mermaid section stays.
+    expect(tr!.doc.content.content.map((child) => child.type.name)).toEqual(['paragraph', 'codeBlock', 'paragraph'])
+  })
+})
 
 describe('mermaid diagram navigation keymap', () => {
   describe('ArrowUp from the paragraph below', () => {
