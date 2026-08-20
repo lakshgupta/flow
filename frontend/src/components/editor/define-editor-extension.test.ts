@@ -13,6 +13,7 @@ const {
   defineCodeBlockExitKeymap,
   defineHeadingExitKeymap,
   defineTableExitKeymap,
+  defineDoubleClickWordSelection,
   defineImageIndentKeymap,
   defineCodeBlockView,
   defineImageView,
@@ -31,6 +32,7 @@ const {
   defineCodeBlockExitKeymap: vi.fn(() => 'code-block-exit-keymap-extension'),
   defineHeadingExitKeymap: vi.fn(() => 'heading-exit-keymap-extension'),
   defineTableExitKeymap: vi.fn(() => 'table-exit-keymap-extension'),
+  defineDoubleClickWordSelection: vi.fn(() => 'double-click-word-selection-extension'),
   defineImageIndentKeymap: vi.fn(() => 'image-indent-keymap-extension'),
   defineCodeBlockView: vi.fn(() => 'code-block-view-extension'),
   defineImageView: vi.fn(() => 'image-view-extension'),
@@ -87,6 +89,10 @@ vi.mock('./table-exit-keymap', () => ({
   defineTableExitKeymap,
 }))
 
+vi.mock('./double-click-word-selection', () => ({
+  defineDoubleClickWordSelection,
+}))
+
 vi.mock('./image-indent-keymap', () => ({
   defineImageIndentKeymap,
 }))
@@ -126,6 +132,7 @@ describe('defineEditorExtension', () => {
       'code-block-exit-keymap-extension',
       'heading-exit-keymap-extension',
       'table-exit-keymap-extension',
+      'double-click-word-selection-extension',
       'image-indent-keymap-extension',
       'horizontal-rule-extension',
       'image-view-extension',
@@ -142,6 +149,7 @@ describe('defineEditorExtension', () => {
       'code-block-exit-keymap-extension',
       'heading-exit-keymap-extension',
       'table-exit-keymap-extension',
+      'double-click-word-selection-extension',
       'image-indent-keymap-extension',
       'horizontal-rule-extension',
       'image-view-extension',
