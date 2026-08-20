@@ -3,7 +3,7 @@ id: development/20260820-007-FIX-canvas-only-zoom/fix-notes
 type: note
 graph: development/20260820-007-FIX-canvas-only-zoom
 title: Root cause and validation for canvas-only zoom
-description: 'Touchpad pinch / Ctrl+wheel over the canvas zoomed the whole desktop app; capture-phase wheel handling on the canvas shell prevents page zoom and zooms the canvas even over overlay nodes (commit: TBD)'
+description: 'Touchpad pinch / Ctrl+wheel over the canvas zoomed the whole desktop app; capture-phase wheel handling on the canvas shell prevents page zoom and zooms the canvas even over overlay nodes (commit: bdb581b)'
 tags:
     - bugfix
     - frontend
