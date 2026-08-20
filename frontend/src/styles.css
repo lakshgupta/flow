@@ -4158,6 +4158,41 @@ pre {
   position: relative;
 }
 
+/* Tailwind preflight strips list styling from every ul/ol, and the editor's
+   prosekit list markers (.prosemirror-flat-list) are not present in the
+   readonly markdown, so restore native list rendering here. Without this,
+   list items in unselected thread panels render as plain paragraphs with no
+   bullets and no indent. */
+.thread-panel-rendered-markdown :is(ul, ol) {
+  margin: 0.25rem 0 0.75rem;
+  padding-left: 1.5rem;
+}
+
+.thread-panel-rendered-markdown ul {
+  list-style-type: disc;
+}
+
+.thread-panel-rendered-markdown ol {
+  list-style-type: decimal;
+}
+
+.thread-panel-rendered-markdown li {
+  margin: 0;
+}
+
+/* markdownToHTML wraps each item body in <p>; the prosekit .ProseMirror p
+   typography adds margins/padding that make items read like separate
+   paragraphs. Flatten them so items sit tightly under their marker. */
+.thread-panel-rendered-markdown li > p {
+  margin: 0;
+  padding: 0;
+}
+
+.thread-panel-rendered-markdown :is(ul, ol) :is(ul, ol) {
+  margin-top: 0.25rem;
+  margin-bottom: 0;
+}
+
 .flow-nested-list-toggle {
   margin-right: 0.35rem;
   border: 0;
