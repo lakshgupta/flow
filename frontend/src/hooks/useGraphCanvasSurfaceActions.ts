@@ -55,6 +55,7 @@ type UseGraphCanvasSurfaceActionsArgs = {
   handleGraphCanvasOverlayPointerDown: (event: ReactPointerEvent<HTMLDivElement>, nodeId: string) => void;
   handleConnectionHandlePointerDown: (event: ReactPointerEvent<HTMLDivElement>, nodeId: string) => void;
   handleGraphCanvasNodeDescriptionSave: (nodeId: string, description: string) => Promise<void> | void;
+  handleGraphCanvasNodeStatusChange: (nodeId: string, status: string) => Promise<void> | void;
   previewGraphCanvasNodeLayout: (nodeId: string, layout: { width?: number; height?: number; zIndex?: number }) => void;
   persistGraphCanvasNodeLayout: (nodeId: string, layout: { width?: number; height?: number; zIndex?: number }) => Promise<void> | void;
   handleMergeDocuments: () => Promise<void> | void;
@@ -102,6 +103,7 @@ export function useGraphCanvasSurfaceActions({
   handleGraphCanvasOverlayPointerDown,
   handleConnectionHandlePointerDown,
   handleGraphCanvasNodeDescriptionSave,
+  handleGraphCanvasNodeStatusChange,
   previewGraphCanvasNodeLayout,
   persistGraphCanvasNodeLayout,
   handleMergeDocuments,
@@ -151,6 +153,7 @@ export function useGraphCanvasSurfaceActions({
     handleGraphCanvasOverlayPointerDown,
     handleConnectionHandlePointerDown,
     handleGraphCanvasNodeDescriptionSave,
+    handleGraphCanvasNodeStatusChange,
     previewGraphCanvasNodeLayout,
     persistGraphCanvasNodeLayout,
     handleMergeDocuments,
@@ -226,6 +229,10 @@ export function useGraphCanvasSurfaceActions({
 
   const handleGraphCanvasNodeDescriptionSaveBridge = useCallback((nodeId: string, description: string) => {
     void actionRefs.current.handleGraphCanvasNodeDescriptionSave(nodeId, description);
+  }, []);
+
+  const handleGraphCanvasNodeStatusChangeBridge = useCallback((nodeId: string, status: string) => {
+    void actionRefs.current.handleGraphCanvasNodeStatusChange(nodeId, status);
   }, []);
 
   const handleGraphCanvasNodeResizePreviewBridge = useCallback((nodeId: string, width: number, height: number) => {
@@ -437,6 +444,7 @@ export function useGraphCanvasSurfaceActions({
     onNodePointerDown: handleGraphCanvasOverlayNodePointerDownBridge,
     onHandlePointerDown: handleGraphCanvasOverlayHandlePointerDownBridge,
     onNodeDescriptionSave: handleGraphCanvasNodeDescriptionSaveBridge,
+    onNodeStatusChange: handleGraphCanvasNodeStatusChangeBridge,
     onNodeResizePreview: handleGraphCanvasNodeResizePreviewBridge,
     onNodeResizeCommit: handleGraphCanvasNodeResizeCommitBridge,
     onBringNodeToFront: handleBringNodeToFrontBridge,
@@ -463,6 +471,7 @@ export function useGraphCanvasSurfaceActions({
     handleGraphCanvasEdgeHoverBridge,
     handleGraphCanvasMergeDocumentsBridge,
     handleGraphCanvasNodeDescriptionSaveBridge,
+    handleGraphCanvasNodeStatusChangeBridge,
     handleGraphCanvasNodeResizeCommitBridge,
     handleGraphCanvasNodeResizePreviewBridge,
     handleGraphCanvasOverlayHandlePointerDownBridge,

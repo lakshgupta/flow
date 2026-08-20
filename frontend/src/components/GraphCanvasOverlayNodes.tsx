@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import { ArrowDownToLine, ArrowUpToLine, File as FileIcon, Download, ExternalLink } from "lucide-react";
 
 import { graphDirectoryColorHex } from "../lib/graphColors";
-import { graphCanvasTypeClassName, graphCanvasTypeLabel, graphCanvasStatusLabel } from "../lib/graphCanvasUtils";
+import { graphCanvasTypeClassName, graphCanvasTypeLabel, TASK_STATUS_OPTIONS } from "../lib/graphCanvasUtils";
 import { graphCanvasOverlayPosition } from "../lib/graphCanvasUtils";
 import type { GraphCanvasOverlayController } from "./graphCanvasOverlayController";
 
@@ -30,6 +30,7 @@ export function GraphCanvasOverlayNodes({
     onNodePointerDown,
     onHandlePointerDown,
     onNodeDescriptionSave,
+    onNodeStatusChange,
     onNodeResizePreview,
     onNodeResizeCommit,
     onBringNodeToFront,
@@ -219,10 +220,24 @@ export function GraphCanvasOverlayNodes({
                     <section className="graph-canvas-node-core">
                       <div className="graph-canvas-node-topline">
                         <span className="graph-canvas-node-badge">{graphCanvasTypeLabel(node.data.type)}</span>
-                        {node.data.type === "task" && node.data.status ? (
-                          <span className={`graph-canvas-node-status graph-canvas-node-status-${node.data.status.toLowerCase()}`}>
-                            {graphCanvasStatusLabel(node.data.status)}
-                          </span>
+                        {node.data.type === "task" ? (
+                          <select
+                            className={`graph-canvas-node-status graph-canvas-node-status-${(node.data.status || "").toLowerCase()}`}
+                            value={node.data.status ?? ""}
+                            onChange={(event) => onNodeStatusChange(node.id, event.target.value)}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => event.stopPropagation()}
+                            onDoubleClick={(event) => event.stopPropagation()}
+                            aria-label={`Status for ${node.data.title}`}
+                          >
+                            <option value="">No status</option>
+                            {TASK_STATUS_OPTIONS.map((status) => (
+                              <option key={status} value={status}>{status}</option>
+                            ))}
+                            {(node.data.status ?? "").trim() !== "" && !TASK_STATUS_OPTIONS.includes(node.data.status as (typeof TASK_STATUS_OPTIONS)[number]) ? (
+                              <option value={node.data.status}>{node.data.status}</option>
+                            ) : null}
+                          </select>
                         ) : null}
                         <span className="graph-canvas-node-graph">{node.data.graph}</span>
                       </div>
@@ -299,10 +314,24 @@ export function GraphCanvasOverlayNodes({
                   <>
                     <div className="graph-canvas-node-topline">
                       <span className="graph-canvas-node-badge">{graphCanvasTypeLabel(node.data.type)}</span>
-                      {node.data.type === "task" && node.data.status ? (
-                        <span className={`graph-canvas-node-status graph-canvas-node-status-${node.data.status.toLowerCase()}`}>
-                          {graphCanvasStatusLabel(node.data.status)}
-                        </span>
+                      {node.data.type === "task" ? (
+                        <select
+                          className={`graph-canvas-node-status graph-canvas-node-status-${(node.data.status || "").toLowerCase()}`}
+                          value={node.data.status ?? ""}
+                          onChange={(event) => onNodeStatusChange(node.id, event.target.value)}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={(event) => event.stopPropagation()}
+                          onDoubleClick={(event) => event.stopPropagation()}
+                          aria-label={`Status for ${node.data.title}`}
+                        >
+                          <option value="">No status</option>
+                          {TASK_STATUS_OPTIONS.map((status) => (
+                            <option key={status} value={status}>{status}</option>
+                          ))}
+                          {(node.data.status ?? "").trim() !== "" && !TASK_STATUS_OPTIONS.includes(node.data.status as (typeof TASK_STATUS_OPTIONS)[number]) ? (
+                            <option value={node.data.status}>{node.data.status}</option>
+                          ) : null}
+                        </select>
                       ) : null}
                       <span className="graph-canvas-node-graph">{node.data.graph}</span>
                     </div>

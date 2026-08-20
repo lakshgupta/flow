@@ -12,6 +12,7 @@ import { Skeleton } from "./ui/skeleton";
 
 import { formatDocumentType } from "../lib/docUtils";
 import { graphDirectoryColorHex, resolveGraphDirectoryColor } from "../lib/graphColors";
+import { TASK_STATUS_OPTIONS } from "../lib/graphCanvasUtils";
 import { parseFlowAssetHref, parseFlowDateHref, parseFlowReferenceHref } from "../richText";
 import type { DocumentFormState, DocumentResponse, HomeFormState, HomeResponse } from "../types";
 
@@ -455,6 +456,7 @@ const ThreadPanelHeader = memo(function ThreadPanelHeader({
   panelAsset,
   panelDocument,
   panelTitle,
+  formState,
   index,
   threadPanels,
   threadExpanded,
@@ -471,6 +473,7 @@ const ThreadPanelHeader = memo(function ThreadPanelHeader({
   panelAsset: ThreadAssetEntry | null;
   panelDocument: DocumentResponse | null;
   panelTitle: string;
+  formState: DocumentFormState;
   index: number;
   threadPanels: ThreadPanelData[];
   threadExpanded: boolean;
@@ -494,7 +497,25 @@ const ThreadPanelHeader = memo(function ThreadPanelHeader({
         ) : panelAsset !== null ? (
           <Badge variant="outline" className="center-document-type-badge">{panelAsset.kind === "pdf" ? "PDF" : "Text"}</Badge>
         ) : panelDocument !== null ? (
-          <Badge variant="outline" className="center-document-type-badge">{formatDocumentType(panelDocument.type)}</Badge>
+          <>
+            <Badge variant="outline" className="center-document-type-badge">{formatDocumentType(panelDocument.type)}</Badge>
+            {panel.isActive && panelDocument.type === "task" ? (
+              <select
+                className="center-document-status-select"
+                value={formState.status}
+                onChange={(event) => actions.updateFormField("status", event.target.value)}
+                aria-label="Task status"
+              >
+                <option value="">No status</option>
+                {TASK_STATUS_OPTIONS.map((status) => (
+                  <option key={status} value={status}>{status}</option>
+                ))}
+                {formState.status.trim() !== "" && !TASK_STATUS_OPTIONS.includes(formState.status as (typeof TASK_STATUS_OPTIONS)[number]) ? (
+                  <option value={formState.status}>{formState.status}</option>
+                ) : null}
+              </select>
+            ) : null}
+          </>
         ) : null}
       </div>
       <span className="thread-panel-header-title">{panelTitle || panel.documentId}</span>
@@ -744,6 +765,7 @@ const ThreadPanelSection = memo(function ThreadPanelSection({
         panelAsset={panelAsset}
         panelDocument={panelDocument}
         panelTitle={panelTitle}
+        formState={formState}
         index={index}
         threadPanels={threadPanels}
         threadExpanded={threadExpanded}

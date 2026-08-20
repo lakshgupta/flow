@@ -7,6 +7,7 @@ import { Button } from "./ui/button";
 import { RichTextEditor, type RichTextEditorHandle } from "./editor/RichTextEditor";
 
 import { formatDocumentType } from "../lib/docUtils";
+import { TASK_STATUS_OPTIONS } from "../lib/graphCanvasUtils";
 import type { DocumentFormState, DocumentResponse } from "../types";
 
 export type DocumentLinkDetail = {
@@ -80,7 +81,25 @@ function DocumentEditorPaneComponent({
 			<div className="sidebar-document-toolbar">
 				<div className="center-document-toolbar-leading">
 					{selectedDocument !== null && (
-						<Badge variant="outline">{formatDocumentType(selectedDocument.type)}</Badge>
+						<>
+							<Badge variant="outline">{formatDocumentType(selectedDocument.type)}</Badge>
+							{selectedDocument.type === "task" ? (
+								<select
+									className="center-document-status-select"
+									value={formState.status}
+									onChange={(event) => actions.updateFormField("status", event.target.value)}
+									aria-label="Task status"
+								>
+									<option value="">No status</option>
+									{TASK_STATUS_OPTIONS.map((status) => (
+										<option key={status} value={status}>{status}</option>
+									))}
+									{formState.status.trim() !== "" && !TASK_STATUS_OPTIONS.includes(formState.status as (typeof TASK_STATUS_OPTIONS)[number]) ? (
+										<option value={formState.status}>{formState.status}</option>
+									) : null}
+								</select>
+							) : null}
+						</>
 					)}
 					{savingDocument && <span className="home-save-success">Saving…</span>}
 				</div>

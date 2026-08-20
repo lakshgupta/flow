@@ -39,8 +39,6 @@ title: Home
         
 - Task node
     
-    - enable status tracking on the tasks
-        
 - Draw on the canvas directly
     
     <p><br></p>

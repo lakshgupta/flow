@@ -80,6 +80,8 @@ export type GraphCanvasOverlayActions = {
   onNodePointerDown: (event: PointerEvent<HTMLDivElement>, nodeId: string) => void;
   onHandlePointerDown: (event: PointerEvent<HTMLDivElement>, nodeId: string) => void;
   onNodeDescriptionSave: (nodeId: string, description: string) => void;
+  /** Persists a task node's status from the canvas dropdown. */
+  onNodeStatusChange: (nodeId: string, status: string) => void;
   onNodeResizePreview: (nodeId: string, width: number, height: number) => void;
   onNodeResizeCommit: (nodeId: string, width: number, height: number) => void;
   onBringNodeToFront: (nodeId: string) => void;

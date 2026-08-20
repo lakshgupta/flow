@@ -1485,6 +1485,60 @@ function FlowApp() {
     }
   }
 
+  async function handleGraphCanvasNodeStatusChange(nodeId: string, status: string): Promise<void> {
+    const currentNode = graphCanvasData?.nodes.find((node) => node.id === nodeId) ?? null;
+    if (currentNode === null) {
+      return;
+    }
+
+    const nextStatus = status.trim();
+    if ((currentNode.status ?? "") === nextStatus) {
+      return;
+    }
+
+    try {
+      // In the desktop app, document updates bypass the HTTP layer and call the
+      // Wails binding directly (same shape as the HTTP response).
+      const wailsUpdate = getWailsUpdate();
+      const updatedDocument = wailsUpdate !== null
+        ? await wailsUpdate({ documentID: nodeId, patch: { status: nextStatus } })
+        : await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(nodeId)}`, {
+            method: "PUT",
+            body: JSON.stringify({ status: nextStatus }),
+          });
+
+      setGraphCanvasData((current) => {
+        if (current === null) {
+          return current;
+        }
+        return {
+          ...current,
+          nodes: current.nodes.map((node) => {
+            if (node.id !== updatedDocument.id) {
+              return node;
+            }
+
+            return {
+              ...node,
+              status: updatedDocument.status,
+              updatedAt: updatedDocument.updatedAt,
+            };
+          }),
+        };
+      });
+
+      if (selectedDocumentRef.current?.id === updatedDocument.id) {
+        syncSelectedDocumentState(updatedDocument, { preserveFormState: false });
+      }
+
+      if (documentThreadRef.current.some((entry) => entry.documentId === updatedDocument.id)) {
+        setThreadDocumentsById((current) => ({ ...current, [updatedDocument.id]: updatedDocument }));
+      }
+    } catch (mutationFailure) {
+      setMutationError(toErrorMessage(mutationFailure));
+    }
+  }
+
   function startSidebarResize(
     event: React.MouseEvent<HTMLDivElement>,
     options: {
@@ -4191,6 +4245,7 @@ function FlowApp() {
     handleGraphCanvasOverlayPointerDown,
     handleConnectionHandlePointerDown,
     handleGraphCanvasNodeDescriptionSave,
+    handleGraphCanvasNodeStatusChange,
     previewGraphCanvasNodeLayout: updateGraphCanvasNodeLayout,
     persistGraphCanvasNodeLayout,
     handleMergeDocuments,

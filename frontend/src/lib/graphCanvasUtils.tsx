@@ -85,6 +85,10 @@ export function graphCanvasStatusLabel(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+/** Canonical task lifecycle statuses, shared by the editor toolbar selects,
+ *  the properties panel dropdown, and the canvas node dropdown. */
+export const TASK_STATUS_OPTIONS = ["Ready", "Running", "Done", "Success", "Failed", "Interrupted"] as const;
+
 export function graphCanvasTypeClassName(value: string): string {
   if (value === "task" || value === "command") {
     return value;

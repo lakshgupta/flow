@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { GRAPH_DIRECTORY_COLOR_OPTIONS } from "../lib/graphColors";
+import { TASK_STATUS_OPTIONS } from "../lib/graphCanvasUtils";
 
 import type { DocumentFormState, DocumentResponse } from "../types";
 
@@ -18,8 +19,6 @@ type EditableLinkDetail = {
   context: string;
   linkType: string;
 };
-
-const taskStatusOptions = ["Ready", "Running", "Done", "Success", "Failed", "Interrupted"];
 
 function formatLinkCount(count: number, direction: "incoming" | "outgoing"): string {
   return `${count} ${direction} ${count === 1 ? "link" : "links"}`;
@@ -235,10 +234,10 @@ export function DocumentPropertiesPanel({
                 onChange={(event) => updateFormField("status", event.target.value)}
               >
                 <option value="">No status</option>
-                {taskStatusOptions.map((status) => (
+                {TASK_STATUS_OPTIONS.map((status) => (
                   <option key={status} value={status}>{status}</option>
                 ))}
-                {formState.status.trim() !== "" && !taskStatusOptions.includes(formState.status) ? (
+                {formState.status.trim() !== "" && !TASK_STATUS_OPTIONS.includes(formState.status as (typeof TASK_STATUS_OPTIONS)[number]) ? (
                   <option value={formState.status}>{formState.status}</option>
                 ) : null}
               </select>

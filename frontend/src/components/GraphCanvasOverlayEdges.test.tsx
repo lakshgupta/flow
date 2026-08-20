@@ -55,6 +55,7 @@ function makeActions(): GraphCanvasOverlayActions {
     onNodePointerDown: noop,
     onHandlePointerDown: noop,
     onNodeDescriptionSave: noop,
+    onNodeStatusChange: noop,
     onNodeResizePreview: noop,
     onNodeResizeCommit: noop,
     onBringNodeToFront: noop,
