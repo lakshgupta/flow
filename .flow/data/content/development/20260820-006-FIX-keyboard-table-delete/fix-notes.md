@@ -3,7 +3,7 @@ id: development/20260820-006-FIX-keyboard-table-delete/fix-notes
 type: note
 graph: development/20260820-006-FIX-keyboard-table-delete
 title: Root cause and validation for keyboard table deletion
-description: 'Delete/Backspace had no way to remove a table; added a table-delete keymap covering table-start, table-end, and whole-table cell selection (commit: TBD)'
+description: 'Delete/Backspace had no way to remove a table; added a table-delete keymap covering table-start, table-end, and whole-table cell selection (commit: 1e526db)'
 tags:
     - bugfix
     - frontend
