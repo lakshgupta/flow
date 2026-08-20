@@ -87,11 +87,17 @@ export default function DiagramSection(props: ReactNodeViewProps) {
         { language },
         view.state.schema.text(next),
       );
-      const tr = view.state.tr.replaceWith(pos, pos + node.nodeSize, newNode);
+      const tr = view.state.tr;
+      // Resolve the section bounds from the *current* doc rather than the
+      // React node prop, which can lag the live doc by a transaction.
+      const $pos = tr.doc.resolve(pos);
+      const targetNode = $pos.nodeAfter;
+      if (!targetNode || targetNode.type !== codeBlockType) return;
+      tr.replaceWith(pos, pos + targetNode.nodeSize, newNode);
       view.dispatch(tr);
       setCommittedTitle(trimmed);
     },
-    [language, committedTitle, source, getPos, view, node],
+    [language, committedTitle, source, getPos, view],
   );
 
   const handleTitleBlur = useCallback(() => {

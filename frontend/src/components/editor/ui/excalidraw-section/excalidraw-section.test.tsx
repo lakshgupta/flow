@@ -184,4 +184,41 @@ describe('excalidraw diagram section', () => {
       expect(pre?.textContent ?? '').toContain('"flowTitle":"Renamed"')
     })
   })
+
+  it('keeps the code block as one clean JSON when a scene save and a title commit race', async () => {
+    // A title commit used to fire an immediate write while a debounced scene
+    // save was still pending; the overlapping dispatches against a stale node
+    // size left the old JSON tail behind, corrupting the code block so the
+    // scene no longer parsed on reload.
+    renderEditor(`\`\`\`excalidraw\n${SCENE_JSON}\n\`\`\``)
+    const editor = await waitForSection()
+
+    const onChange = sceneChangeHandlers.at(-1)
+    expect(onChange).toBeDefined()
+    onChange?.([{ type: 'rectangle', id: 'r2', x: 5 }], { zoom: { value: 2 } }, {})
+
+    // Commit the title immediately, before the debounced scene write fires.
+    const title = screen.getByLabelText('Excalidraw Drawing title') as HTMLInputElement
+    await userEvent.click(title)
+    await userEvent.clear(title)
+    await userEvent.type(title, 'Renamed{Enter}')
+
+    // Wait for the debounced save AND the title write to both settle.
+    await waitFor(() => {
+      const pre = editor.querySelector('pre[data-language="excalidraw"]')
+      const text = pre?.textContent ?? ''
+      expect(text).toContain('"flowTitle":"Renamed"')
+      expect(text).toContain('"id":"r2"')
+    }, { timeout: 2000 })
+    await new Promise((resolve) => setTimeout(resolve, 700))
+
+    const pre = editor.querySelector('pre[data-language="excalidraw"]')
+    const text = pre?.textContent ?? ''
+    // The whole block must be one valid JSON document — a duplicate tail would
+    // make JSON.parse throw and the scene read back as empty.
+    expect(() => JSON.parse(text)).not.toThrow()
+    const parsed = JSON.parse(text) as { flowTitle?: string; elements?: Array<{ id: string }> }
+    expect(parsed.flowTitle).toBe('Renamed')
+    expect(parsed.elements?.map((element) => element.id)).toEqual(['r2'])
+  })
 })

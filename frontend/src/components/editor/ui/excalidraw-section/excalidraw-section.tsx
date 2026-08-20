@@ -140,14 +140,22 @@ export default function ExcalidrawSection(props: ReactNodeViewProps) {
       }
       envelope.flowTitle = titleRef.current
       const json = JSON.stringify(envelope)
-      if (json === node.textContent) return
       const tr = view.state.tr
-      tr.insertText(json, pos + 1, pos + node.nodeSize - 1)
+      // Resolve the section from the *current* doc rather than the React node
+      // prop, which can lag the live doc by a transaction — using a stale
+      // nodeSize leaves the old JSON tail behind and corrupts the code block.
+      const $pos = tr.doc.resolve(pos)
+      const targetNode = $pos.nodeAfter
+      if (!targetNode || targetNode.type.spec.code !== true) return
+      if (json === targetNode.textContent) return
+      const start = pos + 1
+      const end = pos + targetNode.nodeSize - 1
+      tr.insertText(json, start, end)
       view.dispatch(tr)
     } catch {
       // Node detached — nothing to persist into.
     }
-  }, [getPos, view, node])
+  }, [getPos, view])
 
   const cancelPendingSave = useCallback(() => {
     if (saveTimerRef.current !== null) {
@@ -178,9 +186,13 @@ export default function ExcalidrawSection(props: ReactNodeViewProps) {
       const trimmed = nextTitle.trim()
       titleRef.current = trimmed
       setDraftTitle(trimmed)
+      // Cancel any pending debounced save first so the immediate write is the
+      // only dispatch — two overlapping writes against stale doc state is what
+      // corrupts the code block text.
+      cancelPendingSave()
       writeScene()
     },
-    [writeScene],
+    [cancelPendingSave, writeScene],
   )
 
   const handleDelete = useCallback(() => {
