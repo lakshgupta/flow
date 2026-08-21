@@ -444,6 +444,50 @@ func TestNewMuxDeregistersLocalWorkspaceAndFallsBackToGlobal(t *testing.T) {
 	}
 }
 
+func TestNewMuxOnRootChangedFiresOnWorkspaceSwitch(t *testing.T) {
+	t.Parallel()
+
+	globalRoot := createGraphTreeHTTPAPITestWorkspace(t)
+	globalRoot.Scope = workspace.GlobalScope
+	localRoot := createGraphTreeHTTPAPITestWorkspace(t)
+
+	locatorPath := filepath.Join(t.TempDir(), "config", workspace.GlobalLocatorFileName)
+	if err := workspace.WriteGlobalLocator(locatorPath, workspace.GlobalLocator{
+		WorkspacePath:   globalRoot.WorkspacePath,
+		LocalWorkspaces: []string{localRoot.WorkspacePath},
+	}); err != nil {
+		t.Fatalf("WriteGlobalLocator() error = %v", err)
+	}
+
+	var switchedRoots []workspace.Root
+	handler, err := NewMux(Options{
+		Root:              globalRoot,
+		LaunchScope:       workspace.GlobalScope,
+		GlobalLocatorPath: locatorPath,
+		OnRootChanged: func(root workspace.Root) {
+			switchedRoots = append(switchedRoots, root)
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewMux() error = %v", err)
+	}
+
+	// Selecting the tracked local workspace must notify with the new root.
+	performJSONRequestWithBody[workspaceResponse](t, handler, http.MethodPut, "/api/workspace/select", map[string]any{
+		"workspacePath": localRoot.WorkspacePath,
+	})
+	if len(switchedRoots) != 1 || switchedRoots[0].WorkspacePath != localRoot.WorkspacePath {
+		t.Fatalf("OnRootChanged after select = %#v, want localRoot switch", switchedRoots)
+	}
+
+	// Deregistering the active local workspace falls back to global and must
+	// notify again so desktop bindings follow the fallback.
+	performJSONRequest[workspaceResponse](t, handler, http.MethodDelete, "/api/workspace/local?workspacePath="+url.QueryEscape(localRoot.WorkspacePath))
+	if len(switchedRoots) != 2 || switchedRoots[1].WorkspacePath != globalRoot.WorkspacePath {
+		t.Fatalf("OnRootChanged after deregister = %#v, want globalRoot fallback", switchedRoots)
+	}
+}
+
 func TestNewMuxSelectWorkspaceRebuildsIndexForExternalChanges(t *testing.T) {
 	t.Parallel()
 

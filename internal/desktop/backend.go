@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 
 	"github.com/lex/flow/internal/config"
 	"github.com/lex/flow/internal/core"
@@ -20,8 +21,13 @@ import (
 // Backend exposes workspace mutations that the Wails adapter binds. Document
 // mutations reuse the shared view-model loader from the HTTP API layer so
 // desktop and web consumers see the exact same document JSON shape.
+//
+// The root lives behind an atomic store so a workspace switch made in-place
+// (via the GUI workspace selector) is observed by every Backend copy held by
+// the App facade and the Wails bindings, instead of writes silently targeting
+// the launch-time workspace forever.
 type Backend struct {
-	root workspace.Root
+	root *atomic.Value // holds workspace.Root
 }
 
 // GraphCanvasSnapshot carries the canvas payload together with the persisted
@@ -54,39 +60,54 @@ type GraphTreeSnapshot struct {
 // NewBackend constructs the canonical desktop backend for one resolved
 // workspace.
 func NewBackend(root workspace.Root) Backend {
-	return Backend{root: root}
+	rootStore := &atomic.Value{}
+	rootStore.Store(root)
+	return Backend{root: rootStore}
+}
+
+// SetRoot switches the workspace the backend targets. The desktop app calls
+// this when the user selects a different workspace in-place, so Wails-bound
+// mutations follow the switched root instead of the launch-time one.
+func (backend Backend) SetRoot(root workspace.Root) {
+	backend.root.Store(root)
+}
+
+// resolvedRoot returns the currently targeted workspace root.
+func (backend Backend) resolvedRoot() workspace.Root {
+	root, _ := backend.root.Load().(workspace.Root)
+	return root
 }
 
 // WorkspaceConfig returns the workspace GUI settings, using the default
 // configuration when the config file is missing.
 func (backend Backend) WorkspaceConfig() (config.Workspace, error) {
-	return workspace.ReadOrDefaultConfig(backend.root.ConfigPath)
+	return workspace.ReadOrDefaultConfig(backend.resolvedRoot().ConfigPath)
 }
 
 // Documents loads the current workspace documents for read-only desktop views.
 func (backend Backend) Documents() ([]markdown.WorkspaceDocument, error) {
-	documents, _, err := workspace.LoadDocumentsBestEffort(backend.root.FlowPath)
+	documents, _, err := workspace.LoadDocumentsBestEffort(backend.resolvedRoot().FlowPath)
 	return documents, err
 }
 
 // Search queries the shared workspace index using the same behavior as CLI and HTTP.
 func (backend Backend) Search(query string, limit int) ([]index.SearchResult, error) {
-	return index.SearchWorkspace(backend.root.IndexPath, backend.root.FlowPath, query, limit)
+	return index.SearchWorkspace(backend.resolvedRoot().IndexPath, backend.resolvedRoot().FlowPath, query, limit)
 }
 
 // NodeView loads one node projection for desktop inspection panes.
 func (backend Backend) NodeView(id string, graphPath string) (index.NodeView, error) {
-	return index.ReadNodeViewWorkspace(backend.root.IndexPath, backend.root.FlowPath, id, graphPath)
+	return index.ReadNodeViewWorkspace(backend.resolvedRoot().IndexPath, backend.resolvedRoot().FlowPath, id, graphPath)
 }
 
 // GraphCanvas loads one graph canvas payload and its persisted viewport.
 func (backend Backend) GraphCanvas(selectedGraph string) (GraphCanvasSnapshot, error) {
-	documents, _, err := workspace.LoadDocumentsBestEffort(backend.root.FlowPath)
+	documents, _, err := workspace.LoadDocumentsBestEffort(backend.resolvedRoot().FlowPath)
 	if err != nil {
 		return GraphCanvasSnapshot{}, err
 	}
 
-	layoutPositions, err := index.ReadGraphLayoutPositionsWorkspace(backend.root.IndexPath, backend.root.FlowPath, selectedGraph)
+	layoutPositions, err := index.ReadGraphLayoutPositionsWorkspace(backend.resolvedRoot().IndexPath, backend.resolvedRoot().FlowPath, selectedGraph)
 	if err != nil {
 		return GraphCanvasSnapshot{}, err
 	}
@@ -106,7 +127,7 @@ func (backend Backend) GraphCanvas(selectedGraph string) (GraphCanvasSnapshot, e
 		return GraphCanvasSnapshot{}, err
 	}
 
-	viewport, hasViewport, err := index.ReadGraphLayoutViewportWorkspace(backend.root.IndexPath, backend.root.FlowPath, selectedGraph)
+	viewport, hasViewport, err := index.ReadGraphLayoutViewportWorkspace(backend.resolvedRoot().IndexPath, backend.resolvedRoot().FlowPath, selectedGraph)
 	if err != nil {
 		return GraphCanvasSnapshot{}, err
 	}
@@ -122,17 +143,17 @@ func (backend Backend) GraphCanvas(selectedGraph string) (GraphCanvasSnapshot, e
 // GraphTree loads the sidebar tree and home document used by the desktop
 // workspace browser.
 func (backend Backend) GraphTree() (GraphTreeSnapshot, error) {
-	nodes, err := index.ReadGraphNodesWorkspace(backend.root.IndexPath, backend.root.FlowPath)
+	nodes, err := index.ReadGraphNodesWorkspace(backend.resolvedRoot().IndexPath, backend.resolvedRoot().FlowPath)
 	if err != nil {
 		nodes = nil
 	}
 
-	files, err := index.ReadGraphTreeFilesWorkspace(backend.root.IndexPath, backend.root.FlowPath)
+	files, err := index.ReadGraphTreeFilesWorkspace(backend.resolvedRoot().IndexPath, backend.resolvedRoot().FlowPath)
 	if err != nil {
 		files = nil
 	}
 
-	home, err := readHomeDocument(backend.root.HomePath)
+	home, err := readHomeDocument(backend.resolvedRoot().HomePath)
 	if err != nil {
 		return GraphTreeSnapshot{}, err
 	}
@@ -151,7 +172,7 @@ func (backend Backend) GraphTree() (GraphTreeSnapshot, error) {
 		})
 	}
 
-	workspaceConfig, err := workspace.ReadOrDefaultConfig(backend.root.ConfigPath)
+	workspaceConfig, err := workspace.ReadOrDefaultConfig(backend.resolvedRoot().ConfigPath)
 	if err != nil {
 		return GraphTreeSnapshot{}, err
 	}
@@ -211,24 +232,24 @@ func (backend Backend) GraphTree() (GraphTreeSnapshot, error) {
 // the exact same JSON shape as the HTTP API.
 func (backend Backend) CreateDocument(request core.CreateDocumentRequest) (httpapi.DocumentResponse, error) {
 	workspaceDocument, err := core.CreateDocument(request, func(request core.CreateDocumentRequest) (markdown.WorkspaceDocument, error) {
-		return workspace.CreateDocumentFromCoreRequest(backend.root, request)
+		return workspace.CreateDocumentFromCoreRequest(backend.resolvedRoot(), request)
 	})
 	if err != nil {
 		return httpapi.DocumentResponse{}, err
 	}
-	return httpapi.LoadDocumentResponse(backend.root, workspaceDocument.Document.ID())
+	return httpapi.LoadDocumentResponse(backend.resolvedRoot(), workspaceDocument.Document.ID())
 }
 
 // UpdateDocument runs the shared update workflow against canonical workspace
 // storage and returns the full document view-model.
 func (backend Backend) UpdateDocument(request core.UpdateDocumentRequest) (httpapi.DocumentResponse, error) {
 	workspaceDocument, err := core.UpdateDocument(request, func(documentID string, patch core.UpdateDocumentPatch) (markdown.WorkspaceDocument, error) {
-		return workspace.UpdateDocumentByIDFromCorePatch(backend.root, documentID, patch)
+		return workspace.UpdateDocumentByIDFromCorePatch(backend.resolvedRoot(), documentID, patch)
 	})
 	if err != nil {
 		return httpapi.DocumentResponse{}, err
 	}
-	return httpapi.LoadDocumentResponse(backend.root, workspaceDocument.Document.ID())
+	return httpapi.LoadDocumentResponse(backend.resolvedRoot(), workspaceDocument.Document.ID())
 }
 
 // MergeDocumentsRequest is the Wails-facing input for merging documents,
@@ -240,22 +261,22 @@ type MergeDocumentsRequest struct {
 // MergeDocuments merges the ordered document list into the first document and
 // returns the merged document view-model, matching the HTTP merge handler.
 func (backend Backend) MergeDocuments(request MergeDocumentsRequest) (httpapi.DocumentResponse, error) {
-	merged, err := workspace.MergeDocuments(backend.root, workspace.MergeDocumentsInput{
+	merged, err := workspace.MergeDocuments(backend.resolvedRoot(), workspace.MergeDocumentsInput{
 		DocumentIDs: request.DocumentIDs,
 	})
 	if err != nil {
 		return httpapi.DocumentResponse{}, err
 	}
-	return httpapi.LoadDocumentResponse(backend.root, merged.Document.ID())
+	return httpapi.LoadDocumentResponse(backend.resolvedRoot(), merged.Document.ID())
 }
 
 // UpdateHome writes the workspace home document and returns the reloaded home
 // view-model, matching the HTTP update-home handler.
 func (backend Backend) UpdateHome(request httpapi.HomeUpdateRequest) (httpapi.HomeResponse, error) {
-	if err := httpapi.WriteHomeDocument(backend.root, request); err != nil {
+	if err := httpapi.WriteHomeDocument(backend.resolvedRoot(), request); err != nil {
 		return httpapi.HomeResponse{}, err
 	}
-	return httpapi.LoadHomeResponse(backend.root)
+	return httpapi.LoadHomeResponse(backend.resolvedRoot())
 }
 
 // CreateGraphRequest is the Wails-facing input for creating a graph.
@@ -273,10 +294,10 @@ type CreateGraphResult struct {
 func (backend Backend) CreateGraph(request CreateGraphRequest) (CreateGraphResult, error) {
 	err := core.CreateGraph(core.CreateGraphRequest{
 		Name:      request.Name,
-		IndexPath: backend.root.IndexPath,
-		FlowPath:  backend.root.FlowPath,
+		IndexPath: backend.resolvedRoot().IndexPath,
+		FlowPath:  backend.resolvedRoot().FlowPath,
 	}, func(name string) error {
-		return workspace.CreateGraph(backend.root, workspace.CreateGraphInput{Name: name})
+		return workspace.CreateGraph(backend.resolvedRoot(), workspace.CreateGraphInput{Name: name})
 	})
 	return CreateGraphResult{Name: request.Name}, err
 }
@@ -298,10 +319,10 @@ func (backend Backend) DeleteGraph(request DeleteGraphRequest) (DeleteGraphResul
 	err := core.DeleteGraph(core.DeleteGraphRequest{
 		Name: request.Name,
 		AfterDelete: func() error {
-			return httpapi.DeleteGraphDirectoryColors(backend.root, request.Name)
+			return httpapi.DeleteGraphDirectoryColors(backend.resolvedRoot(), request.Name)
 		},
 	}, func(name string) error {
-		return workspace.DeleteGraph(backend.root, name)
+		return workspace.DeleteGraph(backend.resolvedRoot(), name)
 	})
 	return DeleteGraphResult{Deleted: true, Name: request.Name}, err
 }
@@ -321,11 +342,11 @@ type UpdateGraphColorResult struct {
 // UpdateGraphColor sets or clears the persisted graph directory color, matching
 // the HTTP handler including the index GUI-state sync.
 func (backend Backend) UpdateGraphColor(request UpdateGraphColorRequest) (UpdateGraphColorResult, error) {
-	if err := requireGraphDirectory(backend.root, request.GraphPath); err != nil {
+	if err := requireGraphDirectory(backend.resolvedRoot(), request.GraphPath); err != nil {
 		return UpdateGraphColorResult{}, err
 	}
 
-	workspaceConfig, err := workspace.ReadOrDefaultConfig(backend.root.ConfigPath)
+	workspaceConfig, err := workspace.ReadOrDefaultConfig(backend.resolvedRoot().ConfigPath)
 	if err != nil {
 		return UpdateGraphColorResult{}, err
 	}
@@ -342,7 +363,7 @@ func (backend Backend) UpdateGraphColor(request UpdateGraphColorRequest) (Update
 		workspaceConfig.GUI.GraphDirectoryColors[request.GraphPath] = color
 	}
 
-	if err := httpapi.PersistWorkspaceConfig(backend.root, workspaceConfig); err != nil {
+	if err := httpapi.PersistWorkspaceConfig(backend.resolvedRoot(), workspaceConfig); err != nil {
 		return UpdateGraphColorResult{}, err
 	}
 
@@ -366,11 +387,11 @@ type UpdateGraphCanvasDisabledResult struct {
 // the HTTP handler, this is config-only state and deliberately skips the index
 // GUI-state sync to avoid transient index contention.
 func (backend Backend) UpdateGraphCanvasDisabled(request UpdateGraphCanvasDisabledRequest) (UpdateGraphCanvasDisabledResult, error) {
-	if err := requireGraphDirectory(backend.root, request.GraphPath); err != nil {
+	if err := requireGraphDirectory(backend.resolvedRoot(), request.GraphPath); err != nil {
 		return UpdateGraphCanvasDisabledResult{}, err
 	}
 
-	workspaceConfig, err := workspace.ReadOrDefaultConfig(backend.root.ConfigPath)
+	workspaceConfig, err := workspace.ReadOrDefaultConfig(backend.resolvedRoot().ConfigPath)
 	if err != nil {
 		return UpdateGraphCanvasDisabledResult{}, err
 	}
@@ -386,7 +407,7 @@ func (backend Backend) UpdateGraphCanvasDisabled(request UpdateGraphCanvasDisabl
 		workspaceConfig.GUI.GraphCanvasEnabled[request.GraphPath] = true
 	}
 
-	if err := config.Write(backend.root.ConfigPath, workspaceConfig); err != nil {
+	if err := config.Write(backend.resolvedRoot().ConfigPath, workspaceConfig); err != nil {
 		return UpdateGraphCanvasDisabledResult{}, err
 	}
 
@@ -421,10 +442,10 @@ func (backend Backend) RenameGraph(request RenameGraphRequest) error {
 		CurrentName: request.CurrentName,
 		NextName:    request.NextName,
 		AfterRename: func() error {
-			return httpapi.RemapGraphDirectoryColors(backend.root, request.CurrentName, request.NextName)
+			return httpapi.RemapGraphDirectoryColors(backend.resolvedRoot(), request.CurrentName, request.NextName)
 		},
 	}, func(currentName string, nextName string) error {
-		return workspace.RenameGraph(backend.root, currentName, nextName)
+		return workspace.RenameGraph(backend.resolvedRoot(), currentName, nextName)
 	})
 }
 
@@ -436,9 +457,9 @@ func (backend Backend) RenameGraph(request RenameGraphRequest) error {
 func (backend Backend) DeleteDocument(request core.DeleteDocumentRequest) (string, []string, error) {
 	return core.DeleteDocument(request, func(documentID string) (string, []string, error) {
 		if request.Force {
-			return workspace.ForceDeleteDocumentByID(backend.root, documentID)
+			return workspace.ForceDeleteDocumentByID(backend.resolvedRoot(), documentID)
 		}
-		relativePath, err := workspace.DeleteDocumentByID(backend.root, documentID)
+		relativePath, err := workspace.DeleteDocumentByID(backend.resolvedRoot(), documentID)
 		return relativePath, nil, err
 	})
 }
@@ -531,14 +552,14 @@ func (backend Backend) CreateGraphFileNoteFromPath(localURI string, graphPath st
 		return GraphFileNoteResponse{}, fmt.Errorf("invalid file name")
 	}
 
-	graphDir := filepath.Join(backend.root.GraphsPath, filepath.FromSlash(graphPath))
+	graphDir := filepath.Join(backend.resolvedRoot().GraphsPath, filepath.FromSlash(graphPath))
 	if info, err := os.Stat(graphDir); err != nil || !info.IsDir() {
 		return GraphFileNoteResponse{}, fmt.Errorf("graph %q not found", graphPath)
 	}
 
 	assetFileName := workspace.MakeUniqueFileName(graphDir, workspace.SanitizeAssetFileName(originalFileName))
 	assetRelativePath := filepath.ToSlash(filepath.Join(workspace.DataDirName, workspace.GraphsDirName, filepath.FromSlash(graphPath), assetFileName))
-	assetAbsolutePath := filepath.Join(backend.root.FlowPath, filepath.FromSlash(assetRelativePath))
+	assetAbsolutePath := filepath.Join(backend.resolvedRoot().FlowPath, filepath.FromSlash(assetRelativePath))
 
 	if err := os.MkdirAll(filepath.Dir(assetAbsolutePath), 0o755); err != nil {
 		return GraphFileNoteResponse{}, fmt.Errorf("create file directory: %w", err)
@@ -565,7 +586,7 @@ func (backend Backend) CreateGraphFileNoteFromPath(localURI string, graphPath st
 		Title:       title,
 		Body:        body,
 	}, func(request core.CreateDocumentRequest) (markdown.WorkspaceDocument, error) {
-		return workspace.CreateDocumentFromCoreRequest(backend.root, request)
+		return workspace.CreateDocumentFromCoreRequest(backend.resolvedRoot(), request)
 	})
 	if err != nil {
 		return GraphFileNoteResponse{}, err
@@ -619,7 +640,7 @@ func (backend Backend) writeUploadedFile(fileName string, content []byte, docume
 		return "", err
 	}
 
-	assetDir, assetRelativeDir, dirErr := workspace.ResolveAssetDir(backend.root.FlowPath, documentPath)
+	assetDir, assetRelativeDir, dirErr := workspace.ResolveAssetDir(backend.resolvedRoot().FlowPath, documentPath)
 	if dirErr != nil {
 		return "", dirErr
 	}

@@ -13,6 +13,7 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/lex/flow/internal/httpapi"
+	"github.com/lex/flow/internal/workspace"
 )
 
 // runDesktopMode is the Wails runtime entrypoint compiled in when the binary is
@@ -29,6 +30,12 @@ func runDesktopMode(runtimeContext RuntimeContext) error {
 		Root:              runtimeContext.Root,
 		LaunchScope:       runtimeContext.Root.Scope,
 		GlobalLocatorPath: runtimeContext.GlobalLocatorPath,
+		// Keep Wails-bound mutations pointed at the workspace the user selects
+		// in-place. Without this the desktop bindings keep writing to the
+		// launch-time root after a workspace switch.
+		OnRootChanged: func(root workspace.Root) {
+			app.backend.SetRoot(root)
+		},
 		// Stop quits the Wails window from within the HTTP API (e.g. when the
 		// user selects a different workspace and the app needs to restart).
 		Stop: func() error {

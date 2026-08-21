@@ -34,6 +34,12 @@ type Options struct {
 	LaunchScope       workspace.Scope
 	GlobalLocatorPath string
 	Stop              func() error
+
+	// OnRootChanged, when set, is invoked after the active workspace root is
+	// swapped in-place (workspace selection or local-workspace deregistration
+	// falling back to global). Desktop mode uses it to keep Wails-bound
+	// mutations pointed at the newly selected workspace.
+	OnRootChanged func(root workspace.Root)
 }
 
 type workspaceChoiceResponse struct {
@@ -593,6 +599,9 @@ func (handler *apiHandler) handleSelectWorkspace(writer http.ResponseWriter, req
 	}
 
 	handler.root.Store(resolved)
+	if handler.options.OnRootChanged != nil {
+		handler.options.OnRootChanged(resolved)
+	}
 	handler.handleWorkspace(writer, request)
 }
 
@@ -631,6 +640,9 @@ func (handler *apiHandler) handleDeregisterLocalWorkspace(writer http.ResponseWr
 			return
 		}
 		handler.root.Store(globalRoot)
+		if handler.options.OnRootChanged != nil {
+			handler.options.OnRootChanged(globalRoot)
+		}
 	}
 
 	handler.handleWorkspace(writer, request)

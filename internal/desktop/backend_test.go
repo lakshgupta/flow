@@ -205,6 +205,102 @@ func TestBackendReadQueriesExposeWorkspaceState(t *testing.T) {
 	}
 }
 
+// TestBackendSetRootRedirectsWritesToNewWorkspace verifies that after an
+// in-place workspace switch (SetRoot), Wails-bound mutations land in the newly
+// selected workspace instead of the launch-time one — the desktop-app write
+// path for the GUI workspace selector.
+func TestBackendSetRootRedirectsWritesToNewWorkspace(t *testing.T) {
+	t.Parallel()
+
+	firstRoot := createDesktopBackendTestWorkspace(t)
+	secondRoot := createDesktopBackendTestWorkspace(t)
+	backend := NewBackend(firstRoot)
+
+	// A write before the switch lands in the first workspace.
+	before, err := backend.CreateDocument(core.CreateDocumentRequest{
+		Type:        markdown.NoteType,
+		FeatureSlug: "release",
+		FileName:    "before-switch",
+		ID:          "note-before",
+		Graph:       "release",
+		Title:       "Before switch",
+		Body:        "Before switch body\n",
+	})
+	if err != nil {
+		t.Fatalf("CreateDocument(before switch) error = %v", err)
+	}
+	if before.Path != "data/content/release/before-switch.md" {
+		t.Fatalf("CreateDocument() path = %q, want data/content/release/before-switch.md", before.Path)
+	}
+	if _, err := os.Stat(filepath.Join(firstRoot.FlowPath, "data", "content", "release", "before-switch.md")); err != nil {
+		t.Fatalf("Stat(before-switch in first workspace) error = %v", err)
+	}
+
+	// Switch workspaces; subsequent writes must follow the new root.
+	backend.SetRoot(secondRoot)
+
+	after, err := backend.CreateDocument(core.CreateDocumentRequest{
+		Type:        markdown.NoteType,
+		FeatureSlug: "release",
+		FileName:    "after-switch",
+		ID:          "note-after",
+		Graph:       "release",
+		Title:       "After switch",
+		Body:        "After switch body\n",
+	})
+	if err != nil {
+		t.Fatalf("CreateDocument(after switch) error = %v", err)
+	}
+	if after.Path != "data/content/release/after-switch.md" {
+		t.Fatalf("CreateDocument() path = %q, want data/content/release/after-switch.md", after.Path)
+	}
+	if _, err := os.Stat(filepath.Join(secondRoot.FlowPath, "data", "content", "release", "after-switch.md")); err != nil {
+		t.Fatalf("Stat(after-switch in second workspace) error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(firstRoot.FlowPath, "data", "content", "release", "after-switch.md")); !os.IsNotExist(err) {
+		t.Fatalf("Stat(after-switch in first workspace) error = %v, want absent", err)
+	}
+
+	// The home write path must follow the switched root too.
+	homeBody := "Switched home body\n"
+	home, err := backend.UpdateHome(httpapi.HomeUpdateRequest{Body: &homeBody})
+	if err != nil {
+		t.Fatalf("UpdateHome(after switch) error = %v", err)
+	}
+	if home.ID != "home" {
+		t.Fatalf("UpdateHome() id = %q, want home", home.ID)
+	}
+	raw, err := os.ReadFile(secondRoot.HomePath)
+	if err != nil {
+		t.Fatalf("ReadFile(second home) error = %v", err)
+	}
+	if !strings.Contains(string(raw), "Switched home body") {
+		t.Fatalf("second home.md = %q, want switched body", string(raw))
+	}
+
+	// Switching back to the first workspace must redirect the home write there
+	// again, proving the root follows in both directions.
+	backend.SetRoot(firstRoot)
+	backBody := "Back home body\n"
+	if _, err := backend.UpdateHome(httpapi.HomeUpdateRequest{Body: &backBody}); err != nil {
+		t.Fatalf("UpdateHome(switch back) error = %v", err)
+	}
+	firstRaw, err := os.ReadFile(firstRoot.HomePath)
+	if err != nil {
+		t.Fatalf("ReadFile(first home) error = %v", err)
+	}
+	if !strings.Contains(string(firstRaw), "Back home body") {
+		t.Fatalf("first home.md = %q, want switched-back body", string(firstRaw))
+	}
+	secondRaw, err := os.ReadFile(secondRoot.HomePath)
+	if err != nil {
+		t.Fatalf("ReadFile(second home) error = %v", err)
+	}
+	if strings.Contains(string(secondRaw), "Back home body") {
+		t.Fatalf("second home.md = %q, must not contain switched-back body", string(secondRaw))
+	}
+}
+
 func createDesktopBackendTestWorkspace(t *testing.T) workspace.Root {
 	t.Helper()
 
