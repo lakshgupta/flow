@@ -2073,6 +2073,11 @@ function FlowApp() {
     const fire = (): void => {
       documentAutoSaveTimerRef.current = undefined;
       if (selectedDocumentRef.current !== null) {
+        // The editor emits markdown changes on a trailing timer. Read the
+        // editor synchronously before taking the snapshot so rich-text edits
+        // (especially diagram/code-block changes) cannot be replaced by the
+        // previous form ref value.
+        syncDocumentBodyFromActiveEditor();
         lastDocumentSaveAtRef.current = Date.now();
         void handleSaveDocument(selectedDocumentRef.current, formStateRef.current);
       }
@@ -2098,6 +2103,10 @@ function FlowApp() {
 
     const fire = (): void => {
       homeAutoSaveTimerRef.current = undefined;
+      // Rich-text changes are emitted by the editor on a trailing callback.
+      // Read the live editor before snapshotting so Home autosave cannot send
+      // the previous body to the desktop binding.
+      syncHomeBodyFromEditor();
       lastHomeSaveAtRef.current = Date.now();
       void handleSaveHomeContent(homeFormStateRef.current);
     };
@@ -2209,11 +2218,12 @@ function FlowApp() {
 
   function updateHomeFormField(field: keyof HomeFormState, value: string): void {
     const normalizedValue = field === "body" ? normalizeHomeBodyForSave(value) : value;
-    setHomeFormState((current) => {
-      const next = { ...current, [field]: normalizedValue };
-      homeFormStateRef.current = next;
-      return next;
-    });
+    const next = { ...homeFormStateRef.current, [field]: normalizedValue };
+    // Keep the ref in sync before scheduling. Home editor changes can arrive
+    // immediately before the debounce callback runs, and a functional state
+    // updater is not applied until after the event handler returns.
+    homeFormStateRef.current = next;
+    setHomeFormState(next);
     scheduleHomeAutoSave();
   }
 

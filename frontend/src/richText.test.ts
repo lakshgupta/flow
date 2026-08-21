@@ -129,6 +129,28 @@ describe('richText conversion', () => {
     expect(markdown).toContain('        - Grandchild')
   })
 
+  it('serializes an empty list item without literal HTML markup', () => {
+    const markdown = editorHTMLToMarkdown('<ul><li><p>one</p></li><li><p><br></p></li></ul>')
+
+    expect(markdown).not.toContain('<p><br></p>')
+    expect(markdown).toContain('- one')
+  })
+
+  it('does not emit indented blank lines after list items', () => {
+    const markdown = editorHTMLToMarkdown('<ul><li><p>one</p></li><li><p>two</p></li></ul>')
+
+    expect(markdown).toBe('- one\n- two\n')
+  })
+
+  it('keeps empty list items empty across a round-trip', () => {
+    const markdown = editorHTMLToMarkdown('<ul><li><p>one</p></li><li><p><br></p></li><li><p>three</p></li></ul>')
+    const html = markdownToHTML(markdown)
+
+    expect(markdown).not.toContain('<p><br></p>')
+    expect(html).toContain('one')
+    expect(html).toContain('three')
+  })
+
   it('does not normalize list-like lines inside fenced code blocks', () => {
     const sourceHTML = '<pre><code class="language-markdown">-   keep\n  -   spacing\n</code></pre>'
 

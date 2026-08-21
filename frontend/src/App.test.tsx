@@ -1821,6 +1821,87 @@ describe("App graph canvas flows", () => {
     });
   });
 
+  it("autosaves rich-text body content through the Wails UpdateDocument binding", async () => {
+    const documentResponse = {
+      id: "note-1",
+      type: "note",
+      featureSlug: "execution",
+      graph: "execution",
+      title: "Overview",
+      description: "Execution overview",
+      path: "data/content/execution/overview.md",
+      tags: [],
+      body: "Overview body\n",
+      links: [],
+      relatedNoteIds: [],
+    };
+
+    const updatedDocumentResponse = {
+      ...documentResponse,
+      body: "Updated rich-text body\n",
+    };
+
+    const wailsUpdate = vi.fn(async (_request: { documentID: string; patch: Record<string, unknown> }) => updatedDocumentResponse);
+    vi.stubGlobal("go", { desktop: { App: { UpdateDocument: wailsUpdate } } });
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      if (url === "/api/documents/note-1") {
+        return documentResponse;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Execution");
+    await expandSidebarGraph("Execution");
+
+    const fileButton = (await screen.findByText("overview.md")).closest('[data-sidebar="menu-sub-button"]');
+    if (fileButton === null) {
+      throw new Error("missing overview file button");
+    }
+
+    await user.click(fileButton);
+    const bodyEditor = await screen.findByLabelText("Document body editor");
+    if (!(bodyEditor instanceof HTMLElement)) {
+      throw new Error("missing document body editor");
+    }
+    const editorContent = bodyEditor;
+    if (editorContent === null) {
+      throw new Error("missing editable rich-text surface");
+    }
+
+    vi.useFakeTimers();
+    vi.setSystemTime(1_717_171_717_000);
+    await act(async () => {
+      editorContent.textContent = "Updated rich-text body";
+      fireEvent.input(editorContent);
+      await vi.advanceTimersByTimeAsync(800);
+    });
+
+    expect(wailsUpdate).toHaveBeenCalled();
+    expect(wailsUpdate.mock.calls[0][0]).toMatchObject({
+      documentID: "note-1",
+      patch: expect.objectContaining({ body: "Updated rich-text body\n" }),
+    });
+
+    const httpPut = fetchMock.mock.calls.some(([requestURL, requestInit]) => {
+      const urlString = typeof requestURL === "string" ? requestURL : requestURL instanceof URL ? requestURL.toString() : requestURL.url;
+      return urlString === "/api/documents/note-1" && (requestInit?.method ?? "GET") === "PUT";
+    });
+    expect(httpPut).toBe(false);
+  });
+
   it("autosaves through the Wails UpdateDocument binding when running inside the desktop app", async () => {
     const documentResponse = {
       id: "note-1",
@@ -1967,6 +2048,50 @@ describe("App graph canvas flows", () => {
     expect(wailsUpdate).not.toHaveBeenCalled();
   });
 
+  it("autosaves the latest rich-text Home body through the Wails binding", async () => {
+    const updatedHomeResponse = {
+      id: "home",
+      type: "home",
+      title: "Home",
+      description: "",
+      path: "data/home.md",
+      body: "Updated Home body\n",
+    };
+    const wailsUpdateHome = vi.fn(async (_request: { title: string; description: string; body: string }) => updatedHomeResponse);
+    vi.stubGlobal("go", { desktop: { App: { UpdateHome: wailsUpdateHome } } });
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return graphTreeResponse;
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    await screen.findByText("Execution");
+    const homeEditor = await screen.findByLabelText("Home body editor");
+    await user.click(homeEditor);
+    await user.type(homeEditor, "Updated Home body");
+
+    await waitFor(() => {
+      expect(wailsUpdateHome).toHaveBeenCalled();
+    });
+    expect(wailsUpdateHome.mock.calls[0][0]).toMatchObject({
+      body: expect.stringContaining("Updated Home body"),
+    });
+    expect(fetchMock.mock.calls.some(([requestURL, requestInit]) => {
+      const urlString = typeof requestURL === "string" ? requestURL : requestURL instanceof URL ? requestURL.toString() : requestURL.url;
+      return urlString === "/api/home" && (requestInit?.method ?? "GET") === "PUT";
+    })).toBe(false);
+  });
+
   it("saves home content through the Wails UpdateHome binding when running inside the desktop app", async () => {
     const updatedHomeResponse = {
       id: "home",
@@ -1994,6 +2119,7 @@ describe("App graph canvas flows", () => {
     const user = userEvent.setup();
     render(<ThemeProvider><App /></ThemeProvider>);
 
+    await screen.findByText("Execution");
     const homeEditor = await screen.findByLabelText("Home body editor");
     await user.click(homeEditor);
     await user.type(homeEditor, "Hello from home");

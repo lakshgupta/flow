@@ -55,7 +55,13 @@ turndown.addRule("emptyParagraph", {
   filter(node: any) {
     return node instanceof Element && isSemanticallyEmptyParagraph(node);
   },
-  replacement() {
+  replacement(_content: any, node: any) {
+    if (node instanceof Element && node.closest("li") !== null) {
+      // An empty paragraph inside a list item must serialize as nothing.
+      // Emitting the literal <p><br></p> markup here corrupts the markdown
+      // with raw HTML: the blank list item becomes visible text on reload.
+      return "";
+    }
     return `\n\n${EMPTY_PARAGRAPH_MARKUP}\n\n`;
   },
 });
@@ -106,6 +112,19 @@ turndown.addRule("tableCellBlock", {
     const tag = node.tagName;
     if (!["P", "H1", "H2", "H3", "H4", "H5", "H6"].includes(tag)) return false;
     return node.closest("td, th") !== null;
+  },
+  replacement(content: any) {
+    return content.trim();
+  },
+});
+// Strip paragraph wrappers inside list items.  The default paragraph handler
+// appends "\n\n", which the list-item rule then re-indents into a stray
+// whitespace-only line after every item (e.g. "- one\n    \n- two").  On
+// reload those lines add visible vertical gaps to lists.
+turndown.addRule("listItemParagraph", {
+  filter(node: any) {
+    if (!(node instanceof Element) || node.tagName !== "P") return false;
+    return node.closest("li") !== null;
   },
   replacement(content: any) {
     return content.trim();
