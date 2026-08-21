@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Launch the Flow desktop app against THIS repo's workspace (local scope).
+#
+# The desktop app resolves its workspace from the current directory: it uses
+# the local workspace when cwd contains a .flow directory, otherwise it falls
+# back to the configured global workspace (~/.config/flow/global-workspace.yaml).
+# Running `flow -g desktop` forces the global workspace, so edits land in the
+# global workspace's markdown files instead of this repo's .flow/data.
+#
+# This script pins the working directory to the repo so the app always opens
+# this repo's workspace regardless of where it is launched from.
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${REPO_DIR}"
+
+if [[ "${1:-}" == "stop" ]]; then
+  exec flow desktop stop
+fi
+
+exec flow desktop
