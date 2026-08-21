@@ -3,7 +3,7 @@ id: development/20260821-002-FIX-desktop-workspace-switch-writes/test-switched-r
 type: task
 graph: development/20260821-002-FIX-desktop-workspace-switch-writes
 title: Test switched-root write path
-description: Backend test proves document + home writes follow SetRoot in both directions; httpapi test proves OnRootChanged fires on select and global fallback
+description: 'Backend test proves document + home writes follow SetRoot in both directions; httpapi test proves OnRootChanged fires on select and global fallback (commit: 98c8aa1)'
 tags:
     - test
 status: Done
