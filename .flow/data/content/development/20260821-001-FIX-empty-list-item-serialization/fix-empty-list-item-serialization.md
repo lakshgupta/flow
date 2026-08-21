@@ -3,7 +3,7 @@ id: development/20260821-001-FIX-empty-list-item-serialization/fix-empty-list-it
 type: task
 graph: development/20260821-001-FIX-empty-list-item-serialization
 title: Fix empty list item serialization
-description: Empty list items serialize literal <p><br></p> into markdown; fix editorHTMLToMarkdown
+description: 'Empty list items serialize as nothing, paragraph wrappers stripped; regression tests added (commit: db6878c)'
 tags:
     - fix
 status: Done
