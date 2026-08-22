@@ -10,7 +10,7 @@ function workspaceResponse() {
     homePath: 'data/home.md',
     guiPort: 4812,
     appearance: 'system',
-    panelWidths: { leftRatio: 0.31, rightRatio: 0.22, documentTOCRatio: 0.18 },
+    panelWidths: { leftRatio: 0.31, rightRatio: 0.22 },
   }
 }
 

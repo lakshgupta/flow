@@ -120,7 +120,7 @@ export const workspaceResponse = {
   homePath: "data/home.md",
   guiPort: 4812,
   appearance: "system" as const,
-  panelWidths: { leftRatio: 0.31, rightRatio: 0.22, documentTOCRatio: 0.18 },
+  panelWidths: { leftRatio: 0.31, rightRatio: 0.22 },
   appVersion: "0.4.0-dev",
   licenseText: "Apache License 2.0",
   copyrightText: "Copyright (c) Flow contributors",

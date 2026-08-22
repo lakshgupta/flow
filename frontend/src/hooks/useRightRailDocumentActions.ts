@@ -2,7 +2,6 @@ import {
   useCallback,
   useMemo,
   type MutableRefObject,
-  type MouseEvent as ReactMouseEvent,
 } from "react";
 
 import type { DocumentEditorPaneProps } from "../components/DocumentEditorPane";
@@ -31,8 +30,6 @@ type UseRightRailDocumentActionsArgs = {
   setEditorScrollTarget: (target: string | null) => void;
   handleGraphCanvasFilesDrop: (files: FileList | File[]) => Promise<void> | void;
   handleInspectDocument: (documentId: string, graphPath: string) => void;
-  handleRightRailDocumentTOCResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
-  handleTOCNavigate: (headingSlug: string) => void;
   selectedDocumentRef: MutableRefObject<DocumentResponse | null>;
 };
 
@@ -47,8 +44,6 @@ export function useRightRailDocumentActions({
   setEditorScrollTarget,
   handleGraphCanvasFilesDrop,
   handleInspectDocument,
-  handleRightRailDocumentTOCResizeMouseDown,
-  handleTOCNavigate,
   selectedDocumentRef,
 }: UseRightRailDocumentActionsArgs): DocumentEditorPaneProps["actions"] {
   const actionRefs = useLatestRef({
@@ -62,8 +57,6 @@ export function useRightRailDocumentActions({
     setEditorScrollTarget,
     handleGraphCanvasFilesDrop,
     handleInspectDocument,
-    handleRightRailDocumentTOCResizeMouseDown,
-    handleTOCNavigate,
   });
 
   const handleRightRailDocumentToggleMaximize = useCallback(() => {
@@ -110,14 +103,6 @@ export function useRightRailDocumentActions({
     actionRefs.current.handleInspectDocument(documentId, graphPath);
   }, []);
 
-  const handleRightRailDocumentResizeTOC = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
-    actionRefs.current.handleRightRailDocumentTOCResizeMouseDown(event);
-  }, []);
-
-  const handleRightRailDocumentTOCNavigate = useCallback((headingSlug: string) => {
-    actionRefs.current.handleTOCNavigate(headingSlug);
-  }, []);
-
   return useMemo(() => ({
     toggleMaximize: handleRightRailDocumentToggleMaximize,
     openDeleteDialog: handleRightRailDocumentOpenDeleteDialog,
@@ -129,8 +114,6 @@ export function useRightRailDocumentActions({
     clearEditorScrollTarget: handleRightRailDocumentClearEditorScrollTarget,
     handleFilesDrop: handleRightRailDocumentFilesDrop,
     inspectDocument: handleRightRailDocumentInspect,
-    resizeTOC: handleRightRailDocumentResizeTOC,
-    navigateTOC: handleRightRailDocumentTOCNavigate,
   }), [
     handleRightRailDocumentAssetOpen,
     handleRightRailDocumentClearEditorScrollTarget,
@@ -141,8 +124,6 @@ export function useRightRailDocumentActions({
     handleRightRailDocumentInlineReferenceOpen,
     handleRightRailDocumentInspect,
     handleRightRailDocumentOpenDeleteDialog,
-    handleRightRailDocumentResizeTOC,
-    handleRightRailDocumentTOCNavigate,
     handleRightRailDocumentToggleMaximize,
   ]);
 }

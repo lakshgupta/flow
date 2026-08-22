@@ -17,7 +17,6 @@ func TestWriteAndReadWorkspaceGUISettings(t *testing.T) {
 		Appearance:      "light",
 		PanelLeftRatio:  0.33,
 		PanelRightRatio: 0.21,
-		PanelTOCRatio:   0.19,
 	}); err != nil {
 		t.Fatalf("WriteWorkspaceGUISettings() error = %v", err)
 	}
@@ -30,8 +29,61 @@ func TestWriteAndReadWorkspaceGUISettings(t *testing.T) {
 		t.Fatal("ReadWorkspaceGUISettings() ok = false, want true")
 	}
 
-	if settings.Appearance != "light" || settings.PanelLeftRatio != 0.33 || settings.PanelRightRatio != 0.21 || settings.PanelTOCRatio != 0.19 {
-		t.Fatalf("settings = %#v, want light + 0.33/0.21/0.19", settings)
+	if settings.Appearance != "light" || settings.PanelLeftRatio != 0.33 || settings.PanelRightRatio != 0.21 {
+		t.Fatalf("settings = %#v, want light + 0.33/0.21", settings)
+	}
+}
+
+func TestWriteWorkspaceGUISettingsSupportsLegacyTOCColumn(t *testing.T) {
+	t.Parallel()
+
+	indexPath := filepath.Join(t.TempDir(), ".flow", "config", "flow.index")
+	if err := Rebuild(indexPath); err != nil {
+		t.Fatalf("Rebuild() error = %v", err)
+	}
+
+	database, err := openIndexDB(indexPath)
+	if err != nil {
+		t.Fatalf("openIndexDB() error = %v", err)
+	}
+	if _, err := database.Exec(`DROP TABLE workspace_gui_settings`); err != nil {
+		database.Close()
+		t.Fatalf("drop workspace_gui_settings error = %v", err)
+	}
+	if _, err := database.Exec(`
+		CREATE TABLE workspace_gui_settings (
+			singleton_key INTEGER NOT NULL PRIMARY KEY CHECK(singleton_key = 1),
+			appearance TEXT NOT NULL,
+			panel_left_ratio REAL NOT NULL,
+			panel_right_ratio REAL NOT NULL,
+			panel_document_toc_ratio REAL NOT NULL,
+			updated_at TEXT NOT NULL
+		)`); err != nil {
+		database.Close()
+		t.Fatalf("create legacy workspace_gui_settings error = %v", err)
+	}
+	if _, err := database.Exec(`INSERT INTO workspace_gui_settings VALUES (1, 'system', 0.25, 0.24, 0.18, '2026-01-01T00:00:00Z')`); err != nil {
+		database.Close()
+		t.Fatalf("seed legacy workspace_gui_settings error = %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close legacy database error = %v", err)
+	}
+
+	if err := WriteWorkspaceGUISettings(indexPath, WorkspaceGUISettings{
+		Appearance:      "dark",
+		PanelLeftRatio:  0.29,
+		PanelRightRatio: 0.22,
+	}); err != nil {
+		t.Fatalf("WriteWorkspaceGUISettings() error = %v", err)
+	}
+
+	settings, ok, err := ReadWorkspaceGUISettings(indexPath)
+	if err != nil {
+		t.Fatalf("ReadWorkspaceGUISettings() error = %v", err)
+	}
+	if !ok || settings.Appearance != "dark" || settings.PanelLeftRatio != 0.29 || settings.PanelRightRatio != 0.22 {
+		t.Fatalf("settings = %#v, ok = %v, want dark + 0.29/0.22", settings, ok)
 	}
 }
 
@@ -88,7 +140,6 @@ func TestRebuildPreservesWorkspaceGUIState(t *testing.T) {
 		Appearance:      "dark",
 		PanelLeftRatio:  0.29,
 		PanelRightRatio: 0.22,
-		PanelTOCRatio:   0.17,
 	}); err != nil {
 		t.Fatalf("WriteWorkspaceGUISettings() error = %v", err)
 	}
@@ -111,8 +162,8 @@ func TestRebuildPreservesWorkspaceGUIState(t *testing.T) {
 	if !ok {
 		t.Fatal("ReadWorkspaceGUISettings() ok = false after rebuild, want true")
 	}
-	if settings.Appearance != "dark" || settings.PanelLeftRatio != 0.29 || settings.PanelRightRatio != 0.22 || settings.PanelTOCRatio != 0.17 {
-		t.Fatalf("settings after rebuild = %#v, want dark + 0.29/0.22/0.17", settings)
+	if settings.Appearance != "dark" || settings.PanelLeftRatio != 0.29 || settings.PanelRightRatio != 0.22 {
+		t.Fatalf("settings after rebuild = %#v, want dark + 0.29/0.22", settings)
 	}
 
 	colors, err := ReadWorkspaceGraphDirectoryColors(indexPath)

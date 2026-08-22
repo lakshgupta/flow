@@ -1,7 +1,6 @@
-import { memo, type CSSProperties, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
+import { memo, type CSSProperties, type RefObject } from "react";
 import { Maximize2, Minimize2, Trash2, X } from "lucide-react";
 
-import { TableOfContents, type TOCItem } from "./TableOfContents";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { RichTextEditor, type RichTextEditorHandle } from "./editor/RichTextEditor";
@@ -27,8 +26,6 @@ export type DocumentEditorPaneActions = {
 	clearEditorScrollTarget: () => void;
 	handleFilesDrop: (files: FileList | File[]) => void;
 	inspectDocument: (documentId: string, graphPath: string) => void;
-	resizeTOC: (event: ReactMouseEvent<HTMLDivElement>) => void;
-	navigateTOC: (headingSlug: string) => void;
 };
 
 export type DocumentEditorPaneProps = {
@@ -42,11 +39,8 @@ export type DocumentEditorPaneProps = {
 	isMaximized: boolean;
 	tintColor?: string;
 	tintStyle?: CSSProperties;
-	documentTOCRatio: number;
-	tocItems: TOCItem[];
 	outgoingLinks: DocumentLinkDetail[];
 	incomingLinks: DocumentLinkDetail[];
-	rightRailDocumentLayoutRef: RefObject<HTMLDivElement | null>;
 	rightRailDocumentEditorRef: RefObject<RichTextEditorHandle | null>;
 	editorScrollTarget: string | null;
 	actions: DocumentEditorPaneActions;
@@ -63,11 +57,8 @@ function DocumentEditorPaneComponent({
 	isMaximized,
 	tintColor,
 	tintStyle,
-	documentTOCRatio,
-	tocItems,
 	outgoingLinks,
 	incomingLinks,
-	rightRailDocumentLayoutRef,
 	rightRailDocumentEditorRef,
 	editorScrollTarget,
 	actions,
@@ -140,10 +131,8 @@ function DocumentEditorPaneComponent({
 				</div>
 			) : (
 				<div
-					ref={rightRailDocumentLayoutRef}
 					className="sidebar-document-layout"
 					aria-label="Graph node document"
-					style={{ "--document-toc-ratio": documentTOCRatio.toString() } as CSSProperties}
 					onDragEnter={(event) => { event.preventDefault(); }}
 					onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
 					onDrop={(event) => {
@@ -259,20 +248,6 @@ function DocumentEditorPaneComponent({
 						)}
 					</div>
 
-					<div
-						className="sidebar-document-toc-resizer"
-						onMouseDown={actions.resizeTOC}
-						role="separator"
-						aria-label="Resize table of contents"
-						aria-orientation="vertical"
-					/>
-
-					<aside className="sidebar-document-toc" aria-label="Document table of contents">
-						<div className="sidebar-document-toc-header">
-							<h4>Table of Contents</h4>
-						</div>
-						<TableOfContents items={tocItems} onNavigate={actions.navigateTOC} />
-					</aside>
 				</div>
 			)}
 		</div>

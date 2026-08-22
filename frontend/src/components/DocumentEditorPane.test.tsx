@@ -49,8 +49,6 @@ function makeActions(): DocumentEditorPaneActions {
     clearEditorScrollTarget: vi.fn(),
     handleFilesDrop: vi.fn(),
     inspectDocument: vi.fn(),
-    resizeTOC: vi.fn(),
-    navigateTOC: vi.fn(),
   };
 }
 
@@ -67,11 +65,8 @@ describe("DocumentEditorPane task status select", () => {
         savingDocument={false}
         deletingDocument={false}
         isMaximized={false}
-        documentTOCRatio={0.75}
-        tocItems={[]}
         outgoingLinks={[]}
         incomingLinks={[]}
-        rightRailDocumentLayoutRef={{ current: null }}
         rightRailDocumentEditorRef={{ current: null }}
         editorScrollTarget={null}
         actions={actions}
@@ -95,11 +90,8 @@ describe("DocumentEditorPane task status select", () => {
         savingDocument={false}
         deletingDocument={false}
         isMaximized={false}
-        documentTOCRatio={0.75}
-        tocItems={[]}
         outgoingLinks={[]}
         incomingLinks={[]}
-        rightRailDocumentLayoutRef={{ current: null }}
         rightRailDocumentEditorRef={{ current: null }}
         editorScrollTarget={null}
         actions={actions}
@@ -121,11 +113,8 @@ describe("DocumentEditorPane task status select", () => {
         savingDocument={false}
         deletingDocument={false}
         isMaximized={false}
-        documentTOCRatio={0.75}
-        tocItems={[]}
         outgoingLinks={[]}
         incomingLinks={[]}
-        rightRailDocumentLayoutRef={{ current: null }}
         rightRailDocumentEditorRef={{ current: null }}
         editorScrollTarget={null}
         actions={actions}

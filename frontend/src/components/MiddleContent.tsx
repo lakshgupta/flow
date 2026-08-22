@@ -8,8 +8,6 @@ import type { GraphCanvasSurfaceActions } from "./GraphCanvasSurface";
 import { GraphCanvasSurface } from "./GraphCanvasSurface";
 import { GraphEmptyState } from "./GraphEmptyState";
 import { HomeSurface } from "./HomeSurface";
-import type { ThreadPanelStackProps } from "./ThreadPanels";
-import type { TOCItem } from "./TableOfContents";
 
 type MiddleContentProps = {
   activeSurface: SurfaceState;
@@ -17,15 +15,11 @@ type MiddleContentProps = {
   renderCenterDocumentShell: (isMaximizedRightRail: boolean) => React.ReactNode;
   // Home surface props
   homeMutationError: string;
-  homeTOCVisible: boolean;
   showFreshStartGuide: boolean;
-  homeDocumentLayoutRef: RefObject<HTMLDivElement | null>;
   homeDocumentEditorRef: RefObject<{ getMarkdown: () => string } | null>;
-  documentTOCRatio: number;
   homeInlineReferences: GraphTreeResponse["home"]["inlineReferences"];
   editorScrollTarget: string | null;
   homeFormState: HomeFormState;
-  tocItems: TOCItem[];
   homeSurfaceActions: ReturnType<typeof import("../hooks/useHomeSurfaceActions").useHomeSurfaceActions>;
   // Graph canvas props
   graphCanvasShellRef: RefObject<HTMLDivElement | null>;
@@ -64,15 +58,11 @@ function MiddleContentComponent({
   isThreadStackOpen,
   renderCenterDocumentShell,
   homeMutationError,
-  homeTOCVisible,
   showFreshStartGuide,
-  homeDocumentLayoutRef,
   homeDocumentEditorRef,
-  documentTOCRatio,
   homeInlineReferences,
   editorScrollTarget,
   homeFormState,
-  tocItems,
   homeSurfaceActions,
   graphCanvasShellRef,
   selectedGraphPath,
@@ -109,15 +99,11 @@ function MiddleContentComponent({
       <div style={isHome ? { flex: "1 1 auto", display: "flex", minHeight: 0 } : { display: "none" }}>
         <HomeSurface
           homeMutationError={homeMutationError}
-          homeTOCVisible={homeTOCVisible}
           showFreshStartGuide={showFreshStartGuide}
-          homeDocumentLayoutRef={homeDocumentLayoutRef}
           homeDocumentEditorRef={homeDocumentEditorRef}
-          documentTOCRatio={documentTOCRatio}
           homeInlineReferences={homeInlineReferences}
           editorScrollTarget={editorScrollTarget}
           homeFormState={homeFormState}
-          tocItems={tocItems}
           actions={homeSurfaceActions}
         />
       </div>

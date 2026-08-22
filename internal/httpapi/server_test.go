@@ -138,8 +138,8 @@ func TestNewMuxServesHomeAndGraphTreeAPIs(t *testing.T) {
 	}
 
 	workspaceResponse := performJSONRequest[workspaceResponse](t, handler, http.MethodGet, "/api/workspace")
-	if workspaceResponse.PanelWidths.LeftRatio != 0.31 || workspaceResponse.PanelWidths.RightRatio != 0.22 || workspaceResponse.PanelWidths.DocumentTOCRatio != config.DefaultDocumentTOCRatio {
-		t.Fatalf("workspaceResponse.PanelWidths = %#v, want 0.31/0.22/default toc", workspaceResponse.PanelWidths)
+	if workspaceResponse.PanelWidths.LeftRatio != 0.31 || workspaceResponse.PanelWidths.RightRatio != 0.22 {
+		t.Fatalf("workspaceResponse.PanelWidths = %#v, want 0.31/0.22", workspaceResponse.PanelWidths)
 	}
 
 	home := performJSONRequest[HomeResponse](t, handler, http.MethodGet, "/api/home")
@@ -358,13 +358,12 @@ func TestNewMuxUpdatesWorkspacePanelWidths(t *testing.T) {
 	updated := performJSONRequestWithBody[workspaceResponse](t, handler, http.MethodPut, "/api/workspace", map[string]any{
 		"appearance": "dark",
 		"panelWidths": map[string]any{
-			"leftRatio":        0.27,
-			"rightRatio":       0.21,
-			"documentTOCRatio": 0.24,
+			"leftRatio":  0.27,
+			"rightRatio": 0.21,
 		},
 	})
-	if updated.PanelWidths.LeftRatio != 0.27 || updated.PanelWidths.RightRatio != 0.21 || updated.PanelWidths.DocumentTOCRatio != 0.24 {
-		t.Fatalf("updated.PanelWidths = %#v, want 0.27/0.21/0.24", updated.PanelWidths)
+	if updated.PanelWidths.LeftRatio != 0.27 || updated.PanelWidths.RightRatio != 0.21 {
+		t.Fatalf("updated.PanelWidths = %#v, want 0.27/0.21", updated.PanelWidths)
 	}
 	if updated.Appearance != "dark" {
 		t.Fatalf("updated.Appearance = %q, want dark", updated.Appearance)
@@ -374,8 +373,8 @@ func TestNewMuxUpdatesWorkspacePanelWidths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("config.Read() error = %v", err)
 	}
-	if storedConfig.GUI.PanelWidths.LeftRatio != 0.27 || storedConfig.GUI.PanelWidths.RightRatio != 0.21 || storedConfig.GUI.PanelWidths.DocumentTOCRatio != 0.24 {
-		t.Fatalf("storedConfig.GUI.PanelWidths = %#v, want 0.27/0.21/0.24", storedConfig.GUI.PanelWidths)
+	if storedConfig.GUI.PanelWidths.LeftRatio != 0.27 || storedConfig.GUI.PanelWidths.RightRatio != 0.21 {
+		t.Fatalf("storedConfig.GUI.PanelWidths = %#v, want 0.27/0.21", storedConfig.GUI.PanelWidths)
 	}
 	if storedConfig.GUI.Appearance != "dark" {
 		t.Fatalf("storedConfig.GUI.Appearance = %q, want dark", storedConfig.GUI.Appearance)
@@ -388,8 +387,8 @@ func TestNewMuxUpdatesWorkspacePanelWidths(t *testing.T) {
 	if !ok {
 		t.Fatal("index.ReadWorkspaceGUISettingsWorkspace() ok = false, want true")
 	}
-	if indexedSettings.Appearance != "dark" || indexedSettings.PanelLeftRatio != 0.27 || indexedSettings.PanelRightRatio != 0.21 || indexedSettings.PanelTOCRatio != 0.24 {
-		t.Fatalf("indexedSettings = %#v, want dark + 0.27/0.21/0.24", indexedSettings)
+	if indexedSettings.Appearance != "dark" || indexedSettings.PanelLeftRatio != 0.27 || indexedSettings.PanelRightRatio != 0.21 {
+		t.Fatalf("indexedSettings = %#v, want dark + 0.27/0.21", indexedSettings)
 	}
 }
 
@@ -1723,7 +1722,7 @@ func TestNewMuxUsesFrontendJSONFieldNamesForGraphViews(t *testing.T) {
 	workspacePayload := performRawRequest(t, handler, http.MethodGet, "/api/workspace")
 	assertJSONHasPath(t, workspacePayload, "panelWidths.leftRatio")
 	assertJSONHasPath(t, workspacePayload, "panelWidths.rightRatio")
-	assertJSONHasPath(t, workspacePayload, "panelWidths.documentTOCRatio")
+	assertJSONMissingPath(t, workspacePayload, "panelWidths.documentTOCRatio")
 
 	searchPayload := performRawRequestArray(t, handler, http.MethodGet, "/api/search?q=parser")
 	assertJSONArrayHasPath(t, searchPayload, 0, "id")

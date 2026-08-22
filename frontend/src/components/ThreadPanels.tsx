@@ -1,11 +1,10 @@
 import { memo, useMemo, type CSSProperties, type MouseEvent as ReactMouseEvent, type RefObject, useCallback } from "react";
-import { ChevronLeft, ChevronRight, FileText, Info, Maximize2, Minimize2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Info, Maximize2, Minimize2, X } from "lucide-react";
 
 import type { DocumentPropertiesPanelProps } from "./DocumentPropertiesPanel";
 import { DocumentPropertiesPanel } from "./DocumentPropertiesPanel";
 import { RenderedMarkdown } from "./RenderedMarkdown";
 import { RichTextEditor, type RichTextEditorHandle } from "./editor/RichTextEditor";
-import { TableOfContents, type TOCItem } from "./TableOfContents";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Skeleton } from "./ui/skeleton";
@@ -16,7 +15,7 @@ import { TASK_STATUS_OPTIONS } from "../lib/graphCanvasUtils";
 import { parseFlowAssetHref, parseFlowDateHref, parseFlowReferenceHref } from "../richText";
 import type { DocumentFormState, DocumentResponse, HomeFormState, HomeResponse } from "../types";
 
-type CenterDocumentSidePanelMode = "hidden" | "toc" | "properties";
+type CenterDocumentSidePanelMode = "hidden" | "properties";
 
 type ThreadPanelData = {
   documentId: string;
@@ -46,9 +45,7 @@ type ThreadPanelActions = {
   openThreadAsset: (sourceDocumentId: string, graphPath: string, assetHref: string, assetName: string, kind: "pdf" | "text") => void;
   clearEditorScrollTarget: () => void;
   updateFormField: (field: keyof DocumentFormState, value: string) => void;
-  toggleCenterDocumentSidePanel: (mode: Exclude<CenterDocumentSidePanelMode, "hidden">) => void;
-  handleCenterDocumentTOCResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
-  navigateTOC: (headingSlug: string) => void;
+  toggleCenterDocumentSidePanel: (mode: "properties") => void;
   addOutgoingLink: (nodeId: string) => void;
   removeOutgoingLink: (nodeId: string) => void;
   updateLinkDetail: (nodeId: string, field: "linkType" | "context", value: string) => void;
@@ -72,6 +69,7 @@ export type ThreadPanelStackProps = {
   graphDirectoryColorsByPath: Record<string, string>;
   threadAssetsById: Record<string, ThreadAssetEntry>;
   homeThreadDocumentId: string;
+  homeDocumentEditorRef: RefObject<RichTextEditorHandle | null>;
   homeFormState: HomeFormState;
   homeInlineReferences: HomeResponse["inlineReferences"];
   formState: DocumentFormState;
@@ -81,16 +79,12 @@ export type ThreadPanelStackProps = {
   isSelectedDocumentLoading: boolean;
   savingHome: boolean;
   savingDocument: boolean;
-  centerDocumentLayoutRef: RefObject<HTMLDivElement | null>;
   centerDocumentEditorRef: RefObject<RichTextEditorHandle | null>;
   centerDocumentSidePanelMode: CenterDocumentSidePanelMode;
   showCenterDocumentSidePanel: boolean;
   centerDocumentSidePanelLabel: string;
   centerDocumentSidePanelTitle: string;
   centerDocumentSidePanelDescription: string;
-  centerDocumentSidePanelResizerLabel: string;
-  documentTOCRatio: number;
-  tocItems: TOCItem[];
   selectedDocumentLinks: DocumentPropertiesPanelProps["linkStats"];
   editableOutgoingLinks: DocumentPropertiesPanelProps["editableOutgoingLinks"];
   availableLinkTargets: DocumentPropertiesPanelProps["availableLinkTargets"];
@@ -211,12 +205,14 @@ const ThreadAssetShell = memo(function ThreadAssetShell({
 // ── Active panel content variants ──────────────────────────────────────
 
 const ActiveHomePanel = memo(function ActiveHomePanel({
+  homeDocumentEditorRef,
   homeFormState,
   homeInlineReferences,
   homeThreadDocumentId,
   editorScrollTarget,
   actions,
 }: {
+  homeDocumentEditorRef: RefObject<RichTextEditorHandle | null>;
   homeFormState: HomeFormState;
   homeInlineReferences: HomeResponse["inlineReferences"];
   homeThreadDocumentId: string;
@@ -240,6 +236,7 @@ const ActiveHomePanel = memo(function ActiveHomePanel({
             ariaLabel="Home body editor"
             className="home-editor"
             inlineReferences={homeInlineReferences}
+            ref={homeDocumentEditorRef}
             onChange={(value) => actions.updateHomeFormField("body", value)}
             onReferenceOpen={(documentId, graphPath) => actions.openInlineReference(homeThreadDocumentId, documentId, graphPath)}
             onDateOpen={actions.openDate}
@@ -263,16 +260,12 @@ const ActiveDocumentPanel = memo(function ActiveDocumentPanel({
   selectedDocument,
   selectedDocumentInlineReferences,
   editorScrollTarget,
-  centerDocumentLayoutRef,
   centerDocumentEditorRef,
   centerDocumentSidePanelMode,
   showCenterDocumentSidePanel,
   centerDocumentSidePanelLabel,
   centerDocumentSidePanelTitle,
   centerDocumentSidePanelDescription,
-  centerDocumentSidePanelResizerLabel,
-  documentTOCRatio,
-  tocItems,
   selectedDocumentLinks,
   editableOutgoingLinks,
   availableLinkTargets,
@@ -283,16 +276,12 @@ const ActiveDocumentPanel = memo(function ActiveDocumentPanel({
   selectedDocument: DocumentResponse | null;
   selectedDocumentInlineReferences: DocumentResponse["inlineReferences"];
   editorScrollTarget: string | null;
-  centerDocumentLayoutRef: RefObject<HTMLDivElement | null>;
   centerDocumentEditorRef: RefObject<RichTextEditorHandle | null>;
   centerDocumentSidePanelMode: CenterDocumentSidePanelMode;
   showCenterDocumentSidePanel: boolean;
   centerDocumentSidePanelLabel: string;
   centerDocumentSidePanelTitle: string;
   centerDocumentSidePanelDescription: string;
-  centerDocumentSidePanelResizerLabel: string;
-  documentTOCRatio: number;
-  tocItems: TOCItem[];
   selectedDocumentLinks: DocumentPropertiesPanelProps["linkStats"];
   editableOutgoingLinks: DocumentPropertiesPanelProps["editableOutgoingLinks"];
   availableLinkTargets: DocumentPropertiesPanelProps["availableLinkTargets"];
@@ -311,11 +300,9 @@ const ActiveDocumentPanel = memo(function ActiveDocumentPanel({
       </div>
 
       <div
-        ref={centerDocumentLayoutRef}
         className="center-document-layout"
         aria-label="Document content layout"
         data-side-panel={centerDocumentSidePanelMode}
-        style={{ "--document-toc-ratio": documentTOCRatio.toString() } as CSSProperties}
       >
         <div className="center-document-main home-document">
           <div className="home-document-body center-document-body">
@@ -338,38 +325,23 @@ const ActiveDocumentPanel = memo(function ActiveDocumentPanel({
         </div>
 
         {showCenterDocumentSidePanel && selectedDocument !== null ? (
-          <>
-            <div
-              className="center-document-toc-resizer"
-              onMouseDown={actions.handleCenterDocumentTOCResizeMouseDown}
-              role="separator"
-              aria-label={centerDocumentSidePanelResizerLabel}
-              aria-orientation="vertical"
+          <aside className="center-document-side-panel" aria-label={centerDocumentSidePanelLabel}>
+            <div className="center-document-side-panel-header">
+              <h4>{centerDocumentSidePanelTitle}</h4>
+              <p>{centerDocumentSidePanelDescription}</p>
+            </div>
+            <DocumentPropertiesPanel
+              selectedDocument={selectedDocument}
+              formState={formState}
+              linkStats={selectedDocumentLinks}
+              editableOutgoingLinks={editableOutgoingLinks}
+              availableLinkTargets={availableLinkTargets}
+              onAddOutgoingLink={actions.addOutgoingLink}
+              onRemoveOutgoingLink={actions.removeOutgoingLink}
+              onUpdateLinkDetail={actions.updateLinkDetail}
+              updateFormField={actions.updateFormField}
             />
-
-            <aside className="center-document-side-panel" aria-label={centerDocumentSidePanelLabel}>
-              <div className="center-document-toc-header center-document-side-panel-header">
-                <h4>{centerDocumentSidePanelTitle}</h4>
-                <p>{centerDocumentSidePanelDescription}</p>
-              </div>
-
-              {centerDocumentSidePanelMode === "toc" ? (
-                <TableOfContents items={tocItems} onNavigate={actions.navigateTOC} />
-              ) : (
-                <DocumentPropertiesPanel
-                  selectedDocument={selectedDocument}
-                  formState={formState}
-                  linkStats={selectedDocumentLinks}
-                  editableOutgoingLinks={editableOutgoingLinks}
-                  availableLinkTargets={availableLinkTargets}
-                  onAddOutgoingLink={actions.addOutgoingLink}
-                  onRemoveOutgoingLink={actions.removeOutgoingLink}
-                  onUpdateLinkDetail={actions.updateLinkDetail}
-                  updateFormField={actions.updateFormField}
-                />
-              )}
-            </aside>
-          </>
+          </aside>
         ) : null}
       </div>
     </div>
@@ -556,37 +528,22 @@ const ThreadPanelHeader = memo(function ThreadPanelHeader({
             </Button>
             {panelIsHome ? <>{savingHome && <span className="home-save-success">Saving…</span>}</> : (
               <>
-                {savingDocument && <span className="home-save-success">Saving…</span>}
-                {panelAsset === null && (
-                  <>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="center-document-toolbar-toggle"
-                      data-active={centerDocumentSidePanelMode === "toc" ? "true" : "false"}
-                      aria-label="Toggle table of contents"
-                      aria-pressed={centerDocumentSidePanelMode === "toc"}
-                      title="Toggle table of contents"
-                      onClick={() => actions.toggleCenterDocumentSidePanel("toc")}
-                    >
-                      <FileText size={16} />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="center-document-toolbar-toggle"
-                      data-active={centerDocumentSidePanelMode === "properties" ? "true" : "false"}
-                      aria-label="Toggle document properties"
-                      aria-pressed={centerDocumentSidePanelMode === "properties"}
-                      title="Toggle document properties"
-                      onClick={() => actions.toggleCenterDocumentSidePanel("properties")}
-                    >
-                      <Info size={16} />
-                    </Button>
-                  </>
+                {savingDocument && <span className="home-save-success">Saving…</span>}                {panelAsset === null && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="center-document-toolbar-toggle"
+                    data-active={centerDocumentSidePanelMode === "properties" ? "true" : "false"}
+                    aria-label="Toggle document properties"
+                    aria-pressed={centerDocumentSidePanelMode === "properties"}
+                    title="Toggle document properties"
+                    onClick={() => actions.toggleCenterDocumentSidePanel("properties")}
+                  >
+                    <Info size={16} />
+                  </Button>
                 )}
+
               </>
             )}
             {isMaximizedRightRail && (
@@ -647,6 +604,7 @@ type ThreadPanelSectionProps = {
   isMaximizedRightRail: boolean;
   activeThreadPanelIndex: number;
   homeThreadDocumentId: string;
+  homeDocumentEditorRef: RefObject<RichTextEditorHandle | null>;
   homeFormState: HomeFormState;
   homeInlineReferences: HomeResponse["inlineReferences"];
   formState: DocumentFormState;
@@ -655,16 +613,12 @@ type ThreadPanelSectionProps = {
   editorScrollTarget: string | null;
   savingHome: boolean;
   savingDocument: boolean;
-  centerDocumentLayoutRef: RefObject<HTMLDivElement | null>;
   centerDocumentEditorRef: RefObject<RichTextEditorHandle | null>;
   centerDocumentSidePanelMode: CenterDocumentSidePanelMode;
   showCenterDocumentSidePanel: boolean;
   centerDocumentSidePanelLabel: string;
   centerDocumentSidePanelTitle: string;
   centerDocumentSidePanelDescription: string;
-  centerDocumentSidePanelResizerLabel: string;
-  documentTOCRatio: number;
-  tocItems: TOCItem[];
   selectedDocumentLinks: DocumentPropertiesPanelProps["linkStats"];
   editableOutgoingLinks: DocumentPropertiesPanelProps["editableOutgoingLinks"];
   availableLinkTargets: DocumentPropertiesPanelProps["availableLinkTargets"];
@@ -689,6 +643,7 @@ const ThreadPanelSection = memo(function ThreadPanelSection({
   isMaximizedRightRail,
   activeThreadPanelIndex,
   homeThreadDocumentId,
+  homeDocumentEditorRef,
   homeFormState,
   homeInlineReferences,
   formState,
@@ -697,16 +652,12 @@ const ThreadPanelSection = memo(function ThreadPanelSection({
   editorScrollTarget,
   savingHome,
   savingDocument,
-  centerDocumentLayoutRef,
   centerDocumentEditorRef,
   centerDocumentSidePanelMode,
   showCenterDocumentSidePanel,
   centerDocumentSidePanelLabel,
   centerDocumentSidePanelTitle,
   centerDocumentSidePanelDescription,
-  centerDocumentSidePanelResizerLabel,
-  documentTOCRatio,
-  tocItems,
   selectedDocumentLinks,
   editableOutgoingLinks,
   availableLinkTargets,
@@ -783,6 +734,7 @@ const ThreadPanelSection = memo(function ThreadPanelSection({
         <PanelLoadingSkeleton />
       ) : panel.isActive && panelIsHome ? (
         <ActiveHomePanel
+          homeDocumentEditorRef={homeDocumentEditorRef}
           homeFormState={homeFormState}
           homeInlineReferences={homeInlineReferences}
           homeThreadDocumentId={homeThreadDocumentId}
@@ -799,16 +751,12 @@ const ThreadPanelSection = memo(function ThreadPanelSection({
             selectedDocument={selectedDocument}
             selectedDocumentInlineReferences={selectedDocumentInlineReferences}
             editorScrollTarget={editorScrollTarget}
-            centerDocumentLayoutRef={centerDocumentLayoutRef}
             centerDocumentEditorRef={centerDocumentEditorRef}
             centerDocumentSidePanelMode={centerDocumentSidePanelMode}
             showCenterDocumentSidePanel={showCenterDocumentSidePanel}
             centerDocumentSidePanelLabel={centerDocumentSidePanelLabel}
             centerDocumentSidePanelTitle={centerDocumentSidePanelTitle}
             centerDocumentSidePanelDescription={centerDocumentSidePanelDescription}
-            centerDocumentSidePanelResizerLabel={centerDocumentSidePanelResizerLabel}
-            documentTOCRatio={documentTOCRatio}
-            tocItems={tocItems}
             selectedDocumentLinks={selectedDocumentLinks}
             editableOutgoingLinks={editableOutgoingLinks}
             availableLinkTargets={availableLinkTargets}
@@ -870,6 +818,7 @@ function ThreadPanelStackComponent({
   graphDirectoryColorsByPath,
   threadAssetsById,
   homeThreadDocumentId,
+  homeDocumentEditorRef,
   homeFormState,
   homeInlineReferences,
   formState,
@@ -879,16 +828,12 @@ function ThreadPanelStackComponent({
   isSelectedDocumentLoading,
   savingHome,
   savingDocument,
-  centerDocumentLayoutRef,
   centerDocumentEditorRef,
   centerDocumentSidePanelMode,
   showCenterDocumentSidePanel,
   centerDocumentSidePanelLabel,
   centerDocumentSidePanelTitle,
   centerDocumentSidePanelDescription,
-  centerDocumentSidePanelResizerLabel,
-  documentTOCRatio,
-  tocItems,
   selectedDocumentLinks,
   editableOutgoingLinks,
   availableLinkTargets,
@@ -956,6 +901,7 @@ function ThreadPanelStackComponent({
                 isMaximizedRightRail={isMaximizedRightRail}
                 activeThreadPanelIndex={activeThreadPanelIndex}
                 homeThreadDocumentId={homeThreadDocumentId}
+                homeDocumentEditorRef={homeDocumentEditorRef}
                 homeFormState={homeFormState}
                 homeInlineReferences={homeInlineReferences}
                 formState={formState}
@@ -964,16 +910,12 @@ function ThreadPanelStackComponent({
                 editorScrollTarget={editorScrollTarget}
                 savingHome={savingHome}
                 savingDocument={savingDocument}
-                centerDocumentLayoutRef={centerDocumentLayoutRef}
                 centerDocumentEditorRef={centerDocumentEditorRef}
                 centerDocumentSidePanelMode={centerDocumentSidePanelMode}
                 showCenterDocumentSidePanel={showCenterDocumentSidePanel}
                 centerDocumentSidePanelLabel={centerDocumentSidePanelLabel}
                 centerDocumentSidePanelTitle={centerDocumentSidePanelTitle}
                 centerDocumentSidePanelDescription={centerDocumentSidePanelDescription}
-                centerDocumentSidePanelResizerLabel={centerDocumentSidePanelResizerLabel}
-                documentTOCRatio={documentTOCRatio}
-                tocItems={tocItems}
                 selectedDocumentLinks={selectedDocumentLinks}
                 editableOutgoingLinks={editableOutgoingLinks}
                 availableLinkTargets={availableLinkTargets}

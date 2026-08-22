@@ -23,7 +23,7 @@ import { RightRailControls } from "./components/RightRailControls";
 import { RightSidebarPanel } from "./components/RightSidebarPanel";
 import { WorkspaceHeader } from "./components/WorkspaceHeader";
 import { SettingsDialog } from "./components/SettingsDialog";
-import { GraphTreePanel, WorkspaceSelectorPanel } from "./components/WorkspaceSidebarPanels";
+import { GraphTreePanel, WorkspaceSelectorPanel, type SidebarView } from "./components/WorkspaceSidebarPanels";
 import { CreateNodeDialog, DeleteDocumentDialog, RenameDialog } from "./components/WorkflowDialogs";
 import type { EdgeToolbarState, GraphCanvasOverlayController } from "./components/graphCanvasOverlayController";
 import { GraphCanvasOverlayInteraction } from "./components/GraphCanvasOverlayInteraction";
@@ -118,7 +118,7 @@ import "./styles.css";
 
 type RightPanelTab = "calendar" | "search" | "home" | "violations";
 type DocumentOpenMode = "center" | "right-rail";
-type CenterDocumentSidePanelMode = "hidden" | "toc" | "properties";
+type CenterDocumentSidePanelMode = "hidden" | "properties";
 type RenameDialogState =
   | { kind: "graph"; graphPath: string }
   | { kind: "node"; documentId: string; fileName: string };
@@ -164,9 +164,6 @@ function normalizeAppearance(value: unknown): "light" | "dark" | "system" {
 }
 
 const HOME_THREAD_DOCUMENT_ID = "home";
-const DEFAULT_DOCUMENT_TOC_RATIO = 0.18;
-const MIN_DOCUMENT_TOC_RATIO = 0.14;
-const MAX_DOCUMENT_TOC_RATIO = 0.32;
 const MIN_THREAD_PANEL_WIDTH_PX = 420;
 const THREAD_PANEL_VIEWPORT_MARGIN_PX = 112;
 const DOCUMENT_FILE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
@@ -187,10 +184,6 @@ type SearchFilters = {
   description: string;
   content: string;
 };
-
-function clampDocumentTOCRatio(value: number): number {
-  return Math.min(Math.max(value, MIN_DOCUMENT_TOC_RATIO), MAX_DOCUMENT_TOC_RATIO);
-}
 
 function clampThreadPanelWidth(width: number): number {
   const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1280;
@@ -425,7 +418,6 @@ function FlowApp() {
   const [calendarFocusDate, setCalendarFocusDate] = useState<string>(() => todayString());
   const [leftSidebarWidth, setLeftSidebarWidth] = useState<number>(256);
   const [rightSidebarWidth, setRightSidebarWidth] = useState<number>(320);
-  const [documentTOCRatio, setDocumentTOCRatio] = useState<number>(DEFAULT_DOCUMENT_TOC_RATIO);
   const THREAD_PANEL_WIDTHS_KEY = "flow_thread_panel_widths";
   const [threadPanelWidths, setThreadPanelWidths] = useState<Record<string, number>>(() => {
     if (typeof window === "undefined") return {};
@@ -453,7 +445,6 @@ function FlowApp() {
   const [threadExpanded, setThreadExpanded] = useState<boolean>(false);
   const [panelExpandModes, setPanelExpandModes] = useState<Record<string, "thread" | "full">>({});
   const [centerDocumentSidePanelMode, setCenterDocumentSidePanelMode] = useState<CenterDocumentSidePanelMode>("hidden");
-  const [homeTOCVisible, setHomeTOCVisible] = useState<boolean>(false);
   const [isResizingLeft, setIsResizingLeft] = useState<boolean>(false);
   const [isResizingRight, setIsResizingRight] = useState<boolean>(false);
   const [canvasContextMenu, setCanvasContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -467,9 +458,6 @@ function FlowApp() {
   const [connectingTarget, setConnectingTarget] = useState<string | null>(null);
 
   const graphCanvasShellRef = useRef<HTMLDivElement | null>(null);
-  const centerDocumentLayoutRef = useRef<HTMLDivElement | null>(null);
-  const homeDocumentLayoutRef = useRef<HTMLDivElement | null>(null);
-  const rightRailDocumentLayoutRef = useRef<HTMLDivElement | null>(null);
   const centerDocumentEditorRef = useRef<RichTextEditorHandle | null>(null);
   const homeDocumentEditorRef = useRef<RichTextEditorHandle | null>(null);
   const rightRailDocumentEditorRef = useRef<RichTextEditorHandle | null>(null);
@@ -534,6 +522,7 @@ function FlowApp() {
   }, [rfViewport]);
 
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab | "document">("search");
+  const [sidebarView, setSidebarView] = useState<SidebarView>("content");
   const [editorScrollTarget, setEditorScrollTarget] = useState<string | null>(null);
 
   const graphDirectoryColorsByPath = useMemo(() => {
@@ -623,16 +612,9 @@ function FlowApp() {
     : activeThreadTailId,
     [selectedDocumentOpenMode, selectedDocumentId, activeSurface.kind, activeThreadTailId]);
   const showCenterDocumentSidePanel = centerDocumentSidePanelMode !== "hidden";
-  const centerDocumentSidePanelLabel = useMemo(() => centerDocumentSidePanelMode === "properties" ? "Document properties" : "Document table of contents", [centerDocumentSidePanelMode]);
-  const centerDocumentSidePanelTitle = useMemo(() => centerDocumentSidePanelMode === "properties" ? "Properties" : "Table of Contents", [centerDocumentSidePanelMode]);
-  const centerDocumentSidePanelDescription = useMemo(() => centerDocumentSidePanelMode === "properties"
-    ? "Edit the markdown frontmatter fields for this document."
-    : "Jump to headings in the current document.",
-    [centerDocumentSidePanelMode]);
-  const centerDocumentSidePanelResizerLabel = useMemo(() => centerDocumentSidePanelMode === "properties"
-    ? "Resize document properties"
-    : "Resize table of contents",
-    [centerDocumentSidePanelMode]);
+  const centerDocumentSidePanelLabel = "Document properties";
+  const centerDocumentSidePanelTitle = "Properties";
+  const centerDocumentSidePanelDescription = "Edit the markdown frontmatter fields for this document.";
   const hasRightRailDocument = selectedDocumentId !== "" && selectedDocumentOpenMode === "right-rail";
   const relationshipTagCatalog = useMemo(() => {
     const tagSet = new Set<string>();
@@ -786,7 +768,6 @@ function FlowApp() {
       return;
     }
 
-    setDocumentTOCRatio(clampDocumentTOCRatio(workspace.panelWidths.documentTOCRatio));
   }, [workspace]);
 
   useEffect(() => {
@@ -823,12 +804,20 @@ function FlowApp() {
       return generateTOC(homeFormState.body);
     }
 
-    if (selectedDocument === null) {
+    // Do not show the previous document's headings while the newly selected
+    // document is loading. The sidebar should always describe its current
+    // document context, not whichever response happened to arrive first.
+    if (selectedDocument === null || selectedDocument.id !== selectedDocumentId) {
       return [];
     }
 
     return generateTOC(formState.body);
-  }, [activeSurface.kind, formState.body, homeFormState.body, selectedDocument]);
+  }, [activeSurface.kind, formState.body, homeFormState.body, selectedDocument, selectedDocumentId]);
+  const sidebarTOCTitle = activeSurface.kind === "home"
+    ? homeFormState.title || "Home"
+    : selectedDocument?.id === selectedDocumentId
+      ? selectedDocument.title
+      : threadDocumentsById[selectedDocumentId]?.title ?? "Current document";
 
   useEffect(() => {
     documentThreadRef.current = documentThread;
@@ -1099,7 +1088,7 @@ function FlowApp() {
     });
   }
 
-  function toggleCenterDocumentSidePanel(panel: Exclude<CenterDocumentSidePanelMode, "hidden">): void {
+  function toggleCenterDocumentSidePanel(panel: "properties"): void {
     setCenterDocumentSidePanelMode((current) => (current === panel ? "hidden" : panel));
   }
 
@@ -1127,7 +1116,7 @@ function FlowApp() {
   async function flushPendingDocumentSave(): Promise<void> {
     await waitForEditorStateToSettle();
     const hasUnsyncedEditorState = syncDocumentBodyFromActiveEditor();
-    const hadPendingTimer =   documentAutoSaveTimerRef.current !== undefined;
+    const hadPendingTimer = documentAutoSaveTimerRef.current !== undefined;
 
     if (hadPendingTimer) {
       window.clearTimeout(documentAutoSaveTimerRef.current);
@@ -1148,12 +1137,12 @@ function FlowApp() {
   async function flushPendingHomeSave(): Promise<void> {
     await waitForEditorStateToSettle();
     const hasUnsyncedEditorState = syncHomeBodyFromEditor();
-    const hadPendingTimer =   homeAutoSaveTimerRef.current !== undefined;
+    const hadPendingTimer = homeAutoSaveTimerRef.current !== undefined;
 
     if (hadPendingTimer) {
       window.clearTimeout(homeAutoSaveTimerRef.current);
-  homeAutoSaveTimerRef.current = undefined;
-  }
+      homeAutoSaveTimerRef.current = undefined;
+    }
 
     if (homeSavePromiseRef.current !== null) {
       await homeSavePromiseRef.current;
@@ -1185,6 +1174,7 @@ function FlowApp() {
   }
 
   function syncCenterThreadSelection(documentId: string, canvasNodeId: string, document: DocumentResponse | null): void {
+    setSidebarView("toc");
     setSelectedDocumentOpenMode("center");
     setSelectedDocumentId(documentId);
     setSelectedCanvasNodeId(canvasNodeId);
@@ -1218,6 +1208,7 @@ function FlowApp() {
   async function openDocumentInCenter(documentId: string, graphPath: string): Promise<void> {
     await flushPendingActiveEditorSave();
     clearSurfaceFeedback();
+    setSidebarView("toc");
     openGraphSurface(graphPath);
     setSelectedCanvasNodeId(documentId);
     setSelectedDocumentOpenMode("center");
@@ -1234,6 +1225,7 @@ function FlowApp() {
   async function openDocumentInRightRail(documentId: string, graphPath: string): Promise<void> {
     await flushPendingActiveEditorSave();
     clearSurfaceFeedback();
+    setSidebarView("toc");
     openGraphSurface(graphPath);
     setThreadExpanded(false);
     setSelectedCanvasNodeId(documentId);
@@ -1247,6 +1239,7 @@ function FlowApp() {
   async function openDocumentInThreadFromSource(sourceDocumentId: string, targetDocumentId: string, graphPath: string): Promise<void> {
     await flushPendingActiveEditorSave();
     clearSurfaceFeedback();
+    setSidebarView("toc");
 
     const { baseThread } = resolveThreadBaseFromSource(sourceDocumentId);
 
@@ -1296,6 +1289,7 @@ function FlowApp() {
   }
 
   async function activateThreadDocument(documentId: string, graphPath: string): Promise<void> {
+    setSidebarView("toc");
     const threadAsset = threadAssetsById[documentId];
     if (threadAsset !== undefined) {
       await flushPendingActiveEditorSave();
@@ -1339,6 +1333,7 @@ function FlowApp() {
     setThreadExpanded(nextThread.length === 1);
 
     if (nextThread.length === 0) {
+      setSidebarView("content");
       setSelectedDocumentId("");
       setSelectedDocumentOpenMode("right-rail");
       syncSelectedDocumentState(null);
@@ -1358,6 +1353,7 @@ function FlowApp() {
     }
 
     const nextActive = nextThread[nextThread.length - 1];
+    setSidebarView("toc");
     setSelectedDocumentOpenMode("center");
     setSelectedDocumentId(nextActive.documentId);
     setSelectedCanvasNodeId(nextActive.documentId);
@@ -1710,7 +1706,7 @@ function FlowApp() {
   }, [refreshCalendarDocumentList]);
 
   useEffect(() => {
-    if (  documentAutoSaveTimerRef.current !== undefined) {
+    if (documentAutoSaveTimerRef.current !== undefined) {
       window.clearTimeout(documentAutoSaveTimerRef.current);
       documentAutoSaveTimerRef.current = undefined;
     }
@@ -2255,13 +2251,15 @@ function FlowApp() {
   }
 
   function clearContextPanel(): void {
-    if (  documentAutoSaveTimerRef.current !== undefined) {
+    if (documentAutoSaveTimerRef.current !== undefined) {
       window.clearTimeout(documentAutoSaveTimerRef.current);
       documentAutoSaveTimerRef.current = undefined;
     }
     setSelectedDocumentId("");
     setSelectedDocumentOpenMode("right-rail");
+    setSidebarView("content");
     clearDocumentThread();
+
     syncSelectedDocumentState(null);
     setDeleteDialogTarget(null);
     setDeleteDialogOpen(false);
@@ -2294,19 +2292,24 @@ function FlowApp() {
   }
 
   async function handleSelectHome(): Promise<void> {
+    if (sidebarView === "content" && activeSurface.kind === "home") {
+      setSidebarView("toc");
+      return;
+    }
+
     // Sync editor state synchronously so the form state is fresh.
     syncDocumentBodyFromActiveEditor();
     syncHomeBodyFromEditor();
 
     // Cancel pending auto-save timers so they don't fire after we leave.
-    if (  documentAutoSaveTimerRef.current !== undefined) {
+    if (documentAutoSaveTimerRef.current !== undefined) {
       window.clearTimeout(documentAutoSaveTimerRef.current);
       documentAutoSaveTimerRef.current = undefined;
     }
-    if (  homeAutoSaveTimerRef.current !== undefined) {
+    if (homeAutoSaveTimerRef.current !== undefined) {
       window.clearTimeout(homeAutoSaveTimerRef.current);
-  homeAutoSaveTimerRef.current = undefined;
-  }
+      homeAutoSaveTimerRef.current = undefined;
+    }
 
     // Wait for any in-progress save to finish before starting a new one,
     // but don't block the transition on it.
@@ -2318,6 +2321,7 @@ function FlowApp() {
       setGraphCanvasError("");
       setGraphCreateError("");
       setSelectedCanvasNodeId("");
+      setSidebarView("toc");
       setActiveSurface({ kind: "home" });
     });
 
@@ -2337,14 +2341,14 @@ function FlowApp() {
     syncDocumentBodyFromActiveEditor();
     syncHomeBodyFromEditor();
 
-    if (  documentAutoSaveTimerRef.current !== undefined) {
+    if (documentAutoSaveTimerRef.current !== undefined) {
       window.clearTimeout(documentAutoSaveTimerRef.current);
       documentAutoSaveTimerRef.current = undefined;
     }
-    if (  homeAutoSaveTimerRef.current !== undefined) {
+    if (homeAutoSaveTimerRef.current !== undefined) {
       window.clearTimeout(homeAutoSaveTimerRef.current);
-  homeAutoSaveTimerRef.current = undefined;
-  }
+      homeAutoSaveTimerRef.current = undefined;
+    }
 
     const pendingDocSave = documentSavePromiseRef.current;
     const pendingHomeSave = homeSavePromiseRef.current;
@@ -2354,6 +2358,7 @@ function FlowApp() {
       setGraphCanvasError("");
       setGraphCreateError("");
       setSelectedCanvasNodeId("");
+      setSidebarView("content");
       setActiveSurface({ kind: "graph", graphPath });
     });
 
@@ -2769,6 +2774,11 @@ function FlowApp() {
   }
 
   function handleSelectDocument(documentId: string, graphPath: string): void {
+    if (sidebarView === "content" && selectedDocumentId === documentId) {
+      setSidebarView("toc");
+      return;
+    }
+
     void openDocumentInCenter(documentId, graphPath);
   }
 
@@ -2832,32 +2842,12 @@ function FlowApp() {
     panelWidths?: {
       leftRatio: number;
       rightRatio: number;
-      documentTOCRatio: number;
     };
   }): Promise<WorkspaceResponse> {
     return requestJSON<WorkspaceResponse>("/api/workspace", {
       method: "PUT",
       body: JSON.stringify(payload),
     });
-  }
-
-  async function persistDocumentTOCRatio(nextRatio: number): Promise<void> {
-    if (workspace === null) {
-      return;
-    }
-
-    try {
-      const updatedWorkspace = await updateWorkspaceSettings({
-        panelWidths: {
-          leftRatio: workspace.panelWidths.leftRatio,
-          rightRatio: workspace.panelWidths.rightRatio,
-          documentTOCRatio: nextRatio,
-        },
-      });
-      setWorkspace(updatedWorkspace);
-    } catch (saveError) {
-      setError(toErrorMessage(saveError));
-    }
   }
 
   async function handleAppearanceChange(nextAppearance: "light" | "dark" | "system"): Promise<void> {
@@ -2949,6 +2939,7 @@ function FlowApp() {
       setWorkspace(snapshot.workspaceData);
       setGraphTree(snapshot.graphTreeData);
       clearContextPanel();
+      setSidebarView("content");
       setActiveSurface({ kind: "home" });
       setGraphCanvasData(null);
       setGraphCanvasReloadToken((current) => current + 1);
@@ -2985,6 +2976,7 @@ function FlowApp() {
       setWorkspace(snapshot.workspaceData);
       setGraphTree(snapshot.graphTreeData);
       clearContextPanel();
+      setSidebarView("content");
       setActiveSurface({ kind: "home" });
       setGraphCanvasData(null);
       setGraphCanvasReloadToken((current) => current + 1);
@@ -2995,43 +2987,6 @@ function FlowApp() {
     } finally {
       setSwitchingWorkspace(false);
     }
-  }
-
-  function beginDocumentTOCResize(event: React.MouseEvent<HTMLDivElement>, layout: HTMLDivElement | null): void {
-    if (!isPrimaryMouseButton(event.button) || layout === null) {
-      return;
-    }
-
-    const layoutBounds = layout.getBoundingClientRect();
-    if (layoutBounds.width <= 0) {
-      return;
-    }
-
-    let nextRatio = documentTOCRatio;
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      const tocWidth = layoutBounds.right - moveEvent.clientX;
-      nextRatio = clampDocumentTOCRatio(tocWidth / layoutBounds.width);
-      setDocumentTOCRatio(nextRatio);
-    };
-
-    const handleMouseUp = () => {
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-      void persistDocumentTOCRatio(nextRatio);
-    };
-
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-    event.preventDefault();
-  }
-
-  function handleDocumentTOCResizeMouseDown(event: React.MouseEvent<HTMLDivElement>): void {
-    beginDocumentTOCResize(event, centerDocumentLayoutRef.current);
   }
 
   function beginThreadPanelResize(event: React.MouseEvent<HTMLDivElement>, panel: HTMLElement | null, panelKey: string): void {
@@ -3104,14 +3059,6 @@ function FlowApp() {
       delete next[widthKey];
       return next;
     });
-  }
-
-  function handleHomeDocumentTOCResizeMouseDown(event: React.MouseEvent<HTMLDivElement>): void {
-    beginDocumentTOCResize(event, homeDocumentLayoutRef.current);
-  }
-
-  function handleRightRailDocumentTOCResizeMouseDown(event: React.MouseEvent<HTMLDivElement>): void {
-    beginDocumentTOCResize(event, rightRailDocumentLayoutRef.current);
   }
 
   function handleCreateGraphDocument(type: GraphCreateType): void {
@@ -4227,8 +4174,6 @@ function FlowApp() {
     setEditorScrollTarget,
     updateFormField,
     toggleCenterDocumentSidePanel,
-    handleDocumentTOCResizeMouseDown,
-    handleTOCNavigate,
     addOutgoingLink,
     removeOutgoingLink,
     updateEditableLinkDetail,
@@ -4247,8 +4192,6 @@ function FlowApp() {
     setEditorScrollTarget,
     handleGraphCanvasFilesDrop,
     handleInspectDocument,
-    handleRightRailDocumentTOCResizeMouseDown,
-    handleTOCNavigate,
     selectedDocumentRef,
   });
 
@@ -4371,14 +4314,11 @@ function FlowApp() {
   ]);
 
   const homeSurfaceActions = useHomeSurfaceActions({
-    setHomeTOCVisible,
     updateHomeFormField,
     handleInlineReferenceOpen,
     handleDateOpen,
     openAssetInThreadFromSource,
     setEditorScrollTarget,
-    handleHomeDocumentTOCResizeMouseDown,
-    handleTOCNavigate,
     homeThreadDocumentId: HOME_THREAD_DOCUMENT_ID,
   });
 
@@ -4631,8 +4571,8 @@ function FlowApp() {
   const flushOnHideRef = useRef<() => void>(() => {});
   // Update every render so the callback always closes over current state/refs.
   flushOnHideRef.current = () => {
-    const hasDocTimer =   documentAutoSaveTimerRef.current !== undefined;
-    const hasHomeTimer =   homeAutoSaveTimerRef.current !== undefined;
+    const hasDocTimer = documentAutoSaveTimerRef.current !== undefined;
+    const hasHomeTimer = homeAutoSaveTimerRef.current !== undefined;
     if (!hasDocTimer && !hasHomeTimer) {
       return;
     }
@@ -4642,8 +4582,8 @@ function FlowApp() {
     }
     if (hasHomeTimer) {
       window.clearTimeout(homeAutoSaveTimerRef.current);
-  homeAutoSaveTimerRef.current = undefined;
-  }
+      homeAutoSaveTimerRef.current = undefined;
+    }
     // Sync latest editor state into the form refs synchronously.
     syncDocumentBodyFromActiveEditor();
     syncHomeBodyFromEditor();
@@ -4726,6 +4666,7 @@ function FlowApp() {
       graphDirectoryColorsByPath={graphDirectoryColorsByPath}
       threadAssetsById={threadAssetsById}
       homeThreadDocumentId={HOME_THREAD_DOCUMENT_ID}
+      homeDocumentEditorRef={homeDocumentEditorRef}
       homeFormState={homeFormState}
       homeInlineReferences={graphTree?.home.inlineReferences}
       formState={formState}
@@ -4735,16 +4676,12 @@ function FlowApp() {
       isSelectedDocumentLoading={isSelectedDocumentLoading}
       savingHome={savingHome}
       savingDocument={savingDocument}
-      centerDocumentLayoutRef={centerDocumentLayoutRef}
       centerDocumentEditorRef={centerDocumentEditorRef}
       centerDocumentSidePanelMode={centerDocumentSidePanelMode}
       showCenterDocumentSidePanel={showCenterDocumentSidePanel}
       centerDocumentSidePanelLabel={centerDocumentSidePanelLabel}
       centerDocumentSidePanelTitle={centerDocumentSidePanelTitle}
       centerDocumentSidePanelDescription={centerDocumentSidePanelDescription}
-      centerDocumentSidePanelResizerLabel={centerDocumentSidePanelResizerLabel}
-      documentTOCRatio={documentTOCRatio}
-      tocItems={tocItems}
       selectedDocumentLinks={selectedDocumentLinks}
       editableOutgoingLinks={editableOutgoingLinks}
       availableLinkTargets={availableLinkTargets}
@@ -4766,7 +4703,22 @@ function FlowApp() {
       <AppSidebar
         onResizeMouseDown={handleLeftSidebarMouseDown}
         topContent={<WorkspaceSelectorPanel workspace={workspace} switchingWorkspace={switchingWorkspace} actions={sidebarNavigationActions} />}
-        navigationContent={<GraphTreePanel graphTree={graphTree} activeSurface={activeSurface} selectedDocumentId={selectedDocumentId} actions={sidebarNavigationActions} />}
+        navigationContent={
+          <GraphTreePanel
+            graphTree={graphTree}
+            activeSurface={activeSurface}
+            selectedDocumentId={selectedDocumentId}
+            actions={sidebarNavigationActions}
+            sidebarView={sidebarView}
+            tocTitle={sidebarTOCTitle}
+            tocItems={tocItems}
+            onBackToContent={() => setSidebarView("content")}
+            onNavigateTOC={handleTOCNavigate}
+            showTOCButton={activeSurface.kind === "home" || selectedDocumentId !== ""}
+            onShowTOC={() => setSidebarView("toc")}
+          />
+        }
+
         footerContent={
           <p className="sidebar-loading-status" role="status" aria-live="polite">
             {/* Keep footer spacing stable to avoid sidebar layout jumps. */}
@@ -4810,15 +4762,11 @@ function FlowApp() {
             isThreadStackOpen={isThreadStackOpen}
             renderCenterDocumentShell={renderCenterDocumentShell}
             homeMutationError={homeMutationError}
-            homeTOCVisible={homeTOCVisible}
             showFreshStartGuide={showFreshStartGuide}
-            homeDocumentLayoutRef={homeDocumentLayoutRef}
             homeDocumentEditorRef={homeDocumentEditorRef}
-            documentTOCRatio={documentTOCRatio}
             homeInlineReferences={graphTree?.home.inlineReferences}
             editorScrollTarget={editorScrollTarget}
             homeFormState={homeFormState}
-            tocItems={tocItems}
             homeSurfaceActions={homeSurfaceActions}
             graphCanvasShellRef={graphCanvasShellRef}
             selectedGraphPath={selectedGraphPath}
@@ -4867,10 +4815,7 @@ function FlowApp() {
           deletingDocument={deletingDocument}
           selectedDocumentGraphColor={selectedDocumentGraphColor}
           selectedDocumentTintStyle={selectedDocumentTintStyle}
-          documentTOCRatio={documentTOCRatio}
-          tocItems={tocItems}
           selectedDocumentLinks={selectedDocumentLinks}
-          rightRailDocumentLayoutRef={rightRailDocumentLayoutRef}
           rightRailDocumentEditorRef={rightRailDocumentEditorRef}
           editorScrollTarget={editorScrollTarget}
           rightRailDocumentActions={rightRailDocumentActions}

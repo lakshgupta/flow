@@ -28,9 +28,7 @@ type UseThreadPanelActionsArgs = {
   ) => Promise<void> | void;
   setEditorScrollTarget: (target: string | null) => void;
   updateFormField: (field: keyof DocumentFormState, value: string) => void;
-  toggleCenterDocumentSidePanel: (mode: "toc" | "properties") => void;
-  handleDocumentTOCResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
-  handleTOCNavigate: (headingSlug: string) => void;
+  toggleCenterDocumentSidePanel: (mode: "properties") => void;
   addOutgoingLink: (nodeId: string) => void;
   removeOutgoingLink: (nodeId: string) => void;
   updateEditableLinkDetail: (nodeId: string, field: "linkType" | "context", value: string) => void;
@@ -52,8 +50,6 @@ export function useThreadPanelActions({
   setEditorScrollTarget,
   updateFormField,
   toggleCenterDocumentSidePanel,
-  handleDocumentTOCResizeMouseDown,
-  handleTOCNavigate,
   addOutgoingLink,
   removeOutgoingLink,
   updateEditableLinkDetail,
@@ -74,8 +70,6 @@ export function useThreadPanelActions({
     setEditorScrollTarget,
     updateFormField,
     toggleCenterDocumentSidePanel,
-    handleDocumentTOCResizeMouseDown,
-    handleTOCNavigate,
     addOutgoingLink,
     removeOutgoingLink,
     updateEditableLinkDetail,
@@ -131,16 +125,8 @@ export function useThreadPanelActions({
     actionRefs.current.updateFormField(field, value);
   }, []);
 
-  const handleThreadCenterDocumentSidePanelToggle = useCallback((mode: "toc" | "properties") => {
+  const handleThreadCenterDocumentSidePanelToggle = useCallback((mode: "properties") => {
     actionRefs.current.toggleCenterDocumentSidePanel(mode);
-  }, []);
-
-  const handleThreadPanelTOCResizeMouseDown = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
-    actionRefs.current.handleDocumentTOCResizeMouseDown(event);
-  }, []);
-
-  const handleThreadTOCNavigate = useCallback((headingSlug: string) => {
-    actionRefs.current.handleTOCNavigate(headingSlug);
   }, []);
 
   const handleThreadAddOutgoingLink = useCallback((nodeId: string) => {
@@ -178,8 +164,6 @@ export function useThreadPanelActions({
     clearEditorScrollTarget: handleThreadClearEditorScrollTarget,
     updateFormField: handleThreadFormFieldChange,
     toggleCenterDocumentSidePanel: handleThreadCenterDocumentSidePanelToggle,
-    handleCenterDocumentTOCResizeMouseDown: handleThreadPanelTOCResizeMouseDown,
-    navigateTOC: handleThreadTOCNavigate,
     addOutgoingLink: handleThreadAddOutgoingLink,
     removeOutgoingLink: handleThreadRemoveOutgoingLink,
     updateLinkDetail: handleThreadUpdateLinkDetail,
@@ -201,10 +185,8 @@ export function useThreadPanelActions({
     handleThreadInlineReferenceOpen,
     handleThreadPanelActivate,
     handleThreadPanelResizeMouseDown,
-    handleThreadPanelTOCResizeMouseDown,
     handleThreadRemoveOutgoingLink,
     handleResetThreadPanelWidth,
-    handleThreadTOCNavigate,
     handleThreadUpdateLinkDetail,
   ]);
 }

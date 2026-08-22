@@ -1,7 +1,6 @@
 import {
   useCallback,
   useMemo,
-  type MouseEvent as ReactMouseEvent,
 } from "react";
 
 import type { HomeSurfaceProps } from "../components/HomeSurface";
@@ -9,7 +8,6 @@ import type { HomeFormState } from "../types";
 import { useLatestRef } from "./useLatestRef";
 
 type UseHomeSurfaceActionsArgs = {
-  setHomeTOCVisible: React.Dispatch<React.SetStateAction<boolean>>;
   updateHomeFormField: (field: keyof HomeFormState, value: string) => void;
   handleInlineReferenceOpen: (
     sourceDocumentId: string,
@@ -26,20 +24,15 @@ type UseHomeSurfaceActionsArgs = {
     kind: "pdf" | "text",
   ) => Promise<void> | void;
   setEditorScrollTarget: (target: string | null) => void;
-  handleHomeDocumentTOCResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
-  handleTOCNavigate: (headingSlug: string) => void;
   homeThreadDocumentId: string;
 };
 
 export function useHomeSurfaceActions({
-  setHomeTOCVisible,
   updateHomeFormField,
   handleInlineReferenceOpen,
   handleDateOpen,
   openAssetInThreadFromSource,
   setEditorScrollTarget,
-  handleHomeDocumentTOCResizeMouseDown,
-  handleTOCNavigate,
   homeThreadDocumentId,
 }: UseHomeSurfaceActionsArgs): HomeSurfaceProps["actions"] {
   const actionRefs = useLatestRef({
@@ -48,13 +41,7 @@ export function useHomeSurfaceActions({
     handleDateOpen,
     openAssetInThreadFromSource,
     setEditorScrollTarget,
-    handleHomeDocumentTOCResizeMouseDown,
-    handleTOCNavigate,
   });
-
-  const handleHomeSurfaceToggleTOC = useCallback(() => {
-    setHomeTOCVisible((current) => !current);
-  }, [setHomeTOCVisible]);
 
   const handleHomeSurfaceFormFieldChange = useCallback((field: keyof HomeFormState, value: string) => {
     actionRefs.current.updateHomeFormField(field, value);
@@ -76,31 +63,17 @@ export function useHomeSurfaceActions({
     actionRefs.current.setEditorScrollTarget(null);
   }, []);
 
-  const handleHomeSurfaceResizeTOC = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
-    actionRefs.current.handleHomeDocumentTOCResizeMouseDown(event);
-  }, []);
-
-  const handleHomeSurfaceTOCNavigate = useCallback((headingSlug: string) => {
-    actionRefs.current.handleTOCNavigate(headingSlug);
-  }, []);
-
   return useMemo(() => ({
-    toggleTOC: handleHomeSurfaceToggleTOC,
     updateHomeFormField: handleHomeSurfaceFormFieldChange,
     openInlineReference: handleHomeSurfaceInlineReferenceOpen,
     openDate: handleHomeSurfaceDateOpen,
     openThreadAsset: handleHomeSurfaceThreadAssetOpen,
     clearEditorScrollTarget: handleHomeSurfaceClearEditorScrollTarget,
-    resizeTOC: handleHomeSurfaceResizeTOC,
-    navigateTOC: handleHomeSurfaceTOCNavigate,
   }), [
     handleHomeSurfaceClearEditorScrollTarget,
     handleHomeSurfaceDateOpen,
     handleHomeSurfaceFormFieldChange,
     handleHomeSurfaceInlineReferenceOpen,
-    handleHomeSurfaceResizeTOC,
-    handleHomeSurfaceTOCNavigate,
     handleHomeSurfaceThreadAssetOpen,
-    handleHomeSurfaceToggleTOC,
   ]);
 }

@@ -131,7 +131,6 @@ CREATE TABLE workspace_gui_settings (
 	appearance TEXT NOT NULL,
 	panel_left_ratio REAL NOT NULL,
 	panel_right_ratio REAL NOT NULL,
-	panel_document_toc_ratio REAL NOT NULL,
 	updated_at TEXT NOT NULL
 );
 

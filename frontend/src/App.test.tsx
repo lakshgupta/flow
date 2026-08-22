@@ -120,7 +120,7 @@ const workspaceResponse = {
   homePath: "data/home.md",
   guiPort: 4812,
   appearance: "system" as const,
-  panelWidths: { leftRatio: 0.31, rightRatio: 0.22, documentTOCRatio: 0.18 },
+  panelWidths: { leftRatio: 0.31, rightRatio: 0.22 },
   appVersion: "0.4.0-dev",
   licenseText: "Apache License 2.0",
   copyrightText: "Copyright (c) Flow contributors",
@@ -1285,7 +1285,7 @@ describe("App graph canvas flows", () => {
       description: "Follow-up notes",
       path: "data/graphs/execution/follow-up.md",
       tags: [],
-      body: "Follow up body\n",
+      body: "# Follow-up heading\n\nFollow up body\n",
       links: [],
       relatedNoteIds: [],
       inlineReferences: [],
@@ -1377,6 +1377,8 @@ describe("App graph canvas flows", () => {
     });
     expect(await within(thread).findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     expect(await within(thread).findByText("Follow up body")).toBeInTheDocument();
+    const sidebarTOC = await screen.findByTestId("sidebar-toc-view");
+    expect(await within(sidebarTOC).findByRole("button", { name: "Follow-up heading" })).toBeInTheDocument();
 
     const replacementLink = within(thread).getByRole("link", { name: "Third note" });
     fireEvent.click(replacementLink);
@@ -2522,6 +2524,7 @@ describe("App graph canvas flows", () => {
     const titleInput = await screen.findByRole("textbox", { name: "Document title" });
     fireEvent.change(titleInput, { target: { value: "Overview updated" } });
 
+    await user.click(screen.getByRole("button", { name: "Back to content tree" }));
     const followUpButton = (await screen.findByText("follow-up.md")).closest('[data-sidebar="menu-sub-button"]');
     if (followUpButton === null) {
       throw new Error("missing follow-up file button");
@@ -2537,7 +2540,7 @@ describe("App graph canvas flows", () => {
 
     await screen.findByText("Follow up body");
 
-    await user.click(overviewButton);
+    await user.click(await screen.findByText("overview.md"));
 
     await waitFor(() => {
       expect(screen.getByRole("textbox", { name: "Document title" })).toHaveValue("Overview updated");
@@ -2694,11 +2697,12 @@ describe("App graph canvas flows", () => {
       expect((requestBody.body.match(/<p><br><\/p>/g) ?? []).length).toBeGreaterThanOrEqual(2);
     }, { timeout: 2000 });
 
+    await user.click(screen.getByRole("button", { name: "Back to content tree" }));
     const followUpButton = await findSidebarTreeButton("follow-up.md", "file");
     await user.click(followUpButton);
     await screen.findByText("Follow up body");
 
-    await user.click(overviewButton);
+    await user.click(await screen.findByText("overview.md"));
 
     await waitFor(() => {
       const refreshedEditor = screen.getByLabelText("Document body editor");
@@ -4324,6 +4328,10 @@ describe("App graph canvas flows", () => {
       expect(rebuildCall).toBeDefined();
     });
 
+    // The Settings dialog remains open after the refresh action; close it
+    // before interacting with the sidebar behind the modal.
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "Back to content tree" }));
     expect(await screen.findByText("refreshed-overview.md")).toBeInTheDocument();
     expect(await screen.findByText("Refreshed body")).toBeInTheDocument();
     // The confirmation renders in both the header chip and the editor pane.
@@ -4438,22 +4446,15 @@ describe("App graph canvas flows", () => {
     expect(revokeObjectURLMock).toHaveBeenCalled();
   });
 
-  it("shows a document table of contents on the Home surface and persists resize", async () => {
+  it("shows the Home table of contents in the left sidebar and navigates headings", async () => {
     const customHomeResponse = {
       ...homeResponse,
       body: "# Home\n\n## Roadmap\n\n### Details\n",
     };
-    let persistedWorkspace = workspaceResponse;
 
-    const fetchMock = installFetchMock((url, init) => {
+    installFetchMock((url) => {
       if (url === "/api/workspace") {
-        if ((init?.method ?? "GET") === "PUT") {
-          const body = JSON.parse(String(init?.body ?? "{}")) as { panelWidths: typeof workspaceResponse.panelWidths };
-          persistedWorkspace = { ...workspaceResponse, panelWidths: body.panelWidths };
-          return persistedWorkspace;
-        }
-
-        return persistedWorkspace;
+        return workspaceResponse;
       }
 
       if (url === "/api/graphs") {
@@ -4467,16 +4468,18 @@ describe("App graph canvas flows", () => {
       if (url === "/api/graphs/task") return emptyGraphLists.tasks;
       if (url === "/api/graphs/command") return emptyGraphLists.commands;
 
-      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+      throw new Error(`Unhandled request: GET ${url}`);
     });
 
     const user = userEvent.setup();
     render(<ThemeProvider><App /></ThemeProvider>);
 
-    const layout = await screen.findByLabelText("Home content layout");
-    await user.click(await screen.findByRole("button", { name: "Show table of contents" }));
-    const toc = await screen.findByLabelText("Document table of contents");
-    expect(within(toc).getByRole("button", { name: "Roadmap" })).toBeInTheDocument();
+    await screen.findByLabelText("Home body editor");
+    await user.click(screen.getByRole("button", { name: "Home" }));
+
+    const toc = await screen.findByTestId("sidebar-toc-view");
+    expect(within(toc).getByRole("heading", { name: "Home" })).toBeInTheDocument();
+    expect(await within(toc).findByRole("button", { name: "Roadmap" })).toBeInTheDocument();
 
     await user.click(within(toc).getByRole("button", { name: "Details" }));
 
@@ -4485,38 +4488,20 @@ describe("App graph canvas flows", () => {
       expect(editorSurface.contains(document.activeElement)).toBe(true);
     });
 
-    Object.defineProperty(layout, "getBoundingClientRect", {
-      configurable: true,
-      value: () => ({
-        x: 100,
-        y: 40,
-        top: 40,
-        left: 100,
-        right: 900,
-        bottom: 640,
-        width: 800,
-        height: 600,
-        toJSON: () => ({}),
-      }),
-    });
+    await user.click(within(toc).getByRole("button", { name: "Back to content tree" }));
+    expect(screen.queryByTestId("sidebar-toc-view")).not.toBeInTheDocument();
+    expect(screen.getByText("Content")).toBeInTheDocument();
 
-    fireEvent.mouseDown(screen.getByRole("separator", { name: "Resize table of contents" }), { button: 0, clientX: 740 });
-    fireEvent.mouseMove(window, { clientX: 680 });
-    fireEvent.mouseUp(window);
+    await user.click(screen.getByRole("button", { name: "Show table of contents" }));
+    const restoredTOC = await screen.findByTestId("sidebar-toc-view");
+    expect(within(restoredTOC).getByRole("button", { name: "Roadmap" })).toBeInTheDocument();
 
-    await waitFor(() => {
-      const body = getRequestBody(fetchMock, "/api/workspace", "PUT");
-      expect(body).toEqual({
-        panelWidths: {
-          leftRatio: 0.31,
-          rightRatio: 0.22,
-          documentTOCRatio: 0.275,
-        },
-      });
-    });
+    await user.click(within(restoredTOC).getByRole("button", { name: "Back to content tree" }));
+    await user.click(screen.getByRole("button", { name: "Home" }));
+    expect(await screen.findByTestId("sidebar-toc-view")).toBeInTheDocument();
   });
 
-  it("shows a document table of contents in the center pane and returns focus to the editor on click", async () => {
+  it("shows a document table of contents in the sidebar and returns focus to the editor on click", async () => {
     const graphCanvasResponse = {
       selectedGraph: "execution",
       availableGraphs: ["execution"],
@@ -4601,6 +4586,11 @@ describe("App graph canvas flows", () => {
 
     await user.click(fileButton);
 
+    const sidebarTOC = await screen.findByTestId("sidebar-toc-view");
+    expect(await within(sidebarTOC).findByRole("button", { name: "Intro Heading" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Toggle table of contents" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("separator", { name: "Resize table of contents" })).not.toBeInTheDocument();
+
     await user.click(await screen.findByRole("button", { name: "Toggle document properties" }));
 
     await waitFor(() => {
@@ -4610,10 +4600,7 @@ describe("App graph canvas flows", () => {
       expect(within(linkStats).getByText("1 incoming link")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Toggle table of contents" }));
-
-    const toc = await screen.findByLabelText("Document table of contents");
-    const deepSectionLink = within(toc).getByRole("button", { name: "Deep Section" });
+    const deepSectionLink = await within(sidebarTOC).findByRole("button", { name: "Deep Section" });
 
     await user.click(deepSectionLink);
 
@@ -4621,6 +4608,19 @@ describe("App graph canvas flows", () => {
       const editorSurface = screen.getByLabelText("Document body editor");
       expect(editorSurface.contains(document.activeElement)).toBe(true);
     });
+
+    await user.click(within(sidebarTOC).getByRole("button", { name: "Back to content tree" }));
+    expect(screen.queryByTestId("sidebar-toc-view")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show table of contents" }));
+    expect(await screen.findByTestId("sidebar-toc-view")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Back to content tree" }));
+    await waitFor(() => {
+      expect(fileButton.closest("[hidden]")).toBeNull();
+    });
+    await user.click(fileButton);
+    expect(await screen.findByTestId("sidebar-toc-view")).toBeInTheDocument();
   });
 
   it("keeps heading and strikethrough shortcuts rendered through app state echoes and autosave", async () => {
@@ -4755,7 +4755,7 @@ describe("App graph canvas flows", () => {
     });
   });
 
-  it("toggles the center side panel between TOC and editable properties", async () => {
+  it("keeps document properties independent from the sidebar table of contents", async () => {
     const graphCanvasResponse = {
       selectedGraph: "execution",
       availableGraphs: ["execution"],
@@ -4861,24 +4861,16 @@ describe("App graph canvas flows", () => {
 
     await user.click(fileButton);
 
-    const tocToggle = await screen.findByRole("button", { name: "Toggle table of contents" });
+    const sidebarTOC = await screen.findByTestId("sidebar-toc-view");
     const propertiesToggle = await screen.findByRole("button", { name: "Toggle document properties" });
 
-    expect(screen.queryByLabelText("Document table of contents")).not.toBeInTheDocument();
-    expect(tocToggle).toHaveAttribute("aria-pressed", "false");
-
-    await user.click(tocToggle);
-    expect(await screen.findByLabelText("Document table of contents")).toBeInTheDocument();
-    expect(tocToggle).toHaveAttribute("aria-pressed", "true");
-
-    await user.click(tocToggle);
-    expect(screen.queryByLabelText("Document table of contents")).not.toBeInTheDocument();
-    expect(tocToggle).toHaveAttribute("aria-pressed", "false");
+    expect(await within(sidebarTOC).findByRole("button", { name: "Deep Section" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Toggle table of contents" })).not.toBeInTheDocument();
 
     await user.click(propertiesToggle);
 
     const propertiesPanel = await screen.findByLabelText("Document properties");
-    expect(screen.queryByLabelText("Document table of contents")).not.toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-toc-view")).toBeInTheDocument();
     expect(propertiesToggle).toHaveAttribute("aria-pressed", "true");
 
     fireEvent.change(within(propertiesPanel).getByLabelText("Document description"), {
@@ -4915,115 +4907,6 @@ describe("App graph canvas flows", () => {
         ],
       });
     }, { timeout: 2000 });
-  });
-
-  it("resizes the document table of contents and persists its ratio", async () => {
-    const graphCanvasResponse = {
-      selectedGraph: "execution",
-      availableGraphs: ["execution"],
-      layerGuidance: {
-        magneticThresholdPx: 18,
-        guides: [
-          { layer: 0, x: 140 },
-          { layer: 1, x: 460 },
-        ],
-      },
-      nodes: [
-        {
-          id: "note-1",
-          type: "note",
-          graph: "execution",
-          title: "Overview",
-          description: "Execution overview",
-          path: "data/graphs/execution/overview.md",
-          featureSlug: "execution",
-          position: { x: 140, y: 120 },
-          positionPersisted: false,
-        },
-      ],
-      edges: [],
-    };
-    const documentResponse = {
-      id: "note-1",
-      type: "note",
-      featureSlug: "execution",
-      graph: "execution",
-      title: "Overview",
-      description: "Execution overview",
-      path: "data/graphs/execution/overview.md",
-      tags: [],
-      body: "# Intro\n## Deep Section\n",
-      links: [],
-      relatedNoteIds: [],
-    };
-    let persistedWorkspace = workspaceResponse;
-
-    const fetchMock = installFetchMock((url, init) => {
-      if (url === "/api/workspace") {
-        if ((init?.method ?? "GET") === "PUT") {
-          const body = JSON.parse(String(init?.body ?? "{}")) as { panelWidths: typeof workspaceResponse.panelWidths };
-          persistedWorkspace = { ...workspaceResponse, panelWidths: body.panelWidths };
-          return persistedWorkspace;
-        }
-
-        return persistedWorkspace;
-      }
-
-      if (url === "/api/graphs") return graphTreeResponse;
-      if (url === "/api/graphs/note") return noteGraphs("execution");
-      if (url === "/api/graphs/task") return emptyGraphLists.tasks;
-      if (url === "/api/graphs/command") return emptyGraphLists.commands;
-      if (url === "/api/graph-canvas?graph=execution") return graphCanvasResponse;
-      if (url === "/api/documents/note-1") return documentResponse;
-
-      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
-    });
-
-    const user = userEvent.setup();
-    render(<ThemeProvider><App /></ThemeProvider>);
-
-    await screen.findByText("Execution");
-    await expandSidebarGraph("Execution");
-
-    const fileButton = (await screen.findByText("overview.md")).closest('[data-sidebar="menu-sub-button"]');
-    if (fileButton === null) {
-      throw new Error("missing overview file button");
-    }
-
-    await user.click(fileButton);
-
-    await user.click(await screen.findByRole("button", { name: "Toggle table of contents" }));
-
-    const layout = await screen.findByLabelText("Document content layout");
-    Object.defineProperty(layout, "getBoundingClientRect", {
-      configurable: true,
-      value: () => ({
-        x: 100,
-        y: 40,
-        top: 40,
-        left: 100,
-        right: 900,
-        bottom: 640,
-        width: 800,
-        height: 600,
-        toJSON: () => ({}),
-      }),
-    });
-
-    fireEvent.mouseDown(screen.getByRole("separator", { name: "Resize table of contents" }), { button: 0, clientX: 740 });
-    fireEvent.mouseMove(window, { clientX: 680 });
-    fireEvent.mouseUp(window);
-
-    await waitFor(() => {
-      const body = getRequestBody(fetchMock, "/api/workspace", "PUT");
-      expect(body).toEqual({
-        panelWidths: {
-          leftRatio: 0.31,
-          rightRatio: 0.22,
-          documentTOCRatio: 0.275,
-        },
-      });
-    });
   });
 
   it("shows empty-graph create actions and creates a note into the selected graph", async () => {

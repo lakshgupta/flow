@@ -18,6 +18,7 @@ This document is intentionally high level and describes the architecture current
 - [Core Flows](#core-flows)
 - [Graph Operations](#graph-operations)
 - [Editor Interaction & Thread UI](#editor-interaction--thread-ui)
+- [Contextual Sidebar Table of Contents](#contextual-sidebar-table-of-contents)
 - [Architectural Invariants](#architectural-invariants)
 - [Development Workflow & Agent Skills](#development-workflow--agent-skills)
 - [Quality Strategy](#quality-strategy)
@@ -228,6 +229,22 @@ The sidebar Content tree supports dragging graph rows to reparent them:
 - The outgoing-links constraint (applied to individual document moves) does not apply to graph-level moves.
 
 ## Editor Interaction & Thread UI
+
+### Contextual Sidebar Table of Contents
+
+Flow uses the left sidebar as the single table-of-contents surface for active document navigation. The sidebar has two transient views: the existing Content tree and a contextual TOC view backed by the reusable `TableOfContents` component.
+
+**View behavior:**
+- The Content tree is the default view and remains visible when a graph/folder is expanded; expansion only reveals its child graphs and files.
+- Opening a document from the Content tree switches the sidebar to that document's TOC.
+- Selecting a document thread switches the sidebar TOC context to the selected thread document.
+- Selecting Home switches the sidebar to Home's TOC.
+- A Back to content tree control restores the tree without closing or changing the active editor/thread.
+- Documents without headings render the TOC empty state (`No headings yet.`).
+
+TOC items are derived from the active Home or document editor body using the existing `generateTOC` helper. Heading selection reuses `handleTOCNavigate` and the editor scroll-target state, so center-thread, Home, and right-rail editing remain responsible for the actual scroll operation.
+
+The center and right-rail editor panes do not render TOC panels, toggles, or TOC resize handles after this migration. The center document properties side panel remains available independently. The existing sidebar width provides TOC sizing, so the document-specific `documentTOCRatio` setting is no longer needed for TOC navigation.
 
 ### Rich Text Editor Navigation (Obsidian-style)
 To improve rich-text editing usability, diagram views (such as Mermaid sections) and code blocks allow transparent keyboard selection and cursor movement. 

@@ -65,9 +65,8 @@ type workspaceResponse struct {
 }
 
 type panelWidths struct {
-	LeftRatio        float64 `json:"leftRatio"`
-	RightRatio       float64 `json:"rightRatio"`
-	DocumentTOCRatio float64 `json:"documentTOCRatio"`
+	LeftRatio  float64 `json:"leftRatio"`
+	RightRatio float64 `json:"rightRatio"`
 }
 
 const (
@@ -76,9 +75,8 @@ const (
 )
 
 type updatePanelWidthsRequest struct {
-	LeftRatio        *float64 `json:"leftRatio"`
-	RightRatio       *float64 `json:"rightRatio"`
-	DocumentTOCRatio *float64 `json:"documentTOCRatio"`
+	LeftRatio  *float64 `json:"leftRatio"`
+	RightRatio *float64 `json:"rightRatio"`
 }
 
 type HomeResponse struct {
@@ -533,9 +531,8 @@ func (handler *apiHandler) handleWorkspace(writer http.ResponseWriter, _ *http.R
 		GUIPort:       workspaceConfig.GUI.Port,
 		Appearance:    workspaceConfig.GUI.Appearance,
 		PanelWidths: panelWidths{
-			LeftRatio:        workspaceConfig.GUI.PanelWidths.LeftRatio,
-			RightRatio:       workspaceConfig.GUI.PanelWidths.RightRatio,
-			DocumentTOCRatio: workspaceConfig.GUI.PanelWidths.DocumentTOCRatio,
+			LeftRatio:  workspaceConfig.GUI.PanelWidths.LeftRatio,
+			RightRatio: workspaceConfig.GUI.PanelWidths.RightRatio,
 		},
 		AppVersion:                buildinfo.ProjectVersion(),
 		LicenseText:               appLicenseText,
@@ -708,9 +705,6 @@ func (handler *apiHandler) handleUpdateWorkspace(writer http.ResponseWriter, req
 		}
 		if payload.PanelWidths.RightRatio != nil {
 			workspaceConfig.GUI.PanelWidths.RightRatio = *payload.PanelWidths.RightRatio
-		}
-		if payload.PanelWidths.DocumentTOCRatio != nil {
-			workspaceConfig.GUI.PanelWidths.DocumentTOCRatio = *payload.PanelWidths.DocumentTOCRatio
 		}
 	}
 	if payload.Appearance != nil {
@@ -2391,7 +2385,6 @@ func syncWorkspaceGUIStateToIndex(root workspace.Root, workspaceConfig config.Wo
 		Appearance:      workspaceConfig.GUI.Appearance,
 		PanelLeftRatio:  workspaceConfig.GUI.PanelWidths.LeftRatio,
 		PanelRightRatio: workspaceConfig.GUI.PanelWidths.RightRatio,
-		PanelTOCRatio:   workspaceConfig.GUI.PanelWidths.DocumentTOCRatio,
 	}); err != nil {
 		return err
 	}

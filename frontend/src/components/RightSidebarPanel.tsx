@@ -5,7 +5,6 @@ import type { RightRailSearchPanelProps, RightRailCalendarPanelProps, RightRailV
 import { RightRailSearchPanel, RightRailCalendarPanel, RightRailViolationsPanel } from "./RightRailPanels";
 import { DocumentEditorPane, type DocumentEditorPaneActions, type DocumentLinkDetail } from "./DocumentEditorPane";
 import { RichTextEditor } from "./editor/RichTextEditor";
-import type { TOCItem } from "./TableOfContents";
 import type { HomeSurfaceActions } from "./HomeSurface";
 
 type RightSidebarPanelProps = {
@@ -32,10 +31,7 @@ type RightSidebarPanelProps = {
   deletingDocument: boolean;
   selectedDocumentGraphColor: string | undefined;
   selectedDocumentTintStyle: React.CSSProperties | undefined;
-  documentTOCRatio: number;
-  tocItems: TOCItem[];
   selectedDocumentLinks: { outgoing: DocumentLinkDetail[]; incoming: DocumentLinkDetail[] };
-  rightRailDocumentLayoutRef: RefObject<HTMLDivElement | null>;
   rightRailDocumentEditorRef: RefObject<{ getMarkdown: () => string } | null>;
   editorScrollTarget: string | null;
   rightRailDocumentActions: DocumentEditorPaneActions;
@@ -92,10 +88,7 @@ function RightSidebarPanelComponent({
   deletingDocument,
   selectedDocumentGraphColor,
   selectedDocumentTintStyle,
-  documentTOCRatio,
-  tocItems,
   selectedDocumentLinks,
-  rightRailDocumentLayoutRef,
   rightRailDocumentEditorRef,
   editorScrollTarget,
   rightRailDocumentActions,
@@ -172,11 +165,8 @@ function RightSidebarPanelComponent({
               isMaximized={rightRailMaximized}
               tintColor={selectedDocumentGraphColor}
               tintStyle={selectedDocumentTintStyle}
-              documentTOCRatio={documentTOCRatio}
-              tocItems={tocItems}
               outgoingLinks={selectedDocumentLinks.outgoing}
               incomingLinks={selectedDocumentLinks.incoming}
-              rightRailDocumentLayoutRef={rightRailDocumentLayoutRef}
               rightRailDocumentEditorRef={rightRailDocumentEditorRef}
               editorScrollTarget={editorScrollTarget}
               actions={rightRailDocumentActions}

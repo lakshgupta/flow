@@ -14,7 +14,6 @@ export type WorkspaceResponse = {
   panelWidths: {
     leftRatio: number;
     rightRatio: number;
-    documentTOCRatio: number;
   };
   appVersion?: string;
   licenseText?: string;

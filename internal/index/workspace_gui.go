@@ -5,15 +5,18 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
 )
+
+// legacyDocumentTOCRatio is written only when updating an index created by an
+// older version that required the removed document TOC setting. It is retained
+// solely to satisfy that legacy column's NOT NULL constraint.
+const legacyDocumentTOCRatio = 0.18
 
 // WorkspaceGUISettings stores GUI preferences persisted in the workspace index.
 type WorkspaceGUISettings struct {
 	Appearance      string
 	PanelLeftRatio  float64
 	PanelRightRatio float64
-	PanelTOCRatio   float64
 	UpdatedAt       string
 }
 
@@ -30,8 +33,8 @@ func ReadWorkspaceGUISettings(indexPath string) (WorkspaceGUISettings, bool, err
 	}
 
 	var settings WorkspaceGUISettings
-	err = database.QueryRow(`SELECT appearance, panel_left_ratio, panel_right_ratio, panel_document_toc_ratio, updated_at FROM workspace_gui_settings WHERE singleton_key = 1`).
-		Scan(&settings.Appearance, &settings.PanelLeftRatio, &settings.PanelRightRatio, &settings.PanelTOCRatio, &settings.UpdatedAt)
+	err = database.QueryRow(`SELECT appearance, panel_left_ratio, panel_right_ratio, updated_at FROM workspace_gui_settings WHERE singleton_key = 1`).
+		Scan(&settings.Appearance, &settings.PanelLeftRatio, &settings.PanelRightRatio, &settings.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return WorkspaceGUISettings{}, false, nil
@@ -59,19 +62,39 @@ func WriteWorkspaceGUISettings(indexPath string, settings WorkspaceGUISettings) 
 		return err
 	}
 
-	if _, err := database.Exec(
-		`INSERT INTO workspace_gui_settings (singleton_key, appearance, panel_left_ratio, panel_right_ratio, panel_document_toc_ratio, updated_at)
-		 VALUES (1, ?, ?, ?, ?, ?)
+	hasLegacyTOCColumn, err := hasWorkspaceGUISettingsColumn(database, "panel_document_toc_ratio")
+	if err != nil {
+		return fmt.Errorf("inspect workspace gui settings schema: %w", err)
+	}
+
+	if hasLegacyTOCColumn {
+		if _, err := database.Exec(
+			`INSERT INTO workspace_gui_settings (singleton_key, appearance, panel_left_ratio, panel_right_ratio, panel_document_toc_ratio, updated_at)
+			 VALUES (1, ?, ?, ?, ?, ?)
+			 ON CONFLICT(singleton_key) DO UPDATE
+			 SET appearance = excluded.appearance,
+			     panel_left_ratio = excluded.panel_left_ratio,
+			     panel_right_ratio = excluded.panel_right_ratio,
+			     updated_at = excluded.updated_at`,
+			normalized.Appearance,
+			normalized.PanelLeftRatio,
+			normalized.PanelRightRatio,
+			legacyDocumentTOCRatio,
+			normalized.UpdatedAt,
+		); err != nil {
+			return fmt.Errorf("write workspace gui settings: %w", err)
+		}
+	} else if _, err := database.Exec(
+		`INSERT INTO workspace_gui_settings (singleton_key, appearance, panel_left_ratio, panel_right_ratio, updated_at)
+		 VALUES (1, ?, ?, ?, ?)
 		 ON CONFLICT(singleton_key) DO UPDATE
 		 SET appearance = excluded.appearance,
 		     panel_left_ratio = excluded.panel_left_ratio,
 		     panel_right_ratio = excluded.panel_right_ratio,
-		     panel_document_toc_ratio = excluded.panel_document_toc_ratio,
 		     updated_at = excluded.updated_at`,
 		normalized.Appearance,
 		normalized.PanelLeftRatio,
 		normalized.PanelRightRatio,
-		normalized.PanelTOCRatio,
 		normalized.UpdatedAt,
 	); err != nil {
 		return fmt.Errorf("write workspace gui settings: %w", err)
@@ -151,7 +174,6 @@ func ensureWorkspaceGUISchema(database *sql.DB) error {
 			appearance TEXT NOT NULL,
 			panel_left_ratio REAL NOT NULL,
 			panel_right_ratio REAL NOT NULL,
-			panel_document_toc_ratio REAL NOT NULL,
 			updated_at TEXT NOT NULL
 		);
 	`); err != nil {
@@ -183,8 +205,8 @@ func loadExistingWorkspaceGUISettings(indexPath string) (WorkspaceGUISettings, b
 	}
 
 	var settings WorkspaceGUISettings
-	err = database.QueryRow(`SELECT appearance, panel_left_ratio, panel_right_ratio, panel_document_toc_ratio, updated_at FROM workspace_gui_settings WHERE singleton_key = 1`).
-		Scan(&settings.Appearance, &settings.PanelLeftRatio, &settings.PanelRightRatio, &settings.PanelTOCRatio, &settings.UpdatedAt)
+	err = database.QueryRow(`SELECT appearance, panel_left_ratio, panel_right_ratio, updated_at FROM workspace_gui_settings WHERE singleton_key = 1`).
+		Scan(&settings.Appearance, &settings.PanelLeftRatio, &settings.PanelRightRatio, &settings.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return WorkspaceGUISettings{}, false, nil
@@ -268,25 +290,78 @@ func upsertWorkspaceGUISettings(transaction *sql.Tx, settings WorkspaceGUISettin
 		return err
 	}
 
-	if _, err := transaction.Exec(
-		`INSERT INTO workspace_gui_settings (singleton_key, appearance, panel_left_ratio, panel_right_ratio, panel_document_toc_ratio, updated_at)
-		 VALUES (1, ?, ?, ?, ?, ?)
+	hasLegacyTOCColumn, err := hasWorkspaceGUISettingsColumn(transaction, "panel_document_toc_ratio")
+	if err != nil {
+		return fmt.Errorf("inspect workspace gui settings schema: %w", err)
+	}
+
+	if hasLegacyTOCColumn {
+		if _, err := transaction.Exec(
+			`INSERT INTO workspace_gui_settings (singleton_key, appearance, panel_left_ratio, panel_right_ratio, panel_document_toc_ratio, updated_at)
+			 VALUES (1, ?, ?, ?, ?, ?)
+			 ON CONFLICT(singleton_key) DO UPDATE
+			 SET appearance = excluded.appearance,
+			     panel_left_ratio = excluded.panel_left_ratio,
+			     panel_right_ratio = excluded.panel_right_ratio,
+			     updated_at = excluded.updated_at`,
+			normalized.Appearance,
+			normalized.PanelLeftRatio,
+			normalized.PanelRightRatio,
+			legacyDocumentTOCRatio,
+			normalized.UpdatedAt,
+		); err != nil {
+			return fmt.Errorf("write workspace gui settings: %w", err)
+		}
+	} else if _, err := transaction.Exec(
+		`INSERT INTO workspace_gui_settings (singleton_key, appearance, panel_left_ratio, panel_right_ratio, updated_at)
+		 VALUES (1, ?, ?, ?, ?)
 		 ON CONFLICT(singleton_key) DO UPDATE
 		 SET appearance = excluded.appearance,
 		     panel_left_ratio = excluded.panel_left_ratio,
 		     panel_right_ratio = excluded.panel_right_ratio,
-		     panel_document_toc_ratio = excluded.panel_document_toc_ratio,
 		     updated_at = excluded.updated_at`,
 		normalized.Appearance,
 		normalized.PanelLeftRatio,
 		normalized.PanelRightRatio,
-		normalized.PanelTOCRatio,
 		normalized.UpdatedAt,
 	); err != nil {
 		return fmt.Errorf("write workspace gui settings: %w", err)
 	}
 
 	return nil
+}
+
+func hasWorkspaceGUISettingsColumn(queryer interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+}, wantedColumn string) (bool, error) {
+	rows, err := queryer.Query(`PRAGMA table_info(workspace_gui_settings)`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			columnID     int
+			columnName   string
+			columnType   string
+			notNull      int
+			defaultValue sql.NullString
+			primaryKey   int
+		)
+		if err := rows.Scan(&columnID, &columnName, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return false, err
+		}
+		if columnName == wantedColumn {
+			return true, nil
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+
+	return false, nil
 }
 
 func replaceWorkspaceGraphDirectoryColors(transaction *sql.Tx, colors map[string]string) error {

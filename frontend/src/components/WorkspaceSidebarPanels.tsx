@@ -1,7 +1,9 @@
-import { GalleryVerticalEnd } from "lucide-react";
+import { ArrowLeft, GalleryVerticalEnd, Rows3 } from "lucide-react";
 import { memo } from "react";
 
 import { GraphTree } from "./GraphTree";
+import { TableOfContents, type TOCItem } from "./TableOfContents";
+import { Button } from "./ui/button";
 import { Label } from "./ui/label";
 
 import type { SidebarNavigationActions } from "../hooks/useSidebarNavigationActions";
@@ -43,23 +45,97 @@ function WorkspaceSelectorPanelComponent({ workspace, switchingWorkspace, action
   );
 }
 
+export type SidebarView = "content" | "toc";
+
 type GraphTreePanelProps = {
   graphTree: GraphTreeResponse | null;
   activeSurface: SurfaceState;
   selectedDocumentId: string;
   actions: SidebarNavigationActions;
+  sidebarView?: SidebarView;
+  tocTitle?: string;
+  tocItems?: TOCItem[];
+  onBackToContent?: () => void;
+  onNavigateTOC?: (headingSlug: string) => void;
+  showTOCButton?: boolean;
+  onShowTOC?: () => void;
 };
 
-function GraphTreePanelComponent({ graphTree, activeSurface, selectedDocumentId, actions }: GraphTreePanelProps) {
+function SidebarTOCPanel({
+  title,
+  items,
+  onBack,
+  onNavigate,
+}: {
+  title: string;
+  items: TOCItem[];
+  onBack: () => void;
+  onNavigate: (headingSlug: string) => void;
+}) {
   return (
+    <aside className="sidebar-toc-view" aria-label="Sidebar table of contents" data-testid="sidebar-toc-view">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="sidebar-toc-back"
+        aria-label="Back to content tree"
+        onClick={onBack}
+      >
+        <ArrowLeft size={14} aria-hidden="true" />
+        <span>Back to content tree</span>
+      </Button>
+      <div className="sidebar-toc-header">
+        <p className="sidebar-toc-eyebrow">Table of Contents</p>
+        <h3 className="sidebar-toc-title">{title}</h3>
+      </div>
+      <div className="sidebar-toc-content">
+        <TableOfContents items={items} onNavigate={onNavigate} />
+      </div>
+    </aside>
+  );
+}
+
+function GraphTreePanelComponent({
+  graphTree,
+  activeSurface,
+  selectedDocumentId,
+  actions,
+  sidebarView = "content",
+  tocTitle = "Current document",
+  tocItems = [],
+  onBackToContent = () => {},
+  onNavigateTOC = () => {},
+  showTOCButton = false,
+  onShowTOC = () => {},
+}: GraphTreePanelProps) {
+  const handleSelectHome = () => {
+    if (activeSurface.kind === "home") {
+      onShowTOC();
+      return;
+    }
+
+    actions.selectHome();
+  };
+
+  const handleOpenDocument = (documentId: string, graphPath: string) => {
+    if (selectedDocumentId === documentId) {
+      onShowTOC();
+      return;
+    }
+
+    actions.openDocument(documentId, graphPath);
+  };
+
+  const graphTreeContent = (
     <GraphTree
       graphTree={graphTree}
       activeSurface={activeSurface}
       selectedDocumentId={selectedDocumentId}
-      onSelectHome={actions.selectHome}
+      onSelectHome={handleSelectHome}
       onSelectGraph={actions.selectGraph}
       onOpenGraphViolations={actions.openGraphViolations}
-      onOpenDocument={actions.openDocument}
+      onOpenDocument={handleOpenDocument}
       onCreateGraph={actions.createGraph}
       onCreateNode={actions.createNode}
       onRenameGraph={actions.renameGraph}
@@ -74,6 +150,37 @@ function GraphTreePanelComponent({ graphTree, activeSurface, selectedDocumentId,
       onSetNodeColor={actions.setNodeColor}
       onRebuildIndex={actions.rebuildIndex}
     />
+  );
+
+  return (
+    <>
+      {sidebarView === "content" && showTOCButton ? (
+        <div className="sidebar-content-actions">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="sidebar-show-toc"
+            aria-label="Show table of contents"
+            onClick={onShowTOC}
+          >
+            <Rows3 size={14} aria-hidden="true" />
+            <span>Show table of contents</span>
+          </Button>
+        </div>
+      ) : null}
+      <div hidden={sidebarView === "toc"} aria-hidden={sidebarView === "toc"}>
+        {graphTreeContent}
+      </div>
+      {sidebarView === "toc" ? (
+        <SidebarTOCPanel
+          title={tocTitle}
+          items={tocItems}
+          onBack={onBackToContent}
+          onNavigate={onNavigateTOC}
+        />
+      ) : null}
+    </>
   );
 }
 
