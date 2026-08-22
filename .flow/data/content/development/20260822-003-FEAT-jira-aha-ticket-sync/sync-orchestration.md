@@ -3,7 +3,7 @@ id: development/20260822-003-FEAT-jira-aha-ticket-sync/sync-orchestration
 type: task
 graph: development/20260822-003-FEAT-jira-aha-ticket-sync
 title: Implement Jira sync orchestration
-description: 'tags: - implementation  (commit: 2d0e711)'
+description: 'tags: - implementation  (commit: 5b7296d)'
 tags:
     - implementation
     - core

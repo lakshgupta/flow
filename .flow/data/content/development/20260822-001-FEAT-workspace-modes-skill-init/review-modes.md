@@ -3,7 +3,7 @@ id: development/20260822-001-FEAT-workspace-modes-skill-init/review-modes
 type: task
 graph: development/20260822-001-FEAT-workspace-modes-skill-init
 title: Review workspace modes implementation
-description: 'tags: - review  (commit: 2d0e711)'
+description: 'tags: - review  (commit: 5b7296d)'
 tags:
     - review
 status: Done

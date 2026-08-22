@@ -3,7 +3,7 @@ id: development/20260822-002-FEAT-roadmap-batch-parallel-dev/docs-roadmap
 type: task
 graph: development/20260822-002-FEAT-roadmap-batch-parallel-dev
 title: Document flow roadmap in docs
-description: 'tags: - documentation  (commit: 2d0e711)'
+description: 'tags: - documentation  (commit: 5b7296d)'
 tags:
     - documentation
 status: Done

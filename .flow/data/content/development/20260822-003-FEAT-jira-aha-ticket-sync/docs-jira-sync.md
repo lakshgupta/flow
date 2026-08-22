@@ -3,7 +3,7 @@ id: development/20260822-003-FEAT-jira-aha-ticket-sync/docs-jira-sync
 type: task
 graph: development/20260822-003-FEAT-jira-aha-ticket-sync
 title: Document external root and sync in docs
-description: 'tags: - documentation  (commit: 2d0e711)'
+description: 'tags: - documentation  (commit: 5b7296d)'
 tags:
     - documentation
 status: Done

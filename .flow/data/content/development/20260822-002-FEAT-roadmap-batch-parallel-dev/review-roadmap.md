@@ -3,7 +3,7 @@ id: development/20260822-002-FEAT-roadmap-batch-parallel-dev/review-roadmap
 type: task
 graph: development/20260822-002-FEAT-roadmap-batch-parallel-dev
 title: Review roadmap/batch implementation
-description: 'tags: - review  (commit: 2d0e711)'
+description: 'tags: - review  (commit: 5b7296d)'
 tags:
     - review
 status: Done

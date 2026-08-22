@@ -3,7 +3,7 @@ id: development/20260822-002-FEAT-roadmap-batch-parallel-dev/cli-roadmap-command
 type: task
 graph: development/20260822-002-FEAT-roadmap-batch-parallel-dev
 title: Add flow roadmap CLI command
-description: 'tags: - implementation  (commit: 2d0e711)'
+description: 'tags: - implementation  (commit: 5b7296d)'
 tags:
     - implementation
     - cli

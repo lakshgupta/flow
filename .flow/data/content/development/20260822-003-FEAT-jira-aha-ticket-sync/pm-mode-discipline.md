@@ -3,7 +3,7 @@ id: development/20260822-003-FEAT-jira-aha-ticket-sync/pm-mode-discipline
 type: task
 graph: development/20260822-003-FEAT-jira-aha-ticket-sync
 title: Document synced-node discipline in pm mode content
-description: 'tags: - content  (commit: 2d0e711)'
+description: 'tags: - content  (commit: 5b7296d)'
 tags:
     - content
     - modes

@@ -3,7 +3,7 @@ id: development/20260822-003-FEAT-jira-aha-ticket-sync/test-jira-sync
 type: task
 graph: development/20260822-003-FEAT-jira-aha-ticket-sync
 title: Test Jira sync orchestration and CLI
-description: 'tags: - test  (commit: 2d0e711)'
+description: 'tags: - test  (commit: 5b7296d)'
 tags:
     - test
 status: Done
