@@ -4330,6 +4330,59 @@ describe("App graph canvas flows", () => {
     expect((await screen.findAllByText("Index refreshed.")).length).toBeGreaterThan(0);
   });
 
+  it("rebuilds the index and refreshes the Home body in the editor", async () => {
+    let currentGraphTree = graphTreeResponse;
+
+    const fetchMock = installFetchMock((url, init) => {
+      if (url === "/api/workspace") {
+        return workspaceResponse;
+      }
+
+      if (url === "/api/graphs") {
+        return currentGraphTree;
+      }
+
+      if (url === "/api/index/rebuild" && (init?.method ?? "GET") === "POST") {
+        currentGraphTree = {
+          ...graphTreeResponse,
+          home: { ...homeResponse, body: "# Home\n\nRefreshed home body\n" },
+        };
+        return { rebuilt: true };
+      }
+
+      throw new Error(`Unhandled request: ${(init?.method ?? "GET")} ${url}`);
+    });
+
+    const user = userEvent.setup();
+    render(<ThemeProvider><App /></ThemeProvider>);
+
+    const homeEditor = await screen.findByLabelText("Home body editor");
+    const homeEditorRoot = () => homeEditor.querySelector(".ProseMirror") ?? homeEditor;
+
+    // The Home editor mounts with the initial server content.
+    await waitFor(() => {
+      expect(homeEditorRoot().textContent).toContain("Home");
+    });
+
+    // Rebuild the index while the Home editor is mounted with content. The
+    // refresh must push the freshly indexed home body into the editor instead
+    // of preserving the stale in-editor state.
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("button", { name: "Refresh index" }));
+
+    await waitFor(() => {
+      const rebuildCall = fetchMock.mock.calls.find(([requestURL, requestInit]) => {
+        const urlString = typeof requestURL === "string" ? requestURL : requestURL instanceof URL ? requestURL.toString() : requestURL.url;
+        return urlString === "/api/index/rebuild" && (requestInit?.method ?? "GET") === "POST";
+      });
+      expect(rebuildCall).toBeDefined();
+    });
+
+    await waitFor(() => {
+      expect(homeEditorRoot().textContent).toContain("Refreshed home body");
+    });
+  });
+
   it("downloads workspace data as a zip from settings", async () => {
     const fetchMock = installFetchMock((url, init) => {
       if (url === "/api/workspace") {

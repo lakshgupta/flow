@@ -474,6 +474,11 @@ function FlowApp() {
   const rightRailDocumentEditorRef = useRef<RichTextEditorHandle | null>(null);
   const connectingTargetRef = useRef<string | null>(null);
   const homeFormStateRef = useRef<HomeFormState>(emptyHomeFormState);
+  // When set, the next graphTree/home sync takes the server content wholesale
+  // instead of preserving the in-editor body. An explicit index refresh is a
+  // request to re-sync Home from the workspace files, so the pending-edit
+  // preservation guard must be bypassed.
+  const forceHomeReloadRef = useRef(false);
   const homeFormWorkspacePathRef = useRef<string>("");
   const homeAutoSaveTimerRef = useRef<number | undefined>(undefined);
   const documentAutoSaveTimerRef = useRef<number | undefined>(undefined);
@@ -1621,8 +1626,15 @@ function FlowApp() {
     const workspaceChanged = homeFormWorkspacePathRef.current !== currentWorkspacePath;
     homeFormWorkspacePathRef.current = currentWorkspacePath;
 
+    // An explicit index refresh requests re-syncing from disk; consume the flag
+    // and skip the preservation guard so freshly indexed home content is pushed
+    // into the editor instead of being discarded as "pending edits".
+    const forceReload = forceHomeReloadRef.current;
+    forceHomeReloadRef.current = false;
+
     if (
       !workspaceChanged &&
+      !forceReload &&
       homeDocumentEditorRef.current !== null &&
       homeFormStateRef.current.body !== "" &&
       homeFormStateRef.current.body !== next.body
@@ -2852,9 +2864,16 @@ function FlowApp() {
       setRebuildingIndex(true);
       setMutationError("");
       setMutationSuccess("");
+      // Persist any in-editor home edits first so the refresh cannot discard
+      // unsaved work when it reloads the home body from disk below.
+      await flushPendingHomeSave();
       await requestJSON<{ rebuilt: boolean }>("/api/index/rebuild", {
         method: "POST",
       });
+      // An index refresh is an explicit request to re-sync the Home page from
+      // the workspace files. Bypass the pending-edit preservation guard so the
+      // freshly indexed home body is pushed into the editor.
+      forceHomeReloadRef.current = true;
       await refreshShellViews({ reloadCurrentDocument: true });
       setMutationSuccess("Index refreshed.");
     } catch (rebuildError) {
