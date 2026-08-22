@@ -4381,6 +4381,11 @@ describe("App graph canvas flows", () => {
     await waitFor(() => {
       expect(homeEditorRoot().textContent).toContain("Refreshed home body");
     });
+    expect(screen.getAllByText("Index refreshed.", { exact: true }).length).toBeGreaterThan(0);
+
+    await waitFor(() => {
+      expect(screen.queryAllByText("Index refreshed.", { exact: true })).toHaveLength(0);
+    }, { timeout: 3000 });
   });
 
   it("downloads workspace data as a zip from settings", async () => {

@@ -176,6 +176,7 @@ const DOCUMENT_FILE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
 // only lose a bounded window of work.
 const AUTO_SAVE_DEBOUNCE_MS = 400;
 const AUTO_SAVE_MAX_GAP_MS = 4000;
+const MUTATION_FEEDBACK_TIMEOUT_MS = 2000;
 // fetch keepalive bodies are limited to 64KB; stay safely under it.
 const KEEPALIVE_MAX_BODY_BYTES = 60_000;
 
@@ -975,6 +976,20 @@ function FlowApp() {
     setHomeFormState(nextState);
     return true;
   }
+
+  useEffect(() => {
+    if (mutationSuccess === "") {
+      return;
+    }
+
+    const timeoutID = window.setTimeout(() => {
+      setMutationSuccess("");
+    }, MUTATION_FEEDBACK_TIMEOUT_MS);
+
+    return () => {
+      window.clearTimeout(timeoutID);
+    };
+  }, [mutationSuccess]);
 
   function clearMutationFeedback(): void {
     setMutationError("");
