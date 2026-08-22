@@ -4,7 +4,6 @@ gui:
     panelWidths:
         leftRatio: 0.25
         rightRatio: 0.24
-        documentTOCRatio: 0.32
     graphDirectoryColors:
         development: rose
         development/20260505-002-FIX-editor-markdown-shortcuts: amber

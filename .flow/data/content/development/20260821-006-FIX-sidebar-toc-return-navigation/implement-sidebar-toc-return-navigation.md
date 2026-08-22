@@ -3,7 +3,7 @@ id: development/20260821-006-FIX-sidebar-toc-return-navigation/implement-sidebar
 type: task
 graph: development/20260821-006-FIX-sidebar-toc-return-navigation
 title: Implement bidirectional sidebar TOC navigation
-description: 'Add Show table of contents control in Content mode and make the active document/Home row return to the current TOC. Validation: npm test (293 passed); npx tsc --noEmit; git diff --check.'
+description: 'Add Show table of contents control in Content mode and make the active document/Home row return to the current TOC. Validation: npm test (293 passed); npx tsc --noEmit; git diff --check. Commit: af082f8'
 tags:
     - implementation
 status: Done

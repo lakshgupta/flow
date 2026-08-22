@@ -3,7 +3,7 @@ id: development/20260821-005-FEAT-sidebar-contextual-toc/test-sidebar-toc-naviga
 type: task
 graph: development/20260821-005-FEAT-sidebar-contextual-toc
 title: Test sidebar TOC navigation
-description: 'Cover document, Home, and thread transitions, Back navigation, graph expansion, empty headings, heading scrolling, and absence of editor TOCs. Results: npm test (293 passed); npx tsc --noEmit; go test ./...; npm run build all passed.'
+description: 'Cover document, Home, and thread transitions, Back navigation, graph expansion, empty headings, heading scrolling, and absence of editor TOCs. Results: npm test (293 passed); npx tsc --noEmit; go test ./...; npm run build all passed. Commit: af082f8'
 tags:
     - test
 status: Done
