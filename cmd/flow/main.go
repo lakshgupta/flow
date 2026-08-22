@@ -39,6 +39,8 @@ const guiLogRetentionWindow = 15 * 24 * time.Hour
 type commandEnv struct {
 	stdout           io.Writer
 	stderr           io.Writer
+	stdin            io.Reader
+	stdinIsTerminal  bool
 	getwd            func() (string, error)
 	environ          func() []string
 	userConfigDir    func() (string, error)
@@ -231,6 +233,13 @@ func writeHelpIfRequested(args []string, writer io.Writer, writeHelp func(io.Wri
 }
 
 func parseFlagSetWithHelp(flagSet *flag.FlagSet, args []string, env commandEnv, writeHelp func(io.Writer)) (bool, error) {
+	// The flag package calls Usage itself when it sees -h/--help (and on
+	// errors); neutralize it during Parse so help text is written exactly
+	// once by the ErrHelp branch below.
+	savedUsage := flagSet.Usage
+	flagSet.Usage = func() {}
+	defer func() { flagSet.Usage = savedUsage }()
+
 	if err := flagSet.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			writeHelp(env.stdout)
@@ -303,9 +312,13 @@ func writeSkillInitHelp(w io.Writer) {
 	fmt.Fprintln(w, "Usage: flow skill init [options]")
 	fmt.Fprintln(w, "Initialize the embedded Flow skills so an agent can use them.")
 	fmt.Fprintln(w, "Options:")
-	fmt.Fprintf(w, "  --mode <name>     Compose the skill for this workspace mode (default: dev; available: %s)\n", strings.Join(flow.SkillModes(), ", "))
+	fmt.Fprintln(w, "  --mode <name>     Workspace mode(s) composing the skill content (repeatable; default: dev). Modes can be combined, for example --mode note --mode pm:")
+	for _, line := range flow.SkillModeDescriptions() {
+		fmt.Fprintf(w, "        %s\n", line)
+	}
 	fmt.Fprintln(w, "  --skill <name>    Only initialize this skill (repeatable)")
 	fmt.Fprintln(w, "  --project         Write to .agents/skills in the current workspace instead of ~/.agents/skills")
+	fmt.Fprintln(w, "  --local           Alias for --project")
 	fmt.Fprintln(w, "  --force           Overwrite existing skill files")
 	fmt.Fprintln(w, "  --quiet           Suppress per-file output")
 }
@@ -445,6 +458,10 @@ func writeWorkspaceHelp(w io.Writer) {
 }
 
 func withDefaultCommandEnv(env commandEnv) commandEnv {
+	if env.stdin == nil {
+		env.stdin = os.Stdin
+		env.stdinIsTerminal = stdinIsTerminal(os.Stdin)
+	}
 	if env.guiRuntime == nil {
 		env.guiRuntime = processGUIRuntime
 	}
@@ -564,11 +581,13 @@ func runSkillInit(args []string, env commandEnv) error {
 	}
 
 	var skills stringListFlag
-	mode := flagSet.String("mode", "dev", "workspace mode composing the skill content (default: dev)")
+	var modes stringListFlag
 	project := flagSet.Bool("project", false, "write to .agents/skills in the current workspace instead of ~/.agents/skills")
+	local := flagSet.Bool("local", false, "alias for --project")
 	force := flagSet.Bool("force", false, "overwrite existing skill files")
 	quiet := flagSet.Bool("quiet", false, "suppress per-file output")
 	flagSet.Var(&skills, "skill", "only initialize this skill (repeatable)")
+	flagSet.Var(&modes, "mode", "workspace mode(s) composing the skill content (repeatable; default: dev)")
 
 	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeSkillInitHelp)
 	if err != nil {
@@ -577,10 +596,16 @@ func runSkillInit(args []string, env commandEnv) error {
 	if helpShown {
 		return nil
 	}
+	useProjectTarget := *project || *local
 
 	targets := []string(skills)
 	if len(targets) == 0 {
 		targets = flow.SkillNames()
+	}
+
+	selectedModes := []string(modes)
+	if len(selectedModes) == 0 {
+		selectedModes = []string{"dev"}
 	}
 
 	markdowns := make(map[string]string, len(targets))
@@ -590,18 +615,28 @@ func runSkillInit(args []string, env commandEnv) error {
 			return fmt.Errorf("unknown skill %q; use `flow skill list` to list available skills", name)
 		}
 		if name == "flow" {
-			composed, composedOK := flow.SkillMarkdownForMode(*mode)
+			composed, composedOK := flow.SkillMarkdownForModes(selectedModes)
 			if !composedOK {
-				return fmt.Errorf("unknown mode %q; available modes: %s", *mode, strings.Join(flow.SkillModes(), ", "))
+				return fmt.Errorf("unknown mode in %q; available modes: %s", strings.Join(selectedModes, ","), strings.Join(flow.SkillModes(), ", "))
 			}
 			markdown = composed
 		}
 		markdowns[name] = markdown
 	}
 
-	targetDir, err := resolveSkillInitTargetDir(*project, env)
+	targetDir, err := resolveSkillInitTargetDir(useProjectTarget, env)
 	if err != nil {
 		return err
+	}
+
+	if useProjectTarget {
+		agentsPath, err := syncProjectAgentsGuide(targetDir, selectedModes, *force, env)
+		if err != nil {
+			return err
+		}
+		if !*quiet && agentsPath != "" {
+			fmt.Fprintf(env.stdout, "updated %s\n", agentsPath)
+		}
 	}
 
 	written := 0
@@ -638,6 +673,14 @@ func runSkillInit(args []string, env commandEnv) error {
 	}
 
 	fmt.Fprintf(env.stdout, "Initialized %d skill file(s), %d skipped in %s\n", written, skipped, targetDir)
+
+	if !useProjectTarget && !*quiet {
+		// Global install: still offer workspace-local guidance when the
+		// current directory looks like a Flow workspace or agent project.
+		if workingDirectory, wdErr := env.getwd(); wdErr == nil && workspaceAgentSetupMarkerPresent(workingDirectory) {
+			return offerWorkspaceAgentSetup(env, selectedModes, false)
+		}
+	}
 	return nil
 }
 
@@ -717,6 +760,10 @@ func runInit(global bool, args []string, env commandEnv) error {
 	}
 
 	fmt.Fprintf(env.stdout, "Initialized %s workspace at %s\n", label, root.WorkspacePath)
+
+	if !global {
+		return offerWorkspaceAgentSetup(env, []string{"dev"}, true)
+	}
 	return nil
 }
 

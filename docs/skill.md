@@ -1,6 +1,6 @@
 # Skills
 
-This document explains the agent skill Flow ships for guiding AI agents through project work. The skill set — the complete workspace workflow covering design, planning, implementation, fixing, refactoring, testing, review, commit, graph engineering, and record keeping — is distributed as a **single merged skill** through the `flow` binary and can be initialized into any workspace or agent home. This document covers what the skill contains, how an agent should use it, and the research that shaped the graph-engineering section.
+This document explains the agent skill Flow ships for guiding AI agents through project work, and how you use it day to day. The skill set — the complete workspace workflow covering design, planning, implementation, fixing, refactoring, testing, review, commit, roadmap batching, graph engineering, and record keeping — is distributed as a **single merged skill** through the `flow` binary and can be initialized into any workspace or agent home. This document covers what the skill contains, how to install it, how agents load it automatically, and the research that shaped the graph-engineering section.
 
 ## Index
 
@@ -9,6 +9,7 @@ This document explains the agent skill Flow ships for guiding AI agents through 
 - [Record Keeping (Section 1)](#record-keeping-section-1)
 - [Stage Workflows (Section 2)](#stage-workflows-section-2)
 - [Graph Engineering (Section 3)](#graph-engineering-section-3)
+- [Using The Skills](#using-the-skills)
 - [How Agents Pick Up the Skill](#how-agents-pick-up-the-skill)
 - [Research References](#research-references)
 - [Related Documents](#related-documents)
@@ -25,7 +26,7 @@ All Flow skill content lives in a single canonical directory, `packaging/skills/
 
 | Skill | File | Role |
 |---|---|---|
-| Flow | `packaging/skills/flow/SKILL.md` | The complete Flow agent protocol: the mandatory record-keeping contract (Section 1), the stage workflows design/plan/implement/fix/refactor/test/review/commit (Section 2), and graph engineering (Section 3). Also addressable by its alias `record-keeping`. |
+| Flow | `packaging/skills/flow/SKILL.md` | The complete Flow agent protocol: the mandatory record-keeping contract (Section 1), the stage workflows design/plan/implement/fix/refactor/test/review/commit plus roadmap batching (Section 2), and graph engineering (Section 3). Composed per workspace mode at init time. Also addressable by its alias `record-keeping`. |
 
 The skill file is a self-contained Markdown document with YAML frontmatter (`name`, `description`, `user-invocable`, `allowed-tools`, `argument-hint`) followed by a stage-routing table and the full workflow instructions as internal sections.
 
@@ -41,13 +42,15 @@ The single skill is organized into three parts:
 
 ### Workspace modes
 
-`flow skill init --mode <name>` composes the skill for the workspace's purpose:
+`flow skill init --mode <name>` composes the skill for the workspace's purpose. Modes are repeatable and combine — `--mode note --mode pm` produces one skill containing both variants; any selection that includes `dev` yields the full canonical skill:
 
-- `dev` (default) — the full skill: record keeping, all stage workflows including roadmap/batch development, graph engineering.
-- `note` — lightened notes-only variant for general note taking (ad-hoc notes, books, design manuals, architecture docs); relaxes the `YYYYMMDD-NNN-*` naming convention in favor of free-form notebooks; drops development stages and commit gates.
-- `pm` — notes baseline plus read-only discipline for externally synced ticket nodes (`external/jira/...`): never edit mirrors, link them into plans instead.
+| Mode | Purpose |
+|---|---|
+| `dev` (default) | Full development workflow: record keeping, all stage workflows including roadmap/batch development, graph engineering. |
+| `note` | Lightened notes-only variant for general note taking (ad-hoc notes, books, design manuals, architecture docs); relaxes the `YYYYMMDD-NNN-*` naming convention in favor of free-form notebooks; drops development stages and commit gates. |
+| `pm` | Notes baseline plus read-only discipline for externally synced ticket nodes (`external/jira/...`): never edit mirrors, link them into plans instead. |
 
-Mode files live under `packaging/skills/flow/modes/`; composition replaces only the marked stage-routing and stage-workflow regions of the canonical skill, keeping shared sections verbatim.
+Mode files live under `packaging/skills/flow/modes/`; composition replaces only the marked stage-routing and stage-workflow regions of the canonical skill, keeping shared sections (record keeping, graph engineering) verbatim.
 
 A stage-routing table at the top of the file maps each kind of work to its section, so an agent can jump straight to the relevant protocol.
 
@@ -74,16 +77,17 @@ The protocol defines three mandatory sub-protocols, each with a concrete CLI wor
 
 ## Stage Workflows (Section 2)
 
-Each stage subsection in the skill is self-contained: it opens by describing what to review, lists the stage workflow steps, restates the record-keeping requirements specific to that stage, and prescribes a chat response structure the agent should follow while working. The eight stages:
+Each stage subsection in the skill is self-contained: it opens by describing what to review, lists the stage workflow steps, restates the record-keeping requirements specific to that stage, and prescribes a chat response structure the agent should follow while working. The nine stages:
 
 1. **Design (2.1)** — produce a feature proposal in chat, get user approval, then record the approved design as a design note node in `design/YYYYMMDD-NNN-<type>-<title>` (the graph is the design record; `home.md` is the evolving workspace manual).
-2. **Plan (2.2)** — build a practical implementation plan from the approved architecture and record it as Flow task nodes with dependency edges.
-3. **Implement (2.3)** — implement exactly one `Ready` task node per run, validate it, and advance its status to `Done`.
+2. **Plan (2.2)** — build a practical implementation plan from the approved architecture and record it as Flow task nodes with dependency edges. Every task body carries an acceptance-criteria section and an evidence-strategy line.
+3. **Implement (2.3)** — implement exactly one `Ready` task node per run, validate it, record an evidence section (tests run, outputs, commit ids), and advance its status to `Done`. Batch mode (see Roadmap) extends this across features.
 4. **Fix (2.4)** — identify root cause, apply the smallest credible fix, and validate before closing.
 5. **Refactor (2.5)** — behavior-preserving structural cleanup with explicit validation.
 6. **Test (2.6)** — run targeted validation, record pass/fail outcomes, and create follow-up tasks for failures.
 7. **Review (2.7)** — review for correctness, security, architecture, duplication, and simplification; report findings by severity.
 8. **Commit (2.8)** — commit only work that fully maps to `Done` task nodes, write a strong message, and sync commit ids into Flow records.
+9. **Roadmap (2.9)** — plan several features up front as approved designs plus full task graphs linked by a roadmap note, then develop them together — including parallel execution by multiple agent sessions using session claims.
 
 ## Graph Engineering (Section 3)
 
@@ -107,41 +111,96 @@ The section defines a seven-phase workflow, always executed in order:
 
 The section also prescribes a **relationship vocabulary** (table of edge meanings), **edge hygiene rules**, a **coherence test** (the four conditions from prompt graph engineering), and a **failure-modes table** for diagnosing broken graph states.
 
+## Using The Skills
+
+A typical session flow, from setup to daily use:
+
+### 1. Set up a workspace (once)
+
+```bash
+flow init
+```
+
+After initializing workspace files, an interactive terminal offers to install the agent skill and `AGENTS.md` guidance right away: install with the default `dev` mode, choose specific modes, or skip. Non-interactive runs print a `flow skill init --local` hint instead and never write anything.
+
+You can do the same later (or for a non-Flow project directory) with:
+
+```bash
+flow skill init --local            # install into ./.agents/skills/ + AGENTS.md guide
+flow skill init                    # install into ~/.agents/skills/ (global)
+```
+
+- `--local` (alias `--project`) writes `.agents/skills/` in the current workspace **and** adds a marker-managed Flow section to its `AGENTS.md`.
+- If `AGENTS.md` already has content of its own, you choose: rewrite the file, append after your content, print the block first, or exit unchanged. Content outside Flow's markers is never touched; re-running updates only the managed block.
+- Modes compose: `flow skill init --local --mode note --mode pm`. Run `flow skill init --help` to see each mode's purpose.
+
+### 2. Work normally — agents load the skill automatically
+
+With the skill installed, every supported coding agent discovers it via `.agents/skills/`, and the `AGENTS.md` routing table tells it which stage protocol applies to what you asked. You speak in outcomes; the agent routes:
+
+| You say | Agent runs |
+|---|---|
+| "design X", "we should add X" | §2.1 Design — proposal in chat, records on approval |
+| "plan X", "break X into tasks" | §2.2 Plan — task graph in `development/...` |
+| "implement <task>", "continue X" | §2.3 Implement — one task per run, validated |
+| "fix <issue>" / "refactor" / "test this" | §2.4–2.6 |
+| "review this" / "commit" | §2.7–2.8 |
+
+### 3. Plan ahead, develop together
+
+```bash
+flow roadmap                       # all features: progress, readiness gaps, next-ready queue
+flow roadmap --next                # self-contained packet for the next ready task
+flow roadmap next --claim --session alix   # claim it: Running + session stamp
+```
+
+Ask the agent to plan several features at once ("plan these three features") — designs get approved and full task graphs recorded while feature notes stay `Planned`. Later, "start development of all planned features" runs batch mode: claim → implement → evidence → Done → repeat, across every planned feature, ordered by dependency layers. Multiple agents can work in parallel safely: claims prevent collisions, and stale claims older than four hours surface resume/revert/handoff options.
+
+### 4. Keep external context fresh (`pm` mode)
+
+```bash
+flow configure --jira-host https://example.atlassian.net --jira-project PROJ
+flow sync jira
+```
+
+Tickets mirror into `external/jira/<PROJECT>/` as read-only notes. Link them into plans; never edit mirrors by hand.
+
 ## How Agents Pick Up the Skill
 
 Agents discover the skill through four channels:
 
-1. **`AGENTS.md`** — the project's routing file maps work stages to the matching section of `packaging/skills/flow/SKILL.md` (design, plan, implement, fix, refactor, test, review, commit, and graph engineering).
+1. **`AGENTS.md`** — local installs write a marker-managed Flow section into the workspace `AGENTS.md`, routing work stages to the matching sections of the installed skill at `.agents/skills/flow/SKILL.md` (design, plan, implement, fix, refactor, test, review, commit, roadmap batching, and graph engineering). This is the deterministic channel: virtually every agent reads `AGENTS.md` at session start, so routing does not depend on description matching.
 2. **`flow skill list` / `flow skill content`** — the skill is embedded in the `flow` binary at build time:
    ```bash
-   flow skill list                             # enumerate embedded skills (flow)
+   flow skill list                             # enumerate embedded skills (flow) and modes
    flow skill content                          # print the merged skill (default)
    flow skill content --skill flow             # print the merged skill explicitly
    flow skill content --skill record-keeping   # alias for flow
    ```
-   This is the most robust channel: even an agent that never reads the repo's skill file learns the protocol by running the CLI.
+   This is the most robust fallback: even an agent that never reads the repo's skill file learns the protocol by running the CLI.
 3. **`flow skill init`** — materializes the embedded skill into a target directory:
    ```bash
    flow skill init                     # write the skill to ~/.agents/skills/
-   flow skill init --project           # write the skill to ./.agents/skills/
+   flow skill init --local             # write the skill to ./.agents/skills/ (+ AGENTS.md guide)
+   flow skill init --project           # same as --local
    ```
-   Existing files are left untouched unless `--force` is given. The global `~/.agents/skills/` directory is the conventional shared agent-skill location; the project `.agents/skills/` directory is generated output and must not be committed.
+   Existing files are left untouched unless `--force` is given. The global `~/.agents/skills/` directory is the conventional shared agent-skill location; the project `.agents/skills/` directory is generated output and must not be committed. In a Flow workspace, a global install still offers one-time workspace-local setup when run interactively; outside a workspace it stays silent.
 4. **`skills-lock.json`** — registers the skill as a project-local skill so skill-tracking tooling treats it as part of the project's skill set.
 
 ### The install-once lifecycle
 
 Installing the skill is a one-time action; after that, discovery and loading are automatic in any runtime that supports skills:
 
-1. **Install once.** `flow skill init` writes the embedded skill to a conventional location (channel 3 above): `~/.agents/skills/flow/SKILL.md` covers every workspace on the machine, while `--project` writes `./.agents/skills/flow/SKILL.md` for a single workspace. Re-running is safe — identical files are skipped and `--force` overwrites.
+1. **Install once.** `flow skill init` writes the embedded skill to a conventional location (channel 3 above): `~/.agents/skills/flow/SKILL.md` covers every workspace on the machine, while `--local` writes `./.agents/skills/flow/SKILL.md` plus the `AGENTS.md` managed section for a single workspace. Re-running is safe — identical files are skipped and `--force` overwrites; the `AGENTS.md` block is idempotent too.
 2. **Auto-discovery.** The `.agents/skills/` directory is the open cross-runtime convention for portable skills. Cursor, OpenAI Codex, OpenCode, Gemini CLI, GitHub Copilot / VS Code, Cline, and similar tools read it at the project level, so an installed skill appears in their skill lists with no further wiring. One exception: **Claude Code** natively reads `.claude/skills/` rather than `.agents/skills/`; use a bridge such as `npx skills` (which manages copies/symlinks across runtimes) or copy the `SKILL.md` manually if you run Claude Code.
-3. **Auto-loading is description-driven.** The runtime surfaces the skill with its frontmatter `description` as the trigger. When a task matches the description — any work in a Flow workspace — the agent loads the full skill; unrelated tasks leave it unloaded, keeping context costs down. `user-invocable: true` additionally lets a user force-load the skill by name at any time as a fallback if description matching misses.
-4. **Re-init after updates.** The skill is embedded into the `flow` binary at build time, so the installed copy is a snapshot. After upgrading Flow, re-run `flow skill init` (`--force` to overwrite) to refresh global and project installs.
+3. **Auto-loading is description-driven.** The runtime surfaces the skill with its frontmatter `description` as the trigger. When a task matches the description — any work in a Flow workspace — the agent loads the full skill; unrelated tasks leave it unloaded, keeping context costs down. The `AGENTS.md` routing table backs this up deterministically, and `user-invocable: true` lets a user force-load the skill by name at any time as a final fallback.
+4. **Re-init after updates.** The skill is embedded into the `flow` binary at build time, so the installed copy is a snapshot. After upgrading Flow, re-run `flow skill init --force` to refresh global and project installs; the `AGENTS.md` managed block refreshes too.
 
 Note on the current state: the ten-skill set was consolidated into a single merged skill (record keeping, stage workflows, and graph engineering in one file). Older `flow` binaries still embed the legacy ten-skill set; `flow skill list` on such builds reports the legacy skill names. The `record-keeping` alias continues to resolve to `flow`.
 
 ## Research References
 
-The graph-engineering design principles are drawn from five recent papers on graph-structured systems:
+The graph-engineering design principles are drawn from five recent papers on graph-structured systems, and the skill's workflow mechanics were further shaped by practical prior art credited in [Inspiration from prior art](#inspiration-from-prior-art):
 
 | Paper | Key idea | Where Flow applies it |
 |---|---|---|
@@ -154,6 +213,16 @@ The graph-engineering design principles are drawn from five recent papers on gra
 ### Note on arXiv identifiers
 
 All five papers above were verified to exist on arXiv; the linked abstract pages are the canonical sources for each identifier. Use them as the primary references for the design rationale.
+
+### Inspiration from prior art
+
+Beyond the papers above, three practical sources shaped the skill's design. Each is credited with what was adopted, adapted, or deliberately left out:
+
+| Source | Key idea | Where Flow applies it |
+|---|---|---|
+| **[Grove](https://github.com/alxshelepenok/grove)** (alxshelepenok/grove, `docs/skills/`) | A formal state machine for agent development: self-contained **execution packets** (`grove next` / `grove packet`), a machine-checkable **Definition of Ready**, typed **evidence records** per work-item type, assumptions/questions as first-class graph citizens, explicit **alignment triggers** (stop conditions), and **session claims** with stale detection plus resume/revert/handoff. | Roadmap batching adopted the strongest parts: `flow roadmap --next` emits self-contained execution packets; readiness gaps report missing acceptance criteria and open questions; task bodies carry acceptance criteria + evidence strategy with structured `Evidence:` lines per task type; batch mode has explicit stop conditions; claims stamp `session`/`session-at` frontmatter with 4-hour staleness surfacing resume/revert/handoff. Deliberately **not** adopted: Grove's single JSON lockfile, hard DoR gates, fitness functions, and Cynefin machinery — Flow keeps Markdown as the source of truth and never blocks writes at the index level. |
+| **[AGENTS.md](https://agents.md)** convention | A community-standard project file that coding agents read at session start for deterministic instructions and routing, independent of any single vendor. | Flow's deterministic skill-discovery channel: local installs write a marker-managed Flow section into the workspace `AGENTS.md` routing work stages to the installed skill, so loading does not rely on description matching alone. |
+| **Open agent-skills directory convention** (`.agents/skills/<name>/SKILL.md`, supported by Cursor, OpenAI Codex, OpenCode, Gemini CLI, Copilot/VS Code, Cline; Claude Code via bridges such as `npx skills`) | Portable skill packages with YAML frontmatter (`name`, `description`, …) where auto-loading is driven by the description field. | Flow's packaging and distribution model: the merged `SKILL.md` with frontmatter schema, the install-once lifecycle via `flow skill init`, cross-runtime discovery through `.agents/skills/`, and re-init-after-upgrade semantics. |
 
 ## Related Documents
 

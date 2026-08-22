@@ -954,6 +954,22 @@ func TestFlowSkillInitProjectWritesToWorkspaceAgentsSkills(t *testing.T) {
 	}
 }
 
+func TestFlowSkillInitLocalAliasWritesToWorkspaceAgentsSkills(t *testing.T) {
+	projectDir := t.TempDir()
+	stdout, stderr := runForTest(t, []string{"skill", "init", "--local", "--skill", "flow"}, projectDir)
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+	if !strings.Contains(stdout, "1 skill file(s), 0 skipped") {
+		t.Fatalf("stdout missing init summary, got %q", stdout)
+	}
+
+	target := filepath.Join(projectDir, ".agents", "skills", "flow", "SKILL.md")
+	if _, err := os.Stat(target); err != nil {
+		t.Fatalf("expected local skill file %s: %v", target, err)
+	}
+}
+
 func TestFlowSkillInitUnknownSkillReturnsError(t *testing.T) {
 	stderr := runExpectErrorForTest(t, []string{"skill", "init", "--skill", "bogus"}, t.TempDir())
 	if !strings.Contains(stderr, "unknown skill") {
@@ -1010,6 +1026,39 @@ func TestFlowSkillInitUnknownModeReturnsError(t *testing.T) {
 	stderr := runExpectErrorForTest(t, []string{"skill", "init", "--project", "--mode", "bogus", "--skill", "flow"}, t.TempDir())
 	if !strings.Contains(stderr, "unknown mode") {
 		t.Fatalf("stderr = %q, want unknown-mode message", stderr)
+	}
+}
+
+func TestFlowSkillInitMultipleModesComposeTogether(t *testing.T) {
+	projectDir := t.TempDir()
+	stdout, stderr := runForTest(t, []string{"skill", "init", "--project", "--mode", "note", "--mode", "pm", "--quiet"}, projectDir)
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+	if !strings.Contains(stdout, "1 skill file(s)") {
+		t.Fatalf("stdout missing init summary, got %q", stdout)
+	}
+
+	content, err := os.ReadFile(filepath.Join(projectDir, ".agents", "skills", "flow", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read composed skill file: %v", err)
+	}
+	composed := string(content)
+	for _, wanted := range []string{"## Notes Mode", "## Synced External Nodes — Read-Only Discipline"} {
+		if !strings.Contains(composed, wanted) {
+			t.Fatalf("note+pm skill file missing %q", wanted)
+		}
+	}
+	if strings.Count(composed, "## 1. Record Keeping Protocol") != 1 {
+		t.Fatal("shared record-keeping section duplicated in note+pm composition")
+	}
+
+	// Help lists every mode with its purpose.
+	stdout, _ = runForTest(t, []string{"skill", "init", "--help"}, t.TempDir())
+	for _, wanted := range []string{"dev ", "note ", "pm "} {
+		if !strings.Contains(stdout, wanted) {
+			t.Fatalf("help output missing mode description %q; got:\n%s", wanted, stdout)
+		}
 	}
 }
 
@@ -2264,6 +2313,13 @@ func withHomeDir(homeDir string) testOption {
 		env.userHomeDir = func() (string, error) {
 			return homeDir, nil
 		}
+	}
+}
+
+func withStdin(input string) testOption {
+	return func(env *commandEnv) {
+		env.stdin = strings.NewReader(input)
+		env.stdinIsTerminal = true
 	}
 }
 

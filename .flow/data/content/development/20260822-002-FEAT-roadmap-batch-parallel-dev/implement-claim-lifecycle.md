@@ -3,7 +3,7 @@ id: development/20260822-002-FEAT-roadmap-batch-parallel-dev/implement-claim-lif
 type: task
 graph: development/20260822-002-FEAT-roadmap-batch-parallel-dev
 title: Implement claim lifecycle (claim/stale/resume/revert/handoff)
-description: 'Implement claim lifecycle (Done 2026-08-22; evidence: TestClaimIsStale + TestSelectClaimCandidate + cmd claim tests). SelectClaimCandidate skips claimed packets; ClaimIsStale enforces 4h default threshold; session/session-at patch fields plumbed through core.UpdateDocumentPatch -> workspace.DocumentPatch -> TaskMetadata; stale claims surface resume/revert/handoff options instead of blocking.'
+description: 'tags: - implementation  (commit: 2d0e711)'
 tags:
     - implementation
     - core

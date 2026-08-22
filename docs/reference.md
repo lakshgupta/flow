@@ -202,7 +202,7 @@ Core commands:
 - `flow`
   - Runs standard CLI behavior.
 - `flow init`
-  - Initializes local workspace files and folders.
+  - Initializes local workspace files and folders. After setup, interactive terminals are offered one-time agent-skill installation (`.agents/skills/` + managed `AGENTS.md` section, with optional workspace-mode selection); non-interactive runs print a `flow skill init --local` hint instead.
 - `flow configure --gui-port <port>`
   - Sets the local GUI port.
 - `flow -g configure --workspace <absolute-path> [--gui-port <port>]`
@@ -225,8 +225,8 @@ Core commands:
   - Lists the skills embedded in the binary.
 - `flow skill content [--skill <name>]`
   - Prints an embedded skill (default: the record-keeping skill, alias `record-keeping`), using `design/YYYYMMDD-NNN-<type>-<title>` and `development/YYYYMMDD-NNN-<type>-<title>` record keeping conventions.
-- `flow skill init [--project] [--force] [--quiet] [--skill <name>] [--mode <name>]`
-  - Writes embedded skills to the global agent skills directory `~/.agents/skills/` (default) or the current workspace's `.agents/skills/` with `--project`; `--skill` restricts to a single skill; existing files are skipped unless `--force`. `--mode` composes the flow skill for a workspace mode (`dev`, `note`, `pm`; default `dev`) — `note` mode relaxes sub-graph naming for free-form notebooks, `pm` adds read-only discipline for synced external nodes.
+- `flow skill init [--project] [--local] [--force] [--quiet] [--skill <name>] [--mode <name>]...`
+  - Writes embedded skills to the global agent skills directory `~/.agents/skills/` (default) or the current workspace's `.agents/skills/` with `--project` (or its alias `--local`); `--skill` restricts to a single skill; existing files are skipped unless `--force`. Local installs also create or update a marker-managed Flow section in the workspace `AGENTS.md`: if the file already has non-Flow content and stdin is a terminal, you choose to rewrite, append, print only, or exit (non-interactive runs append). `--mode` composes the flow skill for one or more workspace modes (`dev`, `note`, `pm`; default `dev`, repeatable — e.g. `--mode note --mode pm` combines them; any selection containing `dev` yields the full skill) — `note` relaxes sub-graph naming for free-form notebooks, `pm` adds read-only discipline for synced external nodes.
 - `flow roadmap [--graph <slug>] [--next] [--claim] [--session <token>] [--stale-hours <n>] [--json]`
   - Roadmap summary across development graphs: per-feature progress and readiness gaps, plus the next-ready queue ordered by dependency layer. `--next` prints a full execution packet for the next ready task; `--claim` atomically claims it (status `Running`, session stamped); stale claims surface resume/revert/handoff options instead of blocking.
 - `flow search [--limit <n>] [--graph <graph>] [--feature <feature>] [--type <note|task|command>] [--tag <tag>] [--title <text>] [--description <text>] [--content <text>] [--compact] [query]`

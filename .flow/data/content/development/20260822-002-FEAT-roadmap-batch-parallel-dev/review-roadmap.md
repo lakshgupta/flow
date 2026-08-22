@@ -3,7 +3,7 @@ id: development/20260822-002-FEAT-roadmap-batch-parallel-dev/review-roadmap
 type: task
 graph: development/20260822-002-FEAT-roadmap-batch-parallel-dev
 title: Review roadmap/batch implementation
-description: 'Review roadmap/batch implementation (Done 2026-08-22). Findings — Low: claim is last-write-wins under truly concurrent CLIs (Markdown-first stamp narrows but does not eliminate the race; acceptable for single-user local tool, documented). Low: features whose tasks are all Failed classify as Open rather than a blocked state (cosmetic). Verified: layer logic reuses graph.BuildTaskLayerView (no reimplementation), JSON contract stable via tests, skill 2.9 matches implemented flags, markers intact after section insertion.'
+description: 'tags: - review  (commit: 2d0e711)'
 tags:
     - review
 status: Done

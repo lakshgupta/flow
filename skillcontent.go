@@ -106,48 +106,98 @@ func SkillModes() []string {
 	return modes
 }
 
-// SkillMarkdownForMode returns the composed skill markdown for a workspace
-// mode. The dev mode returns the canonical SKILL.md unchanged. Other modes
-// replace the canonical stage-routing and stage-workflow regions with the
-// matching parts of the mode file; shared sections (record keeping, graph
-// engineering) are preserved verbatim. The second return value is false for
-// an unknown mode or a malformed composition source.
+// skillModeDescriptionLines maps mode names to the one-line purpose shown in
+// `flow skill init --help`.
+var skillModeDescriptionLines = map[string]string{
+	"dev":  "dev   Full development workflow (design, plan, implement, fix, refactor, test, review, commit) plus roadmap batching",
+	"note": "note  General note taking: free-form notebooks for ad-hoc notes, books, manuals; no development stages",
+	"pm":   "pm    Notes plus read-only discipline for externally synced tickets (Jira/Aha mirrors)",
+}
+
+// SkillModeDescriptions returns one "<name> <purpose>" line per available
+// mode, sorted by mode name.
+func SkillModeDescriptions() []string {
+	lines := make([]string, 0, len(skillModeDescriptionLines))
+	for _, mode := range SkillModes() {
+		line := skillModeDescriptionLines[mode]
+		if line == "" {
+			line = mode + "  Workspace mode"
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+// SkillMarkdownForMode returns the composed skill markdown for one workspace
+// mode. See SkillMarkdownForModes.
 func SkillMarkdownForMode(mode string) (string, bool) {
+	return SkillMarkdownForModes([]string{mode})
+}
+
+// SkillMarkdownForModes composes the skill markdown for one or more workspace
+// modes. The dev mode returns the canonical SKILL.md unchanged (it already
+// contains everything the other modes provide). Multiple non-dev modes are
+// composed by concatenating their routing and workflow sections in the given
+// order; shared sections (record keeping, graph engineering) are preserved
+// verbatim. The second return value is false for an unknown mode or a
+// malformed composition source.
+func SkillMarkdownForModes(modes []string) (string, bool) {
 	canonical, ok := skillMarkdownByName("flow")
 	if !ok {
 		return "", false
 	}
 
-	trimmed := strings.TrimSpace(mode)
-	if trimmed == "" || trimmed == "dev" {
+	cleaned := make([]string, 0, len(modes))
+	for _, mode := range modes {
+		trimmed := strings.TrimSpace(mode)
+		if trimmed == "" {
+			continue
+		}
+		if trimmed == "dev" {
+			return canonical, true
+		}
+		cleaned = append(cleaned, trimmed)
+	}
+	if len(cleaned) == 0 {
 		return canonical, true
 	}
 
-	modeContent, ok := skillModeContent(trimmed)
-	if !ok {
-		return "", false
+	modeContents := make([]string, 0, len(cleaned))
+	for _, mode := range cleaned {
+		content, ok := skillModeContent(mode)
+		if !ok {
+			return "", false
+		}
+		modeContents = append(modeContents, content)
 	}
 
 	routingIndex := strings.Index(canonical, modesRoutingStart)
 	routingEnd := strings.Index(canonical, modesRoutingEnd)
 	stagesIndex := strings.Index(canonical, modesStagesStart)
 	stagesEnd := strings.Index(canonical, modesStagesEnd)
-	splitIndex := strings.Index(modeContent, modesSplit)
-	if routingIndex < 0 || routingEnd < 0 || stagesIndex < 0 || stagesEnd < 0 || splitIndex < 0 {
+	if routingIndex < 0 || routingEnd < 0 || stagesIndex < 0 || stagesEnd < 0 {
 		return "", false
 	}
-	if routingEnd < routingIndex || stagesEnd < stagesIndex || stagesIndex < routingEnd || splitIndex <= 0 {
+	if routingEnd < routingIndex || stagesEnd < stagesIndex || stagesIndex < routingEnd {
 		return "", false
 	}
 
-	routingPart := strings.TrimSpace(modeContent[:splitIndex])
-	workflowsPart := strings.TrimSpace(modeContent[splitIndex+len(modesSplit):])
+	routingParts := make([]string, 0, len(modeContents))
+	workflowsParts := make([]string, 0, len(modeContents))
+	for _, modeContent := range modeContents {
+		splitIndex := strings.Index(modeContent, modesSplit)
+		if splitIndex <= 0 {
+			return "", false
+		}
+		routingParts = append(routingParts, strings.TrimSpace(modeContent[:splitIndex]))
+		workflowsParts = append(workflowsParts, strings.TrimSpace(modeContent[splitIndex+len(modesSplit):]))
+	}
 
 	var composed strings.Builder
 	composed.WriteString(canonical[:routingIndex])
-	composed.WriteString(routingPart + "\n\n")
+	composed.WriteString(strings.Join(routingParts, "\n\n") + "\n\n")
 	composed.WriteString(canonical[routingEnd+len(modesRoutingEnd) : stagesIndex])
-	composed.WriteString(workflowsPart + "\n\n")
+	composed.WriteString(strings.Join(workflowsParts, "\n\n") + "\n\n")
 	composed.WriteString(canonical[stagesEnd+len(modesStagesEnd):])
 
 	return strings.TrimSpace(composed.String()), true

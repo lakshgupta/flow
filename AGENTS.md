@@ -3,27 +3,41 @@
 ## Default Workflow
 
 - When the user does not explicitly choose a prompt, infer the correct stage of work and follow this project workflow: design, plan, implement or fix or refactor, test, review, then commit.
-- Treat the single skill file [packaging/skills/flow/SKILL.md](packaging/skills/flow/SKILL.md) as the source of truth for stage-specific behavior even when the user does not invoke it explicitly.
+- Treat the installed flow skill at [.agents/skills/flow/SKILL.md](.agents/skills/flow/SKILL.md) as the source of truth for stage-specific behavior even when the user does not invoke it explicitly.
 - Reuse the matching skill section by default rather than reinterpreting the process from scratch.
 - For record-keeping behavior, follow Section 1 of the skill file as the authoritative protocol when prompt wording differs.
 
 ## Stage Routing
 
-Use the matching section of the single skill file [packaging/skills/flow/SKILL.md](packaging/skills/flow/SKILL.md):
+Use the matching section of the installed flow skill at [.agents/skills/flow/SKILL.md](.agents/skills/flow/SKILL.md):
 
-- New feature design or behavior change: follow [Section 2.1 Design](packaging/skills/flow/SKILL.md)
-- Feature planning and Flow task-node creation: follow [Section 2.2 Plan](packaging/skills/flow/SKILL.md)
-- Feature implementation from Flow task nodes: follow [Section 2.3 Implement](packaging/skills/flow/SKILL.md)
-- Issue fixing: follow [Section 2.4 Fix](packaging/skills/flow/SKILL.md)
-- Behavior-preserving structural cleanup: follow [Section 2.5 Refactor](packaging/skills/flow/SKILL.md)
-- Validation and test execution: follow [Section 2.6 Test](packaging/skills/flow/SKILL.md)
-- Code review: follow [Section 2.7 Review](packaging/skills/flow/SKILL.md)
-- Commit creation and Flow record sync: follow [Section 2.8 Commit](packaging/skills/flow/SKILL.md)
-- Graph structure, node/edge engineering, and dependency ordering: follow [Section 3 Graph Engineering](packaging/skills/flow/SKILL.md)
+- New feature design or behavior change: follow [Section 2.1 Design](.agents/skills/flow/SKILL.md)
+- Feature planning and Flow task-node creation: follow [Section 2.2 Plan](.agents/skills/flow/SKILL.md)
+- Feature implementation from Flow task nodes: follow [Section 2.3 Implement](.agents/skills/flow/SKILL.md)
+- Issue fixing: follow [Section 2.4 Fix](.agents/skills/flow/SKILL.md)
+- Behavior-preserving structural cleanup: follow [Section 2.5 Refactor](.agents/skills/flow/SKILL.md)
+- Validation and test execution: follow [Section 2.6 Test](.agents/skills/flow/SKILL.md)
+- Code review: follow [Section 2.7 Review](.agents/skills/flow/SKILL.md)
+- Commit creation and Flow record sync: follow [Section 2.8 Commit](.agents/skills/flow/SKILL.md)
+- Roadmap planning and parallel batch development: follow [Section 2.9 Roadmap](.agents/skills/flow/SKILL.md)
+- Graph structure, node/edge engineering, and dependency ordering: follow [Section 3 Graph Engineering](.agents/skills/flow/SKILL.md)
+
+## Roadmap And Batch Development
+
+- Plan several features up front as approved design notes plus full task graphs, linked by a program roadmap note; feature notes stay `Planned` until development starts.
+- Develop planned features together with `flow roadmap` (summary + readiness gaps), `flow roadmap --next` (execution packet), and `flow roadmap --claim --session <token>` (one claimed task per session, Running + session stamp).
+- Cross-feature ordering is expressed as `depends-on` edges between task nodes in different sub-graphs.
+- Batch stop conditions: two consecutive validation failures, an invalidated design assumption, a cross-feature dependency that is not Done, or an empty ready set with open questions.
+
+## Workspace Modes And Skill Distribution
+
+- `flow skill init [--mode dev|note|pm] [--local]` installs the skill; `--local` (alias `--project`) writes `.agents/skills/` in this workspace and updates the managed Flow section at the bottom of this file.
+- This repo runs in `dev` mode. `note` mode relaxes sub-graph naming for free-form notebooks; `pm` mode adds read-only discipline for synced external tickets.
+- Tickets mirrored under `.flow/data/content/external/jira/<PROJECT>/` are read-only: refresh with `flow sync jira`, link them into plans via edges, never edit them by hand.
 
 ## Flow Record Keeping
 
-- Follow the [Flow skill](packaging/skills/flow/SKILL.md) for all record keeping: use Flow graph task/note nodes as the system of record for every phase of work.
+- Follow the [Flow skill](.agents/skills/flow/SKILL.md) for all record keeping: use Flow graph task/note nodes as the system of record for every phase of work.
 - Store graph records under `.flow/data/content`.
 - Design records must use `design/YYYYMMDD-NNN-<type>-<title>`.
 - Planning and implementation records must use `development/YYYYMMDD-NNN-<type>-<title>`.
@@ -31,7 +45,7 @@ Use the matching section of the single skill file [packaging/skills/flow/SKILL.m
 - `NNN` is the zero-padded incremental count of directories created on that date.
 - For design updates, filter candidate nodes by title/description/tags first, then inspect body content.
 - Define and maintain task dependencies with explicit `depends-on` links.
-- Refer to [packaging/skills/flow/SKILL.md](packaging/skills/flow/SKILL.md) for the full CLI workflow and mandatory protocol.
+- Refer to the installed flow skill at [.agents/skills/flow/SKILL.md](.agents/skills/flow/SKILL.md) for the full CLI workflow and mandatory protocol.
 
 ## Persistent Rules
 

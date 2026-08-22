@@ -209,3 +209,38 @@ func TestSkillMarkdownForModeUnknownAndMalformed(t *testing.T) {
 		t.Fatal("path traversal in mode name must be rejected")
 	}
 }
+
+func TestSkillMarkdownForModesCombinesNonDevModes(t *testing.T) {
+	composed, ok := SkillMarkdownForModes([]string{"note", "pm"})
+	if !ok {
+		t.Fatal("SkillMarkdownForModes(note, pm) not found")
+	}
+
+	for _, wanted := range []string{
+		"## Notes Mode",
+		"## Synced External Nodes — Read-Only Discipline",
+		"## 1. Record Keeping Protocol",
+		"## 3. Graph Engineering",
+	} {
+		if !strings.Contains(composed, wanted) {
+			t.Fatalf("multi-mode composition missing %q", wanted)
+		}
+	}
+	if strings.Contains(composed, "flow:modes:") {
+		t.Fatal("composed output leaks composition markers")
+	}
+	if count := strings.Count(composed, "## 1. Record Keeping Protocol"); count != 1 {
+		t.Fatalf("shared sections must appear exactly once; found %d", count)
+	}
+
+	// Dev anywhere wins: it already contains everything.
+	canonical, _ := skillMarkdownByName("flow")
+	mixed, ok := SkillMarkdownForModes([]string{"note", "dev"})
+	if !ok || mixed != canonical {
+		t.Fatal("a selection containing dev must return the canonical skill")
+	}
+
+	if _, ok := SkillMarkdownForModes([]string{"note", "bogus"}); ok {
+		t.Fatal("any unknown mode in a selection must not be found")
+	}
+}

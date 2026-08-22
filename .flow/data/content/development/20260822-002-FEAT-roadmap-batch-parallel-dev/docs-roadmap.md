@@ -3,7 +3,7 @@ id: development/20260822-002-FEAT-roadmap-batch-parallel-dev/docs-roadmap
 type: task
 graph: development/20260822-002-FEAT-roadmap-batch-parallel-dev
 title: Document flow roadmap in docs
-description: 'Document flow roadmap in docs (Done 2026-08-22; evidence: docs/reference.md — session/session-at frontmatter fields, roadmap command entry, skill init --mode). docs/skill.md batch section summary deferred to review pass if needed.'
+description: 'tags: - documentation  (commit: 2d0e711)'
 tags:
     - documentation
 status: Done
