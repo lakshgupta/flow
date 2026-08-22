@@ -3,7 +3,7 @@ id: development/20260821-003-FIX-index-refresh-home-content/commit-index-refresh
 type: note
 graph: development/20260821-003-FIX-index-refresh-home-content
 title: Commit index refresh Home fix
-description: Commit scope and validation for the completed index-refresh Home-content fix
+description: 'Commit scope and validation for the completed index-refresh Home-content fix (commit: 61e0c4c)'
 tags:
     - commit
 links:
@@ -17,4 +17,4 @@ links:
         - maps-to
 ---
 
-This commit includes the completed tasks refresh-home-on-index-rebuild and test-home-refresh. It flushes pending Home edits before rebuilding the index, force-reloads freshly indexed Home content into the mounted editor, and adds regression coverage. Validation: npm test -- --run src/App.test.tsx (58 passed). Excluded: none of the current changes.
+This commit includes the completed tasks refresh-home-on-index-rebuild and test-home-refresh. It flushes pending Home edits before rebuilding the index, force-reloads freshly indexed Home content into the mounted editor, and adds regression coverage. Validation: npm test -- --run src/App.test.tsx (58 passed). Commit: 61e0c4c. Excluded: none of the current changes.
