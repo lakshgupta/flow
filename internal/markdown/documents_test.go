@@ -91,6 +91,75 @@ func TestParseTaskDocument(t *testing.T) {
 	}
 }
 
+func TestParseTaskDocumentSessionFields(t *testing.T) {
+	t.Parallel()
+
+	input := strings.Join([]string{
+		"---",
+		"id: task-claimed",
+		"type: task",
+		"graph: development/demo",
+		"title: Claimed task",
+		"status: Running",
+		"session: agent-alpha",
+		"session-at: 2026-08-22T10:00:00Z",
+		"---",
+		"",
+		"Body",
+	}, "\n")
+
+	document, err := ParseTaskDocument([]byte(input))
+	if err != nil {
+		t.Fatalf("ParseTaskDocument() error = %v", err)
+	}
+
+	if document.Metadata.Session != "agent-alpha" {
+		t.Fatalf("document.Metadata.Session = %q, want agent-alpha", document.Metadata.Session)
+	}
+	if document.Metadata.SessionAt != "2026-08-22T10:00:00Z" {
+		t.Fatalf("document.Metadata.SessionAt = %q, want 2026-08-22T10:00:00Z", document.Metadata.SessionAt)
+	}
+
+	// Round-trip preserves the claim fields.
+	serialized, err := SerializeDocument(document)
+	if err != nil {
+		t.Fatalf("SerializeDocument() error = %v", err)
+	}
+	reparsed, err := ParseTaskDocument(serialized)
+	if err != nil {
+		t.Fatalf("ParseTaskDocument(serialized) error = %v", err)
+	}
+	if reparsed.Metadata.Session != document.Metadata.Session || reparsed.Metadata.SessionAt != document.Metadata.SessionAt {
+		t.Fatalf("round-trip lost session fields: %#v", reparsed.Metadata)
+	}
+
+	// Absent fields stay empty (unclaimed tasks unchanged).
+	unclaimed, err := ParseTaskDocument([]byte(strings.Join([]string{
+		"---",
+		"id: task-open",
+		"type: task",
+		"graph: development/demo",
+		"title: Unclaimed task",
+		"status: Ready",
+		"---",
+		"",
+		"Body",
+	}, "\n")))
+	if err != nil {
+		t.Fatalf("ParseTaskDocument(unclaimed) error = %v", err)
+	}
+	if unclaimed.Metadata.Session != "" || unclaimed.Metadata.SessionAt != "" {
+		t.Fatalf("absent session fields should be empty; got %#v", unclaimed.Metadata)
+	}
+	serializedUnclaimed, err := SerializeDocument(unclaimed)
+	if err != nil {
+		t.Fatalf("SerializeDocument(unclaimed) error = %v", err)
+	}
+	if strings.Contains(string(serializedUnclaimed), "session") {
+		t.Fatalf("unclaimed serialization must omit session fields; got:\n%s", serializedUnclaimed)
+	}
+}
+
 func TestParseNoteDocumentLinkRelationships(t *testing.T) {
 	t.Parallel()
 

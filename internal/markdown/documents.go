@@ -106,8 +106,13 @@ type NoteMetadata struct {
 // TaskMetadata describes task frontmatter fields.
 type TaskMetadata struct {
 	CommonFields `yaml:",inline"`
-	Status       string     `yaml:"status,omitempty"`
-	Links        []NodeLink `yaml:"links,omitempty"`
+	Status       string `yaml:"status,omitempty"`
+	// Session records the agent/session that claimed this task while it is
+	// Running. Empty for unclaimed tasks.
+	Session string `yaml:"session,omitempty"`
+	// SessionAt is the RFC3339 UTC timestamp of when the claim was taken.
+	SessionAt string     `yaml:"session-at,omitempty"`
+	Links     []NodeLink `yaml:"links,omitempty"`
 }
 
 // CommandMetadata describes command frontmatter fields.

@@ -31,12 +31,22 @@ type ModeRequest struct {
 //   - --mode=<value>
 //   - --mode <value>
 //
+// Surface selection applies before the subcommand only (usage:
+// flow [--mode ...] [-g] <command> ...). Once the first positional
+// argument appears, it and everything after it belong to subcommand
+// routing, so subcommands may define their own --mode flag.
+//
 // For non-CLI surfaces, only the optional -g flag is accepted.
 func ParseModeRequest(rawArgs []string) (ModeRequest, error) {
 	mode := ModeCLI
 	remaining := make([]string, 0, len(rawArgs))
 	for index := 0; index < len(rawArgs); index++ {
 		arg := rawArgs[index]
+		if !strings.HasPrefix(arg, "-") {
+			// First positional argument: the rest is subcommand territory.
+			remaining = append(remaining, rawArgs[index:]...)
+			break
+		}
 		switch {
 		case strings.HasPrefix(arg, "--mode="):
 			parsedMode, err := parseModeValue(strings.TrimPrefix(arg, "--mode="))

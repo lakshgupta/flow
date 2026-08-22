@@ -54,6 +54,8 @@ func documentPatchFromCorePatch(patch core.UpdateDocumentPatch) DocumentPatch {
 		UpdatedAt:   patch.UpdatedAt,
 		Body:        patch.Body,
 		Status:      patch.Status,
+		Session:     patch.Session,
+		SessionAt:   patch.SessionAt,
 		Links:       patch.Links,
 		Name:        patch.Name,
 		Env:         patch.Env,

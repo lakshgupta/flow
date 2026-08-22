@@ -74,6 +74,8 @@ var subcommandRunners = map[string]subcommandRunner{
 	"delete":    runDelete,
 	"node":      runNode,
 	"graph":     runGraph,
+	"roadmap":   runRoadmap,
+	"sync":      runSync,
 }
 
 // nodeSubcommandRunners maps `flow node` subcommands to handlers.
@@ -272,8 +274,10 @@ func writeInitHelp(w io.Writer) {
 }
 
 func writeConfigureHelp(w io.Writer) {
-	fmt.Fprintln(w, "Usage: flow configure --gui-port <port>")
-	fmt.Fprintln(w, "       flow -g configure [--workspace <absolute-path>] [--gui-port <port>]")
+	fmt.Fprintln(w, "Usage: flow configure --gui-port <port> [--jira-host <url>] [--jira-project <key>]...")
+	fmt.Fprintln(w, "       flow -g configure --workspace <absolute-path> [--gui-port <port>] [--jira-host <url>] [--jira-project <key>]...")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Jira credentials are read from the FLOW_JIRA_API_TOKEN environment variable at sync time; they are never stored in config.")
 }
 
 func writeSkillHelp(w io.Writer) {
@@ -292,12 +296,14 @@ func writeSkillContentHelp(w io.Writer) {
 	fmt.Fprintln(w, "  --graph <graph>   Development graph root label (accepted for compatibility, default: development)")
 	fmt.Fprintln(w, "  --skill <name>    Skill to print (default: flow; alias record-keeping)")
 	fmt.Fprintf(w, "  Available skills: %s\n", strings.Join(flow.SkillNames(), ", "))
+	fmt.Fprintf(w, "  Workspace modes (use with `flow skill init --mode`): %s\n", strings.Join(flow.SkillModes(), ", "))
 }
 
 func writeSkillInitHelp(w io.Writer) {
 	fmt.Fprintln(w, "Usage: flow skill init [options]")
 	fmt.Fprintln(w, "Initialize the embedded Flow skills so an agent can use them.")
 	fmt.Fprintln(w, "Options:")
+	fmt.Fprintf(w, "  --mode <name>     Compose the skill for this workspace mode (default: dev; available: %s)\n", strings.Join(flow.SkillModes(), ", "))
 	fmt.Fprintln(w, "  --skill <name>    Only initialize this skill (repeatable)")
 	fmt.Fprintln(w, "  --project         Write to .agents/skills in the current workspace instead of ~/.agents/skills")
 	fmt.Fprintln(w, "  --force           Overwrite existing skill files")
@@ -402,6 +408,19 @@ func writeNodeNeighborsHelp(w io.Writer) {
 
 func writeNodeUpdateHelp(w io.Writer) {
 	fmt.Fprintln(w, "Usage: flow node update --id <node-id> [field options]")
+	fmt.Fprintln(w, "Task claim fields: [--session <token>] [--session-at <RFC3339>] (empty values clear the claim)")
+}
+
+func writeRoadmapHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flow roadmap [--graph <slug>] [--next] [--claim] [--json] [--session <token>] [--stale-hours <n>]")
+	fmt.Fprintln(w, "Summarize planned features and their ready work across development graphs.")
+	fmt.Fprintln(w, "Options:")
+	fmt.Fprintln(w, "  --graph <slug>      Limit to one feature slug (first path segment)")
+	fmt.Fprintln(w, "  --next              Print the full execution packet for the next ready task")
+	fmt.Fprintln(w, "  --claim             Claim the next ready task (status Running + session stamp)")
+	fmt.Fprintln(w, "  --session <token>   Session token for claims (default: derived from hostname)")
+	fmt.Fprintln(w, "  --stale-hours <n>   Claims older than this surface as stale (default: 4)")
+	fmt.Fprintln(w, "  --json              Machine-readable output")
 }
 
 func writeNodeConnectHelp(w io.Writer) {
@@ -527,13 +546,14 @@ func runSkillList(args []string, env commandEnv) error {
 	for _, name := range flow.SkillNames() {
 		fmt.Fprintln(env.stdout, name)
 	}
+	fmt.Fprintln(env.stdout, "modes:", strings.Join(flow.SkillModes(), ", "))
 
 	return nil
 }
 
 func writeSkillListHelp(w io.Writer) {
 	fmt.Fprintln(w, "Usage: flow skill list")
-	fmt.Fprintln(w, "List the Flow skills embedded in this binary.")
+	fmt.Fprintln(w, "List the Flow skills embedded in this binary, plus available workspace modes.")
 }
 
 func runSkillInit(args []string, env commandEnv) error {
@@ -544,6 +564,7 @@ func runSkillInit(args []string, env commandEnv) error {
 	}
 
 	var skills stringListFlag
+	mode := flagSet.String("mode", "dev", "workspace mode composing the skill content (default: dev)")
 	project := flagSet.Bool("project", false, "write to .agents/skills in the current workspace instead of ~/.agents/skills")
 	force := flagSet.Bool("force", false, "overwrite existing skill files")
 	quiet := flagSet.Bool("quiet", false, "suppress per-file output")
@@ -567,6 +588,13 @@ func runSkillInit(args []string, env commandEnv) error {
 		markdown, ok := flow.SkillMarkdownByName(name)
 		if !ok {
 			return fmt.Errorf("unknown skill %q; use `flow skill list` to list available skills", name)
+		}
+		if name == "flow" {
+			composed, composedOK := flow.SkillMarkdownForMode(*mode)
+			if !composedOK {
+				return fmt.Errorf("unknown mode %q; available modes: %s", *mode, strings.Join(flow.SkillModes(), ", "))
+			}
+			markdown = composed
 		}
 		markdowns[name] = markdown
 	}
@@ -736,6 +764,9 @@ func runConfigure(global bool, args []string, env commandEnv) error {
 
 	guiPort := flagSet.Int("gui-port", 0, "GUI server port")
 	workspacePath := flagSet.String("workspace", "", "global workspace path")
+	jiraHost := flagSet.String("jira-host", "", "Jira base URL (for example https://example.atlassian.net)")
+	var jiraProjects stringListFlag
+	flagSet.Var(&jiraProjects, "jira-project", "Jira project key to mirror (repeatable)")
 
 	helpShown, err := parseFlagSetWithHelp(flagSet, args, env, writeConfigureHelp)
 	if err != nil {
@@ -745,9 +776,11 @@ func runConfigure(global bool, args []string, env commandEnv) error {
 		return nil
 	}
 
+	configureJira := strings.TrimSpace(*jiraHost) != "" || len(jiraProjects) > 0
+
 	if !global {
-		if *guiPort == 0 {
-			return fmt.Errorf("flow configure requires --gui-port")
+		if *guiPort == 0 && !configureJira {
+			return fmt.Errorf("flow configure requires --gui-port or Jira integration flags")
 		}
 
 		root, err := resolveRoot(false, env)
@@ -760,12 +793,20 @@ func runConfigure(global bool, args []string, env commandEnv) error {
 			return err
 		}
 
-		workspaceConfig.GUI.Port = *guiPort
+		if *guiPort != 0 {
+			workspaceConfig.GUI.Port = *guiPort
+		}
+		if strings.TrimSpace(*jiraHost) != "" {
+			workspaceConfig.Integrations.Jira.Host = strings.TrimSpace(*jiraHost)
+		}
+		if len(jiraProjects) > 0 {
+			workspaceConfig.Integrations.Jira.Projects = append([]string(nil), jiraProjects...)
+		}
 		if err := config.Write(root.ConfigPath, workspaceConfig); err != nil {
 			return err
 		}
 
-		fmt.Fprintf(env.stdout, "Configured local workspace GUI port %d at %s\n", *guiPort, root.ConfigPath)
+		fmt.Fprintf(env.stdout, "Configured local workspace at %s\n", root.ConfigPath)
 		return nil
 	}
 
@@ -1872,6 +1913,8 @@ func runNodeUpdate(global bool, args []string, env commandEnv) error {
 	updatedAt := flagSet.String("updated-at", "", "updated timestamp")
 	body := flagSet.String("body", "", "document body")
 	status := flagSet.String("status", "", "task status")
+	session := flagSet.String("session", "", "claim owner session token (task only)")
+	sessionAt := flagSet.String("session-at", "", "claim timestamp RFC3339 (task only)")
 	name := flagSet.String("name", "", "command short name")
 	runValue := flagSet.String("run", "", "command run string")
 
@@ -1917,6 +1960,8 @@ func runNodeUpdate(global bool, args []string, env commandEnv) error {
 		body:        *body,
 		tags:        []string(tags),
 		status:      *status,
+		session:     *session,
+		sessionAt:   *sessionAt,
 		references:  []string(references),
 		name:        *name,
 		env:         map[string]string(envValues),
@@ -2464,6 +2509,8 @@ type documentPatchValues struct {
 	body        string
 	tags        []string
 	status      string
+	session     string
+	sessionAt   string
 	references  []string
 	name        string
 	env         map[string]string
@@ -2498,6 +2545,12 @@ func documentPatchFromFlags(visited map[string]bool, values documentPatchValues)
 	}
 	if visited["status"] {
 		patch.Status = stringPointer(values.status)
+	}
+	if visited["session"] {
+		patch.Session = stringPointer(values.session)
+	}
+	if visited["session-at"] {
+		patch.SessionAt = stringPointer(values.sessionAt)
 	}
 	if visited["reference"] {
 		patch.Links = nodeLinkSlicePointer(values.references)

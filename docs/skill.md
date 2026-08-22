@@ -36,8 +36,18 @@ The single skill is organized into three parts:
 | Section | Contents |
 |---|---|
 | 1. Record Keeping Protocol | The mandatory contract for **what** to record and **where** (naming, statuses, edges, commit ids). |
-| 2. Stage Workflows | One subsection per stage: 2.1 Design, 2.2 Plan, 2.3 Implement, 2.4 Fix, 2.5 Refactor, 2.6 Test, 2.7 Review, 2.8 Commit. Each is a self-contained workflow with a chat response structure. |
+| 2. Stage Workflows | One subsection per stage: 2.1 Design, 2.2 Plan, 2.3 Implement, 2.4 Fix, 2.5 Refactor, 2.6 Test, 2.7 Review, 2.8 Commit, plus 2.9 Roadmap (batch planning and parallel batch development with session claims via `flow roadmap`). |
 | 3. Graph Engineering | The discipline for **how** to think about and mutate the graph: graph model, CLI toolkit, relationship vocabulary, a seven-phase workflow, edge hygiene rules, and failure modes. |
+
+### Workspace modes
+
+`flow skill init --mode <name>` composes the skill for the workspace's purpose:
+
+- `dev` (default) — the full skill: record keeping, all stage workflows including roadmap/batch development, graph engineering.
+- `note` — lightened notes-only variant for general note taking (ad-hoc notes, books, design manuals, architecture docs); relaxes the `YYYYMMDD-NNN-*` naming convention in favor of free-form notebooks; drops development stages and commit gates.
+- `pm` — notes baseline plus read-only discipline for externally synced ticket nodes (`external/jira/...`): never edit mirrors, link them into plans instead.
+
+Mode files live under `packaging/skills/flow/modes/`; composition replaces only the marked stage-routing and stage-workflow regions of the canonical skill, keeping shared sections verbatim.
 
 A stage-routing table at the top of the file maps each kind of work to its section, so an agent can jump straight to the relevant protocol.
 

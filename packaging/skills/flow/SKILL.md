@@ -12,6 +12,7 @@ This single skill is the entire Flow agent protocol. It is a self-contained Mark
 
 Everything the skill references lives in the Flow workspace itself — the `.flow/` directory, the Flow CLI, and the graph nodes recorded there. There is no separate documentation file to consult: approved designs are recorded as note nodes in the graph, and `home.md` is the evolving workspace manual.
 
+<!-- flow:modes:routing-start -->
 ## How to Use This Skill
 
 | Work | Section |
@@ -25,7 +26,9 @@ Everything the skill references lives in the Flow workspace itself — the `.flo
 | Targeted validation and test execution | [2.6 Test](#26-test) |
 | Code review | [2.7 Review](#27-review) |
 | Commit creation and Flow record sync | [2.8 Commit](#28-commit) |
+| Roadmap planning and parallel batch development | [2.9 Roadmap](#29-roadmap) |
 | Graph structure, node/edge engineering, dependency ordering, canvas | [3. Graph Engineering](#3-graph-engineering) |
+<!-- flow:modes:routing-end -->
 
 ## 1. Record Keeping Protocol
 
@@ -121,6 +124,7 @@ flow node list --graph development/20260501-001-FEAT-parser-retry-budget --statu
 - Implementation status and next-ready tasks are derivable from task status plus dependency edges.
 - Task nodes that were implemented and committed include the corresponding git commit id in node content.
 
+<!-- flow:modes:stages-start -->
 ## 2. Stage Workflows
 
 ### Shared Validation Rules
@@ -274,6 +278,8 @@ Task-writing rules:
 - Size tasks for single-run execution.
 - Use action-oriented language ("Add", "Update", "Test", "Wire", "Document").
 - Map explicit task dependencies within the graph.
+- Every task body must include an **Acceptance Criteria** section — each criterion checkable by a test, a command, or a concrete verification, never by adjectives.
+- Every task body must include an **Evidence Strategy** line stating how the acceptance criteria will be proven at close time (which tests run, what output or commit ids get recorded).
 
 Execution alignment rules:
 
@@ -764,6 +770,42 @@ Before finishing the run, ensure Flow records include:
 - what work remains uncommitted,
 - and the home.md update needed so committed capabilities are reflected in the workspace manual.
 
+### 2.9 Roadmap
+
+Plan many features up front, record them fully, and develop them together — including parallel execution by multiple agent sessions.
+
+#### Roadmap Planning (batch plan)
+
+Use when the user names several features at once or asks to "plan ahead":
+
+1. Run the Design stage (2.1) for each feature; every design note must reach `Approved` before its tasks are planned.
+2. Create one roadmap note (for example `design/YYYYMMDD-NNN-FEAT-<program-title>/roadmap`) listing members, sequencing rationale, and shared risks.
+3. Connect the roadmap note to each member design note with `relates-to --context "<member role>"`.
+4. Run the Plan stage (2.2) per feature so each member has a complete development task graph. Feature note status stays `Planned` until batch development starts — planning is committed; development start is deliberately deferred.
+5. Record real cross-feature ordering as `depends-on` edges between task nodes in different sub-graphs.
+
+#### Roadmap Status and Execution Packets
+
+Use `flow roadmap [--graph <slug>] [--json]` to inspect: per-feature progress (`Planned/Open/In Progress/Completed`), readiness gaps (tasks missing acceptance criteria, open `question`-tagged notes), and the next-ready queue ordered by dependency layer then age. Use `flow roadmap --next` to print a self-contained execution packet for the next ready task — a cold session must implement from the packet without re-reading the graph.
+
+#### Parallel Batch Development
+
+Use when the user says to start/develop all planned features together:
+
+1. Each agent session runs `flow roadmap next --claim --session <token>`. The claim atomically marks the chosen lowest-layer ready task `Running` and stamps `session:`/`session-at:` frontmatter.
+2. Implement exactly the claimed task from its packet; validate; record an **Evidence** section in the task body (tests run + outputs, repro-test SHAs for bugs, before/after suites for refactors) and the commit id once committed.
+3. Mark it `Done`, then re-run `flow roadmap next --claim` for the next unit of work.
+4. One claimed task per session. Never hand-edit another session's Running claim.
+5. Stale claims (>4h by default, tunable via `--stale-hours`) are surfaced with resume/revert/handoff options instead of blocking the queue.
+
+Batch mode stop conditions — pause and align with the user when any of these holds:
+
+- a task fails validation twice in a row,
+- an assumption recorded in the design was invalidated by implementation findings,
+- a cross-feature `depends-on` target is not `Done`,
+- the ready set empties while open questions remain.
+
+<!-- flow:modes:stages-end -->
 ## 3. Graph Engineering
 
 Engineer Flow's graph as a first-class, persistent, inspectable state — not as prose or chat transcripts. Flow already treats Markdown on disk as the source of truth and derives a graph (canvas, layers, focused snapshots) from it. This section teaches the discipline of *engineering through the graph*: every node edit and edge decision is a deliberate, validated graph mutation, and work is only committed when the graph is coherent.

@@ -9,6 +9,11 @@ This document keeps the detailed workspace, storage, and development reference m
 
 ## Workspace Layout
 
+- `.flow/data/home.md` — workspace home document
+- `.flow/data/content/<graph>/` — graph-backed documents; canonical roots are `design/` and `development/`
+- `external/jira/<PROJECT>/` — read-only mirrored Jira tickets created by `flow sync jira`; never edited by hand, deleted-in-source issues get an `archived-source` tag instead of removal
+- `.flow/config/flow.yaml` — persisted workspace settings, including `integrations.jira` (`host`, `projects`); tracker credentials are read from environment variables only
+
 `flow init` creates this baseline workspace structure:
 
 ```text
@@ -113,6 +118,8 @@ Note-specific fields:
 Task-specific fields:
 
 - `status`: optional task state, one of `Ready`, `Running`, `Done`, `Success`, `Failed`, or `Interrupted`
+- `session`: optional claim owner token recorded by `flow roadmap --claim` while the task is `Running`; empty for unclaimed tasks
+- `session-at`: optional RFC3339 UTC timestamp of when the claim was taken; claims older than 4 hours (tunable) surface as stale with resume/revert/handoff options
 - `links`: optional list of related document IDs that do not affect readiness
 
 Command-specific fields:
@@ -218,8 +225,10 @@ Core commands:
   - Lists the skills embedded in the binary.
 - `flow skill content [--skill <name>]`
   - Prints an embedded skill (default: the record-keeping skill, alias `record-keeping`), using `design/YYYYMMDD-NNN-<type>-<title>` and `development/YYYYMMDD-NNN-<type>-<title>` record keeping conventions.
-- `flow skill init [--project] [--force] [--quiet] [--skill <name>]`
-  - Writes embedded skills to the global agent skills directory `~/.agents/skills/` (default) or the current workspace's `.agents/skills/` with `--project`; `--skill` restricts to a single skill; existing files are skipped unless `--force`.
+- `flow skill init [--project] [--force] [--quiet] [--skill <name>] [--mode <name>]`
+  - Writes embedded skills to the global agent skills directory `~/.agents/skills/` (default) or the current workspace's `.agents/skills/` with `--project`; `--skill` restricts to a single skill; existing files are skipped unless `--force`. `--mode` composes the flow skill for a workspace mode (`dev`, `note`, `pm`; default `dev`) — `note` mode relaxes sub-graph naming for free-form notebooks, `pm` adds read-only discipline for synced external nodes.
+- `flow roadmap [--graph <slug>] [--next] [--claim] [--session <token>] [--stale-hours <n>] [--json]`
+  - Roadmap summary across development graphs: per-feature progress and readiness gaps, plus the next-ready queue ordered by dependency layer. `--next` prints a full execution packet for the next ready task; `--claim` atomically claims it (status `Running`, session stamped); stale claims surface resume/revert/handoff options instead of blocking.
 - `flow search [--limit <n>] [--graph <graph>] [--feature <feature>] [--type <note|task|command>] [--tag <tag>] [--title <text>] [--description <text>] [--content <text>] [--compact] [query]`
   - Indexed search with field filters and optional compact ID-only output.
 - `flow run <command-id-or-short-name>`

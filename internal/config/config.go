@@ -44,7 +44,22 @@ const (
 
 // Workspace holds persisted workspace settings.
 type Workspace struct {
-	GUI GUI `yaml:"gui"`
+	GUI          GUI          `yaml:"gui"`
+	Integrations Integrations `yaml:"integrations,omitempty"`
+}
+
+// Integrations holds settings for external trackers. Credentials are never
+// stored here; they are read from environment variables at sync time.
+type Integrations struct {
+	Jira JiraConfig `yaml:"jira,omitempty"`
+}
+
+// JiraConfig describes one Jira instance and the project keys to mirror.
+type JiraConfig struct {
+	// Host is the Jira base URL, for example "https://example.atlassian.net".
+	Host string `yaml:"host,omitempty"`
+	// Projects are the project keys to sync, for example ["PROJ"].
+	Projects []string `yaml:"projects,omitempty"`
 }
 
 // GUI holds loopback server settings for a workspace.
@@ -119,6 +134,16 @@ func (workspace Workspace) Validate() error {
 		cleanedGraphPath := filepath.Clean(graphPath)
 		if strings.HasPrefix(cleanedGraphPath, "..") {
 			return fmt.Errorf("gui.graphCanvasEnabled key %q is invalid", graphPath)
+		}
+	}
+
+	if strings.TrimSpace(workspace.Integrations.Jira.Host) == "" && len(workspace.Integrations.Jira.Projects) > 0 {
+		return fmt.Errorf("integrations.jira.host is required when integrations.jira.projects are configured")
+	}
+
+	for _, project := range workspace.Integrations.Jira.Projects {
+		if strings.TrimSpace(project) == "" {
+			return fmt.Errorf("integrations.jira.projects entries must not be empty")
 		}
 	}
 

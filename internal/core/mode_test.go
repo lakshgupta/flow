@@ -68,6 +68,22 @@ func TestParseModeRequest(t *testing.T) {
 			wantErr:     true,
 			errorSubstr: "does not accept extra arguments",
 		},
+		{
+			name: "positional arg stops global flag parsing",
+			args: []string{"skill", "init", "--mode", "note"},
+			want: ModeRequest{
+				Mode: ModeCLI,
+				Args: []string{"skill", "init", "--mode", "note"},
+			},
+		},
+		{
+			name: "global scope flag before subcommand preserved verbatim",
+			args: []string{"-g", "skill", "init", "--mode", "note"},
+			want: ModeRequest{
+				Mode: ModeCLI,
+				Args: []string{"-g", "skill", "init", "--mode", "note"},
+			},
+		},
 	}
 
 	for _, testCase := range testCases {

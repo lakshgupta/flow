@@ -877,6 +877,10 @@ func TestFlowSkillListListsEmbeddedSkills(t *testing.T) {
 	if strings.Contains(stdout, "design") || strings.Contains(stdout, "commit") || strings.Contains(stdout, "graph-engineering") {
 		t.Fatalf("stdout unexpectedly lists legacy skills, got %q", stdout)
 	}
+
+	if !strings.Contains(stdout, "modes: dev, note, pm") {
+		t.Fatalf("stdout missing workspace modes line, got %q", stdout)
+	}
 }
 
 func TestFlowSkillContentByName(t *testing.T) {
@@ -954,6 +958,58 @@ func TestFlowSkillInitUnknownSkillReturnsError(t *testing.T) {
 	stderr := runExpectErrorForTest(t, []string{"skill", "init", "--skill", "bogus"}, t.TempDir())
 	if !strings.Contains(stderr, "unknown skill") {
 		t.Fatalf("stderr = %q, want unknown-skill message", stderr)
+	}
+}
+
+func TestFlowSkillInitModeComposesSkillContent(t *testing.T) {
+	projectDir := t.TempDir()
+	stdout, stderr := runForTest(t, []string{"skill", "init", "--project", "--mode", "note", "--quiet"}, projectDir)
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+	if !strings.Contains(stdout, "1 skill file(s)") {
+		t.Fatalf("stdout missing init summary, got %q", stdout)
+	}
+
+	content, err := os.ReadFile(filepath.Join(projectDir, ".agents", "skills", "flow", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read composed skill file: %v", err)
+	}
+	composed := string(content)
+
+	for _, unwanted := range []string{"## 2.3 Implement", "## 2.8 Commit", "flow:modes:"} {
+		if strings.Contains(composed, unwanted) {
+			t.Fatalf("note-mode skill file contains development-only content %q", unwanted)
+		}
+	}
+	for _, wanted := range []string{"## 1. Record Keeping Protocol", "## Notes Mode"} {
+		if !strings.Contains(composed, wanted) {
+			t.Fatalf("note-mode skill file missing expected content %q", wanted)
+		}
+	}
+
+	// Default dev mode stays canonical: rerun with --force overwrites with
+	// the full skill including stage workflows.
+	stdout, stderr = runForTest(t, []string{"skill", "init", "--project", "--force", "--quiet"}, projectDir)
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+	if !strings.Contains(stdout, "1 skill file(s)") {
+		t.Fatalf("stdout missing dev-mode init summary, got %q", stdout)
+	}
+	devContent, err := os.ReadFile(filepath.Join(projectDir, ".agents", "skills", "flow", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("reread dev-mode skill file: %v", err)
+	}
+	if !strings.Contains(string(devContent), "## 2. Stage Workflows") {
+		t.Fatal("dev-mode skill file must be the canonical skill with all stages")
+	}
+}
+
+func TestFlowSkillInitUnknownModeReturnsError(t *testing.T) {
+	stderr := runExpectErrorForTest(t, []string{"skill", "init", "--project", "--mode", "bogus", "--skill", "flow"}, t.TempDir())
+	if !strings.Contains(stderr, "unknown mode") {
+		t.Fatalf("stderr = %q, want unknown-mode message", stderr)
 	}
 }
 

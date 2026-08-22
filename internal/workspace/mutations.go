@@ -68,10 +68,14 @@ type DocumentPatch struct {
 	UpdatedAt   *string
 	Body        *string
 	Status      *string
-	Links       *[]markdown.NodeLink
-	Name        *string
-	Env         *map[string]string
-	Run         *string
+	// Session and SessionAt manage roadmap task claims; nil leaves unchanged,
+	// non-nil pointers set (or clear, with empty strings) the claim.
+	Session   *string
+	SessionAt *string
+	Links     *[]markdown.NodeLink
+	Name      *string
+	Env       *map[string]string
+	Run       *string
 	// Color is a pointer so that nil means "leave unchanged" and a non-nil pointer to an
 	// empty string explicitly clears the per-node color override.
 	Color *string
@@ -772,6 +776,12 @@ func applyDocumentPatch(document markdown.Document, patch DocumentPatch) (markdo
 		if patch.Status != nil {
 			value.Metadata.Status = markdown.NormalizeTaskStatus(*patch.Status)
 		}
+		if patch.Session != nil {
+			value.Metadata.Session = *patch.Session
+		}
+		if patch.SessionAt != nil {
+			value.Metadata.SessionAt = *patch.SessionAt
+		}
 		if patch.Links != nil {
 			value.Metadata.Links = cloneLinks(*patch.Links)
 		}
@@ -803,7 +813,7 @@ func applyDocumentPatch(document markdown.Document, patch DocumentPatch) (markdo
 }
 
 func (patch DocumentPatch) isEmpty() bool {
-	return patch.ID == nil && patch.Graph == nil && patch.FileName == nil && patch.Title == nil && patch.Description == nil && patch.Tags == nil && patch.CreatedAt == nil && patch.UpdatedAt == nil && patch.Body == nil && patch.Status == nil && patch.Links == nil && patch.Name == nil && patch.Env == nil && patch.Run == nil && patch.Color == nil
+	return patch.ID == nil && patch.Graph == nil && patch.FileName == nil && patch.Title == nil && patch.Description == nil && patch.Tags == nil && patch.CreatedAt == nil && patch.UpdatedAt == nil && patch.Body == nil && patch.Status == nil && patch.Session == nil && patch.SessionAt == nil && patch.Links == nil && patch.Name == nil && patch.Env == nil && patch.Run == nil && patch.Color == nil
 }
 
 func patchCommonFields(fields *markdown.CommonFields, patch DocumentPatch) {
@@ -1686,5 +1696,3 @@ func removeNodeLink(values []markdown.NodeLink, nodeID string) []markdown.NodeLi
 	}
 	return filtered
 }
-
-

@@ -42,20 +42,24 @@ type CreateDocumentRequest struct {
 // The JSON tags mirror the HTTP update payload keys so the Wails Go-JS binding
 // accepts the same camelCase patch object as the REST API.
 type UpdateDocumentPatch struct {
-	ID          *string               `json:"id"`
-	Graph       *string               `json:"graph"`
-	FileName    *string               `json:"fileName"`
-	Title       *string               `json:"title"`
-	Description *string               `json:"description"`
-	Tags        *[]string             `json:"tags"`
-	CreatedAt   *string               `json:"createdAt"`
-	UpdatedAt   *string               `json:"updatedAt"`
-	Body        *string               `json:"body"`
-	Status      *string               `json:"status"`
-	Links       *[]markdown.NodeLink  `json:"links"`
-	Name        *string               `json:"name"`
-	Env         *map[string]string    `json:"env"`
-	Run         *string               `json:"run"`
+	ID          *string   `json:"id"`
+	Graph       *string   `json:"graph"`
+	FileName    *string   `json:"fileName"`
+	Title       *string   `json:"title"`
+	Description *string   `json:"description"`
+	Tags        *[]string `json:"tags"`
+	CreatedAt   *string   `json:"createdAt"`
+	UpdatedAt   *string   `json:"updatedAt"`
+	Body        *string   `json:"body"`
+	Status      *string   `json:"status"`
+	// Session and SessionAt manage roadmap task claims; nil leaves unchanged,
+	// non-nil pointers set (or clear, with empty strings) the claim.
+	Session   *string              `json:"session"`
+	SessionAt *string              `json:"sessionAt"`
+	Links     *[]markdown.NodeLink `json:"links"`
+	Name      *string              `json:"name"`
+	Env       *map[string]string   `json:"env"`
+	Run       *string              `json:"run"`
 	// Color is a pointer so that nil means "leave unchanged" and a non-nil pointer to an
 	// empty string explicitly clears the per-node color override.
 	Color *string `json:"color"`
@@ -78,7 +82,7 @@ type DeleteDocumentRequest struct {
 // UpdateDocumentRequest describes the input required to update one document by
 // ID through shared core workflows.
 type UpdateDocumentRequest struct {
-	DocumentID string               `json:"documentID"`
+	DocumentID string              `json:"documentID"`
 	Patch      UpdateDocumentPatch `json:"patch"`
 }
 
