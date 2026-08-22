@@ -1,6 +1,6 @@
 {
   "name": "flow-frontend",
-  "version": "0.9.0-DEV",
+  "version": "0.9.0",
   "private": true,
   "type": "module",
   "scripts": {
