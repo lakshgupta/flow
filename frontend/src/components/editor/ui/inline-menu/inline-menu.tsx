@@ -484,7 +484,7 @@ export default function InlineMenu() {
                   menuLabel="Text color"
                   selectedColor={items.textColor.color}
                   onSelect={applyTextColor}
-                  clearLabel="Clear text color"
+                  clearLabel="No Color"
                   onClear={clearTextColor}
                 />
               )}
@@ -509,7 +509,7 @@ export default function InlineMenu() {
                   menuLabel="Background color"
                   selectedColor={items.backgroundColor.color}
                   onSelect={applyBackgroundColor}
-                  clearLabel="Clear background color"
+                  clearLabel="No Color"
                   onClear={clearBackgroundColor}
                 />
               )}
