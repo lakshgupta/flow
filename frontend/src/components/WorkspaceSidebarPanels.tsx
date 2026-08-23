@@ -52,6 +52,8 @@ type GraphTreePanelProps = {
   activeSurface: SurfaceState;
   selectedDocumentId: string;
   actions: SidebarNavigationActions;
+  onReorderGraph?: (sourceGraphPath: string, targetGraphPath: string) => void;
+  onReorderFile?: (graphPath: string, sourceFileId: string, targetFileId: string) => void;
   sidebarView?: SidebarView;
   tocTitle?: string;
   tocItems?: TOCItem[];
@@ -101,6 +103,8 @@ function GraphTreePanelComponent({
   activeSurface,
   selectedDocumentId,
   actions,
+  onReorderGraph,
+  onReorderFile,
   sidebarView = "content",
   tocTitle = "Current document",
   tocItems = [],
@@ -142,6 +146,8 @@ function GraphTreePanelComponent({
       onRenameNode={actions.renameNode}
       onMoveNode={actions.moveNode}
       onMoveGraph={actions.moveGraph}
+      onReorderGraph={onReorderGraph ?? (() => {})}
+      onReorderFile={onReorderFile ?? (() => {})}
       onDeleteNode={actions.deleteNode}
       onDeleteGraph={actions.deleteGraph}
       onDownloadGraph={actions.downloadGraph}

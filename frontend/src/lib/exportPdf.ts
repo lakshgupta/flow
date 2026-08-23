@@ -105,7 +105,7 @@ function buildPrintFilename(title: string, count: number): string {
   return base + ".pdf";
 }
 
-export async function printNodesAsPdf(nodeIds: string[]): Promise<void> {
+export async function printNodesAsPdf(nodeIds: string[], preferredTitle?: string): Promise<void> {
   if (nodeIds.length === 0) {
     return;
   }
@@ -124,7 +124,12 @@ export async function printNodesAsPdf(nodeIds: string[]): Promise<void> {
     });
   }
 
-  const filenameTitle = nodes.length === 1 ? nodes[0].title : `Selection — ${nodes[0].title} + ${nodes.length - 1} more`;
+  const filenameTitle =
+    preferredTitle != null && preferredTitle.trim() !== ""
+      ? preferredTitle.trim()
+      : nodes.length === 1
+        ? nodes[0].title
+        : `Selection — ${nodes[0].title} + ${nodes.length - 1} more`;
   const html = buildPrintHtml(nodes, filenameTitle);
 
   const iframe = document.createElement("iframe");

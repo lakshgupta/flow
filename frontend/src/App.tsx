@@ -4709,6 +4709,39 @@ function FlowApp() {
             activeSurface={activeSurface}
             selectedDocumentId={selectedDocumentId}
             actions={sidebarNavigationActions}
+            onReorderGraph={(sourceGraphPath, targetGraphPath) => {
+              setGraphTree((prev) => {
+                if (prev === null) return prev;
+                const graphs = [...prev.graphs];
+                const fromIdx = graphs.findIndex((g) => g.graphPath === sourceGraphPath);
+                const toIdx = graphs.findIndex((g) => g.graphPath === targetGraphPath);
+                if (fromIdx === -1 || toIdx === -1) return prev;
+                const parent = (p: string) => {
+                  const i = p.lastIndexOf("/");
+                  return i === -1 ? "" : p.slice(0, i);
+                };
+                if (parent(graphs[fromIdx].graphPath) !== parent(graphs[toIdx].graphPath)) return prev;
+                const [moved] = graphs.splice(fromIdx, 1);
+                graphs.splice(toIdx, 0, moved);
+                return { ...prev, graphs };
+              });
+            }}
+            onReorderFile={(graphPath, sourceFileId, targetFileId) => {
+              setGraphTree((prev) => {
+                if (prev === null) return prev;
+                const graphs = prev.graphs.map((g) => {
+                  if (g.graphPath !== graphPath) return g;
+                  const files = [...(g.files ?? [])];
+                  const fromIdx = files.findIndex((f) => f.id === sourceFileId);
+                  const toIdx = files.findIndex((f) => f.id === targetFileId);
+                  if (fromIdx === -1 || toIdx === -1) return g;
+                  const [moved] = files.splice(fromIdx, 1);
+                  files.splice(toIdx, 0, moved);
+                  return { ...g, files };
+                });
+                return { ...prev, graphs };
+              });
+            }}
             sidebarView={sidebarView}
             tocTitle={sidebarTOCTitle}
             tocItems={tocItems}
