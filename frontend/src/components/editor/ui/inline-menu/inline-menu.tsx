@@ -199,7 +199,7 @@ function ColorPaletteList(props: {
       <button
         onClick={props.onClear}
         onMouseDown={(event) => event.preventDefault()}
-        className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium text-gray-900 dark:text-gray-50 ring-offset-white dark:ring-offset-gray-950 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-gray-900 dark:focus-visible:ring-gray-300 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 hover:bg-gray-50 dark:hover:bg-gray-900 h-9 px-3"
+        className="inline-flex w-full items-center justify-center rounded-md text-sm font-medium text-gray-900 dark:text-gray-50 ring-offset-white dark:ring-offset-gray-950 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-gray-900 dark:focus-visible:ring-gray-300 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 hover:bg-gray-50 dark:hover:bg-gray-900 min-h-9 px-3 py-2 text-center leading-tight whitespace-normal break-words"
       >
         {props.clearLabel}
       </button>
