@@ -1,4 +1,4 @@
-import { memo, type RefObject } from "react";
+import { memo, useMemo, type RefObject } from "react";
 import type { Edge, EdgeTypes, Node } from "@xyflow/react";
 
 import type { GraphCanvasFlowNodeData, GraphCanvasResponse, GraphCreateType, GraphTreeResponse, HomeFormState, SurfaceState } from "../types";
@@ -8,6 +8,9 @@ import type { GraphCanvasSurfaceActions } from "./GraphCanvasSurface";
 import { GraphCanvasSurface } from "./GraphCanvasSurface";
 import { GraphEmptyState } from "./GraphEmptyState";
 import { HomeSurface } from "./HomeSurface";
+import { usePresentationMode } from "../hooks/usePresentationMode";
+import { PresentationOverlay } from "./PresentationOverlay";
+
 
 type MiddleContentProps = {
   activeSurface: SurfaceState;
@@ -88,6 +91,21 @@ function MiddleContentComponent({
   graphCreatePendingType,
   graphEmptyStateActions,
 }: MiddleContentProps) {
+  const isGraphSurface = activeSurface.kind === "graph";
+
+  const selectedPresentationNodeId = useMemo(() => {
+    const selected = graphCanvasNodes.find((node) => node.data.isCanvasSelected);
+    return typeof selected?.id === "string" ? selected.id : null;
+  }, [graphCanvasNodes]);
+
+  const presentation = usePresentationMode({
+    data: graphCanvasData,
+    startNodeId: selectedPresentationNodeId,
+    entryEnabled: isGraphSurface && !isThreadStackOpen,
+    onOpenDocument: (nodeId) => graphCanvasSurfaceActions.handleNodeDoubleClick(nodeId),
+    onExit: (lastNodeId) => graphCanvasSurfaceActions.handleNodeClick(lastNodeId),
+  });
+
   if (isThreadStackOpen) {
     return <>{renderCenterDocumentShell(false)}</>;
   }
@@ -121,8 +139,8 @@ function MiddleContentComponent({
                 <div className="skeleton-node" />
                 <div className="skeleton-line skeleton-line-sm" />
                 <div className="skeleton-node" />
-                <div className="skeleton-line skeleton-line-md" />
                 <div className="skeleton-node" />
+                <div className="skeleton-line skeleton-line-md" />
               </div>
             </div>
           ) : graphCanvasData !== null && graphCanvasData.nodes.length === 0 ? (
@@ -157,10 +175,21 @@ function MiddleContentComponent({
               overlayController={overlayController}
               edgeDoubleClickAction={handleEdgeDoubleClickAction}
               actions={graphCanvasSurfaceActions}
+              presentationEnter={presentation.enter}
             />
           )}
         </div>
       )}
+      <PresentationOverlay
+        state={presentation.state}
+        nodesById={presentation.nodesById}
+        bodies={presentation.bodies}
+        onClose={presentation.exit}
+        onBack={() => presentation.run({ type: "goBack" })}
+        onFollow={() => presentation.run({ type: "followHighlighted" })}
+        onRotate={(direction) => presentation.run({ type: "rotateHighlight", direction })}
+        onOpen={(nodeId) => graphCanvasSurfaceActions.handleNodeDoubleClick(nodeId)}
+      />
     </>
   );
 }

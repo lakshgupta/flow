@@ -84,6 +84,18 @@ const KEYBOARD_SHORTCUTS: ShortcutGroup[] = [
     ],
   },
   {
+    title: "Presentation mode (graph canvas)",
+    shortcuts: [
+      { keys: "P", action: "Enter presentation mode from the graph canvas" },
+      { keys: "→", action: "Drill into the highlighted connected node" },
+      { keys: "←", action: "Step back to the previous node" },
+      { keys: "↓", action: "Move to the next connected node (canvas order, topmost first)" },
+      { keys: "↑", action: "Move to the previous connected node" },
+      { keys: "Enter", action: "Open the current slide in the editor" },
+      { keys: "Esc", action: "Exit presentation mode" },
+    ],
+  },
+  {
     title: "Text formatting",
     shortcuts: [
       { keys: "Ctrl/Cmd + B", action: "Bold" },

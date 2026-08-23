@@ -8,7 +8,7 @@ import {
   type NodeChange,
   type ReactFlowInstance,
 } from "@xyflow/react";
-import { ChevronLeft, ChevronRight, PaintbrushVertical, Rows3, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, PaintbrushVertical, Play, Rows3, Search } from "lucide-react";
 import { memo, useEffect, type DragEvent as ReactDragEvent, type RefObject } from "react";
 
 import { GraphCanvasOverlayEdges } from "./GraphCanvasOverlayEdges";
@@ -61,6 +61,8 @@ export type GraphCanvasSurfaceProps = {
   overlayController: GraphCanvasOverlayController;
   edgeDoubleClickAction: (sourceId: string, targetId: string, context: string) => void;
   actions: GraphCanvasSurfaceActions;
+  /** Enters presentation mode; rendered as a toolbar button when provided. */
+  presentationEnter?: () => void;
 };
 
 function setDragState(event: ReactDragEvent<HTMLElement>, selectedGraphPath: string, setDragActive: (active: boolean) => void): void {
@@ -89,6 +91,7 @@ function GraphCanvasSurfaceComponent({
   overlayController,
   edgeDoubleClickAction,
   actions,
+  presentationEnter,
 }: GraphCanvasSurfaceProps) {
   // Trackpad pinch / Ctrl+wheel over the canvas must zoom the canvas only —
   // never the whole app. React Flow's own wheel handler only covers its pane,
@@ -219,6 +222,17 @@ function GraphCanvasSurfaceComponent({
             <ChevronRight size={14} />
           </button>
         </div>
+        {presentationEnter !== undefined && (
+          <button
+            className="graph-canvas-layout-reset"
+            type="button"
+            onClick={presentationEnter}
+            aria-label="Enter presentation mode"
+            title="Enter presentation mode (p)"
+          >
+            <Play size={14} />
+          </button>
+        )}
         <button
           className="graph-canvas-layout-reset"
           type="button"
