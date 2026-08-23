@@ -96,6 +96,15 @@ const KEYBOARD_SHORTCUTS: ShortcutGroup[] = [
     ],
   },
   {
+    title: "Search",
+    shortcuts: [
+      { keys: "Ctrl/Cmd + F", action: "Find in current document or thread" },
+      { keys: "Enter / Shift + Enter", action: "Next / previous match in document" },
+      { keys: "Esc", action: "Close find bar" },
+      { keys: "Ctrl/Cmd + Shift + F", action: "Open workspace search panel" },
+    ],
+  },
+  {
     title: "Text formatting",
     shortcuts: [
       { keys: "Ctrl/Cmd + B", action: "Bold" },

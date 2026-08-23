@@ -31,6 +31,7 @@ import { GraphCanvasOverlayNodes } from "./components/GraphCanvasOverlayNodes";
 import { GraphCanvasOverlayEdges } from "./components/GraphCanvasOverlayEdges";
 import { RightRailCalendarPanel, RightRailSearchPanel } from "./components/RightRailPanels";
 import { ThreadPanelStack } from "./components/ThreadPanels";
+import { LocalSearchBar } from "./components/LocalSearchBar";
 import { Badge } from "./components/ui/badge";
 import {
   Breadcrumb,
@@ -522,6 +523,112 @@ function FlowApp() {
   }, [rfViewport]);
 
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab | "document">("search");
+  const [localSearchOpen, setLocalSearchOpen] = useState(false);
+  const [localSearchQuery, setLocalSearchQuery] = useState("");
+  const [localSearchIndex, setLocalSearchIndex] = useState(0);
+  const [localSearchCount, setLocalSearchCount] = useState(0);
+  const localSearchRootRef = useRef<HTMLDivElement>(null);
+  const localSearchMarksRef = useRef<HTMLElement[]>([]);
+  const localSearchDomCountRef = useRef(0);
+  const countMatches = useCallback((text: string, query: string): number => {
+    const trimmed = query.trim();
+    if (trimmed === "") return 0;
+    const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    try {
+      const regex = new RegExp(escaped, "gi");
+      let c = 0;
+      let m: RegExpExecArray | null;
+      while ((m = regex.exec(text)) !== null) {
+        c += 1;
+        if (m[0].length === 0) regex.lastIndex += 1;
+      }
+      return c;
+    } catch {
+      return 0;
+    }
+  }, []);
+  const clearLocalSearchHighlights = useCallback(() => {
+    for (const mark of localSearchMarksRef.current) {
+      const parent = mark.parentNode;
+      if (parent !== null) {
+        parent.replaceChild(document.createTextNode(mark.textContent ?? ""), mark);
+        parent.normalize();
+      }
+    }
+    localSearchMarksRef.current = [];
+  }, []);
+  const highlightLocalSearch = useCallback((container: HTMLElement, query: string): number => {
+    clearLocalSearchHighlights();
+    const trimmed = query.trim();
+    if (trimmed === "" || container == null) {
+      return 0;
+    }
+    const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(escaped, "gi");
+    const walker = document.createTreeWalker(container, globalThis.NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        const parent = (node as Text).parentElement;
+        if (parent === null) return globalThis.NodeFilter.FILTER_REJECT;
+        const tag = parent.tagName;
+        if (tag === "SCRIPT" || tag === "STYLE" || parent.closest("input, textarea") !== null) {
+          return globalThis.NodeFilter.FILTER_REJECT;
+        }
+        // Skip the find bar itself so its input text is not highlighted as a match.
+        if (parent.closest(".local-search-bar") !== null) {
+          return globalThis.NodeFilter.FILTER_REJECT;
+        }
+        // Skip ProseMirror editor content – it is highlighted via the decoration plugin (search-highlight.ts)
+        if (parent.closest(".ProseMirror") !== null) {
+          return globalThis.NodeFilter.FILTER_REJECT;
+        }
+        if ((node.textContent ?? "").trim() === "") return globalThis.NodeFilter.FILTER_REJECT;
+        return globalThis.NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    const textNodes: Text[] = [];
+    let current: globalThis.Node | null;
+    while ((current = walker.nextNode()) !== null) {
+      textNodes.push(current as Text);
+    }
+    let count = 0;
+    const marks: HTMLElement[] = [];
+    for (const textNode of textNodes) {
+      const text = textNode.textContent ?? "";
+      let match: RegExpExecArray | null;
+      const frag = document.createDocumentFragment();
+      let lastIndex = 0;
+      let hasMatch = false;
+      regex.lastIndex = 0;
+      while ((match = regex.exec(text)) !== null) {
+        hasMatch = true;
+        const before = text.slice(lastIndex, match.index);
+        if (before !== "") frag.appendChild(document.createTextNode(before));
+        const mark = document.createElement("mark");
+        mark.className = "local-search-match";
+        mark.textContent = match[0];
+        frag.appendChild(mark);
+        marks.push(mark);
+        count += 1;
+        lastIndex = match.index + match[0].length;
+        if (match[0].length === 0) regex.lastIndex += 1;
+      }
+      if (!hasMatch) continue;
+      const after = text.slice(lastIndex);
+      if (after !== "") frag.appendChild(document.createTextNode(after));
+      textNode.parentNode?.replaceChild(frag, textNode);
+    }
+    localSearchMarksRef.current = marks;
+    return count;
+  }, [clearLocalSearchHighlights]);
+  const setLocalSearchCurrent = useCallback((index: number) => {
+    const marks = localSearchMarksRef.current;
+    for (const m of marks) m.classList.remove("local-search-match-current");
+    if (marks.length === 0) return;
+    const clamped = ((index % marks.length) + marks.length) % marks.length;
+    const current = marks[clamped];
+    current.classList.add("local-search-match-current");
+    current.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, []);
   const [sidebarView, setSidebarView] = useState<SidebarView>("content");
   const [editorScrollTarget, setEditorScrollTarget] = useState<string | null>(null);
 
@@ -607,10 +714,133 @@ function FlowApp() {
     && (selectedDocumentId !== "" || hasAssetThreadTail || (isHomeThreadRoot && activeSurface.kind === "home")),
     [selectedDocumentOpenMode, selectedDocumentId, hasAssetThreadTail, isHomeThreadRoot, activeSurface.kind]);
   const isSelectedDocumentLoading = useMemo(() => selectedDocumentId !== "" && (selectedDocument === null || selectedDocument.id !== selectedDocumentId), [selectedDocumentId, selectedDocument]);
+  const isHomeVisible = activeSurface.kind === "home";
+  // Global shortcuts: Cmd/Ctrl+F for local find, Cmd/Ctrl+Shift+F for workspace search.
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().includes("MAC");
+      const cmd = isMac ? event.metaKey : event.ctrlKey;
+      if (!cmd || event.altKey) return;
+      if (event.key.toLowerCase() === "f" && !event.shiftKey) {
+        if (isCenterDocumentOpen || isThreadStackOpen || isHomeVisible) {
+          event.preventDefault();
+          setLocalSearchOpen(true);
+        }
+      } else if (event.key.toLowerCase() === "f" && event.shiftKey) {
+        event.preventDefault();
+        setRightPanelTab("search");
+        setRightRailCollapsed(false);
+        window.setTimeout(() => {
+          document.querySelector<HTMLInputElement>('[aria-label="Search all fields"]')?.focus();
+        }, 0);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isCenterDocumentOpen, isThreadStackOpen, isHomeVisible]);
   const activeThreadDocumentId = useMemo(() => selectedDocumentOpenMode === "center"
     ? (selectedDocumentId !== "" ? selectedDocumentId : activeSurface.kind === "home" ? HOME_THREAD_DOCUMENT_ID : activeThreadTailId)
     : activeThreadTailId,
     [selectedDocumentOpenMode, selectedDocumentId, activeSurface.kind, activeThreadTailId]);
+  // Highlight matches for the local find bar.
+  // Re-run when the visible document/thread body changes so highlights stay in sync
+  // after switching nodes or streaming in new markdown.
+  const localSearchDocumentKey = `${activeSurface.kind}:${activeThreadDocumentId}:${selectedDocumentId}:${selectedDocument?.updatedAt ?? ""}`;
+  useEffect(() => {
+    const container = localSearchRootRef.current;
+    if (container == null) return;
+    if (!localSearchOpen || localSearchQuery.trim() === "") {
+      clearLocalSearchHighlights();
+      localSearchDomCountRef.current = 0;
+      setLocalSearchCount(0);
+      setLocalSearchIndex(0);
+      return;
+    }
+    // Defer to next frame so the newly rendered document/thread is in the DOM.
+    let second: number | undefined;
+    const frame = requestAnimationFrame(() => {
+      // Scope DOM highlights: for thread search use the whole thread stack (all panels),
+      // for single node/Home use the active panel/home body only. ProseMirror bodies
+      // are skipped in the walker (decorations handle them).
+      let domContainer: HTMLElement | null = container;
+      if (isThreadStackOpen) {
+        domContainer = threadStackRef.current ?? container.querySelector<HTMLElement>('[data-active="true"] .thread-panel-scroll') ?? container;
+      } else if (isCenterDocumentOpen) {
+        const activeScroll = container.querySelector<HTMLElement>('[data-active="true"] .thread-panel-scroll');
+        if (activeScroll) domContainer = activeScroll;
+      } else if (isHomeVisible) {
+        const homeScroll = container.querySelector<HTMLElement>('.home-document-body');
+        if (homeScroll) domContainer = homeScroll;
+      }
+      const domCount = domContainer ? highlightLocalSearch(domContainer, localSearchQuery) : 0;
+      localSearchDomCountRef.current = domCount;
+      // Editor body matches are created by the decoration plugin; read the
+      // authoritative count from the active editor after it has applied the
+      // query in its own effect (next frame).
+      const readEditorCount = (): number => {
+        try {
+          if (activeThreadDocumentId === HOME_THREAD_DOCUMENT_ID) {
+            const c = (homeDocumentEditorRef.current as any)?.getSearchCount?.();
+            if (typeof c === "number") return c;
+          } else if (isCenterDocumentOpen || isThreadStackOpen) {
+            const c = (centerDocumentEditorRef.current as any)?.getSearchCount?.();
+            if (typeof c === "number") return c;
+          } else if (isHomeVisible) {
+            const c = (homeDocumentEditorRef.current as any)?.getSearchCount?.();
+            if (typeof c === "number") return c;
+          }
+        } catch {}
+        // Fallback while editor view is mounting
+        let fallback = "";
+        if (activeThreadDocumentId === HOME_THREAD_DOCUMENT_ID) fallback = homeFormState.body;
+        else if (isCenterDocumentOpen || isThreadStackOpen) fallback = formState.body;
+        else if (isHomeVisible) fallback = homeFormState.body;
+        return countMatches(fallback, localSearchQuery);
+      };
+      second = requestAnimationFrame(() => {
+        // Use the authoritative decoration count when available; otherwise fallback.
+        let editorCount = readEditorCount();
+        // If the walker incorrectly counted ProseMirror text, visibleCount will be the truth.
+        // Reconcile by querying the actual rendered matches in the active container.
+        let visibleCount: number | null = null;
+        try {
+          if (domContainer) visibleCount = domContainer.querySelectorAll(".local-search-match").length;
+        } catch {}
+        const total = visibleCount !== null && visibleCount > 0 ? visibleCount : domCount + editorCount;
+        // Fallback: if visibleCount is 0 but we expect matches (e.g. editor not yet painted), use sum.
+        const finalTotal = total === 0 ? domCount + editorCount : total;
+        setLocalSearchCount(finalTotal);
+        setLocalSearchIndex(0);
+        setLocalSearchCurrent(0);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      if (second !== undefined) cancelAnimationFrame(second);
+    };
+  }, [localSearchOpen, localSearchQuery, localSearchDocumentKey, formState.body, homeFormState.body, highlightLocalSearch, clearLocalSearchHighlights, setLocalSearchCurrent, countMatches, activeThreadDocumentId, isCenterDocumentOpen, isThreadStackOpen, isHomeVisible]);
+  useEffect(() => {
+    if (!localSearchOpen) {
+      clearLocalSearchHighlights();
+      setLocalSearchCount(0);
+    }
+  }, [localSearchOpen, clearLocalSearchHighlights]);
+  useEffect(() => {
+    if (localSearchCount === 0) return;
+    const domCount = localSearchDomCountRef.current;
+    if (localSearchIndex < domCount) {
+      setLocalSearchCurrent(localSearchIndex);
+    } else {
+      // Focus is in editor; clear DOM current highlight
+      for (const m of localSearchMarksRef.current) m.classList.remove("local-search-match-current");
+    }
+  }, [localSearchIndex, localSearchCount, setLocalSearchCurrent]);
+  const editorLocalSearchIndex = useMemo(() => {
+    const domCount = localSearchDomCountRef.current;
+    if (localSearchIndex < domCount) return -1;
+    return localSearchIndex - domCount;
+  }, [localSearchIndex, localSearchCount]);
+  const editorSearchQuery = localSearchOpen ? localSearchQuery : "";
   const showCenterDocumentSidePanel = centerDocumentSidePanelMode !== "hidden";
   const centerDocumentSidePanelLabel = "Document properties";
   const centerDocumentSidePanelTitle = "Properties";
@@ -4687,6 +4917,8 @@ function FlowApp() {
       availableLinkTargets={availableLinkTargets}
       editorScrollTarget={editorScrollTarget}
       actions={threadPanelActions}
+      searchQuery={editorSearchQuery}
+      searchIndex={editorLocalSearchIndex}
     />
   );
 
@@ -4790,7 +5022,41 @@ function FlowApp() {
 
           <div className="workspace-shell-body">
         <section className="middle-shell">
-          <MiddleContent
+          <LocalSearchBar
+            open={localSearchOpen}
+            query={localSearchQuery}
+            onQueryChange={(value) => {
+              setLocalSearchQuery(value);
+              setLocalSearchIndex(0);
+            }}
+            matchCount={localSearchCount}
+            currentIndex={localSearchIndex}
+            onPrev={() => {
+              setLocalSearchIndex((prev) => {
+                if (localSearchCount === 0) return prev;
+                const next = (prev - 1 + localSearchCount) % localSearchCount;
+                setLocalSearchCurrent(next);
+                return next;
+              });
+            }}
+            onNext={() => {
+              setLocalSearchIndex((prev) => {
+                if (localSearchCount === 0) return prev;
+                const next = (prev + 1) % localSearchCount;
+                setLocalSearchCurrent(next);
+                return next;
+              });
+            }}
+            onClose={() => {
+              setLocalSearchOpen(false);
+              setLocalSearchQuery("");
+              clearLocalSearchHighlights();
+              setLocalSearchCount(0);
+              setLocalSearchIndex(0);
+            }}
+          />
+          <div ref={localSearchRootRef} className="local-search-root">
+            <MiddleContent
             activeSurface={activeSurface}
             isThreadStackOpen={isThreadStackOpen}
             renderCenterDocumentShell={renderCenterDocumentShell}
@@ -4801,6 +5067,8 @@ function FlowApp() {
             editorScrollTarget={editorScrollTarget}
             homeFormState={homeFormState}
             homeSurfaceActions={homeSurfaceActions}
+            searchQuery={editorSearchQuery}
+            searchIndex={editorLocalSearchIndex}
             graphCanvasShellRef={graphCanvasShellRef}
             selectedGraphPath={selectedGraphPath}
             graphCanvasDragActive={graphCanvasDragActive}
@@ -4826,6 +5094,7 @@ function FlowApp() {
             graphCreatePendingType={graphCreatePendingType}
             graphEmptyStateActions={graphEmptyStateActions}
           />
+          </div>
         </section>
         <RightSidebarPanel
           rightRailCollapsed={rightRailCollapsed}

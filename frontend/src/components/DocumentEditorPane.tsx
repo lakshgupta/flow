@@ -44,6 +44,8 @@ export type DocumentEditorPaneProps = {
 	rightRailDocumentEditorRef: RefObject<RichTextEditorHandle | null>;
 	editorScrollTarget: string | null;
 	actions: DocumentEditorPaneActions;
+	searchQuery?: string;
+	searchIndex?: number;
 };
 
 function DocumentEditorPaneComponent({
@@ -62,6 +64,8 @@ function DocumentEditorPaneComponent({
 	rightRailDocumentEditorRef,
 	editorScrollTarget,
 	actions,
+	searchQuery = "",
+	searchIndex = 0,
 }: DocumentEditorPaneProps) {
 	return (
 		<div
@@ -187,6 +191,8 @@ function DocumentEditorPaneComponent({
 								placeholder="Type / for headings, lists, quotes, links, and highlights"
 								scrollToHeadingSlug={editorScrollTarget}
 								value={formState.body}
+								searchQuery={searchQuery}
+								searchIndex={searchIndex}
 							/>
 						</div>
 

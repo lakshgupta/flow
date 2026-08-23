@@ -16,6 +16,7 @@ import { defineTableExitKeymap } from './table-exit-keymap'
 import { defineTableDeleteKeymap } from './table-delete-keymap'
 import { defineDoubleClickWordSelection } from './double-click-word-selection'
 import { defineImageIndentKeymap } from './image-indent-keymap'
+import { defineSearchHighlight } from './search-highlight'
 import { defineCodeBlockView } from './ui/code-block-view'
 import { defineImageView } from './ui/image-view'
 import { hasImageExtension } from './image-utils'
@@ -58,6 +59,7 @@ export function defineEditorExtension(
     defineDoubleClickWordSelection(),
     defineImageIndentKeymap(),
     defineHorizontalRule(),
+    defineSearchHighlight(),
     defineImageView(),
     defineCodeBlockView(),
     defineImageUploadHandler({

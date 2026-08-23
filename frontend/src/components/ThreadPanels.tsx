@@ -90,6 +90,8 @@ export type ThreadPanelStackProps = {
   availableLinkTargets: DocumentPropertiesPanelProps["availableLinkTargets"];
   editorScrollTarget: string | null;
   actions: ThreadPanelActions;
+  searchQuery?: string;
+  searchIndex?: number;
 };
 
 /** Open an external URL in the system browser.
@@ -211,6 +213,8 @@ const ActiveHomePanel = memo(function ActiveHomePanel({
   homeThreadDocumentId,
   editorScrollTarget,
   actions,
+  searchQuery = "",
+  searchIndex = 0,
 }: {
   homeDocumentEditorRef: RefObject<RichTextEditorHandle | null>;
   homeFormState: HomeFormState;
@@ -218,6 +222,8 @@ const ActiveHomePanel = memo(function ActiveHomePanel({
   homeThreadDocumentId: string;
   editorScrollTarget: string | null;
   actions: ThreadPanelActions;
+  searchQuery?: string;
+  searchIndex?: number;
 }) {
   return (
     <div className="thread-panel-shell thread-panel-shell-home">
@@ -235,6 +241,8 @@ const ActiveHomePanel = memo(function ActiveHomePanel({
           <RichTextEditor
             ariaLabel="Home body editor"
             className="home-editor"
+            searchQuery={searchQuery}
+            searchIndex={searchIndex}
             inlineReferences={homeInlineReferences}
             ref={homeDocumentEditorRef}
             onChange={(value) => actions.updateHomeFormField("body", value)}
@@ -270,6 +278,8 @@ const ActiveDocumentPanel = memo(function ActiveDocumentPanel({
   editableOutgoingLinks,
   availableLinkTargets,
   actions,
+  searchQuery = "",
+  searchIndex = 0,
 }: {
   panel: ThreadPanelData;
   formState: DocumentFormState;
@@ -286,6 +296,8 @@ const ActiveDocumentPanel = memo(function ActiveDocumentPanel({
   editableOutgoingLinks: DocumentPropertiesPanelProps["editableOutgoingLinks"];
   availableLinkTargets: DocumentPropertiesPanelProps["availableLinkTargets"];
   actions: ThreadPanelActions;
+  searchQuery?: string;
+  searchIndex?: number;
 }) {
   return (
     <div className="thread-panel-shell">
@@ -320,6 +332,8 @@ const ActiveDocumentPanel = memo(function ActiveDocumentPanel({
               placeholder="Type / for headings, lists, quotes, links, and highlights"
               scrollToHeadingSlug={editorScrollTarget}
               value={formState.body}
+              searchQuery={searchQuery}
+              searchIndex={searchIndex}
             />
           </div>
         </div>
@@ -626,6 +640,8 @@ type ThreadPanelSectionProps = {
   panelDocument: DocumentResponse | null;
   panelIsHome: boolean;
   actions: ThreadPanelActions;
+  searchQuery?: string;
+  searchIndex?: number;
 };
 
 const ThreadPanelSection = memo(function ThreadPanelSection({
@@ -665,6 +681,8 @@ const ThreadPanelSection = memo(function ThreadPanelSection({
   panelDocument,
   panelIsHome,
   actions,
+  searchQuery = "",
+  searchIndex = -1,
 }: ThreadPanelSectionProps) {
   const handleSectionClick = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -740,6 +758,8 @@ const ThreadPanelSection = memo(function ThreadPanelSection({
           homeThreadDocumentId={homeThreadDocumentId}
           editorScrollTarget={editorScrollTarget}
           actions={actions}
+          searchQuery={searchQuery}
+          searchIndex={searchIndex}
         />
       ) : panel.isActive ? (
         panelAsset !== null ? (
@@ -761,6 +781,8 @@ const ThreadPanelSection = memo(function ThreadPanelSection({
             editableOutgoingLinks={editableOutgoingLinks}
             availableLinkTargets={availableLinkTargets}
             actions={actions}
+            searchQuery={searchQuery}
+            searchIndex={searchIndex}
           />
         )
       ) : panelIsHome ? (
@@ -839,6 +861,8 @@ function ThreadPanelStackComponent({
   availableLinkTargets,
   editorScrollTarget,
   actions,
+  searchQuery = "",
+  searchIndex = -1,
 }: ThreadPanelStackProps) {
   return (
     <div
@@ -923,6 +947,8 @@ function ThreadPanelStackComponent({
                 panelDocument={panelDocument}
                 panelIsHome={panelIsHome}
                 actions={actions}
+                searchQuery={panel.isActive ? searchQuery : ""}
+                searchIndex={panel.isActive ? searchIndex : -1}
               />
             );
           })}

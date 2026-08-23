@@ -24,6 +24,8 @@ type MiddleContentProps = {
   editorScrollTarget: string | null;
   homeFormState: HomeFormState;
   homeSurfaceActions: ReturnType<typeof import("../hooks/useHomeSurfaceActions").useHomeSurfaceActions>;
+  searchQuery?: string;
+  searchIndex?: number;
   // Graph canvas props
   graphCanvasShellRef: RefObject<HTMLDivElement | null>;
   selectedGraphPath: string;
@@ -68,6 +70,8 @@ function MiddleContentComponent({
   editorScrollTarget,
   homeFormState,
   homeSurfaceActions,
+  searchQuery = "",
+  searchIndex = 0,
   graphCanvasShellRef,
   selectedGraphPath,
   graphCanvasDragActive,
@@ -125,6 +129,8 @@ function MiddleContentComponent({
           editorScrollTarget={editorScrollTarget}
           homeFormState={homeFormState}
           actions={homeSurfaceActions}
+          searchQuery={searchQuery}
+          searchIndex={searchIndex}
         />
       </div>
       {!isHome && (

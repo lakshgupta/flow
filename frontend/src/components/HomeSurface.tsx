@@ -20,6 +20,8 @@ export type HomeSurfaceProps = {
   editorScrollTarget: string | null;
   homeFormState: HomeFormState;
   actions: HomeSurfaceActions;
+  searchQuery?: string;
+  searchIndex?: number;
 };
 
 function HomeSurfaceComponent({
@@ -30,6 +32,8 @@ function HomeSurfaceComponent({
   editorScrollTarget,
   homeFormState,
   actions,
+  searchQuery = "",
+  searchIndex = 0,
 }: HomeSurfaceProps) {
   return (
     <div className="home-surface">
@@ -65,6 +69,8 @@ function HomeSurfaceComponent({
             placeholder="Start writing…"
             scrollToHeadingSlug={editorScrollTarget}
             value={homeFormState.body}
+            searchQuery={searchQuery}
+            searchIndex={searchIndex}
           />
         </div>
       </div>

@@ -17,6 +17,7 @@ const {
   defineTableDeleteKeymap,
   defineDoubleClickWordSelection,
   defineImageIndentKeymap,
+  defineSearchHighlight,
   defineCodeBlockView,
   defineImageView,
   defineImageUploadHandler,
@@ -38,6 +39,7 @@ const {
   defineTableDeleteKeymap: vi.fn(() => 'table-delete-keymap-extension'),
   defineDoubleClickWordSelection: vi.fn(() => 'double-click-word-selection-extension'),
   defineImageIndentKeymap: vi.fn(() => 'image-indent-keymap-extension'),
+  defineSearchHighlight: vi.fn(() => 'search-highlight-extension'),
   defineCodeBlockView: vi.fn(() => 'code-block-view-extension'),
   defineImageView: vi.fn(() => 'image-view-extension'),
   defineImageUploadHandler: vi.fn(() => 'image-upload-handler-extension'),
@@ -106,6 +108,10 @@ vi.mock('./image-indent-keymap', () => ({
   defineImageIndentKeymap,
 }))
 
+vi.mock('./search-highlight', () => ({
+  defineSearchHighlight,
+}))
+
 vi.mock('./ui/code-block-view', () => ({
   defineCodeBlockView,
 }))
@@ -148,6 +154,7 @@ describe('defineEditorExtension', () => {
       'double-click-word-selection-extension',
       'image-indent-keymap-extension',
       'horizontal-rule-extension',
+      'search-highlight-extension',
       'image-view-extension',
       'code-block-view-extension',
       'image-upload-handler-extension',
@@ -166,6 +173,7 @@ describe('defineEditorExtension', () => {
       'double-click-word-selection-extension',
       'image-indent-keymap-extension',
       'horizontal-rule-extension',
+      'search-highlight-extension',
       'image-view-extension',
       'code-block-view-extension',
       'image-upload-handler-extension',

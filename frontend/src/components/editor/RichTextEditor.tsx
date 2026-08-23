@@ -22,6 +22,7 @@ import { hasImageExtension } from './image-utils'
 import { BlockHandle } from './ui/block-handle'
 import { TableHandle } from './ui/table-handle'
 import { defineEditorExtension } from './define-editor-extension'
+import { searchHighlightPluginKey } from './search-highlight'
 import { DropDiagBanner } from './ui/drop-diag-banner'
 import type { DropDiagEntry } from './ui/drop-diag-banner'
 import { DropIndicator } from './ui/drop-indicator'
@@ -96,10 +97,14 @@ export interface RichTextEditorProps {
   /** The canonical relative path of the document being edited (e.g. data/content/design/note.md).
    *  When set, uploaded images are saved alongside the document. */
   documentPath?: string
+  searchQuery?: string
+  searchIndex?: number
 }
 
 export interface RichTextEditorHandle {
   getMarkdown: () => string
+  getDocText?: () => string
+  getSearchCount?: () => number
 }
 
 /**
@@ -143,7 +148,7 @@ function DocChangeTracker({ onHtmlChange }: { onHtmlChange: () => void }) {
 }
 
 export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(function RichTextEditor(
-  { value, onChange, placeholder, ariaLabel, className, inlineReferences, referenceLookupGraph, onReferenceOpen, onDateOpen, onAssetOpenInThread, scrollToHeadingSlug, onScrollCompleted, documentPath }: RichTextEditorProps,
+  { value, onChange, placeholder, ariaLabel, className, inlineReferences, referenceLookupGraph, onReferenceOpen, onDateOpen, onAssetOpenInThread, scrollToHeadingSlug, onScrollCompleted, documentPath, searchQuery = "", searchIndex = 0 }: RichTextEditorProps,
   ref,
 ) {
   const [datePickerOpen, setDatePickerOpen] = useState(false)
@@ -275,6 +280,39 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
       }
     }
   }, [scrollToHeadingSlug, editor, onScrollCompleted])
+
+  // Search highlight: push query/index into the decoration plugin and scroll current match into view.
+  useEffect(() => {
+    const view = editor.view as any
+    if (!view?.state) return
+    try {
+      const current = (searchHighlightPluginKey.getState(view.state) as any) as { query?: string; index?: number } | undefined
+      if (current && current.query === searchQuery && current.index === searchIndex) return
+      if (!current && searchQuery.trim() === "" && searchIndex === 0) return
+      const tr = view.state.tr.setMeta(searchHighlightPluginKey, { query: searchQuery, index: searchIndex })
+      view.dispatch(tr)
+    } catch {
+      return
+    }
+    // Scroll the current match (if any) into view after decorations are applied.
+    if (searchQuery.trim() === "") return
+    requestAnimationFrame(() => {
+      const dom = view.dom as HTMLElement | undefined
+      const current = dom?.querySelector?.(".local-search-match-current") as HTMLElement | null
+      if (current) {
+        current.scrollIntoView({ block: "center", behavior: "smooth" })
+        // Also ensure editor container scrolls if match is outside viewport
+        const container = editorContainerRef.current
+        if (container) {
+          const cRect = container.getBoundingClientRect()
+          const mRect = current.getBoundingClientRect()
+          if (mRect.top < cRect.top || mRect.bottom > cRect.bottom) {
+            current.scrollIntoView({ block: "center", behavior: "smooth" })
+          }
+        }
+      }
+    })
+  }, [editor, searchQuery, searchIndex])
 
   const positionAssetToolbar = useCallback((anchor: HTMLAnchorElement, href: string, name: string) => {
     const container = editorContainerRef.current
@@ -719,6 +757,26 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
       // different document.
       cancelPendingEmit()
       return editorHTMLToMarkdown(editor.getDocHTML())
+    },
+    getDocText: () => {
+      try {
+        return (editor.view?.state.doc as any)?.textContent ?? ""
+      } catch {
+        return ""
+      }
+    },
+    getSearchCount: () => {
+      try {
+        const state = (searchHighlightPluginKey as any).getState(editor.view?.state)
+        const decos = state?.decorations
+        if (!decos) return 0
+        const found = (decos as any).find?.()
+        if (Array.isArray(found)) return found.length
+        // Fallback: DecorationSet size
+        return 0
+      } catch {
+        return 0
+      }
     },
   }), [cancelPendingEmit, editor])
 
