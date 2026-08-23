@@ -48,6 +48,8 @@ export function usePresentationMode({
   const [bodies, setBodies] = useState<Record<string, string>>({});
   const callbacksRef = useRef({ onExit, onOpenDocument });
   callbacksRef.current = { onExit, onOpenDocument };
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   // Successor display order depends on loaded source bodies (reference
   // mentions), so the graph is derived here rather than by the caller.
@@ -67,6 +69,26 @@ export function usePresentationMode({
       presentationReducer(previous, event, graphRef.current),
     );
   }, []);
+
+  const enter = useCallback(
+    (startId?: string) => {
+      run({ type: "enter", startId });
+      // Best-effort OS fullscreen; the fixed-position overlay already covers
+      // the viewport, so failure (unsupported or denied) is not fatal.
+      const element = document.documentElement;
+      if (!document.fullscreenElement && typeof element.requestFullscreen === "function") {
+        void element.requestFullscreen().catch(() => {});
+      }
+    },
+    [run],
+  );
+
+  const leave = useCallback(() => {
+    run({ type: "exit" });
+    if (typeof document.exitFullscreen === "function" && document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => {});
+    }
+  }, [run]);
 
   // Keep candidates fresh when the underlying graph changes mid-presentation.
   useEffect(() => {
@@ -96,13 +118,21 @@ export function usePresentationMode({
       });
   }, [state.active, state.currentId, bodies]);
 
-  const exit = useCallback(() => {
-    setState((previous) => {
-      if (previous.active) {
-        callbacksRef.current.onExit?.(previous.currentId);
+  // Leaving OS fullscreen while presenting (native Esc, F11) also closes the
+  // presentation — the browser consumes that Escape before the page sees it.
+  useEffect(() => {
+    const handler = () => {
+      if (stateRef.current.active && !document.fullscreenElement) {
+        setState((previous) => {
+          if (previous.active) {
+            callbacksRef.current.onExit?.(previous.currentId);
+          }
+          return initialPresentationState();
+        });
       }
-      return initialPresentationState();
-    });
+    };
+    document.addEventListener("fullscreenchange", handler);
+    return () => document.removeEventListener("fullscreenchange", handler);
   }, []);
 
   // Active-mode keys: escape exits, arrows navigate siblings/branches.
@@ -114,7 +144,7 @@ export function usePresentationMode({
       switch (event.key) {
         case "Escape":
           event.preventDefault();
-          exit();
+          leave();
           break;
         case "ArrowRight":
           event.preventDefault();
@@ -142,7 +172,7 @@ export function usePresentationMode({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [state.active, state.currentId, exit, run]);
+  }, [state.active, state.currentId, leave, run]);
 
   // "p" enters when the graph surface owns attention and nothing is typing.
   useEffect(() => {
@@ -157,11 +187,11 @@ export function usePresentationMode({
         return;
       }
       event.preventDefault();
-      run({ type: "enter", startId: startNodeId ?? undefined });
+      enter(startNodeId ?? undefined);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [entryEnabled, data, state.active, startNodeId, run]);
+  }, [entryEnabled, data, state.active, startNodeId, enter]);
 
   const nodesById = useMemo(() => {
     const index = new Map<string, PresentationGraph["nodes"][number]>();
@@ -172,8 +202,8 @@ export function usePresentationMode({
   }, [graph]);
 
   const enterManually = useCallback(() => {
-    run({ type: "enter", startId: startNodeId ?? undefined });
-  }, [run, startNodeId]);
+    enter(startNodeId ?? undefined);
+  }, [enter, startNodeId]);
 
-  return { state, bodies, nodesById, enter: enterManually, exit, run };
+  return { state, bodies, nodesById, enter: enterManually, exit: leave, run };
 }
