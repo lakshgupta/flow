@@ -8,7 +8,8 @@ import {
   type NodeChange,
   type ReactFlowInstance,
 } from "@xyflow/react";
-import { ChevronLeft, ChevronRight, PaintbrushVertical, Play, Rows3, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, PaintbrushVertical, Play, Printer, Rows3, Search } from "lucide-react";
+import { printNodesAsPdf } from "../lib/exportPdf";
 import { memo, useEffect, type DragEvent as ReactDragEvent, type RefObject } from "react";
 
 import { GraphCanvasOverlayEdges } from "./GraphCanvasOverlayEdges";
@@ -63,6 +64,7 @@ export type GraphCanvasSurfaceProps = {
   actions: GraphCanvasSurfaceActions;
   /** Enters presentation mode; rendered as a toolbar button when provided. */
   presentationEnter?: () => void;
+  shiftSelectedNodes: string[];
 };
 
 function setDragState(event: ReactDragEvent<HTMLElement>, selectedGraphPath: string, setDragActive: (active: boolean) => void): void {
@@ -92,6 +94,7 @@ function GraphCanvasSurfaceComponent({
   edgeDoubleClickAction,
   actions,
   presentationEnter,
+  shiftSelectedNodes,
 }: GraphCanvasSurfaceProps) {
   // Trackpad pinch / Ctrl+wheel over the canvas must zoom the canvas only —
   // never the whole app. React Flow's own wheel handler only covers its pane,
@@ -231,6 +234,27 @@ function GraphCanvasSurfaceComponent({
             title="Enter presentation mode (p)"
           >
             <Play size={14} />
+          </button>
+        )}
+        {shiftSelectedNodes.length > 0 && (
+          <button
+            className="graph-canvas-layout-reset"
+            type="button"
+            onClick={() => {
+              void printNodesAsPdf(shiftSelectedNodes);
+            }}
+            aria-label={
+              shiftSelectedNodes.length === 1
+                ? "Export selected node as PDF"
+                : `Export ${shiftSelectedNodes.length} selected nodes as PDF`
+            }
+            title={
+              shiftSelectedNodes.length === 1
+                ? "Export selected node as PDF"
+                : `Export ${shiftSelectedNodes.length} selected nodes as PDF`
+            }
+          >
+            <Printer size={14} />
           </button>
         )}
         <button

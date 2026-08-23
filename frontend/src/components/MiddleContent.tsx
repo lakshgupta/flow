@@ -54,6 +54,7 @@ type MiddleContentProps = {
     handleFilesDropFromURIs: (dataTransfer: DataTransfer, graphPath: string) => void;
     createGraphDocument: (type: GraphCreateType) => void;
   };
+  shiftSelectedNodes: string[];
 };
 
 function MiddleContentComponent({
@@ -90,6 +91,7 @@ function MiddleContentComponent({
   graphCreateError,
   graphCreatePendingType,
   graphEmptyStateActions,
+  shiftSelectedNodes,
 }: MiddleContentProps) {
   const isGraphSurface = activeSurface.kind === "graph";
 
@@ -176,6 +178,7 @@ function MiddleContentComponent({
               edgeDoubleClickAction={handleEdgeDoubleClickAction}
               actions={graphCanvasSurfaceActions}
               presentationEnter={presentation.enter}
+              shiftSelectedNodes={shiftSelectedNodes}
             />
           )}
         </div>

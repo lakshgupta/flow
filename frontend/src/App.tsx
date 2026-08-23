@@ -4786,6 +4786,7 @@ function FlowApp() {
             overlayController={graphCanvasOverlayController}
             handleEdgeDoubleClickAction={handleEdgeDoubleClickAction}
             graphCanvasSurfaceActions={graphCanvasSurfaceActions}
+            shiftSelectedNodes={shiftSelectedNodes}
             graphCanvasError={graphCanvasError}
             graphCanvasLoading={graphCanvasLoading}
             graphCreateError={graphCreateError}

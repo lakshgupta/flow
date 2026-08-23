@@ -1,4 +1,4 @@
-import { CheckSquare, ChevronDown, ChevronRight, EyeOff, FileText, FolderPlus, Home, Layers, Minus, MoreHorizontal, Paintbrush, Pencil, Plus, RefreshCw, Star, Terminal, Trash2 } from "lucide-react";
+import { CheckSquare, ChevronDown, ChevronRight, EyeOff, FileText, FolderPlus, Home, Layers, Minus, MoreHorizontal, Paintbrush, Pencil, Plus, Printer, RefreshCw, Star, Terminal, Trash2 } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import {
@@ -13,6 +13,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
+import { printNodesAsPdf } from "../lib/exportPdf";
 import {
   SidebarGroup,
   SidebarMenu,
@@ -66,6 +67,20 @@ function buildFileTree(graphs: GraphTreeNodeData[]): FileTreeNode[] {
     }
   }
   return roots;
+}
+
+function collectGraphFileIds(node: FileTreeNode): string[] {
+  const ids: string[] = [];
+  const visit = (current: FileTreeNode) => {
+    for (const file of current.data.files ?? []) {
+      ids.push(file.id);
+    }
+    for (const child of current.children) {
+      visit(child);
+    }
+  };
+  visit(node);
+  return ids;
 }
 
 type FileTreeRowProps = {
@@ -371,6 +386,17 @@ function FileTreeRowComponent({
               <Layers size={12} />
               Download as zip
             </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                const ids = collectGraphFileIds(node);
+                if (ids.length > 0) {
+                  void printNodesAsPdf(ids);
+                }
+              }}
+            >
+              <Printer size={12} />
+              Export as PDF
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"
@@ -486,6 +512,14 @@ function FileTreeRowComponent({
                     </DropdownMenuRadioGroup>
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
+                <DropdownMenuItem
+                  onClick={() => {
+                    void printNodesAsPdf([file.id]);
+                  }}
+                >
+                  <Printer size={12} />
+                  Export as PDF
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   variant="destructive"
