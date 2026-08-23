@@ -893,7 +893,7 @@ Decide the shape before creating anything:
 
 Make discrete, validated graph edits (EIG: role-local edits on a snapshot, merged deliberately):
 
-1. `flow create` each node with correct `id`, `type`, `graph`, `title`, and `description`.
+1. `flow create` each node with correct `id`, `type`, `graph`, `title`, and `description`. Use `description` as the one-line summary and `body` (content outside the frontmatter) as the full human-readable detail of the node.
 2. `flow node connect` edges with an explicit `--relationship` and `--context`.
 3. `flow node update` to adjust statuses/titles/bodies rather than rewriting files by hand.
 4. After each mutation, verify the result: `flow node read --id <id>` and re-run `flow node edges` on the affected neighborhood.

@@ -7402,7 +7402,12 @@ select.graph-canvas-node-status.graph-canvas-node-status- {
   border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
   background: var(--surface-warm-glow);
 }
-/* ── Presentation mode ─────────────────────────────────────────────── */
+/* ── Presentation mode ──────────────────────────────────────────────────
+   Full-screen slide view over the graph canvas. Flat pastel surfaces per
+   docs/DESIGN.md: hairline borders, tinted fills for depth, no heavy
+   shadows. .presentation-body owns full markdown typography because
+   Tailwind preflight strips element defaults and RenderedMarkdown expects
+   a styled container. */
 
 .presentation-backdrop {
   position: fixed;
@@ -7411,53 +7416,97 @@ select.graph-canvas-node-status.graph-canvas-node-status- {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--background) 88%, black);
-  backdrop-filter: blur(6px);
-  animation: presentation-fade-in 160ms ease-out;
-}
-
-@keyframes presentation-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  padding: clamp(1rem, 4vw, 3rem);
+  background:
+    radial-gradient(
+      120% 90% at 50% 0%,
+      color-mix(in srgb, var(--primary) 7%, var(--background)) 0%,
+      var(--background) 58%
+    );
 }
 
 .presentation-slide {
-  width: min(860px, 86vw);
-  max-height: 84vh;
+  width: min(920px, 100%);
+  max-height: min(86vh, 1200px);
   overflow-y: auto;
-  padding: var(--spacing-lg) calc(var(--spacing-xl) + var(--spacing-sm));
-  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  padding: clamp(1.25rem, 3vw, 2.5rem) clamp(1.5rem, 4vw, 3.25rem);
+  border-radius: calc(var(--radius-lg) + 4px);
   border: 1px solid var(--border);
   background: var(--card);
-  box-shadow: 0 24px 64px rgb(0 0 0 / 0.28);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.04),
+    0 16px 48px -12px rgb(0 0 0 / 0.18);
+  animation: presentation-rise-in 200ms cubic-bezier(0.22, 0.8, 0.36, 1);
+}
+
+@keyframes presentation-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .presentation-slide-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--spacing-sm);
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
 }
 
 .presentation-badges {
   display: flex;
-  gap: var(--spacing-xs);
+  gap: 6px;
 }
 
 .presentation-badge {
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  color: var(--muted-foreground);
+  padding: 2px 9px;
+  border-radius: var(--radius-pill, 999px);
+  border: 1px solid transparent;
 }
 
+/* Pastel badge tints from the DESIGN.md accent family. */
+.presentation-badge-note {
+  background: #e4e0f7;
+  color: #55517a;
+  border-color: color-mix(in srgb, #8b7cf8 30%, transparent);
+}
+.presentation-badge-task {
+  background: #dbeafe;
+  color: #33608f;
+  border-color: color-mix(in srgb, #7ab8f5 35%, transparent);
+}
+.presentation-badge-command {
+  background: #fdf0d5;
+  color: #7a6428;
+  border-color: color-mix(in srgb, #f2c14e 40%, transparent);
+}
 .presentation-badge-status {
-  color: var(--foreground);
   background: var(--muted);
+  color: var(--muted-foreground);
+  border-color: var(--border);
+}
+.dark .presentation-badge-note {
+  background: color-mix(in srgb, #e4e0f7 16%, transparent);
+  color: #cfc9f2;
+}
+.dark .presentation-badge-task {
+  background: color-mix(in srgb, #dbeafe 14%, transparent);
+  color: #a8cdf7;
+}
+.dark .presentation-badge-command {
+  background: color-mix(in srgb, #fdf0d5 13%, transparent);
+  color: #ecd9a8;
 }
 
 .presentation-exit {
@@ -7465,45 +7514,184 @@ select.graph-canvas-node-status.graph-canvas-node-status- {
   background: transparent;
   color: var(--muted-foreground);
   font-size: 11px;
+  font-family: var(--font-mono);
   cursor: pointer;
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: var(--radius-md);
+  border: 1px solid transparent;
 }
 .presentation-exit:hover {
   color: var(--foreground);
   background: var(--muted);
+  border-color: var(--border);
 }
 
 .presentation-title {
-  margin: 0 0 var(--spacing-md);
-  font-size: clamp(22px, 3vw, 32px);
-  line-height: 1.15;
-  letter-spacing: -0.01em;
+  margin: 0 0 0.9em;
+  font-size: clamp(24px, 3.4vw, 36px);
+  line-height: 1.14;
+  letter-spacing: -0.015em;
+  font-weight: 700;
+  text-wrap: balance;
 }
 
+/* ── Markdown typography inside the slide ── */
+
 .presentation-body {
-  font-size: 16px;
-  line-height: 1.65;
+  font-size: clamp(15px, 1.35vw, 17px);
+  line-height: 1.7;
   color: var(--foreground);
+  overflow-wrap: break-word;
 }
-.presentation-run {
+
+.presentation-body > :first-child {
+  margin-top: 0;
+}
+.presentation-body > :last-child {
+  margin-bottom: 0;
+}
+
+.presentation-body p {
+  margin: 0 0 0.85em;
+}
+
+.presentation-body h1,
+.presentation-body h2,
+.presentation-body h3,
+.presentation-body h4,
+.presentation-body h5,
+.presentation-body h6 {
+  margin: 1.35em 0 0.45em;
+  line-height: 1.25;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.presentation-body h1 { font-size: 1.55em; }
+.presentation-body h2 {
+  font-size: 1.32em;
+  padding-bottom: 0.18em;
+  border-bottom: 1px solid var(--border);
+}
+.presentation-body h3 { font-size: 1.15em; }
+.presentation-body :is(h4, h5, h6) { font-size: 1em; }
+
+.presentation-body :is(ul, ol) {
+  margin: 0.35em 0 0.95em;
+  padding-left: 1.45rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+}
+.presentation-body ul { list-style-type: disc; }
+.presentation-body ol { list-style-type: decimal; }
+.presentation-body li::marker {
+  color: color-mix(in srgb, var(--primary) 65%, var(--muted-foreground));
+}
+.presentation-body li > p {
   margin: 0;
-  padding: var(--spacing-md);
+  padding: 0;
+}
+.presentation-body :is(ul, ol) :is(ul, ol) {
+  margin: 0.2em 0 0;
+}
+
+.presentation-body a {
+  color: var(--primary);
+  text-decoration-color: color-mix(in srgb, var(--primary) 40%, transparent);
+  text-underline-offset: 2px;
+}
+.presentation-body a:hover {
+  text-decoration-color: var(--primary);
+}
+
+.presentation-body code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  padding: 0.15em 0.4em;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--primary) 8%, var(--muted));
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.presentation-body pre {
+  margin: 0.9em 0;
+  padding: 1em 1.15em;
   border-radius: var(--radius-md);
   background: var(--muted);
+  border: 1px solid var(--border);
+  overflow-x: auto;
+  line-height: 1.55;
+}
+.presentation-body pre code {
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: 0.85em;
+}
+
+.presentation-body blockquote {
+  margin: 0.9em 0;
+  padding: 0.55em 1.1em;
+  border-left: 3px solid color-mix(in srgb, var(--primary) 55%, transparent);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+  color: var(--muted-foreground);
+}
+.presentation-body blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+.presentation-body hr {
+  margin: 1.4em auto;
+  width: 88px;
+  border: 0;
+  border-top: 2px solid color-mix(in srgb, var(--primary) 30%, var(--border));
+}
+
+.presentation-body img {
+  max-width: 100%;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.presentation-body table {
+  margin: 0.9em 0;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+.presentation-body :is(th, td) {
+  border: 1px solid var(--border);
+  padding: 0.45em 0.75em;
+  text-align: left;
+}
+.presentation-body th {
+  background: var(--muted);
+  font-weight: 600;
+}
+
+.presentation-run {
+  margin: 0.2em 0 0;
+  padding: 1em 1.2em;
+  border-radius: var(--radius-md);
+  background: var(--muted);
+  border: 1px solid var(--border);
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 0.92em;
   white-space: pre-wrap;
   word-break: break-all;
 }
 
+/* ── Footer: candidates, counter, hints ── */
+
 .presentation-footer {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--spacing-md);
-  flex-wrap: wrap;
-  margin-top: var(--spacing-lg);
-  padding-top: var(--spacing-md);
+  gap: 0.4rem var(--spacing-lg);
+  margin-top: auto;
+  padding-top: var(--spacing-lg);
+  margin-top: clamp(1.5rem, 4vh, 2.75rem);
   border-top: 1px solid var(--border);
 }
 
@@ -7512,9 +7700,10 @@ select.graph-canvas-node-status.graph-canvas-node-status- {
   margin: 0;
   padding: 0;
   display: flex;
-  gap: var(--spacing-xs);
+  gap: 6px;
   flex-wrap: wrap;
   min-width: 0;
+  grid-column: 1 / -1;
 }
 
 .presentation-candidates-empty {
@@ -7525,38 +7714,42 @@ select.graph-canvas-node-status.graph-canvas-node-status- {
 .presentation-candidate {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  padding: 3px 10px;
-  border-radius: 999px;
+  gap: 6px;
+  font-size: 12.5px;
+  padding: 3px 11px;
+  border-radius: var(--radius-pill, 999px);
   border: 1px solid var(--border);
   color: var(--muted-foreground);
-  max-width: 260px;
+  max-width: 280px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 
 .presentation-candidate.is-highlighted {
   color: var(--primary-foreground);
   background: var(--primary);
   border-color: var(--primary);
+  font-weight: 550;
 }
 
 .presentation-candidate-arrow {
-  opacity: 0.7;
+  opacity: 0.65;
   font-size: 10px;
 }
 
 .presentation-counter {
-  margin-left: auto;
+  justify-self: end;
   font-size: 12px;
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
 }
 
 .presentation-hints {
+  grid-column: 1 / -1;
   font-size: 11px;
   color: var(--muted-foreground);
-  opacity: 0.75;
+  opacity: 0.7;
+  letter-spacing: 0.01em;
 }
