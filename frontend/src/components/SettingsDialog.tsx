@@ -98,10 +98,11 @@ const KEYBOARD_SHORTCUTS: ShortcutGroup[] = [
   {
     title: "Search",
     shortcuts: [
-      { keys: "Ctrl/Cmd + F", action: "Find in current document or thread" },
-      { keys: "Enter / Shift + Enter", action: "Next / previous match in document" },
-      { keys: "Esc", action: "Close find bar" },
-      { keys: "Ctrl/Cmd + Shift + F", action: "Open workspace search panel" },
+      { keys: "Ctrl/Cmd + F", action: "Find in current document, thread, or Home (local)" },
+      { keys: "Ctrl/Cmd + Shift + F", action: "Search across workspace (global right panel)" },
+      { keys: "Enter", action: "Next match in local find" },
+      { keys: "Shift + Enter", action: "Previous match in local find" },
+      { keys: "Esc", action: "Close local find bar" },
     ],
   },
   {
