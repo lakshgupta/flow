@@ -3,7 +3,7 @@ id: development/20260822-006-FEAT-pdf-export/integrate-content-tree-export
 type: task
 graph: development/20260822-006-FEAT-pdf-export
 title: Wire Export as PDF into content-tree menus
-description: Wire Export as PDF into content-tree menus — file rows export single node, graph rows export all descendant files via collectGraphFileIds using printNodesAsPdf. Done 2026-08-22
+description: 'links: (commit: 79116d8)'
 status: Done
 links:
     - node: development/20260822-006-FEAT-pdf-export/export-pdf-lib
