@@ -1,10 +1,9 @@
 import { memo } from "react";
-import { ArrowRight, Search, Wand2, X } from "lucide-react";
+import { ArrowRight, Search, Wand2 } from "lucide-react";
 
 import { fileNameFromPath, formatDocumentType } from "../lib/docUtils";
 import { edgeTypeFixLabel } from "../lib/graphCanvasUtils";
 import type { CalendarDocumentResponse, EdgeTypeViolation, SearchResult } from "../types";
-import { Button } from "./ui/button";
 import { HomeCalendarPanel } from "./HomeCalendarPanel";
 import { Card, CardContent, CardHeader } from "./ui/card";
 import { Input } from "./ui/input";
@@ -162,8 +161,8 @@ export type RightRailViolationsPanelProps = {
   onFixAll: () => void;
   /** Highlights the matching edge on the canvas. */
   onSelectViolation: (violation: EdgeTypeViolation) => void;
-  /** Closes/dismisses the pane (collapses the right rail). */
-  onClose: () => void;
+  /** @deprecated Panel is closed by toggling the Edge violations icon again; kept for compatibility. */
+  onClose?: () => void;
 };
 
 function RightRailViolationsPanelComponent({
@@ -173,7 +172,6 @@ function RightRailViolationsPanelComponent({
   onFixViolation,
   onFixAll,
   onSelectViolation,
-  onClose,
 }: RightRailViolationsPanelProps) {
   const errorCount = violations.filter((violation) => violation.severity === "error").length;
   const warningCount = violations.length - errorCount;
@@ -205,16 +203,6 @@ function RightRailViolationsPanelComponent({
             </div>
           )}
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="graph-violations-close"
-          onClick={onClose}
-          aria-label="Close edge violations"
-        >
-          <X size={16} />
-        </Button>
       </CardHeader>
       <CardContent className="shell-context-content graph-violations-content">
         {graphPath.trim() === "" ? (
