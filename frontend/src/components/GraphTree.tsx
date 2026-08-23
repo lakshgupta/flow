@@ -118,10 +118,12 @@ type FileTreeRowProps = {
   toggleFavorite: (path: string) => void;
   draggedItem: DraggedItem | null;
   dropTargetGraphPath: string;
+  dropTargetFile: { graphPath: string; fileId: string } | null;
   onDragStartFile: (file: GraphTreeFileData, sourceGraphPath: string) => void;
   onDragStartGraph: (sourceGraphPath: string, sourceDisplayName: string) => void;
   onDragEndItem: () => void;
   onDropTargetGraphPathChange: (graphPath: string) => void;
+  onDropTargetFileChange: (target: { graphPath: string; fileId: string } | null) => void;
   onEnsureExpanded: (graphPath: string) => void;
 };
 
@@ -204,10 +206,12 @@ function FileTreeRowComponent({
   toggleFavorite,
   draggedItem,
   dropTargetGraphPath,
+  dropTargetFile,
   onDragStartFile,
   onDragStartGraph,
   onDragEndItem,
   onDropTargetGraphPathChange,
+  onDropTargetFileChange,
   onEnsureExpanded,
 }: FileTreeRowProps) {
   const isActive = activeSurface.kind === "graph" && activeSurface.graphPath === node.data.graphPath;
@@ -217,8 +221,13 @@ function FileTreeRowComponent({
   const hasChildren = node.children.length > 0;
   const hasExpandableContent = hasChildren || files.length > 0;
   const graphColorStyle = graphRowStyle(node.data.color);
+  const isReorderTarget = draggedItem?.kind === "graph"
+    && parentGraphPath(draggedItem.sourceGraphPath) === parentGraphPath(node.data.graphPath)
+    && draggedItem.sourceGraphPath !== node.data.graphPath
+    && dropTargetGraphPath === node.data.graphPath;
   const isDropTarget = draggedItem !== null
     && dropTargetGraphPath === node.data.graphPath
+    && !isReorderTarget
     && !(draggedItem.kind === "graph"
       ? (draggedItem.sourceGraphPath === node.data.graphPath
         || node.data.graphPath.startsWith(draggedItem.sourceGraphPath + "/"))
@@ -235,6 +244,7 @@ function FileTreeRowComponent({
 
   return (
     <>
+      {isReorderTarget && <div className="graph-drop-indicator" aria-hidden="true" style={{ marginLeft: `${depth * 0.75}rem` }} />}
       <SidebarMenuSubItem
         className={`graph-tree-row group ${graphColorStyle ? "graph-tree-row-colored" : ""}${isDropTarget ? " graph-tree-row-drop-target" : ""}`}
         style={{ paddingLeft: `${depth * 0.75}rem`, ...graphColorStyle }}
@@ -470,37 +480,68 @@ function FileTreeRowComponent({
         </li>
       )}
       {!isCollapsed &&
-        files.map((file) => (
-          <SidebarMenuSubItem
-            key={file.id}
-            className={`graph-file-row group${draggedItem?.kind === "file" && draggedItem.file.id === file.id ? " graph-file-row-dragging" : ""}${draggedItem?.kind === "file" && draggedItem.sourceGraphPath === node.data.graphPath && draggedItem.file.id !== file.id ? " graph-file-row-drop-target" : ""}`}
-            style={{ paddingLeft: `${depth * 0.75 + 1.85}rem` }}
-            draggable
-            onDragStart={(event) => {
-              event.dataTransfer.effectAllowed = "move";
-              event.dataTransfer.setData("text/plain", file.id);
-              onDragStartFile(file, node.data.graphPath);
-            }}
-            onDragEnd={() => {
-              onDragEndItem();
-            }}
-            onDragOver={(event) => {
-              if (draggedItem?.kind !== "file" || draggedItem.sourceGraphPath !== node.data.graphPath || draggedItem.file.id === file.id) {
-                return;
-              }
-              event.preventDefault();
-              event.dataTransfer.dropEffect = "move";
-            }}
-            onDrop={(event) => {
-              if (draggedItem?.kind !== "file" || draggedItem.sourceGraphPath !== node.data.graphPath || draggedItem.file.id === file.id) {
-                return;
-              }
-              event.preventDefault();
-              event.stopPropagation();
-              onReorderFile?.(node.data.graphPath, draggedItem.file.id, file.id);
-              onDragEndItem();
-            }}
-          >
+        files.map((file) => {
+          const isFileReorderTarget =
+            dropTargetFile?.graphPath === node.data.graphPath && dropTargetFile?.fileId === file.id;
+          return (
+            <>
+              {isFileReorderTarget && (
+                <div
+                  key={`${file.id}-indicator`}
+                  className="graph-drop-indicator"
+                  aria-hidden="true"
+                  style={{ marginLeft: `${depth * 0.75 + 1.85}rem` }}
+                />
+              )}
+              <SidebarMenuSubItem
+                key={file.id}
+                className={`graph-file-row group${draggedItem?.kind === "file" && draggedItem.file.id === file.id ? " graph-file-row-dragging" : ""}`}
+                style={{ paddingLeft: `${depth * 0.75 + 1.85}rem` }}
+                draggable
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("text/plain", file.id);
+                  onDragStartFile(file, node.data.graphPath);
+                }}
+                onDragEnd={() => {
+                  onDragEndItem();
+                }}
+                onDragEnter={() => {
+                  if (draggedItem?.kind !== "file" || draggedItem.sourceGraphPath !== node.data.graphPath || draggedItem.file.id === file.id) {
+                    return;
+                  }
+                  onDropTargetFileChange({ graphPath: node.data.graphPath, fileId: file.id });
+                }}
+                onDragOver={(event) => {
+                  if (draggedItem?.kind !== "file" || draggedItem.sourceGraphPath !== node.data.graphPath || draggedItem.file.id === file.id) {
+                    return;
+                  }
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                  if (dropTargetFile?.fileId !== file.id) {
+                    onDropTargetFileChange({ graphPath: node.data.graphPath, fileId: file.id });
+                  }
+                }}
+                onDragLeave={(event) => {
+                  const related = event.relatedTarget;
+                  if (related instanceof Node && event.currentTarget.contains(related as Node)) {
+                    return;
+                  }
+                  if (dropTargetFile?.fileId === file.id) {
+                    onDropTargetFileChange(null);
+                  }
+                }}
+                onDrop={(event) => {
+                  if (draggedItem?.kind !== "file" || draggedItem.sourceGraphPath !== node.data.graphPath || draggedItem.file.id === file.id) {
+                    return;
+                  }
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onDropTargetFileChange(null);
+                  onReorderFile?.(node.data.graphPath, draggedItem.file.id, file.id);
+                  onDragEndItem();
+                }}
+              >
             <SidebarMenuSubButton
               className="graph-file-button"
               isActive={selectedDocumentId === file.id}
@@ -565,7 +606,9 @@ function FileTreeRowComponent({
               </DropdownMenuContent>
             </DropdownMenu>
           </SidebarMenuSubItem>
-        ))}
+            </>
+          )
+        })}
       {hasChildren &&
         !isCollapsed &&
         node.children.map((child) => (
@@ -599,12 +642,14 @@ function FileTreeRowComponent({
                     isFavorite={isFavorite}
                     toggleFavorite={toggleFavorite}
                     draggedItem={draggedItem}
-            dropTargetGraphPath={dropTargetGraphPath}
-            onDragStartFile={onDragStartFile}
-            onDragStartGraph={onDragStartGraph}
-            onDragEndItem={onDragEndItem}
-            onDropTargetGraphPathChange={onDropTargetGraphPathChange}
-            onEnsureExpanded={onEnsureExpanded}
+                    dropTargetGraphPath={dropTargetGraphPath}
+                    dropTargetFile={dropTargetFile}
+                    onDragStartFile={onDragStartFile}
+                    onDragStartGraph={onDragStartGraph}
+                    onDragEndItem={onDragEndItem}
+                    onDropTargetGraphPathChange={onDropTargetGraphPathChange}
+                    onDropTargetFileChange={onDropTargetFileChange}
+                    onEnsureExpanded={onEnsureExpanded}
           />
         ))}
     </>
@@ -647,6 +692,7 @@ export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSele
   const [addingGraph, setAddingGraph] = useState(false);
   const [draggedItem, setDraggedItem] = useState<DraggedItem | null>(null);
   const [dropTargetGraphPath, setDropTargetGraphPath] = useState("");
+  const [dropTargetFile, setDropTargetFile] = useState<{ graphPath: string; fileId: string } | null>(null);
   const [isContentRootDropTarget, setIsContentRootDropTarget] = useState(false);
   const newGraphInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLElement | null>(null);
@@ -704,6 +750,7 @@ export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSele
   function handleDragEndItem(): void {
     setDraggedItem(null);
     setDropTargetGraphPath("");
+    setDropTargetFile(null);
     setIsContentRootDropTarget(false);
     scrollContainerRef.current = null;
     if (dragScrollRAFRef.current !== 0) {
@@ -907,10 +954,12 @@ export function GraphTree({ graphTree, activeSurface, selectedDocumentId, onSele
                     toggleFavorite={toggleFavorite}
                     draggedItem={draggedItem}
                     dropTargetGraphPath={dropTargetGraphPath}
+                    dropTargetFile={dropTargetFile}
                     onDragStartFile={handleDragStartFile}
                     onDragStartGraph={handleDragStartGraph}
                     onDragEndItem={handleDragEndItem}
                     onDropTargetGraphPathChange={setDropTargetGraphPath}
+                    onDropTargetFileChange={setDropTargetFile}
                     onEnsureExpanded={ensureExpanded}
                   />
                 ))

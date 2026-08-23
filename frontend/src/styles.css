@@ -5086,6 +5086,14 @@ pre {
   background: color-mix(in srgb, var(--accent) 46%, transparent);
 }
 
+.graph-drop-indicator {
+  height: 2px;
+  margin: 3px 12px 3px 1.85rem;
+  border-radius: 999px;
+  background: #f97316;
+  pointer-events: none;
+}
+
 .graph-section-content-drop-target {
   outline: 1px dashed color-mix(in srgb, var(--foreground) 26%, transparent);
   border-radius: 0.4rem;
