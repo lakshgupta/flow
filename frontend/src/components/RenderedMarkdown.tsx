@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { markdownToHTML } from "../richText";
+import { renderPrintDiagrams } from "../lib/print-diagrams";
 import type { InlineReference } from "../types";
 
 type RenderedMarkdownProps = {
@@ -12,7 +13,23 @@ type RenderedMarkdownProps = {
 
 export function RenderedMarkdown({ value, inlineReferences, className, ariaLabel }: RenderedMarkdownProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const html = useMemo(() => markdownToHTML(value, inlineReferences), [inlineReferences, value]);
+  const baseHtml = useMemo(() => markdownToHTML(value, inlineReferences), [inlineReferences, value]);
+  // Diagram fences (mermaid/excalidraw) are rendered to SVG asynchronously;
+  // until then the fenced source shows, matching the editor's loading state.
+  const [html, setHtml] = useState(baseHtml);
+
+  useEffect(() => {
+    let cancelled = false;
+    setHtml(baseHtml);
+    if (baseHtml.includes("language-mermaid") || baseHtml.includes("language-excalidraw")) {
+      void renderPrintDiagrams(baseHtml).then((rendered) => {
+        if (!cancelled) setHtml(rendered);
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [baseHtml]);
 
   useEffect(() => {
     const container = containerRef.current;
