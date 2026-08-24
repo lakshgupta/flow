@@ -1,8 +1,11 @@
-import { IconTrash } from '@tabler/icons-react'
+import { IconTrash, IconZoomIn, IconZoomOut } from '@tabler/icons-react'
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types'
 import type { AppState, BinaryFiles } from '@excalidraw/excalidraw/types'
 import type { ReactNodeViewProps } from 'prosekit/react'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
+const DIAGRAM_MIN_SCALE = 0.5
+const DIAGRAM_MAX_SCALE = 2
 
 /**
  * Lazy-load the Excalidraw bundle (plus its stylesheet) so the editor's main
@@ -100,6 +103,9 @@ export default function ExcalidrawSection(props: ReactNodeViewProps) {
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
     typeof document !== 'undefined' && document.documentElement.classList.contains('dark') ? 'dark' : 'light',
   )
+
+  // Visual scale of the canvas (session-only; 50%–200%).
+  const [scale, setScale] = useState<number>(1)
 
   // Follow the app's light/dark toggle so the canvas palette stays in sync.
   useEffect(() => {
@@ -256,6 +262,25 @@ export default function ExcalidrawSection(props: ReactNodeViewProps) {
         </div>
         <div className="flow-diagram-block-actions">
           <button
+            aria-label="Zoom out"
+            className="flow-diagram-block-action"
+            disabled={scale <= DIAGRAM_MIN_SCALE}
+            onClick={() => setScale((current) => Math.max(DIAGRAM_MIN_SCALE, Math.round((current - 0.1) * 10) / 10))}
+            type="button"
+          >
+            <IconZoomOut size={14} stroke={1.75} />
+          </button>
+          <span aria-live="polite" className="flow-diagram-scale-label">{Math.round(scale * 100)}%</span>
+          <button
+            aria-label="Zoom in"
+            className="flow-diagram-block-action"
+            disabled={scale >= DIAGRAM_MAX_SCALE}
+            onClick={() => setScale((current) => Math.min(DIAGRAM_MAX_SCALE, Math.round((current + 0.1) * 10) / 10))}
+            type="button"
+          >
+            <IconZoomIn size={14} stroke={1.75} />
+          </button>
+          <button
             aria-label="Delete excalidraw drawing"
             className="flow-diagram-block-action flow-diagram-block-action-destructive"
             onClick={handleDelete}
@@ -266,15 +291,20 @@ export default function ExcalidrawSection(props: ReactNodeViewProps) {
         </div>
       </div>
       <div className="flow-diagram-block-body" contentEditable={false}>
-        <div className="flow-excalidraw-canvas" data-flow-editor-interactive="true">
-          <Suspense fallback={<div className="flow-excalidraw-loading">Loading drawing…</div>}>
-            <ExcalidrawCanvas
-              initialData={initialData}
-              onChange={handleSceneChange}
-              theme={theme}
-              viewModeEnabled={false}
-            />
-          </Suspense>
+        <div
+          className="flow-diagram-zoom flow-diagram-zoom-canvas"
+          style={{ transform: `scale(${scale})`, width: `${100 / scale}%`, height: `${480 * scale}px` }}
+        >
+          <div className="flow-excalidraw-canvas" data-flow-editor-interactive="true">
+            <Suspense fallback={<div className="flow-excalidraw-loading">Loading drawing…</div>}>
+              <ExcalidrawCanvas
+                initialData={initialData}
+                onChange={handleSceneChange}
+                theme={theme}
+                viewModeEnabled={false}
+              />
+            </Suspense>
+          </div>
         </div>
       </div>
       {/* ProseMirror binds the code block text (the JSON scene) to this hidden

@@ -4536,6 +4536,21 @@ pre {
   background: #fff;
 }
 
+/* Zoom wrapper for diagram sections (transform keeps layout box stable). */
+.flow-diagram-zoom {
+  transform-origin: top center;
+}
+
+.flow-diagram-scale-label {
+  align-self: center;
+  min-width: 2.6rem;
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
 .flow-excalidraw-canvas .excalidraw {
   position: absolute;
   inset: 0;

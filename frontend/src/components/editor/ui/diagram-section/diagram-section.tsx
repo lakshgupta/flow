@@ -1,9 +1,12 @@
 import { useCallback, useMemo, useState } from "react";
 import type { ReactNodeViewProps } from "prosekit/react";
-import { IconChevronDown, IconChevronUp, IconTrash } from "@tabler/icons-react";
+import { IconChevronDown, IconChevronUp, IconTrash, IconZoomIn, IconZoomOut } from "@tabler/icons-react";
 
 import { MermaidDiagram } from "../../../MermaidDiagram";
 import { joinClassNames } from "../../../ui/utils";
+
+const DIAGRAM_MIN_SCALE = 0.5;
+const DIAGRAM_MAX_SCALE = 2;
 
 type SectionLanguage = "mermaid";
 
@@ -72,6 +75,9 @@ export default function DiagramSection(props: ReactNodeViewProps) {
 
   // Auto-open source editor when a new diagram block is inserted (empty source)
   const [sourceOpen, setSourceOpen] = useState<boolean>(source.trim() === "");
+
+  // Visual scale of the rendered diagram (session-only; 50%–200%).
+  const [scale, setScale] = useState<number>(1);
 
   const commitTitle = useCallback(
     (nextTitle: string) => {
@@ -207,6 +213,25 @@ export default function DiagramSection(props: ReactNodeViewProps) {
           />
         </div>
         <div className="flow-diagram-block-actions">
+          <button
+            aria-label="Zoom out"
+            className="flow-diagram-block-action"
+            disabled={scale <= DIAGRAM_MIN_SCALE}
+            onClick={() => setScale((current) => Math.max(DIAGRAM_MIN_SCALE, Math.round((current - 0.1) * 10) / 10))}
+            type="button"
+          >
+            <IconZoomOut size={14} stroke={1.75} />
+          </button>
+          <span aria-live="polite" className="flow-diagram-scale-label">{Math.round(scale * 100)}%</span>
+          <button
+            aria-label="Zoom in"
+            className="flow-diagram-block-action"
+            disabled={scale >= DIAGRAM_MAX_SCALE}
+            onClick={() => setScale((current) => Math.min(DIAGRAM_MAX_SCALE, Math.round((current + 0.1) * 10) / 10))}
+            type="button"
+          >
+            <IconZoomIn size={14} stroke={1.75} />
+          </button>
           {language === "mermaid" && (
             <button
               aria-label={labels.toggle}
@@ -234,7 +259,12 @@ export default function DiagramSection(props: ReactNodeViewProps) {
       </div>
       <div className="flow-diagram-block-body" contentEditable={false}>
         <div className="flow-diagram-block-preview">
-          <MermaidDiagram source={source} />
+          <div
+            className="flow-diagram-zoom"
+            style={{ transform: `scale(${scale})`, width: `${100 / scale}%` }}
+          >
+            <MermaidDiagram source={source} />
+          </div>
         </div>
       </div>
       <div className={sourceOpen ? 'flow-diagram-block-source' : 'flow-diagram-block-source hidden'}>
