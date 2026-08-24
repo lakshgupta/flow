@@ -418,7 +418,7 @@ function FlowApp() {
   const [lastSaveAt, setLastSaveAt] = useState<number>(0);
   const [calendarFocusDate, setCalendarFocusDate] = useState<string>(() => todayString());
   const [leftSidebarWidth, setLeftSidebarWidth] = useState<number>(256);
-  const [rightSidebarWidth, setRightSidebarWidth] = useState<number>(320);
+  const [rightSidebarWidth, setRightSidebarWidth] = useState<number>(368);
   const THREAD_PANEL_WIDTHS_KEY = "flow_thread_panel_widths";
   const [threadPanelWidths, setThreadPanelWidths] = useState<Record<string, number>>(() => {
     if (typeof window === "undefined") return {};
