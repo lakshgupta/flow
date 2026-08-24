@@ -19,3 +19,8 @@ title: Home
 
 - Command node
     - finish implementing command type of nodes
+
+## Shipped
+
+- 2026-08-24 — Table of contents entries render plain text (no raw markup) and indent by relative nesting depth (7a3f00a).
+- 2026-08-24 — Document properties list only directional incoming links; outbound children no longer appear as backlinks (61409db).
