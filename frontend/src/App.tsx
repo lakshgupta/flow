@@ -935,33 +935,23 @@ function FlowApp() {
 
     const incomingByNodeId = new Map<string, DocumentLinkDetail>();
 
-    for (const nodeId of selectedDocument.relatedNoteIds ?? []) {
-      incomingByNodeId.set(nodeId, {
-        nodeId,
-        context: "",
-        linkType: "",
-        graphPath: documentGraphById.get(nodeId) ?? selectedDocument.graph,
-      });
-    }
-
-    for (const edge of graphCanvasData?.edges ?? []) {
-      if (edge.kind !== "link" || edge.target !== selectedDocument.id) {
+    for (const link of selectedDocument.incomingLinks ?? []) {
+      if (incomingByNodeId.has(link.node)) {
         continue;
       }
 
-      const existing = incomingByNodeId.get(edge.source);
-      incomingByNodeId.set(edge.source, {
-        nodeId: edge.source,
-        context: edge.context ?? existing?.context ?? "",
-        linkType: edge.relationships?.join(", ") ?? existing?.linkType ?? "",
-        graphPath: documentGraphById.get(edge.source) ?? selectedDocument.graph,
+      incomingByNodeId.set(link.node, {
+        nodeId: link.node,
+        context: link.context ?? "",
+        linkType: (link.relationships ?? []).join(", "),
+        graphPath: documentGraphById.get(link.node) ?? selectedDocument.graph,
       });
     }
 
     const incoming = Array.from(incomingByNodeId.values());
 
     return { outgoing, incoming };
-  }, [documentGraphById, graphCanvasData?.edges, selectedDocument]);
+  }, [documentGraphById, selectedDocument]);
 
   const editableOutgoingLinks = useMemo((): EditableLinkDetail[] => {
     if (selectedDocument === null) {

@@ -185,6 +185,7 @@ type DocumentResponse struct {
 	// An empty string means no override; the node inherits its graph directory's color.
 	Color            string                    `json:"color,omitempty"`
 	RelatedNoteIDs   []string                  `json:"relatedNoteIds,omitempty"`
+	IncomingLinks    []nodeReferenceResponse   `json:"incomingLinks,omitempty"`
 	InlineReferences []inlineReferenceResponse `json:"inlineReferences,omitempty"`
 }
 
@@ -2455,7 +2456,54 @@ func buildDocumentResponse(item markdown.WorkspaceDocument, noteView graph.NoteG
 		base.RelatedNoteIDs = slices.Clone(node.RelatedNoteIDs)
 	}
 
+	base.IncomingLinks = directionalIncomingLinks(documents, d.ID())
+
 	return base, true, nil
+}
+
+// directionalIncomingLinks scans every workspace document's declared links and
+// returns the entries that target documentID. Links are one-way declarations,
+// so this is the authoritative source for an incoming-link list; symmetric
+// related-note views must not be used for direction display.
+func directionalIncomingLinks(documents []markdown.WorkspaceDocument, documentID string) []nodeReferenceResponse {
+	incomingByNodeID := map[string]nodeReferenceResponse{}
+
+	for _, item := range documents {
+		source := item.Document
+		if source.ID() == documentID {
+			continue
+		}
+
+		for _, link := range source.Links() {
+			if link.Node != documentID {
+				continue
+			}
+
+			if _, ok := incomingByNodeID[source.ID()]; !ok {
+				incomingByNodeID[source.ID()] = nodeReferenceResponse{
+					Node:          source.ID(),
+					Context:       link.Context,
+					Relationships: slices.Clone(link.Relationships),
+				}
+			}
+			break
+		}
+	}
+
+	if len(incomingByNodeID) == 0 {
+		return nil
+	}
+
+	result := make([]nodeReferenceResponse, 0, len(incomingByNodeID))
+	for _, item := range documents {
+		link, ok := incomingByNodeID[item.Document.ID()]
+		if !ok {
+			continue
+		}
+		result = append(result, link)
+	}
+
+	return result
 }
 
 func featureSlugFromPath(path string) (string, error) {

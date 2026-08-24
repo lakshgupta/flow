@@ -4546,6 +4546,7 @@ describe("App graph canvas flows", () => {
       body: "# Intro Heading\n\nBody text\n\n## Deep Section\n\nMore detail\n",
       links: [{ node: "note-2", context: "related work" }],
       relatedNoteIds: ["note-2"],
+      incomingLinks: [{ node: "note-3", context: "blocks review", relationships: ["blocks"] }],
     };
 
     installFetchMock((url) => {
@@ -4605,6 +4606,14 @@ describe("App graph canvas flows", () => {
       const linkStats = within(propertiesPanel).getByLabelText("Document link stats");
       expect(within(linkStats).getByText("1 outgoing link")).toBeInTheDocument();
       expect(within(linkStats).getByText("1 incoming link")).toBeInTheDocument();
+      expect(within(linkStats).getByTitle(/note-2 \(related work\)/)).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      const propertiesPanel = screen.getByLabelText("Document properties");
+      const incomingSection = within(propertiesPanel).getByLabelText("Incoming links details");
+      expect(within(incomingSection).getByText("note-3")).toBeInTheDocument();
+      expect(within(incomingSection).queryByText("note-2")).not.toBeInTheDocument();
     });
 
     const deepSectionLink = await within(sidebarTOC).findByRole("button", { name: "Deep Section" });

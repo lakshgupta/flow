@@ -115,6 +115,7 @@ export type DocumentResponse = {
   /** Per-node color override (a GraphDirectoryColorId such as "rose" or "sky"). Empty string means no override. */
   color?: string;
   relatedNoteIds?: string[];
+  incomingLinks?: NodeLink[];
   inlineReferences?: InlineReference[];
 };
 
