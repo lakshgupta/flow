@@ -68,6 +68,21 @@ export function headingIdFromText(text: string): string {
   return slugifyValue(text);
 }
 
+export function headingDisplayText(value: string): string {
+  return value
+    .replace(/<[^>]*>/g, "")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/\[\[([^\[\]\n]+)\]\]/g, "$1")
+    .replace(/(\*\*\*|\*\*|___|__)(?=\S)(.*?)\1/g, "$2")
+    .replace(/(?<![\w\\])([*_])(?=\S)(.*?)\1(?!\w)/g, "$2")
+    .replace(/~~(?=\S)(.*?)~~/g, "$1")
+    .replace(/(`+)([^`]*?)\1/g, "$2")
+    .replace(/\\([\\`*_{}[\]()#+.!~-])/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function createGraphDocumentPayload(type: GraphCreateType, graphPath: string, userFileName: string): CreateDocumentPayload {
   const baseName = fileNameFromPath(userFileName);
   const title = baseName
@@ -187,9 +202,12 @@ export function generateTOC(markdownText: string): Array<{ level: number; text: 
     const match = line.match(/^(#{1,6})\s+(.+)$/);
     if (match) {
       const level = match[1].length;
-      const text = match[2].trim();
-      const id = headingIdFromText(text);
-      toc.push({ level, text, id });
+      const rawText = match[2].trim();
+      const text = headingDisplayText(rawText);
+      if (text === "") {
+        continue;
+      }
+      toc.push({ level, text, id: headingIdFromText(rawText) });
     }
   }
   return toc;

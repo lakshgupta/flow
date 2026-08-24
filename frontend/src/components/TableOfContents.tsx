@@ -12,10 +12,23 @@ export interface TableOfContentsProps {
   emptyMessage?: string;
 }
 
+function computeDepths(items: TOCItem[]): number[] {
+  const stack: number[] = [];
+  return items.map((item) => {
+    while (stack.length > 0 && stack[stack.length - 1] >= item.level) {
+      stack.pop();
+    }
+    stack.push(item.level);
+    return stack.length - 1;
+  });
+}
+
 export function TableOfContents({ items, onNavigate, emptyMessage = "No headings yet." }: TableOfContentsProps) {
   if (items.length === 0) {
     return <p className="empty-state-inline">{emptyMessage}</p>;
   }
+
+  const depths = computeDepths(items);
 
   return (
     <nav className="toc-nav">
@@ -24,7 +37,7 @@ export function TableOfContents({ items, onNavigate, emptyMessage = "No headings
           <li
             key={index}
             className={`toc-item toc-level-${item.level}`}
-            style={{ marginLeft: `${(item.level - 1) * 1}rem` }}
+            style={{ marginLeft: `${depths[index] * 1}rem` }}
           >
             <button
               type="button"
