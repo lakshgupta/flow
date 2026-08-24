@@ -95,6 +95,18 @@
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-pill: 9999px;
+  /* 4px spacing scale for sleek compact layout */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  /* Hover tokens */
+  --surface-warm-hover: color-mix(in srgb, var(--primary) 8%, var(--surface-warm));
+  --surface-warm-active: color-mix(in srgb, var(--primary) 12%, var(--surface-warm));
+  --graph-button-hover: color-mix(in srgb, var(--primary) 10%, var(--surface-warm));
+  --graph-count-bg: color-mix(in srgb, var(--primary) 10%, transparent);
   --chart-1: #7c8cf8;
   --chart-2: #7fd1b9;
   --chart-3: #f291b2;
@@ -254,7 +266,7 @@ input,
 textarea,
 select {
   font: inherit;
-  transition: color 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out;
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
 }
 
 /* Visible focus states for keyboard navigation */
@@ -273,16 +285,16 @@ a:focus-visible,
 
 button {
   cursor: pointer;
-  transition: color 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out, transform 0.1s ease-out;
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
 }
 
 button:hover {
-  transition: color 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out;
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
 }
 
 button:active {
-  opacity: 0.85;
-  transition: color 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out, opacity 0.1s ease-out;
+  opacity: 0.9;
+  transition: background-color 0.1s ease-out, border-color 0.1s ease-out, opacity 0.1s ease-out;
 }
 
 textarea,
@@ -341,7 +353,7 @@ pre {
 .app-grid {
   display: grid;
   grid-template-columns: minmax(16rem, 18rem) minmax(0, 1fr) minmax(18rem, 22rem);
-  gap: 1rem;
+  gap: var(--space-3);
   min-height: calc(100vh - 2rem);
 }
 
@@ -354,7 +366,7 @@ pre {
 .sidebar-shell {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--space-3);
 }
 
 .brand-block,
@@ -409,12 +421,17 @@ pre {
   display: flex;
   justify-content: space-between;
   align-items: end;
-  gap: 1rem;
-  padding: 1.5rem;
+  gap: var(--space-3);
+  padding: var(--space-5);
   background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: none;
+}
+
 .ui-sidebar {
   position: relative;
-  transition: width 0.2s ease-out;
+  transition: width 0.15s ease-out;
   overflow: hidden;
 }
 
@@ -455,10 +472,6 @@ pre {
   box-shadow: var(--shadow-card);
   z-index: 4;
   pointer-events: none;
-}
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-card);
 }
 
 .loading-card {
@@ -542,13 +555,13 @@ pre {
 .graph-group {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--space-3);
 }
 
 .graph-button {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
   width: 100%;
   padding: 0.7rem 0.85rem;
   background: var(--surface-warm);
@@ -556,40 +569,40 @@ pre {
   border-radius: 1rem;
   text-align: left;
   cursor: pointer;
-  box-shadow: var(--shadow-card);
-  transition: color 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out, transform 0.15s ease-out;
+  box-shadow: none;
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
   position: relative;
 }
 
 .graph-button:hover {
-  background: var(--surface-warm-glow);
+  background: var(--surface-warm-hover);
   border-color: color-mix(in srgb, var(--primary) 26%, var(--warm-border));
-  box-shadow: var(--shadow-card);
-  transform: translateY(-1px);
+  box-shadow: none;
+  transform: none;
 }
 
 .graph-button-active {
-  background: var(--surface-warm-glow);
+  background: var(--surface-warm-active);
   border: 1px solid color-mix(in srgb, var(--primary) 34%, var(--warm-border));
-  box-shadow: var(--shadow-card);
+  box-shadow: none;
 }
 
 .dark .graph-button {
   background: color-mix(in srgb, var(--card) 90%, var(--background));
   border-color: color-mix(in srgb, var(--border) 92%, transparent);
-  box-shadow: var(--shadow-card);
+  box-shadow: none;
 }
 
 .dark .graph-button:hover {
   background: color-mix(in srgb, var(--accent) 30%, var(--card));
   border-color: color-mix(in srgb, var(--primary) 46%, var(--border));
-  box-shadow: var(--shadow-card);
+  box-shadow: none;
 }
 
 .dark .graph-button-active {
-  background: var(--surface-warm-glow);
+  background: var(--surface-warm-active);
   border-color: color-mix(in srgb, var(--primary) 50%, var(--border));
-  box-shadow: var(--shadow-card);
+  box-shadow: none;
 }
 
 .graph-button-home {
@@ -649,9 +662,9 @@ pre {
   gap: 0.75rem;
 }
 
-/* Contextual document navigation view in the left sidebar */
+/* Contextual document navigation view in the left sidebar — unified padding prevents CLS on toggle */
 .sidebar-content-actions {
-  padding: 0.15rem 0.25rem 0.35rem;
+  padding: var(--space-1) var(--space-2) var(--space-3);
 }
 
 .sidebar-show-toc {
@@ -667,9 +680,9 @@ pre {
 .sidebar-toc-view {
   display: flex;
   flex-direction: column;
-  gap: 0.7rem;
+  gap: var(--space-3);
   min-width: 0;
-  padding: 0.15rem 0.25rem 0.75rem;
+  padding: var(--space-1) var(--space-2) var(--space-3);
 }
 
 .sidebar-toc-back {
@@ -727,15 +740,15 @@ pre {
 .graph-section-header {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--space-3);
   width: 100%;
   padding: 0.75rem 1rem;
-  background: rgba(255, 255, 255, 0.34);
+  background: color-mix(in srgb, var(--surface-warm) 70%, transparent);
   border: 1px solid transparent;
   border-radius: 1rem;
   text-align: left;
   cursor: pointer;
-  transition: color 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out;
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--foreground);
@@ -743,7 +756,7 @@ pre {
 }
 
 .graph-section-header:hover {
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--surface-warm-hover);
   border-color: color-mix(in srgb, var(--primary) 14%, var(--warm-border));
 }
 
@@ -755,7 +768,7 @@ pre {
 .graph-section-count {
   font-size: 0.75rem;
   color: var(--muted-foreground);
-  background: rgba(17, 107, 92, 0.12);
+  background: var(--graph-count-bg);
   padding: 0.125rem 0.5rem;
   border-radius: 999px;
   font-weight: 500;
@@ -814,18 +827,18 @@ pre {
   transition: opacity 0.2s ease-out, transform 0.2s ease-out;
 }
 
-/* Node and Canvas Transitions */
+/* Node and Canvas Transitions — flat, no lift */
 .graph-canvas-node {
-  transition: color 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out, transform 0.1s ease-out;
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
 }
 
 .graph-canvas-node:hover {
-  transform: translateY(-2px);
-  transition: color 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out, transform 0.1s ease-out;
+  transform: none;
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
 }
 
 .graph-canvas-node-selected {
-  transition: color 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out;
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
 }
 
 /* Form Field Transitions */
@@ -932,26 +945,23 @@ pre {
   animation: fadeInUp 0.3s ease-out forwards;
 }
 
-/* Staggered animation delays for sidebar items */
+/* Staggered animation — tightened for fast feel */
 .sidebar-nav-item {
   opacity: 0;
-  animation: slideInFromLeft 0.25s ease-out forwards;
+  animation: slideInFromLeft 0.2s ease-out forwards;
 }
 
-.sidebar-nav-item:nth-child(1) { animation-delay: 0.05s; }
-.sidebar-nav-item:nth-child(2) { animation-delay: 0.1s; }
-.sidebar-nav-item:nth-child(3) { animation-delay: 0.15s; }
-.sidebar-nav-item:nth-child(4) { animation-delay: 0.2s; }
-.sidebar-nav-item:nth-child(5) { animation-delay: 0.25s; }
-.sidebar-nav-item:nth-child(6) { animation-delay: 0.3s; }
-.sidebar-nav-item:nth-child(7) { animation-delay: 0.35s; }
-.sidebar-nav-item:nth-child(8) { animation-delay: 0.4s; }
+.sidebar-nav-item:nth-child(1) { animation-delay: 0.02s; }
+.sidebar-nav-item:nth-child(2) { animation-delay: 0.05s; }
+.sidebar-nav-item:nth-child(3) { animation-delay: 0.08s; }
+.sidebar-nav-item:nth-child(4) { animation-delay: 0.11s; }
+.sidebar-nav-item:nth-child(n+5) { animation-delay: 0.13s; }
 
-/* Content area entrance */
+/* Content area entrance — minimal delay */
 .content-area {
   opacity: 0;
-  animation: fadeInUp 0.4s ease-out forwards;
-  animation-delay: 0.15s;
+  animation: fadeInUp 0.25s ease-out forwards;
+  animation-delay: 0.05s;
 }
 
 /* Respect reduced motion preferences */
@@ -1181,14 +1191,14 @@ pre {
   border-radius: 999px;
   color: var(--warn);
   cursor: pointer;
-  box-shadow: var(--shadow-card);
-  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+  box-shadow: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .graph-validation-indicator:hover {
   border-color: color-mix(in srgb, var(--warn) 52%, var(--warm-border));
   background: color-mix(in srgb, var(--warn) 16%, var(--surface-warm));
-  transform: translateY(-1px);
+  transform: none;
 }
 
 .graph-validation-indicator-error {
@@ -1341,9 +1351,9 @@ pre {
 }
 
 .graph-violation-card:hover {
-  background: var(--surface-warm);
+  background: var(--surface-warm-hover);
   border-color: color-mix(in srgb, var(--primary) 26%, var(--warm-border));
-  transform: translateY(-1px);
+  transform: none;
 }
 
 .graph-violation-main {
@@ -1448,14 +1458,14 @@ pre {
   background: var(--surface-warm-glow);
   color: var(--primary);
   cursor: pointer;
-  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out, transform 0.15s ease-out;
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
 }
 
 .graph-violations-fix-all:hover {
   background: color-mix(in srgb, var(--primary) 14%, var(--surface-warm));
   border-color: color-mix(in srgb, var(--primary) 54%, var(--border));
-  box-shadow: var(--shadow-card);
-  transform: translateY(-1px);
+  box-shadow: none;
+  transform: none;
 }
 
 /* Subtle animations for content changes */
@@ -1730,12 +1740,12 @@ pre {
   border: 1px solid transparent;
   border-radius: 999px;
   font-weight: 600;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .ds-button:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-card);
+  transform: none;
+  box-shadow: none;
 }
 
 .ds-button:focus-visible,
