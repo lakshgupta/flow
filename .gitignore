@@ -41,11 +41,11 @@ frontend/test-results/
 internal/httpapi/static/**
 !internal/httpapi/static/.gitkeep
 
-# Go binaries
+# Go binaries (root-anchored so cmd/flow/ sources stay trackable)
 bin/
 dist/
-Flow
-flow
+/Flow
+/flow
 
 # Editor/IDE
 # .idea/
