@@ -15,6 +15,13 @@ import {
   renderApp,
 } from "./App.test-utils";
 
+
+/** The focused panel's title input — multiple panels are editable at once. */
+function activeTitleInput(thread: HTMLElement): HTMLElement {
+  const active = within(thread).getByLabelText(/^Active thread document /);
+  return within(active).getByLabelText("Document title");
+}
+
 describe("App thread and reference flows", () => {
   beforeEach(() => {
     vi.spyOn(Date, "now").mockReturnValue(1_717_171_717_000);
@@ -206,9 +213,10 @@ describe("App thread and reference flows", () => {
     await user.click(referenceLink);
 
     await waitFor(() => {
-      expect(within(thread).getByLabelText("Document title")).toHaveValue("Follow-up");
+      expect(activeTitleInput(thread)).toHaveValue("Follow-up");
     });
-    expect(await within(thread).findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+        const inactiveOverview = within(thread).getByLabelText("Thread document Overview");
+    expect(within(inactiveOverview).getByLabelText("Document title")).toHaveValue("Overview");
     expect(await within(thread).findByText("Follow up body")).toBeInTheDocument();
 
     const replacementLink = within(thread).getByRole("link", { name: "Third note" });
@@ -346,12 +354,11 @@ describe("App thread and reference flows", () => {
     await user.click(await within(thread).findByRole("link", { name: "Third note" }));
 
     expect(await within(thread).findByTestId("thread-panel-skeleton")).toBeInTheDocument();
-    expect(within(thread).queryByDisplayValue("Overview")).not.toBeInTheDocument();
 
     delayedNoteThree.resolve(noteThreeResponse);
 
     await waitFor(() => {
-      expect(within(thread).getByLabelText("Document title")).toHaveValue("Third note");
+      expect(activeTitleInput(thread)).toHaveValue("Third note");
     });
     expect(within(thread).queryByText("Loading document content.")).not.toBeInTheDocument();
     expect(await within(thread).findByText("Third body")).toBeInTheDocument();
@@ -483,24 +490,24 @@ describe("App thread and reference flows", () => {
     await user.click(within(thread).getByRole("link", { name: "Follow-up" }));
 
     await waitFor(() => {
-      expect(within(thread).getByLabelText("Document title")).toHaveValue("Follow-up");
+      expect(activeTitleInput(thread)).toHaveValue("Follow-up");
     });
 
     await user.click(screen.getByLabelText("Thread document Overview"));
 
     await waitFor(() => {
-      expect(within(thread).getByLabelText("Document title")).toHaveValue("Overview");
+      expect(activeTitleInput(thread)).toHaveValue("Overview");
     });
 
     vi.useFakeTimers();
     await act(async () => {
-      fireEvent.change(within(thread).getByLabelText("Document title"), { target: { value: "Overview revised" } });
+      fireEvent.change(activeTitleInput(thread), { target: { value: "Overview revised" } });
       await vi.advanceTimersByTimeAsync(800);
     });
 
     expect(getRequestBody(fetchMock, "/api/documents/note-1", "PUT")).toMatchObject({
       title: "Overview revised",
     });
-    expect(within(thread).getByLabelText("Document title")).toHaveValue("Overview revised");
+    expect(activeTitleInput(thread)).toHaveValue("Overview revised");
   });
 });

@@ -28,6 +28,9 @@ type UseThreadPanelActionsArgs = {
   ) => Promise<void> | void;
   setEditorScrollTarget: (target: string | null) => void;
   updateFormField: (field: keyof DocumentFormState, value: string) => void;
+  updateThreadFormField: (documentId: string, field: keyof DocumentFormState, value: string) => void;
+  saveThreadDocument: (documentId: string) => void;
+  setThreadPanelSavePending: (documentId: string, pending: boolean) => void;
   toggleCenterDocumentSidePanel: (mode: "properties") => void;
   addOutgoingLink: (nodeId: string) => void;
   removeOutgoingLink: (nodeId: string) => void;
@@ -49,6 +52,9 @@ export function useThreadPanelActions({
   openAssetInThreadFromSource,
   setEditorScrollTarget,
   updateFormField,
+  updateThreadFormField,
+  saveThreadDocument,
+  setThreadPanelSavePending,
   toggleCenterDocumentSidePanel,
   addOutgoingLink,
   removeOutgoingLink,
@@ -69,6 +75,9 @@ export function useThreadPanelActions({
     openAssetInThreadFromSource,
     setEditorScrollTarget,
     updateFormField,
+    updateThreadFormField,
+    saveThreadDocument,
+    setThreadPanelSavePending,
     toggleCenterDocumentSidePanel,
     addOutgoingLink,
     removeOutgoingLink,
@@ -125,6 +134,18 @@ export function useThreadPanelActions({
     actionRefs.current.updateFormField(field, value);
   }, []);
 
+  const handleThreadPanelFieldChange = useCallback((documentId: string, field: keyof DocumentFormState, value: string) => {
+    actionRefs.current.updateThreadFormField(documentId, field, value);
+  }, []);
+
+  const handleThreadPanelSave = useCallback((documentId: string) => {
+    actionRefs.current.saveThreadDocument(documentId);
+  }, []);
+
+  const handleThreadPanelSavePending = useCallback((documentId: string, pending: boolean) => {
+    actionRefs.current.setThreadPanelSavePending(documentId, pending);
+  }, []);
+
   const handleThreadCenterDocumentSidePanelToggle = useCallback((mode: "properties") => {
     actionRefs.current.toggleCenterDocumentSidePanel(mode);
   }, []);
@@ -163,6 +184,9 @@ export function useThreadPanelActions({
     openThreadAsset: handleThreadAssetOpen,
     clearEditorScrollTarget: handleThreadClearEditorScrollTarget,
     updateFormField: handleThreadFormFieldChange,
+    updateThreadFormField: handleThreadPanelFieldChange,
+    saveThreadDocument: handleThreadPanelSave,
+    setThreadPanelSavePending: handleThreadPanelSavePending,
     toggleCenterDocumentSidePanel: handleThreadCenterDocumentSidePanelToggle,
     addOutgoingLink: handleThreadAddOutgoingLink,
     removeOutgoingLink: handleThreadRemoveOutgoingLink,
@@ -181,6 +205,9 @@ export function useThreadPanelActions({
     handlePanelExpandModeToggle,
     handleThreadFocusMove,
     handleThreadFormFieldChange,
+    handleThreadPanelFieldChange,
+    handleThreadPanelSave,
+    handleThreadPanelSavePending,
     handleThreadHomeFormFieldChange,
     handleThreadInlineReferenceOpen,
     handleThreadPanelActivate,

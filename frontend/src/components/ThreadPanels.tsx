@@ -1,4 +1,4 @@
-import { memo, useMemo, type CSSProperties, type MouseEvent as ReactMouseEvent, type RefObject, useCallback } from "react";
+import { memo, useMemo, type CSSProperties, type MouseEvent as ReactMouseEvent, type RefObject, useCallback, useEffect, useRef } from "react";
 import { ChevronLeft, ChevronRight, Info, Maximize2, Minimize2, X } from "lucide-react";
 
 import type { DocumentPropertiesPanelProps } from "./DocumentPropertiesPanel";
@@ -9,7 +9,7 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Skeleton } from "./ui/skeleton";
 
-import { formatDocumentType } from "../lib/docUtils";
+import { createDocumentFormState, formatDocumentType } from "../lib/docUtils";
 import { graphDirectoryColorHex, resolveGraphDirectoryColor } from "../lib/graphColors";
 import { TASK_STATUS_OPTIONS } from "../lib/graphCanvasUtils";
 import { parseFlowAssetHref, parseFlowDateHref, parseFlowReferenceHref } from "../richText";
@@ -45,8 +45,13 @@ type ThreadPanelActions = {
   openThreadAsset: (sourceDocumentId: string, graphPath: string, assetHref: string, assetName: string, kind: "pdf" | "text") => void;
   clearEditorScrollTarget: () => void;
   updateFormField: (field: keyof DocumentFormState, value: string) => void;
-  toggleCenterDocumentSidePanel: (mode: "properties") => void;
-  addOutgoingLink: (nodeId: string) => void;
+  /** Per-thread-panel field edit: keeps every open panel's draft independent. */
+  updateThreadFormField: (documentId: string, field: keyof DocumentFormState, value: string) => void;
+  /** Persist one thread panel's document from its own form state. */
+  saveThreadDocument: (documentId: string) => void;
+  /** Track whether a panel has a debounced save in flight (unload flush). */
+  setThreadPanelSavePending: (documentId: string, pending: boolean) => void;
+  toggleCenterDocumentSidePanel: (mode: "properties") => void;  addOutgoingLink: (nodeId: string) => void;
   removeOutgoingLink: (nodeId: string) => void;
   updateLinkDetail: (nodeId: string, field: "linkType" | "context", value: string) => void;
   beginThreadPanelResize: (event: ReactMouseEvent<HTMLDivElement>, panelKey: string) => void;
@@ -92,6 +97,7 @@ export type ThreadPanelStackProps = {
   actions: ThreadPanelActions;
   searchQuery?: string;
   searchIndex?: number;
+  threadFormStates: Record<string, DocumentFormState>;
 };
 
 /** Open an external URL in the system browser.
@@ -262,15 +268,22 @@ const ActiveHomePanel = memo(function ActiveHomePanel({
   );
 });
 
-const ActiveDocumentPanel = memo(function ActiveDocumentPanel({
+const AUTO_SAVE_DEBOUNCE_MS = 400;
+// Continuous-typing guard: bound the unsaved window during non-stop edits.
+const AUTO_SAVE_MAX_GAP_MS = 4000;
+
+/**
+ * Editable document panel for one open thread entry. Every expanded panel owns
+ * an independent ProseMirror editor and autosave timer, so multiple threads can
+ * sit side by side and be edited without activating them, and switching focus
+ * never remounts (or waits on) another panel's editor.
+ */
+const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
   panel,
+  panelDocument,
   formState,
-  selectedDocument,
-  selectedDocumentInlineReferences,
   editorScrollTarget,
-  centerDocumentEditorRef,
   centerDocumentSidePanelMode,
-  showCenterDocumentSidePanel,
   centerDocumentSidePanelLabel,
   centerDocumentSidePanelTitle,
   centerDocumentSidePanelDescription,
@@ -282,11 +295,9 @@ const ActiveDocumentPanel = memo(function ActiveDocumentPanel({
   searchIndex = 0,
 }: {
   panel: ThreadPanelData;
+  panelDocument: DocumentResponse;
   formState: DocumentFormState;
-  selectedDocument: DocumentResponse | null;
-  selectedDocumentInlineReferences: DocumentResponse["inlineReferences"];
   editorScrollTarget: string | null;
-  centerDocumentEditorRef: RefObject<RichTextEditorHandle | null>;
   centerDocumentSidePanelMode: CenterDocumentSidePanelMode;
   showCenterDocumentSidePanel: boolean;
   centerDocumentSidePanelLabel: string;
@@ -299,6 +310,59 @@ const ActiveDocumentPanel = memo(function ActiveDocumentPanel({
   searchQuery?: string;
   searchIndex?: number;
 }) {
+  const editorRef = useRef<RichTextEditorHandle | null>(null);
+  const saveTimerRef = useRef<number | undefined>(undefined);
+  const lastSaveAtRef = useRef(Date.now());
+  // Latest values for the unmount flush without re-creating callbacks.
+  const stateRef = useRef(formState);
+  stateRef.current = formState;
+
+  const markSaved = useCallback(() => {
+    lastSaveAtRef.current = Date.now();
+    actions.setThreadPanelSavePending(panel.documentId, false);
+  }, [actions, panel.documentId]);
+
+  const flushSave = useCallback(() => {
+    if (saveTimerRef.current !== undefined) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = undefined;
+      actions.saveThreadDocument(panel.documentId);
+      markSaved();
+    }
+  }, [actions, panel.documentId, markSaved]);
+
+  const scheduleSave = useCallback(() => {
+    // First edit after a long idle gap saves immediately (bounds the unsaved
+    // window during continuous typing); otherwise debounce.
+    const now = Date.now();
+    if (now - lastSaveAtRef.current >= AUTO_SAVE_MAX_GAP_MS) {
+      lastSaveAtRef.current = now;
+      actions.setThreadPanelSavePending(panel.documentId, false);
+      actions.saveThreadDocument(panel.documentId);
+      return;
+    }
+
+    actions.setThreadPanelSavePending(panel.documentId, true);
+    if (saveTimerRef.current !== undefined) {
+      window.clearTimeout(saveTimerRef.current);
+    }
+    saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = undefined;
+      actions.saveThreadDocument(panel.documentId);
+      markSaved();
+    }, AUTO_SAVE_DEBOUNCE_MS);
+  }, [actions, panel.documentId, markSaved]);
+
+  // Persist pending edits when the panel closes.
+  useEffect(() => flushSave, [flushSave]);
+
+  const handleFieldChange = useCallback((field: keyof DocumentFormState, value: string) => {
+    actions.updateThreadFormField(panel.documentId, field, value);
+    scheduleSave();
+  }, [actions, panel.documentId, scheduleSave]);
+
+  const showCenterDocumentSidePanel = centerDocumentSidePanelMode !== "hidden";
+
   return (
     <div className="thread-panel-shell">
       <div className="thread-panel-title-block">
@@ -306,7 +370,7 @@ const ActiveDocumentPanel = memo(function ActiveDocumentPanel({
           className="center-document-toolbar-title"
           placeholder="Document title"
           value={formState.title}
-          onChange={(event) => actions.updateFormField("title", event.target.value)}
+          onChange={(event) => handleFieldChange("title", event.target.value)}
           aria-label="Document title"
         />
       </div>
@@ -320,14 +384,14 @@ const ActiveDocumentPanel = memo(function ActiveDocumentPanel({
           <div className="home-document-body center-document-body">
             <RichTextEditor
               ariaLabel="Document body editor"
-              inlineReferences={selectedDocumentInlineReferences}
-              onChange={(value) => actions.updateFormField("body", value)}
+              inlineReferences={panelDocument.inlineReferences}
+              onChange={(value) => handleFieldChange("body", value)}
               onReferenceOpen={(documentId, graphPath) => actions.openInlineReference(panel.documentId, documentId, graphPath)}
               onDateOpen={actions.openDate}
               onAssetOpenInThread={(assetHref, assetName, kind) => {
                 actions.openThreadAsset(panel.documentId, panel.graphPath, assetHref, assetName, kind);
               }}
-              ref={centerDocumentEditorRef}
+              ref={editorRef}
               onScrollCompleted={actions.clearEditorScrollTarget}
               placeholder="Type / for headings, lists, quotes, links, and highlights"
               scrollToHeadingSlug={editorScrollTarget}
@@ -338,14 +402,14 @@ const ActiveDocumentPanel = memo(function ActiveDocumentPanel({
           </div>
         </div>
 
-        {showCenterDocumentSidePanel && selectedDocument !== null ? (
+        {showCenterDocumentSidePanel && panel.isActive ? (
           <aside className="center-document-side-panel" aria-label={centerDocumentSidePanelLabel}>
             <div className="center-document-side-panel-header">
               <h4>{centerDocumentSidePanelTitle}</h4>
               <p>{centerDocumentSidePanelDescription}</p>
             </div>
             <DocumentPropertiesPanel
-              selectedDocument={selectedDocument}
+              selectedDocument={panelDocument}
               formState={formState}
               linkStats={selectedDocumentLinks}
               editableOutgoingLinks={editableOutgoingLinks}
@@ -353,7 +417,7 @@ const ActiveDocumentPanel = memo(function ActiveDocumentPanel({
               onAddOutgoingLink={actions.addOutgoingLink}
               onRemoveOutgoingLink={actions.removeOutgoingLink}
               onUpdateLinkDetail={actions.updateLinkDetail}
-              updateFormField={actions.updateFormField}
+              updateFormField={(field, value) => handleFieldChange(field, value)}
             />
           </aside>
         ) : null}
@@ -394,40 +458,6 @@ const ReadonlyHomePanel = memo(function ReadonlyHomePanel({
           aria-label="Thread panel content for Home"
           value={homeFormState.body}
           inlineReferences={homeInlineReferences}
-        />
-      </div>
-    </div>
-  );
-});
-
-const ReadonlyDocumentPanel = memo(function ReadonlyDocumentPanel({
-  panelTitle,
-  panelDescription,
-  panelDocument,
-  panel,
-  actions,
-}: {
-  panelTitle: string;
-  panelDescription: string;
-  panelDocument: DocumentResponse;
-  panel: ThreadPanelData;
-  actions: ThreadPanelActions;
-}) {
-  return (
-    <div className="thread-panel-shell thread-panel-shell-readonly">
-      <div className="thread-panel-title-block">
-        <h2 className="thread-panel-title">{panelTitle}</h2>
-        {panelDescription.trim() !== "" ? <p className="thread-panel-description">{panelDescription}</p> : null}
-      </div>
-      <div
-        className="thread-panel-readonly-body"
-        onClickCapture={(event) => handleReadonlyPanelClick(event, panel.documentId, panel.graphPath, actions)}
-      >
-        <RenderedMarkdown
-          className="ProseMirror thread-panel-rendered-markdown"
-          aria-label={`Thread panel content for ${panelTitle}`}
-          value={panelDocument.body}
-          inlineReferences={panelDocument.inlineReferences}
         />
       </div>
     </div>
@@ -642,6 +672,7 @@ type ThreadPanelSectionProps = {
   actions: ThreadPanelActions;
   searchQuery?: string;
   searchIndex?: number;
+  panelFormState: DocumentFormState | undefined;
 };
 
 const ThreadPanelSection = memo(function ThreadPanelSection({
@@ -683,6 +714,7 @@ const ThreadPanelSection = memo(function ThreadPanelSection({
   actions,
   searchQuery = "",
   searchIndex = -1,
+  panelFormState,
 }: ThreadPanelSectionProps) {
   const handleSectionClick = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -761,31 +793,9 @@ const ThreadPanelSection = memo(function ThreadPanelSection({
           searchQuery={searchQuery}
           searchIndex={searchIndex}
         />
-      ) : panel.isActive ? (
-        panelAsset !== null ? (
-          <ThreadAssetShell title={panelTitle} description={panelDescription} asset={panelAsset} />
-        ) : (
-          <ActiveDocumentPanel
-            panel={panel}
-            formState={formState}
-            selectedDocument={selectedDocument}
-            selectedDocumentInlineReferences={selectedDocumentInlineReferences}
-            editorScrollTarget={editorScrollTarget}
-            centerDocumentEditorRef={centerDocumentEditorRef}
-            centerDocumentSidePanelMode={centerDocumentSidePanelMode}
-            showCenterDocumentSidePanel={showCenterDocumentSidePanel}
-            centerDocumentSidePanelLabel={centerDocumentSidePanelLabel}
-            centerDocumentSidePanelTitle={centerDocumentSidePanelTitle}
-            centerDocumentSidePanelDescription={centerDocumentSidePanelDescription}
-            selectedDocumentLinks={selectedDocumentLinks}
-            editableOutgoingLinks={editableOutgoingLinks}
-            availableLinkTargets={availableLinkTargets}
-            actions={actions}
-            searchQuery={searchQuery}
-            searchIndex={searchIndex}
-          />
-        )
-      ) : panelIsHome ? (
+      ) : panel.isActive && panelAsset !== null ? (
+        <ThreadAssetShell title={panelTitle} description={panelDescription} asset={panelAsset} />
+      ) : !panel.isActive && panelIsHome ? (
         <ReadonlyHomePanel
           panelTitle={panelTitle}
           panelDescription={panelDescription}
@@ -796,15 +806,25 @@ const ThreadPanelSection = memo(function ThreadPanelSection({
         />
       ) : panelAsset !== null ? (
         <ThreadAssetShell title={panelTitle} description={panelDescription} asset={panelAsset} />
-      ) : panelDocument === null ? (
+      ) : panelDocument === null || panelFormState === undefined ? (
         <PanelLoadingSkeleton />
       ) : (
-        <ReadonlyDocumentPanel
-          panelTitle={panelTitle}
-          panelDescription={panelDescription}
-          panelDocument={panelDocument}
+        <EditableThreadDocumentPanel
           panel={panel}
+          panelDocument={panelDocument}
+          formState={panelFormState}
+          editorScrollTarget={panel.isActive ? editorScrollTarget : null}
+          centerDocumentSidePanelMode={centerDocumentSidePanelMode}
+          showCenterDocumentSidePanel={panel.isActive && showCenterDocumentSidePanel && selectedDocument?.id === panel.documentId}
+          centerDocumentSidePanelLabel={centerDocumentSidePanelLabel}
+          centerDocumentSidePanelTitle={centerDocumentSidePanelTitle}
+          centerDocumentSidePanelDescription={centerDocumentSidePanelDescription}
+          selectedDocumentLinks={selectedDocumentLinks}
+          editableOutgoingLinks={editableOutgoingLinks}
+          availableLinkTargets={availableLinkTargets}
           actions={actions}
+          searchQuery={searchQuery}
+          searchIndex={searchIndex}
         />
       )}
 
@@ -823,6 +843,18 @@ const ThreadPanelSection = memo(function ThreadPanelSection({
 });
 
 // ── Main stack component ───────────────────────────────────────────────
+
+/** Per-panel draft state, seeded from the loaded document on first edit. */
+function panelFormStateFor(
+  panel: ThreadPanelData,
+  panelDocument: DocumentResponse | null,
+  threadFormStates: Record<string, DocumentFormState>,
+): DocumentFormState | undefined {
+  const existing = threadFormStates[panel.documentId];
+  if (existing !== undefined) return existing;
+  if (panelDocument === null) return undefined;
+  return createDocumentFormState(panelDocument);
+}
 
 function ThreadPanelStackComponent({
   panelError,
@@ -863,6 +895,7 @@ function ThreadPanelStackComponent({
   actions,
   searchQuery = "",
   searchIndex = -1,
+  threadFormStates,
 }: ThreadPanelStackProps) {
   return (
     <div
@@ -889,16 +922,22 @@ function ThreadPanelStackComponent({
               ? selectedDocument
               : threadDocumentsById[panel.documentId] ?? null;
             const panelAsset = threadAssetsById[panel.documentId] ?? null;
+            // Per-panel draft state: each panel edits independently; the active
+            // panel's live formState wins so the properties side panel and TOC
+            // reflect keystrokes immediately.
+            const panelFormState = panel.isActive && selectedDocument?.id === panel.documentId
+              ? formState
+              : panelFormStateFor(panel, panelDocument, threadFormStates);
             const panelTitle = panelIsHome
               ? homeFormState.title
               : panelAsset !== null
                 ? panelAsset.name
-                : panel.isActive ? formState.title : panelDocument?.title ?? panel.documentId;
+                : (panelFormState?.title || panelDocument?.title || panel.documentId);
             const panelDescription = panelIsHome
               ? homeFormState.description
               : panelAsset !== null
                 ? panelAsset.kind === "pdf" ? "PDF document" : "Text file"
-                : panel.isActive ? formState.description : panelDocument?.description ?? "";
+                : panelFormState?.description || panelDocument?.description || "";
             const panelDocumentIsLoading = !panelIsHome && panelAsset === null && panel.isActive && isSelectedDocumentLoading && selectedDocumentId === panel.documentId;
 
             const panelKey = `${panel.documentId}:${index}`;
@@ -949,6 +988,7 @@ function ThreadPanelStackComponent({
                 actions={actions}
                 searchQuery={panel.isActive ? searchQuery : ""}
                 searchIndex={panel.isActive ? searchIndex : -1}
+                panelFormState={panelFormState}
               />
             );
           })}

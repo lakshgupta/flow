@@ -363,6 +363,8 @@ function FlowApp() {
   const [selectedDocument, setSelectedDocument] = useState<DocumentResponse | null>(null);
   const [documentThread, setDocumentThread] = useState<ThreadDocumentEntry[]>([]);
   const [threadDocumentsById, setThreadDocumentsById] = useState<Record<string, DocumentResponse>>({});
+  // Per-panel draft form state so every open thread can be edited independently.
+  const [threadFormStates, setThreadFormStates] = useState<Record<string, DocumentFormState>>({});
   const [threadAssetsById, setThreadAssetsById] = useState<Record<string, ThreadAssetEntry>>({});
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [searchTagQuery, setSearchTagQuery] = useState<string>("");
@@ -480,11 +482,13 @@ function FlowApp() {
   const fixAllEdgeViolationsRef = useRef<() => Promise<void> | void>(() => {});
   const documentThreadRef = useRef<ThreadDocumentEntry[]>([]);
   const threadDocumentsByIdRef = useRef<Record<string, DocumentResponse>>({});
+  const threadFormStatesRef = useRef<Record<string, DocumentFormState>>({});
   const threadStackRef = useRef<HTMLDivElement | null>(null);
   const selectedDocumentOpenModeRef = useRef<DocumentOpenMode>("right-rail");
   const formStateRef = useRef<DocumentFormState>(emptyDocumentFormState);
   const editableLinkDetailsRef = useRef<Record<string, { context: string; linkType: string }>>({});
   const selectedDocumentRef = useRef<DocumentResponse | null>(null);
+  const selectedDocumentIdRef = useRef<string>("");
   const graphCanvasDragRef = useRef<{
     documentId: string;
     offsetX: number;
@@ -1055,6 +1059,23 @@ function FlowApp() {
 
   useEffect(() => {
     threadDocumentsByIdRef.current = threadDocumentsById;
+    threadFormStatesRef.current = threadFormStates;
+  }, [threadDocumentsById, threadFormStates]);
+
+  // Seed per-panel draft state whenever a document enters the open thread so
+  // each panel can be edited independently of which one is focused.
+  useEffect(() => {
+    setThreadFormStates((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const [documentId, doc] of Object.entries(threadDocumentsById)) {
+        if (next[documentId] === undefined) {
+          next[documentId] = createDocumentFormState(doc);
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
   }, [threadDocumentsById]);
 
   useEffect(() => {
@@ -1138,6 +1159,7 @@ function FlowApp() {
 
   const syncSelectedDocumentState = useCallback((document: DocumentResponse | null, options?: { preserveFormState?: boolean }): void => {
     selectedDocumentRef.current = document;
+    selectedDocumentIdRef.current = document?.id ?? "";
     setSelectedDocument(document);
 
     if (document !== null && (selectedDocumentOpenModeRef.current === "center" || documentThreadRef.current.some((entry) => entry.documentId === document.id))) {
@@ -1436,7 +1458,13 @@ function FlowApp() {
   }
 
   async function openDocumentInCenter(documentId: string, graphPath: string): Promise<void> {
-    await flushPendingActiveEditorSave();
+    // The thread is replaced wholesale; flush every panel it tears down first.
+    const replacedIds = documentThreadRef.current
+      .filter((entry) => entry.documentId !== documentId)
+      .map((entry) => entry.documentId);
+    if (replacedIds.length > 0) {
+      await Promise.all(replacedIds.map((id) => saveThreadDocument(id)));
+    }
     clearSurfaceFeedback();
     setSidebarView("toc");
     openGraphSurface(graphPath);
@@ -1467,7 +1495,6 @@ function FlowApp() {
   }
 
   async function openDocumentInThreadFromSource(sourceDocumentId: string, targetDocumentId: string, graphPath: string): Promise<void> {
-    await flushPendingActiveEditorSave();
     clearSurfaceFeedback();
     setSidebarView("toc");
 
@@ -1490,7 +1517,6 @@ function FlowApp() {
     assetName: string,
     kind: "pdf" | "text",
   ): Promise<void> {
-    await flushPendingActiveEditorSave();
     clearSurfaceFeedback();
 
     const { baseThread, resolvedGraphPath } = resolveThreadBaseFromSource(sourceDocumentID, sourceGraphPath);
@@ -1522,7 +1548,7 @@ function FlowApp() {
     setSidebarView("toc");
     const threadAsset = threadAssetsById[documentId];
     if (threadAsset !== undefined) {
-      await flushPendingActiveEditorSave();
+      // Panels own their editors and autosave, so focus swaps never wait on I/O.
       clearSurfaceFeedback();
       syncCenterThreadSelection("", "", null);
       if (graphPath.trim() !== "") {
@@ -1537,7 +1563,6 @@ function FlowApp() {
       return;
     }
 
-    await flushPendingActiveEditorSave();
     clearSurfaceFeedback();
 
     if (documentId === HOME_THREAD_DOCUMENT_ID) {
@@ -1550,12 +1575,24 @@ function FlowApp() {
     }
 
     syncCenterThreadSelection(documentId, documentId, threadDocumentsByIdRef.current[documentId] ?? null);
+    // Restore the panel's live draft (unsaved edits included) into the legacy
+    // form state so TOC/properties/header reflect it immediately.
+    const panelDraft = threadFormStatesRef.current[documentId];
+    if (panelDraft !== undefined) {
+      formStateRef.current = panelDraft;
+      setFormState(panelDraft);
+    }
     openGraphSurface(graphPath);
     collapseDocumentRightRailIfOpen();
   }
 
   async function closeDocumentThreadFrom(index: number): Promise<void> {
-    await flushPendingActiveEditorSave();
+    // Panels own their editors; persist every panel being torn down before the
+    // thread state prunes their documents.
+    const closingIds = documentThreadRef.current.slice(index).map((entry) => entry.documentId);
+    if (closingIds.length > 0) {
+      await Promise.all(closingIds.map((id) => saveThreadDocument(id)));
+    }
 
     const nextThread = documentThreadRef.current.slice(0, index);
     clearSurfaceFeedback();
@@ -2381,6 +2418,15 @@ function FlowApp() {
     formStateRef.current = next;
     setFormState(next);
 
+    // Keep the active panel's per-thread draft in sync so a later focus swap
+    // restores exactly what was typed via the properties panel or right rail.
+    const activeId = selectedDocumentIdRef.current;
+    if (activeId !== "" && threadFormStatesRef.current[activeId] !== undefined) {
+      const threadNext = { ...threadFormStatesRef.current[activeId], [field]: value };
+      threadFormStatesRef.current = { ...threadFormStatesRef.current, [activeId]: threadNext };
+      setThreadFormStates(threadFormStatesRef.current);
+    }
+
     if (field === "links") {
       const allowed = new Set(splitList(value));
       setEditableLinkDetails((current) => {
@@ -2398,6 +2444,52 @@ function FlowApp() {
     scheduleDocumentAutoSave();
   }
 
+  /** Per-panel field edit: updates that panel's draft only (no autosave here —
+   * the panel schedules its own). The active document mirrors into the legacy
+   * form state so TOC/properties/header stay live. */
+  function updateThreadFormField(documentId: string, field: keyof DocumentFormState, value: string): void {
+    const current = threadFormStatesRef.current[documentId];
+    if (current === undefined) return;
+    const next = { ...current, [field]: value };
+    threadFormStatesRef.current = { ...threadFormStatesRef.current, [documentId]: next };
+    setThreadFormStates(threadFormStatesRef.current);
+
+    if (selectedDocumentIdRef.current === documentId) {
+      formStateRef.current = next;
+      setFormState(next);
+    }
+  }
+
+  /** Persist one open thread panel's document from its own draft. */
+  async function saveThreadDocument(documentId: string): Promise<void> {
+    const doc = threadDocumentsByIdRef.current[documentId];
+    const state = threadFormStatesRef.current[documentId];
+    if (doc === undefined || state === undefined) return;
+    await handleSaveDocument(doc, state);
+  }
+
+  // Panels with a debounced save still queued — flushed with keepalive on hide.
+  const pendingPanelSavesRef = useRef<Set<string>>(new Set());
+
+  function setThreadPanelSavePending(documentId: string, pending: boolean): void {
+    if (pending) {
+      pendingPanelSavesRef.current.add(documentId);
+    } else {
+      pendingPanelSavesRef.current.delete(documentId);
+    }
+  }
+
+  /** Mirror a legacy form-state write into the active panel's per-thread draft
+   * so both save paths always send identical payloads. */
+  function mirrorLegacyFormStateToThread(): void {
+    const activeId = selectedDocumentIdRef.current;
+    if (activeId !== "" && threadFormStatesRef.current[activeId] !== undefined) {
+      const threadNext = { ...threadFormStatesRef.current[activeId], ...formStateRef.current };
+      threadFormStatesRef.current = { ...threadFormStatesRef.current, [activeId]: threadNext };
+      setThreadFormStates(threadFormStatesRef.current);
+    }
+  }
+
   function updateEditableLinkDetail(nodeId: string, field: "context" | "linkType", value: string): void {
     setEditableLinkDetails((current) => {
       const previous = current[nodeId] ?? { context: "", linkType: "" };
@@ -2412,6 +2504,7 @@ function FlowApp() {
       return next;
     });
 
+    mirrorLegacyFormStateToThread();
     scheduleDocumentAutoSave();
   }
 
@@ -2435,6 +2528,7 @@ function FlowApp() {
     const nextState = { ...formStateRef.current, links: nextLinkIDs.join("\n") };
     formStateRef.current = nextState;
     setFormState(nextState);
+    mirrorLegacyFormStateToThread();
 
     setEditableLinkDetails((current) => {
       const next = {
@@ -2458,6 +2552,7 @@ function FlowApp() {
     const nextState = { ...formStateRef.current, links: nextLinkIDs.join("\n") };
     formStateRef.current = nextState;
     setFormState(nextState);
+    mirrorLegacyFormStateToThread();
 
     setEditableLinkDetails((current) => {
       const next = { ...current };
@@ -4403,6 +4498,9 @@ function FlowApp() {
     openAssetInThreadFromSource,
     setEditorScrollTarget,
     updateFormField,
+    updateThreadFormField,
+    saveThreadDocument,
+    setThreadPanelSavePending,
     toggleCenterDocumentSidePanel,
     addOutgoingLink,
     removeOutgoingLink,
@@ -4803,7 +4901,8 @@ function FlowApp() {
   flushOnHideRef.current = () => {
     const hasDocTimer = documentAutoSaveTimerRef.current !== undefined;
     const hasHomeTimer = homeAutoSaveTimerRef.current !== undefined;
-    if (!hasDocTimer && !hasHomeTimer) {
+    const pendingPanels = Array.from(pendingPanelSavesRef.current);
+    if (!hasDocTimer && !hasHomeTimer && pendingPanels.length === 0) {
       return;
     }
     if (hasDocTimer) {
@@ -4824,6 +4923,14 @@ function FlowApp() {
     // tiny).
     if (hasDocTimer && selectedDocumentRef.current !== null) {
       void handleSaveDocument(selectedDocumentRef.current, formStateRef.current, { keepalive: true });
+    }
+    for (const panelId of pendingPanels) {
+      pendingPanelSavesRef.current.delete(panelId);
+      const doc = threadDocumentsByIdRef.current[panelId];
+      const state = threadFormStatesRef.current[panelId];
+      if (doc !== undefined && state !== undefined) {
+        void handleSaveDocument(doc, state, { keepalive: true });
+      }
     }
     if (hasHomeTimer) {
       void handleSaveHomeContent(homeFormStateRef.current, { keepalive: true });
@@ -4919,6 +5026,7 @@ function FlowApp() {
       actions={threadPanelActions}
       searchQuery={editorSearchQuery}
       searchIndex={editorLocalSearchIndex}
+      threadFormStates={threadFormStates}
     />
   );
 
