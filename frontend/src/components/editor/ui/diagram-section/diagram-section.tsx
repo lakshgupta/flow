@@ -1,12 +1,14 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { ReactNodeViewProps } from "prosekit/react";
-import { IconChevronDown, IconChevronUp, IconTrash, IconZoomIn, IconZoomOut } from "@tabler/icons-react";
+import { IconChevronDown, IconChevronUp, IconTrash } from "@tabler/icons-react";
 
 import { MermaidDiagram } from "../../../MermaidDiagram";
 import { joinClassNames } from "../../../ui/utils";
 
 const DIAGRAM_MIN_SCALE = 0.5;
-const DIAGRAM_MAX_SCALE = 2;
+const DIAGRAM_MAX_SCALE = 3;
+/** Vertical pixels of drag per unit of scale change. */
+const DIAGRAM_DRAG_PX_PER_SCALE = 240;
 
 type SectionLanguage = "mermaid";
 
@@ -76,7 +78,8 @@ export default function DiagramSection(props: ReactNodeViewProps) {
   // Auto-open source editor when a new diagram block is inserted (empty source)
   const [sourceOpen, setSourceOpen] = useState<boolean>(source.trim() === "");
 
-  // Visual scale of the rendered diagram (session-only; 50%–200%).
+  // Visual scale of the rendered diagram (session-only; 50%–300%), driven by
+  // the bottom drag handle.
   const [scale, setScale] = useState<number>(1);
 
   const commitTitle = useCallback(
@@ -179,6 +182,34 @@ export default function DiagramSection(props: ReactNodeViewProps) {
     [getPos, view],
   );
 
+  // Drag the bottom handle to stretch/shrink the diagram. Scale is
+  // session-only; the fence keeps pure title + source so markdown round-trips.
+  const handleResizePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const startY = event.clientY;
+    const startScale = scaleRef.current;
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const delta = (moveEvent.clientY - startY) / DIAGRAM_DRAG_PX_PER_SCALE;
+      const next = Math.min(DIAGRAM_MAX_SCALE, Math.max(DIAGRAM_MIN_SCALE, startScale + delta));
+      setScale(Math.round(next * 20) / 20);
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      document.body.style.cursor = "";
+    };
+
+    document.body.style.cursor = "ns-resize";
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+  }, []);
+
+  const scaleRef = useRef(scale);
+  scaleRef.current = scale;
+
   if (!isSection || labels === null) {
     return (
       <pre
@@ -213,25 +244,6 @@ export default function DiagramSection(props: ReactNodeViewProps) {
           />
         </div>
         <div className="flow-diagram-block-actions">
-          <button
-            aria-label="Zoom out"
-            className="flow-diagram-block-action"
-            disabled={scale <= DIAGRAM_MIN_SCALE}
-            onClick={() => setScale((current) => Math.max(DIAGRAM_MIN_SCALE, Math.round((current - 0.1) * 10) / 10))}
-            type="button"
-          >
-            <IconZoomOut size={14} stroke={1.75} />
-          </button>
-          <span aria-live="polite" className="flow-diagram-scale-label">{Math.round(scale * 100)}%</span>
-          <button
-            aria-label="Zoom in"
-            className="flow-diagram-block-action"
-            disabled={scale >= DIAGRAM_MAX_SCALE}
-            onClick={() => setScale((current) => Math.min(DIAGRAM_MAX_SCALE, Math.round((current + 0.1) * 10) / 10))}
-            type="button"
-          >
-            <IconZoomIn size={14} stroke={1.75} />
-          </button>
           {language === "mermaid" && (
             <button
               aria-label={labels.toggle}
@@ -257,7 +269,7 @@ export default function DiagramSection(props: ReactNodeViewProps) {
           </button>
         </div>
       </div>
-      <div className="flow-diagram-block-body" contentEditable={false}>
+      <div className="flow-diagram-block-body flow-diagram-block-body-canvas" contentEditable={false}>
         <div className="flow-diagram-block-preview">
           <div
             className="flow-diagram-zoom"
@@ -266,6 +278,14 @@ export default function DiagramSection(props: ReactNodeViewProps) {
             <MermaidDiagram source={source} />
           </div>
         </div>
+        <div
+          aria-label="Resize diagram"
+          className="flow-excalidraw-resize-handle"
+          contentEditable={false}
+          onPointerDown={handleResizePointerDown}
+          role="separator"
+          title="Drag to resize the diagram"
+        />
       </div>
       <div className={sourceOpen ? 'flow-diagram-block-source' : 'flow-diagram-block-source hidden'}>
           <label className="flow-diagram-block-source-label" contentEditable={false}>
