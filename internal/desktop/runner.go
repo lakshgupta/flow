@@ -1,6 +1,12 @@
 package desktop
 
-import "github.com/lex/flow/internal/workspace"
+import (
+	"fmt"
+	"path/filepath"
+
+	"github.com/lex/flow/internal/logging"
+	"github.com/lex/flow/internal/workspace"
+)
 
 // Options contains runtime options for desktop mode startup.
 type Options struct {
@@ -30,7 +36,23 @@ func Run(options Options) error {
 		return err
 	}
 
+	// Desktop runs have no parent process redirecting stdout/stderr, so file
+	// logging is the only durable trail: daily files under .flow/logs with
+	// 15-day retention. Failures are non-fatal (best-effort logging).
+	stopLogging, logErr := logging.Setup(guiLogsPath(runtimeContext.Root))
+	if logErr != nil {
+		fmt.Printf("flow desktop: warning: file logging unavailable: %v\n", logErr)
+	} else {
+		defer stopLogging()
+	}
+
 	return runDesktopMode(runtimeContext)
+}
+
+// guiLogsPath returns the workspace logs directory used by both service and
+// desktop surfaces.
+func guiLogsPath(root workspace.Root) string {
+	return filepath.Join(root.FlowPath, "logs")
 }
 
 func scopeLabel(scope workspace.Scope) string {

@@ -20,6 +20,7 @@ import (
 	"github.com/lex/flow/internal/config"
 	"github.com/lex/flow/internal/execution"
 	"github.com/lex/flow/internal/httpapi"
+	"github.com/lex/flow/internal/logging"
 	"github.com/lex/flow/internal/markdown"
 	"github.com/lex/flow/internal/workspace"
 	_ "modernc.org/sqlite"
@@ -1525,8 +1526,8 @@ func TestPruneFlowLogsRemovesOnlyEntriesOlderThanCutoff(t *testing.T) {
 		t.Fatalf("Chtimes(new.log) error = %v", err)
 	}
 
-	if err := pruneFlowLogs(logsDir, now.Add(-7*24*time.Hour)); err != nil {
-		t.Fatalf("pruneFlowLogs() error = %v", err)
+	if err := logging.Prune(logsDir, now.Add(-7*24*time.Hour)); err != nil {
+		t.Fatalf("logging.Prune() error = %v", err)
 	}
 
 	if _, err := os.Stat(oldLogPath); !errors.Is(err, os.ErrNotExist) {

@@ -27,6 +27,7 @@ import (
 	"github.com/lex/flow/internal/graph"
 	"github.com/lex/flow/internal/httpapi"
 	"github.com/lex/flow/internal/index"
+	"github.com/lex/flow/internal/logging"
 	"github.com/lex/flow/internal/markdown"
 	"github.com/lex/flow/internal/workspace"
 )
@@ -1047,6 +1048,16 @@ func runGUIServe(global bool, env commandEnv) error {
 	}
 	root := context.root
 	workspaceConfig := context.workspaceConfig
+
+	// Application logs: daily-rotated files under .flow/logs with 15-day
+	// retention. The launcher also redirects stdout/stderr to a startup log,
+	// so stdlib log output is mirrored there for foreground debugging.
+	stopLogging, logErr := logging.Setup(guiLogsPath(root))
+	if logErr != nil {
+		fmt.Fprintf(env.stderr, "warning: file logging unavailable: %v\n", logErr)
+	} else {
+		defer stopLogging()
+	}
 
 	stopRequested := make(chan struct{})
 	var stopOnce sync.Once
@@ -2981,7 +2992,7 @@ func launchGUIProcess(global bool, root workspace.Root) error {
 		return fmt.Errorf("create gui logs directory: %w", err)
 	}
 
-	if err := pruneFlowLogs(logDir, time.Now().Add(-guiLogRetentionWindow)); err != nil {
+	if err := logging.Prune(logDir, time.Now().Add(-guiLogRetentionWindow)); err != nil {
 		return fmt.Errorf("prune gui logs: %w", err)
 	}
 
@@ -3025,36 +3036,6 @@ func guiStartupLogPath(root workspace.Root) string {
 
 func guiLogsPath(root workspace.Root) string {
 	return filepath.Join(root.FlowPath, "logs")
-}
-
-func pruneFlowLogs(path string, cutoff time.Time) error {
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-
-		return err
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".log" {
-			continue
-		}
-
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-
-		if info.ModTime().Before(cutoff) {
-			if err := os.Remove(filepath.Join(path, entry.Name())); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
 }
 
 func readGUIStartupLog(root workspace.Root) (string, error) {
