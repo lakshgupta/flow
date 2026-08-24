@@ -1,5 +1,6 @@
 import { markdownToHTML } from "../richText";
 import { requestJSON } from "./api";
+import { renderPrintDiagrams } from "./print-diagrams";
 import type { DocumentResponse } from "../types";
 
 /**
@@ -68,6 +69,10 @@ export function buildPrintHtml(nodes: PrintNode[], filenameTitle: string): strin
     .export-body th,.export-body td{ border:1px solid var(--border); padding:0.4em 0.6em; text-align:left; }
     .export-body th{ background: var(--muted); font-weight:600; }
     .export-run{ font-family: ui-monospace, monospace; background: var(--muted); border: 1px solid var(--border); border-radius: 8px; padding: 0.9em 1em; white-space: pre-wrap; word-break: break-all; }
+    .print-diagram { break-inside: avoid; page-break-inside: avoid; margin: 1em 0; text-align: center; }
+    .print-diagram svg { max-width: 100%; height: auto; }
+    .print-diagram-mermaid svg { display: block; margin: 0 auto; }
+    .print-diagram-caption { font-size: 11px; color: var(--muted-foreground); margin-top: 0.4em; }
   `;
 
   const nodesHtml = nodes
@@ -130,7 +135,9 @@ export async function printNodesAsPdf(nodeIds: string[], preferredTitle?: string
       : nodes.length === 1
         ? nodes[0].title
         : `Selection — ${nodes[0].title} + ${nodes.length - 1} more`;
-  const html = buildPrintHtml(nodes, filenameTitle);
+  // Render mermaid/excalidraw fences into inline SVG diagrams at their
+  // original positions before the browser prints the page.
+  const html = await renderPrintDiagrams(buildPrintHtml(nodes, filenameTitle));
 
   const iframe = document.createElement("iframe");
   iframe.setAttribute("aria-hidden", "true");
@@ -151,7 +158,8 @@ export async function printNodesAsPdf(nodeIds: string[], preferredTitle?: string
   doc.write(html);
   doc.close();
 
-  // Give the iframe a moment to finish rendering (fonts, Mermaid SVGs already inlined as HTML).
+  // Give the iframe a moment to finish rendering (fonts, diagram SVGs are
+  // already inlined as HTML).
   await new Promise<void>((resolve) => window.setTimeout(resolve, 350));
 
   const win = iframe.contentWindow;
