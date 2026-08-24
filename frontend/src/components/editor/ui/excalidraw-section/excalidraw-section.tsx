@@ -1,11 +1,12 @@
-import { IconTrash, IconZoomIn, IconZoomOut } from '@tabler/icons-react'
+import { IconTrash } from '@tabler/icons-react'
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types'
 import type { AppState, BinaryFiles } from '@excalidraw/excalidraw/types'
 import type { ReactNodeViewProps } from 'prosekit/react'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-const DIAGRAM_MIN_SCALE = 0.5
-const DIAGRAM_MAX_SCALE = 2
+const CANVAS_DEFAULT_HEIGHT = 480
+const CANVAS_MIN_HEIGHT = 320
+const CANVAS_MAX_HEIGHT = 4000
 
 /**
  * Lazy-load the Excalidraw bundle (plus its stylesheet) so the editor's main
@@ -38,11 +39,15 @@ type SceneData = {
 }
 
 /** Parse the persisted JSON envelope. Unknown/corrupt content yields an empty scene. */
-function parseScene(text: string): { title: string; scene: SceneData } {
+function parseScene(text: string): { title: string; canvasHeight: number; scene: SceneData } {
   try {
     const data = JSON.parse(text) as Record<string, unknown>
+    const persistedHeight = typeof data.flowCanvasHeight === 'number' && Number.isFinite(data.flowCanvasHeight)
+      ? data.flowCanvasHeight
+      : CANVAS_DEFAULT_HEIGHT
     return {
       title: typeof data.flowTitle === 'string' ? data.flowTitle : '',
+      canvasHeight: Math.min(Math.max(persistedHeight, CANVAS_MIN_HEIGHT), CANVAS_MAX_HEIGHT),
       scene: {
         elements: Array.isArray(data.elements) ? data.elements as readonly ExcalidrawElement[] : [],
         appState: sanitizePersistedAppState(
@@ -52,7 +57,7 @@ function parseScene(text: string): { title: string; scene: SceneData } {
       },
     }
   } catch {
-    return { title: '', scene: { elements: [], appState: null, files: {} } }
+    return { title: '', canvasHeight: CANVAS_DEFAULT_HEIGHT, scene: { elements: [], appState: null, files: {} } }
   }
 }
 
@@ -84,28 +89,32 @@ const SCENE_SAVE_DELAY_MS = 500
  * labeled, deletable section whose body is a live Excalidraw canvas.
  *
  * The scene is persisted as JSON in the code block text (the same markdown
- * fence round-trip mermaid diagrams use): `{"type":"excalidraw",...,"flowTitle":...}`.
+ * fence round-trip mermaid diagrams use): `{"type":"excalidraw",...,"flowTitle":...,"flowCanvasHeight":...}`.
  *
  * - Header: static label + delete (trash) button.
  * - Body: the interactive Excalidraw canvas (lazy-loaded, non-editable to the
  *   ProseMirror layer, pointer events intercepted so the caret never jumps).
+ *   A bottom drag handle stretches the canvas height for more drawing room;
+ *   the height persists in the scene envelope.
  * - Changes are debounced and written back into the code block text.
  */
 export default function ExcalidrawSection(props: ReactNodeViewProps) {
   const { node, contentRef, view, getPos } = props
   const text = node.textContent
 
-  const [{ title, scene }] = useState(() => parseScene(text))
+  const [{ title, canvasHeight, scene }] = useState(() => parseScene(text))
   const sceneRef = useRef<SceneData>(scene)
   const titleRef = useRef<string>(title)
   const [draftTitle, setDraftTitle] = useState<string>(title)
 
+  // Canvas height in px — user-stretchable via the bottom drag handle.
+  const [height, setHeight] = useState<number>(canvasHeight)
+  const heightRef = useRef<number>(canvasHeight)
+  heightRef.current = height
+
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
     typeof document !== 'undefined' && document.documentElement.classList.contains('dark') ? 'dark' : 'light',
   )
-
-  // Visual scale of the canvas (session-only; 50%–200%).
-  const [scale, setScale] = useState<number>(1)
 
   // Follow the app's light/dark toggle so the canvas palette stays in sync.
   useEffect(() => {
@@ -145,6 +154,7 @@ export default function ExcalidrawSection(props: ReactNodeViewProps) {
         envelope = { elements, appState, files }
       }
       envelope.flowTitle = titleRef.current
+      envelope.flowCanvasHeight = Math.round(heightRef.current)
       const json = JSON.stringify(envelope)
       const tr = view.state.tr
       // Resolve the section from the *current* doc rather than the React node
@@ -230,6 +240,38 @@ export default function ExcalidrawSection(props: ReactNodeViewProps) {
     view.focus()
   }, [cancelPendingSave, writeScene, getPos, view])
 
+  // Drag the bottom handle to stretch/shrink the canvas vertically. The final
+  // height is written into the scene envelope on pointer-up so it persists.
+  const handleResizePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault()
+      event.stopPropagation()
+      const startY = event.clientY
+      const startHeight = heightRef.current
+
+      const handlePointerMove = (moveEvent: PointerEvent) => {
+        const next = Math.min(
+          Math.max(Math.round(startHeight + (moveEvent.clientY - startY)), CANVAS_MIN_HEIGHT),
+          CANVAS_MAX_HEIGHT,
+        )
+        setHeight(next)
+      }
+
+      const handlePointerUp = () => {
+        window.removeEventListener('pointermove', handlePointerMove)
+        window.removeEventListener('pointerup', handlePointerUp)
+        document.body.style.cursor = ''
+        cancelPendingSave()
+        writeScene()
+      }
+
+      document.body.style.cursor = 'ns-resize'
+      window.addEventListener('pointermove', handlePointerMove)
+      window.addEventListener('pointerup', handlePointerUp)
+    },
+    [cancelPendingSave, writeScene],
+  )
+
   return (
     <div
       className="flow-diagram-block"
@@ -262,25 +304,6 @@ export default function ExcalidrawSection(props: ReactNodeViewProps) {
         </div>
         <div className="flow-diagram-block-actions">
           <button
-            aria-label="Zoom out"
-            className="flow-diagram-block-action"
-            disabled={scale <= DIAGRAM_MIN_SCALE}
-            onClick={() => setScale((current) => Math.max(DIAGRAM_MIN_SCALE, Math.round((current - 0.1) * 10) / 10))}
-            type="button"
-          >
-            <IconZoomOut size={14} stroke={1.75} />
-          </button>
-          <span aria-live="polite" className="flow-diagram-scale-label">{Math.round(scale * 100)}%</span>
-          <button
-            aria-label="Zoom in"
-            className="flow-diagram-block-action"
-            disabled={scale >= DIAGRAM_MAX_SCALE}
-            onClick={() => setScale((current) => Math.min(DIAGRAM_MAX_SCALE, Math.round((current + 0.1) * 10) / 10))}
-            type="button"
-          >
-            <IconZoomIn size={14} stroke={1.75} />
-          </button>
-          <button
             aria-label="Delete excalidraw drawing"
             className="flow-diagram-block-action flow-diagram-block-action-destructive"
             onClick={handleDelete}
@@ -290,22 +313,25 @@ export default function ExcalidrawSection(props: ReactNodeViewProps) {
           </button>
         </div>
       </div>
-      <div className="flow-diagram-block-body" contentEditable={false}>
-        <div
-          className="flow-diagram-zoom flow-diagram-zoom-canvas"
-          style={{ transform: `scale(${scale})`, width: `${100 / scale}%`, height: `${480 * scale}px` }}
-        >
-          <div className="flow-excalidraw-canvas" data-flow-editor-interactive="true">
-            <Suspense fallback={<div className="flow-excalidraw-loading">Loading drawing…</div>}>
-              <ExcalidrawCanvas
-                initialData={initialData}
-                onChange={handleSceneChange}
-                theme={theme}
-                viewModeEnabled={false}
-              />
-            </Suspense>
-          </div>
+      <div className="flow-diagram-block-body flow-diagram-block-body-canvas" contentEditable={false}>
+        <div className="flow-excalidraw-canvas" data-flow-editor-interactive="true" style={{ height: `${height}px` }}>
+          <Suspense fallback={<div className="flow-excalidraw-loading">Loading drawing…</div>}>
+            <ExcalidrawCanvas
+              initialData={initialData}
+              onChange={handleSceneChange}
+              theme={theme}
+              viewModeEnabled={false}
+            />
+          </Suspense>
         </div>
+        <div
+          aria-label="Resize drawing canvas"
+          className="flow-excalidraw-resize-handle"
+          contentEditable={false}
+          onPointerDown={handleResizePointerDown}
+          role="separator"
+          title="Drag to resize the drawing area"
+        />
       </div>
       {/* ProseMirror binds the code block text (the JSON scene) to this hidden
           element; the user never edits it directly. */}

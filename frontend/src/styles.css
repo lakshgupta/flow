@@ -4536,6 +4536,46 @@ pre {
   background: #fff;
 }
 
+.flow-diagram-block-body-canvas {
+  position: relative;
+}
+
+/* Bottom drag handle that stretches the excalidraw canvas height. */
+.flow-excalidraw-resize-handle {
+  position: absolute;
+  left: 50%;
+  bottom: -0.35rem;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.5rem;
+  height: 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+  border-radius: 999px;
+  background: var(--card);
+  cursor: ns-resize;
+  z-index: 2;
+}
+
+.flow-excalidraw-resize-handle::after {
+  content: "";
+  width: 1.6rem;
+  height: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted-foreground) 55%, transparent);
+}
+
+.flow-excalidraw-resize-handle:hover::after,
+.flow-excalidraw-resize-handle:focus-visible::after {
+  background: var(--primary);
+}
+
+.flow-excalidraw-resize-handle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--ring) 80%, transparent);
+  outline-offset: 2px;
+}
+
 /* Zoom wrapper for diagram sections (transform keeps layout box stable). */
 .flow-diagram-zoom {
   transform-origin: top center;
