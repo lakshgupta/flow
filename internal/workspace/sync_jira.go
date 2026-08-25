@@ -21,15 +21,18 @@ type SyncJiraResult struct {
 	Archived []string `json:"archived,omitempty"`
 }
 
-// SyncJira mirrors fetched tracker issues into read-only note nodes under
-// external/jira/<PROJECT>/. It now handles hierarchical epics:
-//   - Open epics become graphs at external/jira/<PROJECT>/<EPIC>/<EPIC>.md
-//   - Features (children of an epic) become sub-graphs at external/jira/<PROJECT>/<EPIC>/<FEATURE>/<FEATURE>.md
-//   - Stories/tasks under a feature become files at external/jira/<PROJECT>/<EPIC>/<FEATURE>/<STORY>.md
-//   - Orphan issues (no epic parent) remain flat at external/jira/<PROJECT>/<KEY>.md
-// Relationships are captured via frontmatter `links` (edges). Bodies contain the Jira content.
-// Markdown is written first, then the index refreshes. Deletions in source mark nodes with
-// an archived-source tag instead of deleting, preserving edge integrity.
+// SyncJira mirrors fetched tracker issues into read-only note nodes.
+// It handles the full Jira hierarchy generically:
+//
+//   - Any issue can be a parent (has children via ParentKey/EpicLink) or a leaf.
+//   - Epics and Features are always graphs (even without children) to give them a dedicated directory.
+//   - An issue that has children becomes a graph at <parentGraph>/<issueKey>/<issueKey>.md
+//   - A leaf issue becomes a file at <parentGraph>/<issueKey>.md where parentGraph is its parent's graph (or project root if no parent).
+//   - Open epics are top-level graphs; features without an epic become top-level graphs; standalone JIRAs (Bug/Task/Story without parent) are flat files at project root.
+//   - Stories with children become graphs (their children are files under them).
+//   - Relationships are captured via frontmatter `links` (edges) from parent to children, and bodies contain the Jira content.
+//
+// Markdown is written first, then the index refreshes. Missing issues are archived with `archived-source`.
 func SyncJira(root Root, projectKey string, issues []core.JiraIssue, syncedAt time.Time) (SyncJiraResult, error) {
 	projectKey = strings.ToUpper(strings.TrimSpace(projectKey))
 	if projectKey == "" {
@@ -43,7 +46,6 @@ func SyncJira(root Root, projectKey string, issues []core.JiraIssue, syncedAt ti
 	if err != nil {
 		return SyncJiraResult{}, err
 	}
-	// Collect existing jira docs under this project (including sub-graphs)
 	existing := map[string]markdown.WorkspaceDocument{}
 	for _, item := range documents {
 		noteDocument, ok := item.Document.(markdown.NoteDocument)
@@ -56,7 +58,7 @@ func SyncJira(root Root, projectKey string, issues []core.JiraIssue, syncedAt ti
 		}
 	}
 
-	// Build hierarchy: open epics -> features -> stories
+	// Build maps for hierarchy
 	byKey := map[string]core.JiraIssue{}
 	for _, issue := range issues {
 		key := strings.TrimSpace(issue.Key)
@@ -66,163 +68,71 @@ func SyncJira(root Root, projectKey string, issues []core.JiraIssue, syncedAt ti
 		byKey[strings.ToUpper(key)] = issue
 	}
 
-	openEpics := map[string]core.JiraIssue{}
+	// Build parent -> children map for all issues (including Done, to preserve links)
+	childrenMap := map[string][]core.JiraIssue{}
 	for _, issue := range issues {
-		if isEpic(issue) && isOpenStatus(issue.Status) {
-			openEpics[strings.ToUpper(issue.Key)] = issue
+		parentKey := strings.TrimSpace(issue.ParentKey)
+		if parentKey == "" {
+			parentKey = strings.TrimSpace(issue.EpicLink)
+		}
+		if parentKey == "" {
+			continue
+		}
+		parentUpper := strings.ToUpper(parentKey)
+		if _, ok := byKey[parentUpper]; ok {
+			childrenMap[parentUpper] = append(childrenMap[parentUpper], issue)
 		}
 	}
 
-	// Map epic -> direct children (features)
-	epicChildren := map[string][]core.JiraIssue{}
-	// Map feature -> children (stories)
-	featureChildren := map[string][]core.JiraIssue{}
-	// Track which keys are part of hierarchy (to handle orphans)
-	inHierarchy := map[string]bool{}
-
-	for _, epic := range openEpics {
-		epicKeyUpper := strings.ToUpper(epic.Key)
-		inHierarchy[epicKeyUpper] = true
-		for _, issue := range issues {
-			if strings.EqualFold(issue.Key, epic.Key) {
-				continue
-			}
-			parentUpper := strings.ToUpper(strings.TrimSpace(issue.ParentKey))
-			epicLinkUpper := strings.ToUpper(strings.TrimSpace(issue.EpicLink))
-			if parentUpper == epicKeyUpper || epicLinkUpper == epicKeyUpper {
-				epicChildren[epicKeyUpper] = append(epicChildren[epicKeyUpper], issue)
-				inHierarchy[strings.ToUpper(issue.Key)] = true
-			}
+	// Helper to determine if an issue should be a graph (directory)
+	shouldBeGraph := func(issue core.JiraIssue) bool {
+		upper := strings.ToUpper(issue.Key)
+		if _, hasChildren := childrenMap[upper]; hasChildren {
+			return true
 		}
-	}
-	// For each feature under epic, find its children (stories)
-	for _, features := range epicChildren {
-		for _, feature := range features {
-			featKeyUpper := strings.ToUpper(feature.Key)
-			for _, issue := range issues {
-				if strings.EqualFold(issue.Key, feature.Key) {
-					continue
-				}
-				// Avoid re-adding epics themselves
-				if _, isEpic := openEpics[strings.ToUpper(issue.Key)]; isEpic {
-					continue
-				}
-				parentUpper := strings.ToUpper(strings.TrimSpace(issue.ParentKey))
-				if parentUpper == featKeyUpper {
-					featureChildren[featKeyUpper] = append(featureChildren[featKeyUpper], issue)
-					inHierarchy[strings.ToUpper(issue.Key)] = true
-				}
-			}
+		if isEpic(issue) {
+			return true
 		}
+		if strings.EqualFold(strings.TrimSpace(issue.IssueType), "Feature") {
+			return true
+		}
+		return false
 	}
 
-	// Desired IDs and their graph/file mapping
-	type desired struct {
-		issue     core.JiraIssue
-		graphPath string
-		fileName  string
-		id        string
-		links     []markdown.NodeLink
-	}
+	// For each issue (including Done for archiving test), compute its graph path and ID
 	desiredMap := map[string]desired{}
-	// Also need to map issue key to ID for linking
 	keyToID := map[string]string{}
 
-	// First pass: create desired entries for epics, features, stories, orphans
-	for epicKey, epic := range openEpics {
-		graphPath := epicGraphPath(projectKey, epic.Key)
-		id := jiraEpicNodeID(projectKey, epic.Key)
-		keyToID[strings.ToUpper(epic.Key)] = id
-		desiredMap[id] = desired{
-			issue:     epic,
-			graphPath: graphPath,
-			fileName:  epic.Key + ".md",
-			id:        id,
-		}
-		_ = epicKey
-		_ = graphPath
-	}
-
-	for epicKey, features := range epicChildren {
-		for _, feature := range features {
-			featKeyUpper := strings.ToUpper(feature.Key)
-			graphPath := featureGraphPath(projectKey, epicKey, feature.Key)
-			id := jiraFeatureNodeID(projectKey, epicKey, feature.Key)
-			keyToID[featKeyUpper] = id
-			desiredMap[id] = desired{
-				issue:     feature,
-				graphPath: graphPath,
-				fileName:  feature.Key + ".md",
-				id:        id,
-			}
-			// Also handle stories under this feature
-			for _, story := range featureChildren[featKeyUpper] {
-				storyKeyUpper := strings.ToUpper(story.Key)
-				// Stories share the feature's graph
-				storyGraph := graphPath
-				storyID := jiraStoryNodeID(projectKey, epicKey, feature.Key, story.Key)
-				keyToID[storyKeyUpper] = storyID
-				desiredMap[storyID] = desired{
-					issue:     story,
-					graphPath: storyGraph,
-					fileName:  story.Key + ".md",
-					id:        storyID,
-				}
-			}
-		}
-	}
-
-	// Orphans: issues not in hierarchy (including non-epic flat issues, or closed epics)
 	for _, issue := range issues {
-		upper := strings.ToUpper(strings.TrimSpace(issue.Key))
-		if _, ok := inHierarchy[upper]; ok {
+		key := strings.TrimSpace(issue.Key)
+		if key == "" {
 			continue
 		}
-		// Also skip closed epics that were not open (they are not in openEpics but are epics)
-		if isEpic(issue) && !isOpenStatus(issue.Status) {
-			// Still need to handle archiving for previously synced closed epic? We will archive via missing desired, but not create new.
-			continue
-		}
-		// For orphans, use flat graph
-		graphPath := graphRoot
-		id := jiraNodeID(projectKey, issue.Key)
+		upper := strings.ToUpper(key)
+		graphPath, fileName, id := graphAndIDForIssue(issue, childrenMap, projectKey, byKey, shouldBeGraph)
 		keyToID[upper] = id
-		// Avoid overwriting if already in desiredMap (should not happen for orphans)
-		if _, exists := desiredMap[id]; exists {
-			continue
-		}
 		desiredMap[id] = desired{
 			issue:     issue,
 			graphPath: graphPath,
-			fileName:  issue.Key + ".md",
+			fileName:  fileName,
 			id:        id,
 		}
 	}
 
-	// Second pass: populate links (edges) based on hierarchy
+	// Second pass: populate links from parent to children
 	for id, d := range desiredMap {
-		issue := d.issue
-		upper := strings.ToUpper(issue.Key)
-		var links []markdown.NodeLink
-		// If issue is an epic, link to its features
-		if _, isEpic := openEpics[upper]; isEpic {
-			for _, feat := range epicChildren[upper] {
-				if fid, ok := keyToID[strings.ToUpper(feat.Key)]; ok {
-					links = append(links, markdown.NodeLink{Node: fid})
-				}
-			}
-		} else {
-			// If issue is a feature, link to its stories
-			if children, ok := featureChildren[upper]; ok && len(children) > 0 {
-				for _, child := range children {
-					if cid, ok := keyToID[strings.ToUpper(child.Key)]; ok {
-						links = append(links, markdown.NodeLink{Node: cid})
-					}
-				}
-			}
-			// Also, if issue has a parent that is in hierarchy, ensure parent links to it (already handled via parent's links)
+		upper := strings.ToUpper(d.issue.Key)
+		children, ok := childrenMap[upper]
+		if !ok || len(children) == 0 {
+			continue
 		}
-		// Sort for determinism
+		var links []markdown.NodeLink
+		for _, child := range children {
+			childUpper := strings.ToUpper(child.Key)
+			if cid, ok := keyToID[childUpper]; ok {
+				links = append(links, markdown.NodeLink{Node: cid})
+			}
+		}
 		sort.Slice(links, func(i, j int) bool { return links[i].Node < links[j].Node })
 		d.links = links
 		desiredMap[id] = d
@@ -246,7 +156,6 @@ func SyncJira(root Root, projectKey string, issues []core.JiraIssue, syncedAt ti
 
 		if previous, exists := existing[id]; exists {
 			noteDocument := previous.Document.(markdown.NoteDocument)
-			// Compare body and tags and links
 			existingLinks := noteDocument.Metadata.Links
 			existingLinkIDs := []string{}
 			for _, l := range existingLinks {
@@ -281,7 +190,6 @@ func SyncJira(root Root, projectKey string, issues []core.JiraIssue, syncedAt ti
 			continue
 		}
 
-		// Create new document (without links first to avoid validation order issues)
 		if _, err := CreateDocument(root, CreateDocumentInput{
 			Type:        markdown.NoteType,
 			Graph:       d.graphPath,
@@ -300,13 +208,11 @@ func SyncJira(root Root, projectKey string, issues []core.JiraIssue, syncedAt ti
 		result.Created = append(result.Created, id)
 	}
 
-	// Second pass: set links for newly created documents that have edges
-	// (existing docs already handled via patch above)
+	// Second pass: set links for newly created documents
 	for id, d := range desiredMap {
 		if len(d.links) == 0 {
 			continue
 		}
-		// Only update if this was newly created (not already handled as existing)
 		isNew := false
 		for _, cid := range result.Created {
 			if cid == id {
@@ -353,6 +259,107 @@ func SyncJira(root Root, projectKey string, issues []core.JiraIssue, syncedAt ti
 	return result, nil
 }
 
+type desired struct {
+	issue     core.JiraIssue
+	graphPath string
+	fileName  string
+	id        string
+	links     []markdown.NodeLink
+}
+
+func graphAndIDForIssue(issue core.JiraIssue, childrenMap map[string][]core.JiraIssue, projectKey string, byKey map[string]core.JiraIssue, shouldBeGraph func(core.JiraIssue) bool) (string, string, string) {
+	parentChain := []string{}
+	curKey := strings.TrimSpace(issue.ParentKey)
+	if curKey == "" {
+		curKey = strings.TrimSpace(issue.EpicLink)
+	}
+	visited := map[string]bool{}
+	for curKey != "" && len(parentChain) < 10 {
+		upper := strings.ToUpper(curKey)
+		if visited[upper] {
+			break
+		}
+		visited[upper] = true
+		parentIssue, ok := byKey[upper]
+		if !ok {
+			break
+		}
+		if shouldBeGraph(parentIssue) {
+			parentChain = append([]string{parentIssue.Key}, parentChain...)
+		} else {
+			curKey = strings.TrimSpace(parentIssue.ParentKey)
+			if curKey == "" {
+				curKey = strings.TrimSpace(parentIssue.EpicLink)
+			}
+			continue
+		}
+		curKey = strings.TrimSpace(parentIssue.ParentKey)
+		if curKey == "" {
+			curKey = strings.TrimSpace(parentIssue.EpicLink)
+		}
+	}
+
+	isGraph := shouldBeGraph(issue)
+	var graphPath string
+	var fileName string
+	var id string
+	if isGraph {
+		if len(parentChain) == 0 {
+			graphPath = epicGraphPath(projectKey, issue.Key)
+		} else {
+			parts := []string{JiraGraphRoot, projectKey}
+			parts = append(parts, parentChain...)
+			parts = append(parts, issue.Key)
+			graphPath = strings.Join(parts, "/")
+		}
+		fileName = issue.Key + ".md"
+		id = graphPath + "/" + strings.ToLower(issue.Key)
+	} else {
+		if len(parentChain) == 0 {
+			parentKey := strings.TrimSpace(issue.ParentKey)
+			if parentKey == "" {
+				parentKey = strings.TrimSpace(issue.EpicLink)
+			}
+			if parentKey != "" {
+				parentUpper := strings.ToUpper(parentKey)
+				if parentIssue, ok := byKey[parentUpper]; ok {
+					pg, _, _ := graphAndIDForIssue(parentIssue, childrenMap, projectKey, byKey, shouldBeGraph)
+					graphPath = pg
+				} else {
+					graphPath = JiraGraphRoot + "/" + projectKey
+				}
+			} else {
+				graphPath = JiraGraphRoot + "/" + projectKey
+			}
+		} else {
+			parts := []string{JiraGraphRoot, projectKey}
+			parts = append(parts, parentChain...)
+			graphPath = strings.Join(parts, "/")
+		}
+		fileName = issue.Key + ".md"
+		id = graphPath + "/" + strings.ToLower(issue.Key)
+		if len(parentChain) == 0 && issue.ParentKey != "" {
+			parentUpper := strings.ToUpper(strings.TrimSpace(issue.ParentKey))
+			if parentIssue, ok := byKey[parentUpper]; ok && shouldBeGraph(parentIssue) {
+				pg, _, _ := graphAndIDForIssue(parentIssue, childrenMap, projectKey, byKey, shouldBeGraph)
+				graphPath = pg
+				id = graphPath + "/" + strings.ToLower(issue.Key)
+			}
+		}
+	}
+	graphPath = strings.TrimSuffix(graphPath, "/")
+	if !isGraph {
+		if strings.HasSuffix(graphPath, "/"+issue.Key) {
+			graphPath = strings.TrimSuffix(graphPath, "/"+issue.Key)
+			if graphPath == "" {
+				graphPath = JiraGraphRoot + "/" + projectKey
+			}
+			id = graphPath + "/" + strings.ToLower(issue.Key)
+		}
+	}
+	return graphPath, fileName, id
+}
+
 func jiraNodeID(projectKey string, key string) string {
 	return JiraGraphRoot + "/" + projectKey + "/" + strings.ToLower(key)
 }
@@ -389,7 +396,6 @@ func isOpenStatus(status string) bool {
 	case "":
 		return true
 	default:
-		// Check if contains done/closed
 		if strings.Contains(s, "done") || strings.Contains(s, "closed") || strings.Contains(s, "resolved") {
 			return false
 		}
@@ -413,8 +419,6 @@ func stringsEqualIgnoreOrder(a, b []string) bool {
 	return true
 }
 
-// jiraMirrorComparableBody strips sync-time metadata (the last-synced line)
-// so unchanged issues compare equal across syncs.
 func jiraMirrorComparableBody(body string) string {
 	lines := strings.Split(body, "\n")
 	kept := make([]string, 0, len(lines))
