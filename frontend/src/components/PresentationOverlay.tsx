@@ -62,7 +62,7 @@ function PresentationOverlayComponent({
         </div>
         <footer className="presentation-footer">
           {state.candidates.length > 0 ? (
-            <ul className="presentation-candidates" aria-label="Next connected nodes; up and down to change selection">
+            <ul className="presentation-candidates" aria-label="Child nodes; press right to drill in">
               {state.candidates.map((candidate, index) => {
                 const candidateNode = nodesById.get(candidate.id);
                 const isHighlighted = index === state.highlightIndex;
@@ -73,7 +73,7 @@ function PresentationOverlayComponent({
                     aria-current={isHighlighted ? "true" : undefined}
                     title={candidate.context ?? ""}
                   >
-                    <span className="presentation-candidate-arrow" aria-hidden="true">↑↓</span>
+                    <span className="presentation-candidate-arrow" aria-hidden="true">→</span>
                     {candidateNode?.title ?? candidate.id}
                   </li>
                 );
