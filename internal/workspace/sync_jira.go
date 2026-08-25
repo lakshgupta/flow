@@ -364,18 +364,6 @@ func jiraNodeID(projectKey string, key string) string {
 	return JiraGraphRoot + "/" + projectKey + "/" + strings.ToLower(key)
 }
 
-func jiraEpicNodeID(projectKey string, epicKey string) string {
-	return JiraGraphRoot + "/" + projectKey + "/" + epicKey + "/" + strings.ToLower(epicKey)
-}
-
-func jiraFeatureNodeID(projectKey string, epicKey string, featureKey string) string {
-	return JiraGraphRoot + "/" + projectKey + "/" + epicKey + "/" + featureKey + "/" + strings.ToLower(featureKey)
-}
-
-func jiraStoryNodeID(projectKey string, epicKey string, featureKey string, storyKey string) string {
-	return JiraGraphRoot + "/" + projectKey + "/" + epicKey + "/" + featureKey + "/" + strings.ToLower(storyKey)
-}
-
 func epicGraphPath(projectKey string, epicKey string) string {
 	return JiraGraphRoot + "/" + projectKey + "/" + epicKey
 }

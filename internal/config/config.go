@@ -80,70 +80,57 @@ func (integrations *Integrations) UnmarshalYAML(node *yaml.Node) error {
 	if node.Kind != yaml.MappingNode {
 		return nil
 	}
-	raw := map[string]yaml.Node{}
+	raw := make(map[string]yaml.Node, len(node.Content)/2)
 	for i := 0; i < len(node.Content); i += 2 {
-		key := node.Content[i].Value
-		raw[key] = *node.Content[i+1]
+		raw[node.Content[i].Value] = *node.Content[i+1]
 	}
-	// Jira
 	if n, ok := raw["jira"]; ok {
-		// Detect single-object shape by looking for host/projects keys
-		isSingle := false
-		for i := 0; i < len(n.Content); i += 2 {
-			k := n.Content[i].Value
-			if k == "host" || k == "projects" {
-				isSingle = true
-				break
-			}
-		}
-		if isSingle {
-			var single JiraConfig
-			if err := n.Decode(&single); err != nil {
-				return err
-			}
-			if single.Host != "" || len(single.Projects) > 0 {
-				if integrations.Jira == nil {
-					integrations.Jira = map[string]JiraConfig{}
-				}
-				integrations.Jira[DefaultServiceAlias] = single
-			}
-		} else {
-			var m map[string]JiraConfig
-			if err := n.Decode(&m); err != nil {
-				return err
-			}
-			integrations.Jira = m
+		if err := decodeIntegrationMap(n, &integrations.Jira); err != nil {
+			return err
 		}
 	}
-	// Aha
 	if n, ok := raw["aha"]; ok {
-		isSingle := false
-		for i := 0; i < len(n.Content); i += 2 {
-			k := n.Content[i].Value
-			if k == "host" || k == "projects" {
-				isSingle = true
-				break
-			}
-		}
-		if isSingle {
-			var single AhaConfig
-			if err := n.Decode(&single); err != nil {
-				return err
-			}
-			if single.Host != "" || len(single.Projects) > 0 {
-				if integrations.Aha == nil {
-					integrations.Aha = map[string]AhaConfig{}
-				}
-				integrations.Aha[DefaultServiceAlias] = single
-			}
-		} else {
-			var m map[string]AhaConfig
-			if err := n.Decode(&m); err != nil {
-				return err
-			}
-			integrations.Aha = m
+		if err := decodeIntegrationMap(n, &integrations.Aha); err != nil {
+			return err
 		}
 	}
+	return nil
+}
+
+func decodeIntegrationMap[M JiraConfig | AhaConfig](node yaml.Node, target *map[string]M) error {
+	isSingle := false
+	for i := 0; i < len(node.Content); i += 2 {
+		if node.Content[i].Value == "host" || node.Content[i].Value == "projects" {
+			isSingle = true
+			break
+		}
+	}
+	if isSingle {
+		var single M
+		if err := node.Decode(&single); err != nil {
+			return err
+		}
+		var host string
+		var projects []string
+		switch v := any(single).(type) {
+		case JiraConfig:
+			host, projects = v.Host, v.Projects
+		case AhaConfig:
+			host, projects = v.Host, v.Projects
+		}
+		if host != "" || len(projects) > 0 {
+			if *target == nil {
+				*target = make(map[string]M)
+			}
+			(*target)[DefaultServiceAlias] = single
+		}
+		return nil
+	}
+	var m map[string]M
+	if err := node.Decode(&m); err != nil {
+		return err
+	}
+	*target = m
 	return nil
 }
 
@@ -247,34 +234,40 @@ func (workspace Workspace) Validate() error {
 		}
 	}
 
-	for alias, jiraCfg := range workspace.Integrations.Jira {
+	if err := validateIntegrationMap(workspace.Integrations.Jira, "jira"); err != nil {
+		return err
+	}
+	if err := validateIntegrationMap(workspace.Integrations.Aha, "aha"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateIntegrationMap[M JiraConfig | AhaConfig](configs map[string]M, service string) error {
+	for alias, cfg := range configs {
 		if strings.TrimSpace(alias) == "" {
-			return fmt.Errorf("integrations.jira alias must not be empty")
+			return fmt.Errorf("integrations.%s alias must not be empty", service)
 		}
-		if strings.TrimSpace(jiraCfg.Host) == "" && len(jiraCfg.Projects) > 0 {
-			return fmt.Errorf("integrations.jira[%q].host is required when integrations.jira[%q].projects are configured", alias, alias)
+		var host string
+		var projects []string
+		switch v := any(cfg).(type) {
+		case JiraConfig:
+			host = v.Host
+			projects = v.Projects
+		case AhaConfig:
+			host = v.Host
+			projects = v.Projects
 		}
-		for _, project := range jiraCfg.Projects {
+		if strings.TrimSpace(host) == "" && len(projects) > 0 {
+			return fmt.Errorf("integrations.%s[%q].host is required when integrations.%s[%q].projects are configured", service, alias, service, alias)
+		}
+		for _, project := range projects {
 			if strings.TrimSpace(project) == "" {
-				return fmt.Errorf("integrations.jira[%q].projects entries must not be empty", alias)
+				return fmt.Errorf("integrations.%s[%q].projects entries must not be empty", service, alias)
 			}
 		}
 	}
-
-	for alias, ahaCfg := range workspace.Integrations.Aha {
-		if strings.TrimSpace(alias) == "" {
-			return fmt.Errorf("integrations.aha alias must not be empty")
-		}
-		if strings.TrimSpace(ahaCfg.Host) == "" && len(ahaCfg.Projects) > 0 {
-			return fmt.Errorf("integrations.aha[%q].host is required when integrations.aha[%q].projects are configured", alias, alias)
-		}
-		for _, project := range ahaCfg.Projects {
-			if strings.TrimSpace(project) == "" {
-				return fmt.Errorf("integrations.aha[%q].projects entries must not be empty", alias)
-			}
-		}
-	}
-
 	return nil
 }
 
@@ -400,72 +393,62 @@ func normalizeWorkspace(workspace Workspace) Workspace {
 		workspace.GUI.GraphCanvasEnabled = nil
 	}
 
-	// Normalize Jira aliases: trim alias, host, projects
-	normalizedJira := map[string]JiraConfig{}
-	for alias, cfg := range workspace.Integrations.Jira {
-		alias = strings.TrimSpace(alias)
-		if alias == "" {
-			alias = DefaultServiceAlias
-		}
-		cfg.Host = strings.TrimSpace(cfg.Host)
-		projects := []string{}
-		seen := map[string]struct{}{}
-		for _, p := range cfg.Projects {
-			p = strings.TrimSpace(p)
-			if p == "" {
-				continue
-			}
-			if _, ok := seen[p]; ok {
-				continue
-			}
-			seen[p] = struct{}{}
-			projects = append(projects, p)
-		}
-		cfg.Projects = projects
-		if cfg.Host == "" && len(cfg.Projects) == 0 {
-			continue
-		}
-		normalizedJira[alias] = cfg
-	}
-	if len(normalizedJira) > 0 {
-		workspace.Integrations.Jira = normalizedJira
-	} else {
-		workspace.Integrations.Jira = nil
-	}
-
-	normalizedAha := map[string]AhaConfig{}
-	for alias, cfg := range workspace.Integrations.Aha {
-		alias = strings.TrimSpace(alias)
-		if alias == "" {
-			alias = DefaultServiceAlias
-		}
-		cfg.Host = strings.TrimSpace(cfg.Host)
-		projects := []string{}
-		seen := map[string]struct{}{}
-		for _, p := range cfg.Projects {
-			p = strings.TrimSpace(p)
-			if p == "" {
-				continue
-			}
-			if _, ok := seen[p]; ok {
-				continue
-			}
-			seen[p] = struct{}{}
-			projects = append(projects, p)
-		}
-		cfg.Projects = projects
-		if cfg.Host == "" && len(cfg.Projects) == 0 {
-			continue
-		}
-		normalizedAha[alias] = cfg
-	}
-	if len(normalizedAha) > 0 {
-		workspace.Integrations.Aha = normalizedAha
-	} else {
-		workspace.Integrations.Aha = nil
-	}
+	workspace.Integrations.Jira = normalizeIntegrationMap(workspace.Integrations.Jira)
+	workspace.Integrations.Aha = normalizeIntegrationMap(workspace.Integrations.Aha)
 
 	return workspace
+}
+
+func normalizeIntegrationMap[M JiraConfig | AhaConfig](configs map[string]M) map[string]M {
+	if len(configs) == 0 {
+		return nil
+	}
+	normalized := make(map[string]M, len(configs))
+	for alias, cfg := range configs {
+		alias = strings.TrimSpace(alias)
+		if alias == "" {
+			alias = DefaultServiceAlias
+		}
+		var host string
+		var projects []string
+		switch v := any(cfg).(type) {
+		case JiraConfig:
+			host = strings.TrimSpace(v.Host)
+			projects = normalizeProjects(v.Projects)
+			if host == "" && len(projects) == 0 {
+				continue
+			}
+			normalized[alias] = any(JiraConfig{Host: host, Projects: projects}).(M)
+		case AhaConfig:
+			host = strings.TrimSpace(v.Host)
+			projects = normalizeProjects(v.Projects)
+			if host == "" && len(projects) == 0 {
+				continue
+			}
+			normalized[alias] = any(AhaConfig{Host: host, Projects: projects}).(M)
+		}
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
+}
+
+func normalizeProjects(projects []string) []string {
+	seen := make(map[string]struct{}, len(projects))
+	out := make([]string, 0, len(projects))
+	for _, p := range projects {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+	return out
 }
 
 func isSupportedGraphDirectoryColor(value string) bool {

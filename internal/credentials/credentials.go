@@ -18,6 +18,9 @@ const (
 // DefaultAlias is used when no alias is specified.
 const DefaultAlias = "default"
 
+// DefaultServiceAlias is an alias for DefaultAlias for Jira/Aha configs (kept for compatibility with config package).
+const DefaultServiceAlias = DefaultAlias
+
 // Store holds per-service, per-alias credentials.
 // YAML shape:
 //
@@ -70,23 +73,32 @@ func PathForWorkspace(configDir string, env []string) string {
 
 // PathForTest allows overriding the path in tests via env.
 func pathForEnv(env []string) string {
-	for _, kv := range env {
-		if strings.HasPrefix(kv, "FLOW_CREDENTIALS_PATH=") {
-			return strings.TrimPrefix(kv, "FLOW_CREDENTIALS_PATH=")
-		}
+	if p, ok := envOverride(env); ok {
+		return p
 	}
 	p, _ := Path()
 	return p
 }
 
-// Load reads the credentials file. Missing file returns empty store.
-func Load() (*Store, error) {
-	return LoadWithEnv(os.Environ())
+func envOverride(env []string) (string, bool) {
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "FLOW_CREDENTIALS_PATH=") {
+			return strings.TrimPrefix(kv, "FLOW_CREDENTIALS_PATH="), true
+		}
+	}
+	return "", false
 }
 
-// LoadWithEnv is test-friendly variant that respects FLOW_CREDENTIALS_PATH.
-func LoadWithEnv(env []string) (*Store, error) {
-	path := pathForEnv(env)
+func ensureStoreMaps(s *Store) {
+	if s.Jira == nil {
+		s.Jira = map[string]ServiceCredentials{}
+	}
+	if s.Aha == nil {
+		s.Aha = map[string]ServiceCredentials{}
+	}
+}
+
+func loadStore(path string) (*Store, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -98,13 +110,58 @@ func LoadWithEnv(env []string) (*Store, error) {
 	if err := yaml.Unmarshal(data, &s); err != nil {
 		return nil, fmt.Errorf("parse credentials: %w", err)
 	}
-	if s.Jira == nil {
-		s.Jira = map[string]ServiceCredentials{}
-	}
-	if s.Aha == nil {
-		s.Aha = map[string]ServiceCredentials{}
-	}
+	ensureStoreMaps(&s)
 	return &s, nil
+}
+
+func writeStore(path string, s *Store) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return fmt.Errorf("create credentials directory: %w", err)
+	}
+	if len(s.Jira) == 0 {
+		s.Jira = nil
+	}
+	if len(s.Aha) == 0 {
+		s.Aha = nil
+	}
+	data, err := yaml.Marshal(s)
+	if err != nil {
+		return fmt.Errorf("marshal credentials: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return fmt.Errorf("write credentials: %w", err)
+	}
+	return nil
+}
+
+func serviceMap(s *Store, service string, create bool) (map[string]ServiceCredentials, bool) {
+	if s == nil {
+		return nil, false
+	}
+	switch strings.ToLower(strings.TrimSpace(service)) {
+	case ServiceJira:
+		if s.Jira == nil && create {
+			s.Jira = map[string]ServiceCredentials{}
+		}
+		return s.Jira, true
+	case ServiceAha:
+		if s.Aha == nil && create {
+			s.Aha = map[string]ServiceCredentials{}
+		}
+		return s.Aha, true
+	default:
+		return nil, false
+	}
+}
+
+// Load reads the credentials file. Missing file returns empty store.
+func Load() (*Store, error) {
+	return LoadWithEnv(os.Environ())
+}
+
+// LoadWithEnv is test-friendly variant that respects FLOW_CREDENTIALS_PATH.
+func LoadWithEnv(env []string) (*Store, error) {
+	return loadStore(pathForEnv(env))
 }
 
 // LoadForWorkspace reads credentials for a workspace's config dir.
@@ -118,37 +175,21 @@ func LoadForWorkspace(configDir string, env []string) (*Store, error) {
 		if err := yaml.Unmarshal(data, &s); err != nil {
 			return nil, fmt.Errorf("parse credentials: %w", err)
 		}
-		if s.Jira == nil {
-			s.Jira = map[string]ServiceCredentials{}
-		}
-		if s.Aha == nil {
-			s.Aha = map[string]ServiceCredentials{}
-		}
+		ensureStoreMaps(&s)
 		return &s, nil
 	}
 	if !os.IsNotExist(err) {
 		return nil, fmt.Errorf("read credentials: %w", err)
 	}
-	// Try legacy global path for migration (only when configDir is set and env override not used)
-	hasOverride := false
-	for _, kv := range env {
-		if strings.HasPrefix(kv, "FLOW_CREDENTIALS_PATH=") {
-			hasOverride = true
-			break
-		}
-	}
-	if !hasOverride && configDir != "" {
+	if _, overridden := envOverride(env); !overridden && configDir != "" {
 		if legacy, _ := Path(); legacy != path {
 			if data, err := os.ReadFile(legacy); err == nil {
 				var s Store
 				if err := yaml.Unmarshal(data, &s); err == nil {
-					if s.Jira == nil {
-						s.Jira = map[string]ServiceCredentials{}
+					ensureStoreMaps(&s)
+					if len(s.Jira) > 0 || len(s.Aha) > 0 {
+						return &s, nil
 					}
-					if s.Aha == nil {
-						s.Aha = map[string]ServiceCredentials{}
-					}
-					return &s, nil
 				}
 			}
 		}
@@ -163,63 +204,22 @@ func (s *Store) Save() error {
 
 // SaveWithEnv respects FLOW_CREDENTIALS_PATH for tests.
 func (s *Store) SaveWithEnv(env []string) error {
-	path := pathForEnv(env)
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return fmt.Errorf("create credentials directory: %w", err)
-	}
-	// Prune empty maps for clean YAML.
-	if len(s.Jira) == 0 {
-		s.Jira = nil
-	}
-	if len(s.Aha) == 0 {
-		s.Aha = nil
-	}
-	data, err := yaml.Marshal(s)
-	if err != nil {
-		return fmt.Errorf("marshal credentials: %w", err)
-	}
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("write credentials: %w", err)
-	}
-	return nil
+	return writeStore(pathForEnv(env), s)
 }
 
 // SaveForWorkspace persists credentials to <configDir>/credentials (0600),
 // so `flow sync` vs `flow -g sync` use isolated tokens.
 func (s *Store) SaveForWorkspace(configDir string, env []string) error {
-	path := PathForWorkspace(configDir, env)
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return fmt.Errorf("create credentials directory: %w", err)
-	}
-	if len(s.Jira) == 0 {
-		s.Jira = nil
-	}
-	if len(s.Aha) == 0 {
-		s.Aha = nil
-	}
-	data, err := yaml.Marshal(s)
-	if err != nil {
-		return fmt.Errorf("marshal credentials: %w", err)
-	}
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("write credentials: %w", err)
-	}
-	return nil
+	return writeStore(PathForWorkspace(configDir, env), s)
 }
 
 // Get returns credentials for service/alias. Alias empty means default.
 func (s *Store) Get(service, alias string) (ServiceCredentials, bool) {
-	alias = normalizeAlias(alias)
-	service = strings.ToLower(strings.TrimSpace(service))
-	var m map[string]ServiceCredentials
-	switch service {
-	case ServiceJira:
-		m = s.Jira
-	case ServiceAha:
-		m = s.Aha
-	default:
+	m, ok := serviceMap(s, service, false)
+	if !ok {
 		return ServiceCredentials{}, false
 	}
+	alias = normalizeAlias(alias)
 	cred, ok := m[alias]
 	return cred, ok && cred.Token != ""
 }
@@ -227,33 +227,19 @@ func (s *Store) Get(service, alias string) (ServiceCredentials, bool) {
 // Set stores credentials for service/alias.
 func (s *Store) Set(service, alias, email, token string) {
 	alias = normalizeAlias(alias)
-	service = strings.ToLower(strings.TrimSpace(service))
 	if alias == "" {
-		alias = DefaultAlias
+		alias = DefaultServiceAlias
 	}
 	cred := ServiceCredentials{Email: strings.TrimSpace(email), Token: strings.TrimSpace(token)}
-	switch service {
-	case ServiceJira:
-		if s.Jira == nil {
-			s.Jira = map[string]ServiceCredentials{}
-		}
-		s.Jira[alias] = cred
-	case ServiceAha:
-		if s.Aha == nil {
-			s.Aha = map[string]ServiceCredentials{}
-		}
-		s.Aha[alias] = cred
+	if m, ok := serviceMap(s, service, true); ok {
+		m[alias] = cred
 	}
 }
 
 // Delete removes an alias.
 func (s *Store) Delete(service, alias string) {
-	alias = normalizeAlias(alias)
-	switch strings.ToLower(service) {
-	case ServiceJira:
-		delete(s.Jira, alias)
-	case ServiceAha:
-		delete(s.Aha, alias)
+	if m, ok := serviceMap(s, service, false); ok {
+		delete(m, normalizeAlias(alias))
 	}
 }
 
@@ -263,6 +249,19 @@ func normalizeAlias(alias string) string {
 		return DefaultAlias
 	}
 	return alias
+}
+
+func lookupEnvToken(prefix, alias string, envMap map[string]string) string {
+	if alias != DefaultAlias {
+		candidate := prefix + "_" + strings.ToUpper(strings.ReplaceAll(alias, "-", "_"))
+		if v, ok := envMap[candidate]; ok && strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	if v, ok := envMap[prefix]; ok && strings.TrimSpace(v) != "" {
+		return strings.TrimSpace(v)
+	}
+	return ""
 }
 
 // ResolveToken returns token/email for service/alias, checking env vars first.
@@ -286,39 +285,10 @@ func ResolveToken(service, alias string, env []string, store *Store) (email, tok
 	var tokenEnv, emailEnv string
 	switch service {
 	case ServiceJira:
-		// Check alias-specific first
-		if alias != DefaultAlias {
-			candidate := "FLOW_JIRA_API_TOKEN_" + strings.ToUpper(strings.ReplaceAll(alias, "-", "_"))
-			if v, ok := envMap[candidate]; ok && strings.TrimSpace(v) != "" {
-				tokenEnv = strings.TrimSpace(v)
-			}
-			candidateEmail := "FLOW_JIRA_EMAIL_" + strings.ToUpper(strings.ReplaceAll(alias, "-", "_"))
-			if v, ok := envMap[candidateEmail]; ok {
-				emailEnv = strings.TrimSpace(v)
-			}
-		}
-		if tokenEnv == "" {
-			if v, ok := envMap["FLOW_JIRA_API_TOKEN"]; ok && strings.TrimSpace(v) != "" {
-				tokenEnv = strings.TrimSpace(v)
-			}
-		}
-		if emailEnv == "" {
-			if v, ok := envMap["FLOW_JIRA_EMAIL"]; ok {
-				emailEnv = strings.TrimSpace(v)
-			}
-		}
+		tokenEnv = lookupEnvToken("FLOW_JIRA_API_TOKEN", alias, envMap)
+		emailEnv = lookupEnvToken("FLOW_JIRA_EMAIL", alias, envMap)
 	case ServiceAha:
-		if alias != DefaultAlias {
-			candidate := "FLOW_AHA_API_TOKEN_" + strings.ToUpper(strings.ReplaceAll(alias, "-", "_"))
-			if v, ok := envMap[candidate]; ok && strings.TrimSpace(v) != "" {
-				tokenEnv = strings.TrimSpace(v)
-			}
-		}
-		if tokenEnv == "" {
-			if v, ok := envMap["FLOW_AHA_API_TOKEN"]; ok && strings.TrimSpace(v) != "" {
-				tokenEnv = strings.TrimSpace(v)
-			}
-		}
+		tokenEnv = lookupEnvToken("FLOW_AHA_API_TOKEN", alias, envMap)
 	}
 
 	if tokenEnv != "" {
