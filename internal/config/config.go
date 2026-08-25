@@ -49,9 +49,11 @@ type Workspace struct {
 }
 
 // Integrations holds settings for external trackers. Credentials are never
-// stored here; they are read from environment variables at sync time.
+// stored here; they are read from environment variables or the credentials
+// file at sync time.
 type Integrations struct {
-	Jira JiraConfig `yaml:"jira,omitempty"`
+	Jira map[string]JiraConfig `yaml:"jira,omitempty"`
+	Aha  map[string]AhaConfig  `yaml:"aha,omitempty"`
 }
 
 // JiraConfig describes one Jira instance and the project keys to mirror.
@@ -60,6 +62,114 @@ type JiraConfig struct {
 	Host string `yaml:"host,omitempty"`
 	// Projects are the project keys to sync, for example ["PROJ"].
 	Projects []string `yaml:"projects,omitempty"`
+}
+
+// AhaConfig describes one Aha! instance. Reserved for future sync support.
+type AhaConfig struct {
+	Host     string   `yaml:"host,omitempty"`
+	Projects []string `yaml:"projects,omitempty"`
+}
+
+// DefaultServiceAlias is used when no alias is specified.
+const DefaultServiceAlias = "default"
+
+// UnmarshalYAML handles both the legacy single-object shape
+// (jira: {host: ..., projects: [...]}) and the new map shape
+// (jira: {default: {host: ...}, j1: {host: ...}}).
+func (integrations *Integrations) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.MappingNode {
+		return nil
+	}
+	raw := map[string]yaml.Node{}
+	for i := 0; i < len(node.Content); i += 2 {
+		key := node.Content[i].Value
+		raw[key] = *node.Content[i+1]
+	}
+	// Jira
+	if n, ok := raw["jira"]; ok {
+		// Detect single-object shape by looking for host/projects keys
+		isSingle := false
+		for i := 0; i < len(n.Content); i += 2 {
+			k := n.Content[i].Value
+			if k == "host" || k == "projects" {
+				isSingle = true
+				break
+			}
+		}
+		if isSingle {
+			var single JiraConfig
+			if err := n.Decode(&single); err != nil {
+				return err
+			}
+			if single.Host != "" || len(single.Projects) > 0 {
+				if integrations.Jira == nil {
+					integrations.Jira = map[string]JiraConfig{}
+				}
+				integrations.Jira[DefaultServiceAlias] = single
+			}
+		} else {
+			var m map[string]JiraConfig
+			if err := n.Decode(&m); err != nil {
+				return err
+			}
+			integrations.Jira = m
+		}
+	}
+	// Aha
+	if n, ok := raw["aha"]; ok {
+		isSingle := false
+		for i := 0; i < len(n.Content); i += 2 {
+			k := n.Content[i].Value
+			if k == "host" || k == "projects" {
+				isSingle = true
+				break
+			}
+		}
+		if isSingle {
+			var single AhaConfig
+			if err := n.Decode(&single); err != nil {
+				return err
+			}
+			if single.Host != "" || len(single.Projects) > 0 {
+				if integrations.Aha == nil {
+					integrations.Aha = map[string]AhaConfig{}
+				}
+				integrations.Aha[DefaultServiceAlias] = single
+			}
+		} else {
+			var m map[string]AhaConfig
+			if err := n.Decode(&m); err != nil {
+				return err
+			}
+			integrations.Aha = m
+		}
+	}
+	return nil
+}
+
+// JiraConfigForAlias returns the Jira config for the given alias (empty → default).
+func (integrations Integrations) JiraConfigForAlias(alias string) (JiraConfig, bool) {
+	alias = strings.TrimSpace(alias)
+	if alias == "" {
+		alias = DefaultServiceAlias
+	}
+	if integrations.Jira == nil {
+		return JiraConfig{}, false
+	}
+	cfg, ok := integrations.Jira[alias]
+	return cfg, ok
+}
+
+// SetJiraConfig sets the Jira config for an alias (empty → default).
+func (integrations *Integrations) SetJiraConfig(alias string, cfg JiraConfig) {
+	alias = strings.TrimSpace(alias)
+	if alias == "" {
+		alias = DefaultServiceAlias
+	}
+	if integrations.Jira == nil {
+		integrations.Jira = map[string]JiraConfig{}
+	}
+	integrations.Jira[alias] = cfg
 }
 
 // GUI holds loopback server settings for a workspace.
@@ -137,13 +247,31 @@ func (workspace Workspace) Validate() error {
 		}
 	}
 
-	if strings.TrimSpace(workspace.Integrations.Jira.Host) == "" && len(workspace.Integrations.Jira.Projects) > 0 {
-		return fmt.Errorf("integrations.jira.host is required when integrations.jira.projects are configured")
+	for alias, jiraCfg := range workspace.Integrations.Jira {
+		if strings.TrimSpace(alias) == "" {
+			return fmt.Errorf("integrations.jira alias must not be empty")
+		}
+		if strings.TrimSpace(jiraCfg.Host) == "" && len(jiraCfg.Projects) > 0 {
+			return fmt.Errorf("integrations.jira[%q].host is required when integrations.jira[%q].projects are configured", alias, alias)
+		}
+		for _, project := range jiraCfg.Projects {
+			if strings.TrimSpace(project) == "" {
+				return fmt.Errorf("integrations.jira[%q].projects entries must not be empty", alias)
+			}
+		}
 	}
 
-	for _, project := range workspace.Integrations.Jira.Projects {
-		if strings.TrimSpace(project) == "" {
-			return fmt.Errorf("integrations.jira.projects entries must not be empty")
+	for alias, ahaCfg := range workspace.Integrations.Aha {
+		if strings.TrimSpace(alias) == "" {
+			return fmt.Errorf("integrations.aha alias must not be empty")
+		}
+		if strings.TrimSpace(ahaCfg.Host) == "" && len(ahaCfg.Projects) > 0 {
+			return fmt.Errorf("integrations.aha[%q].host is required when integrations.aha[%q].projects are configured", alias, alias)
+		}
+		for _, project := range ahaCfg.Projects {
+			if strings.TrimSpace(project) == "" {
+				return fmt.Errorf("integrations.aha[%q].projects entries must not be empty", alias)
+			}
 		}
 	}
 
@@ -270,6 +398,71 @@ func normalizeWorkspace(workspace Workspace) Workspace {
 		workspace.GUI.GraphCanvasEnabled = normalizedGraphCanvasEnabled
 	} else {
 		workspace.GUI.GraphCanvasEnabled = nil
+	}
+
+	// Normalize Jira aliases: trim alias, host, projects
+	normalizedJira := map[string]JiraConfig{}
+	for alias, cfg := range workspace.Integrations.Jira {
+		alias = strings.TrimSpace(alias)
+		if alias == "" {
+			alias = DefaultServiceAlias
+		}
+		cfg.Host = strings.TrimSpace(cfg.Host)
+		projects := []string{}
+		seen := map[string]struct{}{}
+		for _, p := range cfg.Projects {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+			if _, ok := seen[p]; ok {
+				continue
+			}
+			seen[p] = struct{}{}
+			projects = append(projects, p)
+		}
+		cfg.Projects = projects
+		if cfg.Host == "" && len(cfg.Projects) == 0 {
+			continue
+		}
+		normalizedJira[alias] = cfg
+	}
+	if len(normalizedJira) > 0 {
+		workspace.Integrations.Jira = normalizedJira
+	} else {
+		workspace.Integrations.Jira = nil
+	}
+
+	normalizedAha := map[string]AhaConfig{}
+	for alias, cfg := range workspace.Integrations.Aha {
+		alias = strings.TrimSpace(alias)
+		if alias == "" {
+			alias = DefaultServiceAlias
+		}
+		cfg.Host = strings.TrimSpace(cfg.Host)
+		projects := []string{}
+		seen := map[string]struct{}{}
+		for _, p := range cfg.Projects {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+			if _, ok := seen[p]; ok {
+				continue
+			}
+			seen[p] = struct{}{}
+			projects = append(projects, p)
+		}
+		cfg.Projects = projects
+		if cfg.Host == "" && len(cfg.Projects) == 0 {
+			continue
+		}
+		normalizedAha[alias] = cfg
+	}
+	if len(normalizedAha) > 0 {
+		workspace.Integrations.Aha = normalizedAha
+	} else {
+		workspace.Integrations.Aha = nil
 	}
 
 	return workspace

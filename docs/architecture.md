@@ -1,353 +1,320 @@
 # Architecture
 
-Flow is a local-first planning system for software work. Canonical data is stored as Markdown in the workspace. Query, graph, and UI read models are derived into a rebuildable SQLite index and exposed through a shared backend used by CLI, service, and desktop surfaces.
+> **One sentence:** Flow is a local-first workspace where Markdown is the source of truth, a rebuildable SQLite index powers search/graph/UI, and CLI, web service, and desktop all share the same backend.
 
-This document is intentionally high level and describes the architecture currently implemented in code.
+This doc is the **current, code-accurate** overview. For how to build/release, see `build.md` / `release.md`; for UI styling, see `DESIGN.md`.
 
-## Index
+---
 
-- [Design Principles](#design-principles)
-- [System Context](#system-context)
-- [Deployment Model](#deployment-model)
-- [Workspace Architecture](#workspace-architecture)
-- [Domain Model](#domain-model)
-- [Derived Index Architecture](#derived-index-architecture)
-- [Component Responsibilities](#component-responsibilities)
-- [External Interfaces](#external-interfaces)
-- [Multi-Surface Runtime (CLI, Service, Desktop)](#multi-surface-runtime-cli-service-desktop)
-- [Core Flows](#core-flows)
-- [Graph Operations](#graph-operations)
-- [Editor Interaction & Thread UI](#editor-interaction--thread-ui)
-- [Contextual Sidebar Table of Contents](#contextual-sidebar-table-of-contents)
-- [Architectural Invariants](#architectural-invariants)
-- [Development Workflow & Agent Skills](#development-workflow--agent-skills)
-- [Quality Strategy](#quality-strategy)
-- [Related Documents](#related-documents)
+## How to read this
+
+1. **New to Flow?** → Start with [Design Principles](#design-principles) and [System Context](#system-context).
+2. **Need to change code?** → Jump to [Component Responsibilities](#component-responsibilities) + [Multi-Surface Runtime](#multi-surface-runtime-cli-service-desktop).
+3. **Working on graphs/presentation/editor?** → Go to [Graph Operations](#graph-operations) or [Presentation Mode](#presentation-mode).
+
+> **Index**
+> [Principles](#design-principles) · [Context](#system-context) · [Deployment](#deployment-model) · [Workspace](#workspace-architecture) · [Domain](#domain-model) · [Index](#derived-index-architecture) · [Components](#component-responsibilities) · [Interfaces](#external-interfaces) · [Runtime](#multi-surface-runtime-cli-service-desktop) · [Flows](#core-flows) · [Graphs](#graph-operations) · [Presentation](#presentation-mode) · [Editor & UI](#editor-interaction--thread-ui) · [Invariants](#architectural-invariants) · [Workflow](#development-workflow--agent-skills)
+
+---
 
 ## Design Principles
 
-- Markdown is the source of truth.
-- The index is derived state and can be rebuilt from disk.
-- Local and global workspace modes share the same domain model and behavior.
-- CLI, service, and desktop are interfaces over the same backend workflows.
-- Mutations write canonical Markdown first, then refresh derived index state.
+| Principle | What it means in code |
+|---|---|
+| **Markdown is canonical** | Every note/task/command lives as `*.md` under `.flow/data`. Nothing hides in SQLite. |
+| **Index is derived & rebuildable** | `.flow/config/flow.index` can be deleted and rebuilt from Markdown. |
+| **One domain, three shells** | `internal/core` holds business logic; `cmd/flow`, `internal/httpapi`, `internal/desktop` are thin adapters. |
+| **Write Markdown first** | Mutations → validate → write file → refresh index → return read model. |
+
+---
 
 ## System Context
 
-Flow ships as a Go application with three user-facing interfaces:
+```text
+  CLI (cmd/flow) ──┐
+                    ├─► Backend (Markdown ↔ SQLite index) ──► .flow/data + .flow/config/flow.index
+  Service (browser) ┤          ▲
+                    │          │  JSON API (internal/httpapi)
+  Desktop (Wails) ──┘          └──► React frontend (frontend/src)
+```
 
-- CLI (`cmd/flow`) for initialization, query, mutation, graph operations, and command execution.
-- Web service (`flow service`) served by an embedded HTTP server on loopback, with a React frontend consuming JSON APIs.
-- Desktop (`flow desktop`) powered by Wails, reusing the same backend workflows.
+*User → CLI / browser / desktop → backend reads/writes Markdown → index rebuild/update → response from index.*
 
-High-level runtime shape:
-
-1. User acts through CLI, service UI, or desktop UI.
-2. Backend reads/writes Markdown under `.flow/data`.
-3. Backend rebuilds or updates the SQLite index under `.flow/config/flow.index`.
-4. Query and visualization responses are returned from index-backed read models.
+---
 
 ## Deployment Model
 
-Flow is distributed as a single Go binary that embeds frontend assets.
+**One binary per platform, frontend embedded.**
 
-- Frontend bundles are generated into `internal/httpapi/static/` at build/release time.
-- Those generated bundle files are intentionally git-ignored (except a placeholder file).
-- The backend embeds `internal/httpapi/static` and serves it through `internal/httpapi`.
+| Step | Detail |
+|---|---|
+| **Frontend build** | `frontend/` (Vite + React) → `internal/httpapi/static/assets/*` + `index.html` (git-ignored, except `.gitkeep`). |
+| **Version** | `internal/buildinfo/VERSION` is the source; `scripts/sync-frontend-version.sh` syncs `frontend/package.json`; `-ldflags -X main.version=$VERSION` stamps the binary. |
+| **Binary** | `go build ./cmd/flow` embeds `internal/httpapi/static` via `embed.FS` and serves it through `internal/httpapi`. |
 
-This keeps runtime packaging simple while preserving a clean source repository boundary between code and generated artifacts.
+### Release artifacts (binary-only)
+
+No Apple signing, no `.deb`/`.dmg`. Built by `scripts/build-release.sh <os> <arch>` and `.github/workflows/release.yml`:
+
+| Target | Archive | Contents |
+|---|---|---|
+| `linux/amd64` | `flow-<ver>-linux-amd64.tar.gz` | `flow` + `LICENSE` |
+| `darwin/amd64` | `flow-<ver>-darwin-amd64.tar.gz` | `flow` + `LICENSE` |
+| `darwin/arm64` | `flow-<ver>-darwin-arm64.tar.gz` | `flow` + `LICENSE` |
+| `windows/amd64` | `flow-<ver>-windows-amd64.zip` | `flow.exe` + `LICENSE` |
+| `windows/arm64` | `flow-<ver>-windows-arm64.zip` | `flow.exe` + `LICENSE` |
+
+Each archive has a `.sha256`. Published alongside: `install.sh` (=`scripts/install.sh`) and `flow-install.sh` (root copy).
+
+**Installers:** auto-detect `OS/arch` (`FLOW_TARGET_OS`/`FLOW_TARGET_ARCH` override), pick `tar.gz` vs `zip`, verify SHA-256, install to `FLOW_INSTALL_DIR` (default `~/.local/bin`, `flow.exe` on Windows), and warn/hint if `INSTALL_DIR` is not on `PATH` (PowerShell `setx`, Bash/Zsh rc).
+
+### Platform notes
+
+* **Linux:** needs `libwebkit2gtk-4.1-dev` + `build-essential`; build tags `wails,production,webkit2_41`.
+* **macOS:** WebKit is system-provided; tags `wails,production` + `UniformTypeIdentifiers` framework.
+* **Windows:** CLI-only cross-compile from Linux (`CGO_ENABLED=0`, `production` only, no Wails) → `flow.exe`. Avoids `mingw` while keeping service/CLI.
+* **CI:** `build-frontend` builds assets once → `build-binary` matrix (5 targets: Linux on `ubuntu-latest`, macOS on `macos-latest`, Windows on `ubuntu-latest`) → `publish-release` via `softprops/action-gh-release`. Validation workflow dry-runs all targets.
+
+> Legacy `packaging/linux/nfpm.yaml`, `packaging/macos/Info.plist`, `scripts/build-package-*.sh` stay in-repo for experiments only — not used by CI.
+
+---
 
 ## Workspace Architecture
 
-Canonical workspace layout:
+```text
+.flow/
+  config/
+    flow.yaml        # workspace settings (host/projects per alias)
+    flow.index       # derived SQLite — deletable
+    gui-server.json  # GUI runtime state
+    flow.index.tmp   # rebuild scratch
+    credentials      # per-workspace API tokens (0600, git-ignored, e.g. jira:default, jira:j1)
+  logs/              # per-workspace logs, 15-day rotation
+  data/
+    home.md          # Home document
+    content/
+      design/YYYYMMDD-NNN-<type>-<title>/*.md
+      development/YYYYMMDD-NNN-<type>-<title>/*.md
+      external/jira/<PROJECT>/*.md  # read-only mirrors from `flow sync` (git-ignored in practice via per-workspace credentials)
+```
 
-- `.flow/config/flow.yaml`: workspace configuration
-- `.flow/config/flow.index`: derived SQLite index
-- `.flow/config/gui-server.json`: GUI runtime state metadata
-- `.flow/data/home.md`: Home document
-- `.flow/data/content/<graph-path>/*.md`: note/task/command documents
+* **Local vs Global:** same schema and behavior. Local resolves `.flow` next to the project; Global resolves the user-level path configured via `flow -g configure --workspace`.
+* Both modes share discovery, indexing, and API contracts.
 
-Workspace modes:
-
-- Local mode resolves `.flow` relative to a project workspace.
-- Global mode resolves a user-level workspace path.
-
-Both modes use the same document schema, indexing rules, and API behavior.
+---
 
 ## Domain Model
 
-Primary document types:
+| Type | Stored as | Key fields |
+|---|---|---|
+| **Home** | `.flow/data/home.md` | `id=home`, `type=home`, `title`, `description` |
+| **Note** | `content/<graph>/*.md` | `title`, `description`, `tags`, `links[]`, `createdAt/updatedAt` |
+| **Task** | `content/<graph>/*.md` | + `status` (`Ready`→`Running`→`Done`/`Success`/`Failed`/`Interrupted`), `session`/`session-at` (claim) |
+| **Command** | `content/<graph>/*.md` | + `name` (unique), `env{}`, `run` (shell string) |
 
-- Home: workspace landing and context
-- Note: knowledge/context nodes
-- Task: status-based work nodes with dependencies and relationships
-- Command: executable nodes with `name`, `env`, and `run`
+**Relationships**
 
-Relationships:
+* `links: [id]` in frontmatter → canonical edges.
+* `[[...]]` in body → parsed into `soft_references` (derived, not canonical).
+* Graph membership = filesystem path (`development/parser/build.md` ∈ `development/parser`, even if frontmatter disagrees). Graph tree/canvas are derived views.
 
-- Canonical frontmatter links (`links`) are persisted in Markdown.
-- Inline body references (`[[...]]`) are parsed and resolved into derived index relationships (`soft_references`).
-
-Graph membership and pathing are filesystem-driven. The graph tree and canvas views are derived read models, not canonical stores.
+---
 
 ## Derived Index Architecture
 
-The index package (`internal/index`) owns all derived-state persistence and retrieval concerns.
+`internal/index` owns the rebuildable SQLite index (`.flow/config/flow.index`).
 
-It provides:
+**Provides:**
 
-- full-text and filtered search,
-- graph tree and graph canvas projections,
-- layered task/command views,
-- node-centric read models,
-- inline reference resolution and reverse lookups,
-- persisted UI projection state (graph layout positions/viewports and workspace UI settings).
+* full-text + filtered search
+* graph tree & canvas projections
+* layered task/command views
+* node-centric reads, edge/neighbor lookups
+* inline `[[...]]` → soft-reference resolution + reverse lookups
+* UI projection state (canvas positions, viewports, panel widths)
 
-The index schema is designed so rebuild from Markdown is always possible without hidden canonical data in SQLite.
+> Invariant: if you delete `flow.index`, `flow` rebuilds it from Markdown with no data loss.
+
+---
 
 ## Component Responsibilities
 
-Backend components:
+### Backend
 
-- `cmd/flow`: command parsing, mode resolution, process orchestration
-- `internal/workspace`: workspace discovery, filesystem mutations, path contracts
-- `internal/markdown`: frontmatter/body parse, validate, serialize
-- `internal/index`: derived schema, rebuild, query, projection APIs
-- `internal/graph`: graph/layer composition used by index and API read models
-- `internal/httpapi`: loopback JSON API and static asset serving
-- `internal/execution`: command execution planning and environment overlay
-- `internal/config`: workspace config read/write and defaults
-- `internal/core`: shared surface-independent orchestration and mode parsing (`cli`, `server`, `desktop`)
-- `internal/desktop`: desktop transport adapter and Wails runtime integration
+| Package | Role |
+|---|---|
+| `cmd/flow` | CLI parsing, mode resolution, process orchestration |
+| `internal/workspace` | Discovery, filesystem mutations, path contracts |
+| `internal/markdown` | Parse/validate/serialize frontmatter + body |
+| `internal/index` | Schema, rebuild, queries, projections |
+| `internal/graph` | Layering/composition for index & API |
+| `internal/httpapi` | Loopback JSON API + static serving (embeds `static/`) |
+| `internal/execution` | Env overlay + shell execution for commands |
+| `internal/config` | `flow.yaml` read/write & defaults (including `integrations.jira.<alias>` / `aha.<alias>` map) |
+| `internal/credentials` | Per-workspace `credentials` (0600) read/write for `jira`/`aha` tokens per alias, `FLOW_*_TOKEN` env fallback |
+| `internal/core` | **Shared orchestration** — `cli`/`server`/`desktop` agnostic |
+| `internal/desktop` | Wails adapter: `runner.go`, `runner_wails.go` (`//go:build wails`) vs `runner_stub.go` (`!wails`), `backend.go`/`app.go`, `icon_*`/`linux_integration.go` |
+| `internal/buildinfo` | `VERSION` constant |
+| `scripts/*` | `build-release.sh`, `lib/version.sh`/`checksums.sh`, `sync-frontend-version.sh`, `install.sh`/`flow-install.sh` |
 
-Frontend components:
+### Frontend (`frontend/src`)
 
-- application shell and layout
-- document editor and properties UI
-- graph canvas and graph tree visualization
-- workspace/search/reference interaction surfaces
+| Area | Key files |
+|---|---|
+| Shell & layout | `App.tsx`, `MiddleContent.tsx`, `GraphCanvasSurface.tsx`, `ThreadPanels.tsx` |
+| Editor & properties | `components/editor/RichTextEditor.tsx`, `DocumentEditorPane.tsx` |
+| Graph visuals | `GraphTree.tsx`, `GraphCanvasOverlay*`, `HomeSurface.tsx` |
+| Presentation | `lib/presentationNavigation.ts` (pure reducer + `buildOrderedPresentationGraph`), `hooks/usePresentationMode.ts`, `components/PresentationOverlay.tsx` |
+| Canvas utils | `lib/graphCanvasUtils.tsx`, `lib/canvasZoom.ts`, `lib/exportPdf.ts`, `lib/imageUploader.ts` |
 
-The frontend owns transient interaction state. Canonical persistence and invariants are enforced in backend packages.
+> Frontend holds **transient** UI state; persistence & invariants live in backend.
+
+---
 
 ## External Interfaces
 
-CLI interface:
+* **CLI:** `flow init`, `flow create/update/delete`, `flow search`, `flow node ...`, `flow run`, `flow service [stop]`, `flow desktop [stop]`, `flow skill ...`, `flow roadmap`, `flow sync` (tracker mirrors).
+* **HTTP API** (`internal/httpapi`): workspace/home/document/graph CRUD, canvas & layout persistence, search/node views, reference lookups, UI controls. Used by both web and desktop — no direct frontend filesystem access.
+* **Installer:** `curl -fsSL .../flow-install.sh | bash` (latest) or `bash flow-install.sh 0.10.2`. Env: `FLOW_INSTALL_DIR`, `FLOW_RELEASE_REPO`, `FLOW_RELEASE_BASE_URL`, `FLOW_TARGET_OS`/`ARCH`, `FLOW_INSTALL_DRY_RUN`.
+* **Sync:** `flow sync --service jira --alias <alias>` / `flow sync jira` (legacy) mirrors to `external/jira/<PROJECT>/`. Host/projects live in `.flow/config/flow.yaml` per workspace; tokens live in `.flow/config/credentials` (0600, per-workspace, `jira:<alias>` → `email`/`token`), with env override `FLOW_JIRA_API_TOKEN` / `FLOW_JIRA_API_TOKEN_<ALIAS>` / `FLOW_JIRA_EMAIL`. Global vs local: `flow sync` uses local workspace, `flow -g sync` uses global workspace — each has its own `flow.yaml` + `credentials`. Configure via `flow sync configure --service jira --alias j1` (interactive like `aws configure`: prompts for host, email, hidden token, projects; `--host`/`--email`/`--token`/`--project` for non-interactive) or legacy `flow configure --jira-host` (default alias).
 
-- workspace init/configuration,
-- document and graph mutation,
-- search and node-oriented queries,
-- command execution,
-- service and desktop lifecycle commands.
-
-HTTP API interface (`internal/httpapi`):
-
-- workspace/home/document/graph read and mutation endpoints,
-- graph canvas and layout persistence endpoints,
-- search and node view endpoints,
-- reference target lookup and UI control endpoints.
-
-Both the service frontend and desktop frontend use this API surface; no direct frontend filesystem access exists.
+---
 
 ## Multi-Surface Runtime (CLI, Service, Desktop)
 
-Flow ships with three user-facing surfaces sharing one backend logic layer:
+All three share `internal/core`.
 
-- CLI: `flow` runs command-oriented UX.
-- Service: `flow service` / `flow service stop` manages the embedded HTTP server and opens the browser.
-- Desktop: `flow desktop` / `flow desktop stop` manages the Wails-based desktop app window.
+* **CLI:** direct command execution.
+* **Service:** `flow service` spawns `--serve-internal` child, allocates per-workspace loopback port, opens browser. `flow service stop` shuts it down.
+* **Desktop:** `flow desktop` resolves local/global scope via `internal/workspace`, bootstraps files/index, builds `desktop.Backend` context. `runner_stub.go` returns a friendly error unless built with `wails`; `runner_wails.go` reuses `httpapi.NewMux` as the Wails `AssetServer.Handler` so the React app is unchanged.
 
-Current implementation status:
+**Workspace switching:** rebuilds the selected workspace's index before returning workspace/graph data — both service and desktop reflect on-disk changes immediately. A `Loading workspace...` indicator covers the switch.
 
-- A shared mode dispatcher lives in `internal/core/mode.go` and is used by `cmd/flow/main.go`.
-- `service` launches a background child process with `--serve-internal` and opens the browser on startup.
-- `desktop` resolves local/global workspace scope, ensures workspace baseline files/index through shared `internal/workspace` bootstrap, and prepares a shared `desktop.Backend` runtime context with reusable read/write methods.
-- workspace switching rebuilds the selected workspace index before returning workspace/graph responses, so service and desktop surfaces both reflect external on-disk graph and node changes.
-- Build-tag seams in `internal/desktop` separate default stub behavior from the Wails runtime.
+**Branding:** Linux uses `internal/desktop/assets/flow_logo_linux.png` → `~/.local/share/applications/flow.desktop`; macOS Dock icon via `applyMacOSDockIcon()` for raw-binary runs. Program split stays clean: `internal/core` (logic), `internal/httpapi`/`cmd/flow`/`internal/desktop` (adapters).
 
-Target package split for shared business logic:
-
-- `internal/core`: use-case orchestration and contracts (transport-agnostic)
-- `internal/httpapi`: HTTP transport adapters only
-- `cmd/flow`: CLI transport adapters only
-- `internal/desktop`: Wails transport adapters only
-
-This keeps mutations and read workflows centralized and prevents business-logic duplication across surfaces.
+---
 
 ## Core Flows
 
-Initialization and startup:
+**Init:** resolve workspace → ensure dirs/files → build/verify index.
 
-1. Resolve workspace (local/global).
-2. Ensure required directories/files exist.
-3. Build or verify index availability.
+**Mutation (CLI + UI):** validate → **write Markdown** → refresh index → return read model.
 
-Mutation flow (CLI and UI surfaces):
+**Service/Desktop:** start loopback server on per-workspace port → serve embedded frontend → frontend drives API.
 
-1. Validate request and current document shape.
-2. Write canonical Markdown/filesystem changes.
-3. Refresh affected derived index state.
-4. Return updated read models.
+**Execute command:** resolve `id/name` → merge `process env + command.env` → run shell from workspace root.
 
-Service/Desktop UI flow:
-
-1. Start loopback HTTP server on configured per-workspace port.
-2. Serve embedded static frontend.
-3. Frontend performs API-driven reads/mutations.
-
-Execution flow:
-
-1. Resolve command node by id/name.
-2. Build effective environment from process + command overrides.
-3. Execute through shell command runtime.
+---
 
 ## Graph Operations
 
-### Graph Rename and Reparenting
+### Rename & reparent (same backend path)
 
-Graph rename and hierarchy reparenting share the same backend code path (`workspace.RenameGraph`). The `PATCH /api/graphs/<path>` endpoint accepts `{ name: "<new-full-path>" }` where the new path may add, remove, or reorder segments in the hierarchy.
+`PATCH /api/graphs/<path>` with `{ name: "<new-full-path>" }` → `workspace.RenameGraph`:
 
-**How it works:**
-1. `workspace.RenameGraph` validates source and target paths.
-2. `os.Rename` moves the entire directory (all documents in the graph and sub-graphs).
-3. `planGraphReferenceRewriteWrites` computes old/new breadcrumb diffs for every document inside the moved graph, then scans all workspace documents and rewrites stale inline `[[breadcrumb]]` references.
-4. Graph directory colors are remapped via `remapGraphDirectoryColors`.
-5. The index is rebuilt to pick up path-derived graph fields.
+1. Validate source/target.
+2. `os.Rename` the whole directory (including sub-graphs).
+3. `planGraphReferenceRewriteWrites` diffs old vs new breadcrumbs and rewrites stale `[[Breadcrumb > Path]]` in every workspace doc.
+4. Remap graph directory colors.
+5. Rebuild index for path-derived fields.
 
-**Reference safety guarantees:**
-- `NodeLink` entries by document ID — unaffected (IDs are immutable).
-- Inline `[[doc-id]]` references — unaffected.
-- Inline `[[Breadcrumb > Path]]` references — auto-rewritten by step 3 above.
-- Inline `[[Title]]` references — may need disambiguation when "same-graph" resolution scope changes.
+*Safety:* `NodeLink` by ID and `[[doc-id]]` never break; `[[Title]]` may need disambiguation after scope changes.
 
-### Graph Move (Frontend Drag-and-Drop)
+### Drag-and-drop (frontend)
 
-The sidebar Content tree supports dragging graph rows to reparent them:
-- Drop onto another graph row nests under it (e.g., `projects/backend` → `arch/backend`).
-- Drop onto the Content root area flattens to top-level (e.g., `projects/backend` → `backend`).
-- Drag state uses a `DraggedItem` union type (`DraggedTreeFile | DraggedGraph`).
-- On drop, the frontend calls the same `PATCH /api/graphs/<path>` rename endpoint with the computed new path.
-- The outgoing-links constraint (applied to individual document moves) does not apply to graph-level moves.
+Sidebar **Content** tree: dragged row = `DraggedTreeFile | DraggedGraph`. Drop onto a graph → nests (e.g., `projects/backend` → `arch/backend`); drop onto Content root → flattens. On drop, calls `PATCH /api/graphs/<path>` with the new path. The outgoing-links constraint for single-document moves does not apply.
+
+---
+
+## Presentation Mode
+
+Full-screen slide mode for the graph (`p` on canvas or toolbar Play → dimmed backdrop, one node/slide).
+
+| Aspect | How it works |
+|---|---|
+| **Rendering** | Title + rendered markdown (command shows `run`), type/status badges, slide counter (`history.length+1`), footer child chips (`→`). Body lazy-loaded from `GET /api/documents/:id`. |
+| **Ordering** | `buildOrderedPresentationGraph`: hard-link children topmost-first by canvas `y` then title; reference children by `[[id]]`/`[[title]]` mention offset (falls back to payload order until body loads). |
+| **State** | `presentationReducer` (pure, tested): `active`, `currentId`, `candidates` (ordered successors), `highlightIndex`, `history` (counter only). Helpers: `candidatesFor`, `inboundParentsOrdered`. |
+| **Keys** | `→` drill into highlighted child (`followHighlighted`), `←` back to primary parent (`goBack`, restores highlight for re-entry), `↑/↓` walk siblings (`previousSibling`/`nextSibling` via parent's children), `Enter` open in editor, `Esc` exit & re-select. No-ops when no children/parent/siblings. |
+| **UI** | `PresentationOverlay.tsx` footer hints `← back · → drill in · ↑↓ siblings · enter open · esc exit`, chips `aria-label="Child nodes; press right to drill in"`. `MiddleContent.tsx` wires `presentation.run` to `onBack`/`onFollow`/`onRotate` (hidden `presentation-rotate-*` buttons for tests). |
+| **Edge cases** | `graphUpdated` refreshes candidates, recovers from deletion via history or exits. Cycles handled via history stack. |
+
+> `rotateHighlight` (cycle among direct children) stays as a reducer case for programmatic use but is **not** bound to `↑↓` anymore — `↑↓` now walks siblings.
+
+---
 
 ## Editor Interaction & Thread UI
 
-### Contextual Sidebar Table of Contents
+### Sidebar Table of Contents
 
-Flow uses the left sidebar as the single table-of-contents surface for active document navigation. The sidebar has two transient views: the existing Content tree and a contextual TOC view backed by the reusable `TableOfContents` component.
+Left sidebar doubles as TOC: default is **Content** tree; opening a doc or selecting a thread/Home switches to that doc's TOC (via `generateTOC` + `handleTOCNavigate` + scroll-target state). **Back to content tree** restores tree without closing the editor. Empty docs show `No headings yet.` Center/right panes have no TOC chrome.
 
-**View behavior:**
-- The Content tree is the default view and remains visible when a graph/folder is expanded; expansion only reveals its child graphs and files.
-- Opening a document from the Content tree switches the sidebar to that document's TOC.
-- Selecting a document thread switches the sidebar TOC context to the selected thread document.
-- Selecting Home switches the sidebar to Home's TOC.
-- A Back to content tree control restores the tree without closing or changing the active editor/thread.
-- Documents without headings render the TOC empty state (`No headings yet.`).
+### Rich-text navigation (Obsidian-style)
 
-TOC items are derived from the active Home or document editor body using the existing `generateTOC` helper. Heading selection reuses `handleTOCNavigate` and the editor scroll-target state, so center-thread, Home, and right-rail editing remain responsible for the actual scroll operation.
+* Hide redundant **Write above/below** on code/Mermaid blocks.
+* `ArrowUp`/`ArrowDown` at block boundaries → `NodeSelection` on the diagram; second press moves beyond. At document edges, insert a new paragraph.
 
-The center and right-rail editor panes do not render TOC panels, toggles, or TOC resize handles after this migration. The center document properties side panel remains available independently. The existing sidebar width provides TOC sizing, so the document-specific `documentTOCRatio` setting is no longer needed for TOC navigation.
+### Brand & theme
 
-### Rich Text Editor Navigation (Obsidian-style)
-To improve rich-text editing usability, diagram views (such as Mermaid sections) and code blocks allow transparent keyboard selection and cursor movement. 
+* Sidebar **Flow** logo = gradient indigo→violet with hover scale; collapsed = glowing `F` monogram; selected editor nodes get primary-outline (`.ProseMirror-selectednode`).
+* Pastel, flat, hairline-border look (2026-08-06 refresh) — **canon is `docs/DESIGN.md`** + semantic tokens in `frontend/src/styles.css` (`:root`/`.dark`).
 
-- **Button Removal**: Redundant "Write above" and "Write below" buttons are omitted from the UI of code editor and Mermaid sections.
-- **Adjacent Navigation**: Standard keyboard arrow-key navigation (pressing `ArrowDown` at the bottom of a block above a diagram, or `ArrowUp` at the top of a block below a diagram) programmatically transitions the selection to a ProseMirror `NodeSelection` on the diagram.
-- **Traversal & Insertion**: When a diagram node is selected via `NodeSelection`, pressing `ArrowDown`/`ArrowUp` moves the focus beyond the diagram. If the boundary of the document is reached, a new default paragraph node is inserted and focused.
+### Thread loading
 
-### Sidebar Brand Logo & Theme Styling
-- **Gradient Logo**: The main "Flow" logo in the sidebar utilizes a CSS background gradient from primary pastel indigo to violet, coupled with scale-up hover animations.
-- **Collapsed Monogram**: When the sidebar collapses, the logo switches to a centered, circular glowing monogram "F".
-- **Selection Highlight**: Selected NodeViews in the editor receive a visible selection outline matching the primary brand color (`.ProseMirror-selectednode`).
+Loading thread panels show a pulsing **skeleton** (header + body lines) to avoid CLS.
 
-### UI Look & Feel (Pastel, Notion-inspired)
-The visual language — pastel palette, flat hairline-border surfaces, compact spacing, and component styling rules — is documented in [docs/DESIGN.md](DESIGN.md), which is the canonical styling reference for all UI work. The 2026-08-06 refresh (design/20260806-001-FEAT-ui-pastel-notion-lookfe) moved the UI from a saturated "productivity indigo" palette to soft pastels, reduced app-frame/header/sidebar padding, removed card-in-card chrome, and preserved dark-mode parity through the semantic CSS tokens in `frontend/src/styles.css`. Token changes belong in the `:root`/`.dark` blocks; component structure is unchanged.
-
-### Thread View Panel Loading (Skeleton Screen)
-To eliminate visual layout shifts (CLS) when retrieving thread panel content:
-- Active loading panels display a pulsing skeleton template (matching header and multi-line body placeholders) instead of a simple text spinner.
-- The skeleton container size corresponds to standard editor elements to ensure visual stability before content finishes loading.
+---
 
 ## Architectural Invariants
 
-- Canonical state is always Markdown on disk.
-- Any index record must be derivable from canonical files.
-- Missing index files are recoverable by rebuild.
-- Workspace behavior is deterministic across local/global modes.
-- API and CLI mutations must preserve Markdown schema validity.
-- UI state persistence (layout/appearance) is auxiliary and non-canonical.
+> Must always hold — break one, break Flow.
+
+* ✅ Markdown on disk is **always** canonical.
+* ✅ Index is derivable; `flow.index` missing → **rebuild succeeds**.
+* ✅ Local and Global modes are deterministic (same schema/behavior).
+* ✅ All mutations keep Markdown schema-valid.
+* ✅ Layout/appearance state is auxiliary (non-canonical).
+
+---
 
 ## Development Workflow & Agent Skills
 
-Flow's own development follows a stage-based workflow with behavior governed by skill files under `packaging/skills/`. The default workflow order is: design, plan, implement or fix or refactor, test, review, commit.
+Flow eats its own dog food: work is tracked as Markdown task/note nodes under `.flow/data/content`.
 
-### Skill Directory Structure
+**Single skill, embedded in the binary:**
 
-All Flow skill content lives in a single canonical directory that is both the agent-visible source of truth and the embed source for the binary:
-
-```
-packaging/skills/
-  flow/SKILL.md           — The complete Flow agent skill: record-keeping protocol, all stage workflows (design, plan, implement, fix, refactor, test, review, commit), and graph engineering
+```text
+packaging/skills/flow/SKILL.md  — record-keeping + stages (design, plan, implement, fix, refactor, test, review, commit) + graph engineering
+skillcontent.go embeds packaging/skills/ → flow skill list / flow skill content
 ```
 
-The single skill file is a self-contained Markdown document with YAML frontmatter (`name`, `description`, `user-invocable`, `allowed-tools`, `argument-hint`) followed by a stage-routing table and the full workflow instructions as internal sections.
+| Command | Effect |
+|---|---|
+| `flow skill list` | list embedded skills |
+| `flow skill content` | print merged skill (default) |
+| `flow skill init` | write to `~/.agents/skills/` |
+| `flow skill init --project` | write to `./.agents/skills/` (alias `--local`) |
 
-Key related files:
+* `--force` overwrites, `--skill <name>` restricts, `--mode dev|note|pm` (repeatable, any `dev` → full skill). Workspace `AGENTS.md` Flow section is marker-managed.
 
-- `AGENTS.md` — Project-level routing table that maps work stages to the matching section of the single skill file and defines persistent rules
-- `skillcontent.go` — Embeds the whole `packaging/skills/` tree into the flow binary at build time (single `embed.FS`), exposing `SkillNames()`, `SkillMarkdownByName()`, and `flow skill content --skill <name>`
-- `skills-lock.json` — Lock file tracking installed skills with their source type and hash
-- `.agents/skills/` — Generated install location (not committed); produced by `flow skill init --project`
+**Stage routing (`AGENTS.md`):** Design → `2.1`, Plan → `2.2`, Implement → `2.3`, Fix → `2.4`, Refactor → `2.5`, Test → `2.6`, Review → `2.7`, Commit → `2.8`, Graph ops → `3`. Record naming: `YYYYMMDD-NNN-<type>-<title>` with `depends-on` links.
 
-### Skill Distribution
-
-An installed `flow` binary carries the skill. Users materialize it for their agent with:
-
-```bash
-flow skill list                     # enumerate embedded skills (flow)
-flow skill content                  # print the merged skill (default)
-flow skill content --skill flow     # print the merged skill explicitly
-flow skill init                     # write the skill to ~/.agents/skills/
-flow skill init --project           # write the skill to ./.agents/skills/
-flow skill init --project --force   # overwrite existing files
-```
-
-`flow skill init` writes to the global agent skills directory (`~/.agents/skills/`) by default, or to the current workspace's `.agents/skills/` with `--project`. Existing files are left untouched unless `--force` is given. The workspace's `.agents/skills/` directory is generated output and must not be committed.
-
-### Stage Routing
-
-`AGENTS.md` serves as the routing table. When a user request does not explicitly name a stage, the agent infers the correct stage and applies the matching section of the single flow skill:
-
-- New feature design → Section 2.1 Design
-- Feature planning with task nodes → Section 2.2 Plan
-- Feature implementation from task nodes → Section 2.3 Implement
-- Bug fixes → Section 2.4 Fix
-- Structural cleanup without behavior change → Section 2.5 Refactor
-- Test execution and validation → Section 2.6 Test
-- Code review → Section 2.7 Review
-- Commit and Flow record sync → Section 2.8 Commit
-- Graph structure, node/edge engineering, and dependency ordering → Section 3 Graph Engineering
-
-### Flow Record Keeping
-
-All phases of work are recorded in the Flow workspace itself — task and note nodes in `.flow/data/content/` serve as the system of record. The `packaging/skills/flow/SKILL.md` skill is embedded into the flow binary and provides the full CLI workflow and mandatory protocol for record keeping. Sub-graph naming follows the pattern `YYYYMMDD-NNN-<type>-<title>` with explicit `depends-on` dependency links between task nodes.
+---
 
 ## Quality Strategy
 
-Validation is layered across:
+* Go: `go test ./internal/... ./cmd/flow` (markdown/index/graph/workspace/config).
+* Frontend: Vitest component tests + Playwright visual regression.
+* API & CLI: handler/server tests, command behavior tests.
 
-- package-level tests for markdown/index/graph/workspace logic,
-- API handler and server tests,
-- CLI tests for command behavior,
-- frontend component and behavior tests.
+Canonical vs projection correctness are tested in isolation.
 
-This keeps canonical-state correctness and projection correctness testable in isolation.
+---
 
 ## Related Documents
 
-- [docs/DESIGN.md](DESIGN.md)
-- [docs/build.md](build.md)
-- [docs/reference.md](reference.md)
-- [docs/release.md](release.md)
-- [README.md](../README.md)
-- [AGENTS.md](../AGENTS.md)
-- [packaging/skills/flow/SKILL.md](../packaging/skills/flow/SKILL.md)
-
+* `docs/DESIGN.md` — pastel styling canon
+* `docs/build.md` — build from source & release binaries
+* `docs/reference.md` — workspace/layout/CLI reference
+* `docs/release.md` — tagging & publishing checklist
+* `README.md` · `AGENTS.md` · `packaging/skills/flow/SKILL.md`

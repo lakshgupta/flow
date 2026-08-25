@@ -12,8 +12,8 @@ import (
 )
 
 // WorkspaceGitignoreContent is the canonical .flow/.gitignore content required
-// for derived artifacts and runtime logs.
-const WorkspaceGitignoreContent = "config/flow.index\nconfig/flow.index.tmp\nconfig/gui-server.json\nlogs/\n"
+// for derived artifacts, runtime logs, and per-workspace credentials.
+const WorkspaceGitignoreContent = "config/flow.index\nconfig/flow.index.tmp\nconfig/gui-server.json\nconfig/credentials\nlogs/\n"
 
 // EnsureInitialized prepares the canonical workspace directories, config, home
 // document, and derived index so all transports observe consistent baseline

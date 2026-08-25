@@ -270,6 +270,8 @@ func writeRootHelp(w io.Writer) {
 	fmt.Fprintln(w, "  skill          Print, list, or initialize Flow skills")
 	fmt.Fprintln(w, "  node           Node-oriented read/update/connect operations")
 	fmt.Fprintln(w, "  graph          Graph traversal operations (e.g. shortest path)")
+	fmt.Fprintln(w, "  sync           Sync external trackers (jira, aha) — see `flow sync --help`")
+	fmt.Fprintln(w, "  roadmap        Roadmap summary and next-ready task")
 	fmt.Fprintln(w, "  workspace      Workspace management commands")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Global option:")
@@ -844,11 +846,15 @@ func runConfigure(global bool, args []string, env commandEnv) error {
 		if *guiPort != 0 {
 			workspaceConfig.GUI.Port = *guiPort
 		}
-		if strings.TrimSpace(*jiraHost) != "" {
-			workspaceConfig.Integrations.Jira.Host = strings.TrimSpace(*jiraHost)
-		}
-		if len(jiraProjects) > 0 {
-			workspaceConfig.Integrations.Jira.Projects = append([]string(nil), jiraProjects...)
+		if strings.TrimSpace(*jiraHost) != "" || len(jiraProjects) > 0 {
+			jiraCfg, _ := workspaceConfig.Integrations.JiraConfigForAlias(config.DefaultServiceAlias)
+			if strings.TrimSpace(*jiraHost) != "" {
+				jiraCfg.Host = strings.TrimSpace(*jiraHost)
+			}
+			if len(jiraProjects) > 0 {
+				jiraCfg.Projects = append([]string(nil), jiraProjects...)
+			}
+			workspaceConfig.Integrations.SetJiraConfig(config.DefaultServiceAlias, jiraCfg)
 		}
 		if err := config.Write(root.ConfigPath, workspaceConfig); err != nil {
 			return err
