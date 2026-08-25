@@ -19,7 +19,7 @@ EOF
 	exit 1
 fi
 
-if [[ $# -eq 1 && "$1" =~ ^(linux|darwin|amd64|arm64)$ ]]; then
+if [[ $# -eq 1 && "$1" =~ ^(linux|darwin|windows|amd64|arm64)$ ]]; then
 	cat <<'EOF' >&2
 install.sh installs published releases and expects an optional version such as 0.1.0 or v0.1.0.
 
@@ -38,10 +38,10 @@ Installs the latest Flow release for the current OS and architecture.
 Pass an explicit version such as 0.1.0 or v0.1.0 to install an older release.
 
 Environment overrides:
-  FLOW_INSTALL_DIR      Destination directory for the flow binary
+  FLOW_INSTALL_DIR      Destination directory for the flow binary (default: ~/.local/bin)
   FLOW_RELEASE_REPO     GitHub repository in owner/name format
   FLOW_RELEASE_BASE_URL Base URL for release downloads (advanced)
-  FLOW_TARGET_OS        Override detected OS (linux or darwin)
+  FLOW_TARGET_OS        Override detected OS (linux, darwin, or windows)
   FLOW_TARGET_ARCH      Override detected architecture (amd64 or arm64)
   FLOW_INSTALL_DRY_RUN  Set to 1 to print selected asset names and exit
 EOF
@@ -142,6 +142,9 @@ normalize_os() {
 		darwin|Darwin|macos|macOS|MacOS)
 			printf 'darwin\n'
 			;;
+		windows|Windows|WIN32|win32|MINGW*|MSYS*|CYGWIN*|Windows_NT)
+			printf 'windows\n'
+			;;
 		*)
 			echo "Unsupported OS: $raw_os" >&2
 			return 1
@@ -172,7 +175,7 @@ release_target_supported() {
 	local arch_name="$2"
 
 	case "${os_name}/${arch_name}" in
-		linux/amd64|darwin/amd64|darwin/arm64)
+		linux/amd64|darwin/amd64|darwin/arm64|windows/amd64|windows/arm64)
 			return 0
 			;;
 		*)
@@ -230,7 +233,11 @@ download_release_assets() {
 	fi
 
 	normalized_version="${requested_version#v}"
-	archive_name="flow-${normalized_version}-${os_name}-${arch_name}.tar.gz"
+	if [[ "$os_name" == "windows" ]]; then
+		archive_name="flow-${normalized_version}-${os_name}-${arch_name}.zip"
+	else
+		archive_name="flow-${normalized_version}-${os_name}-${arch_name}.tar.gz"
+	fi
 	checksum_name="flow-${normalized_version}-${os_name}-${arch_name}.sha256"
 
 	if [[ "${FLOW_INSTALL_DRY_RUN:-0}" == "1" ]]; then
@@ -265,12 +272,20 @@ OS_NAME="$(normalize_os)"
 ARCH_NAME="$(normalize_arch)"
 
 if ! release_target_supported "$OS_NAME" "$ARCH_NAME"; then
-	echo "No Flow release artifact is published for ${OS_NAME}/${ARCH_NAME}. Supported release targets are linux/amd64, darwin/amd64, and darwin/arm64." >&2
+	echo "No Flow release artifact is published for ${OS_NAME}/${ARCH_NAME}. Supported release targets are linux/amd64, darwin/amd64, darwin/arm64, windows/amd64, and windows/arm64." >&2
 	exit 1
 fi
 
 TMP_DIR="$(mktemp -d 2>/dev/null || mktemp -d -t flow-install)"
-ARCHIVE_PATH="$TMP_DIR/flow.tar.gz"
+if [[ "$OS_NAME" == "windows" ]]; then
+	ARCHIVE_PATH="$TMP_DIR/flow.zip"
+	BINARY_IN_ARCHIVE="flow.exe"
+	BINARY_NAME="flow.exe"
+else
+	ARCHIVE_PATH="$TMP_DIR/flow.tar.gz"
+	BINARY_IN_ARCHIVE="flow"
+	BINARY_NAME="flow"
+fi
 CHECKSUM_PATH="$TMP_DIR/flow.sha256"
 
 download_release_assets "$REPO_SLUG" "$VERSION_ARG" "$OS_NAME" "$ARCH_NAME" "$ARCHIVE_PATH" "$CHECKSUM_PATH" "$RELEASE_BASE_URL"
@@ -285,20 +300,61 @@ else
 	echo "Warning: no SHA-256 utility found; skipping checksum verification." >&2
 fi
 
-tar -C "$TMP_DIR" -xzf "$ARCHIVE_PATH"
+# Extract archive (zip for windows, tar.gz otherwise)
+if [[ "$OS_NAME" == "windows" ]]; then
+	if command -v unzip >/dev/null 2>&1; then
+		unzip -q -o "$ARCHIVE_PATH" -d "$TMP_DIR"
+	elif command -v tar >/dev/null 2>&1 && tar -tzf "$ARCHIVE_PATH" >/dev/null 2>&1; then
+		tar -C "$TMP_DIR" -xzf "$ARCHIVE_PATH"
+	else
+		echo "unzip (or tar) is required to extract Windows release archive." >&2
+		exit 1
+	fi
+else
+	tar -C "$TMP_DIR" -xzf "$ARCHIVE_PATH"
+fi
 
-if [[ ! -f "$TMP_DIR/flow" ]]; then
-	echo "Archive does not contain a flow binary." >&2
-	exit 1
+if [[ ! -f "$TMP_DIR/$BINARY_IN_ARCHIVE" ]]; then
+	# Fallback: Windows archive might contain flow (without .exe) if built without zip
+	if [[ "$OS_NAME" == "windows" && -f "$TMP_DIR/flow" ]]; then
+		BINARY_IN_ARCHIVE="flow"
+	else
+		echo "Archive does not contain a flow binary ($BINARY_IN_ARCHIVE)." >&2
+		exit 1
+	fi
 fi
 
 mkdir -p "$INSTALL_DIR"
 if command -v install >/dev/null 2>&1; then
-	install -m 0755 "$TMP_DIR/flow" "$INSTALL_DIR/flow"
+	install -m 0755 "$TMP_DIR/$BINARY_IN_ARCHIVE" "$INSTALL_DIR/$BINARY_NAME"
 else
-	cp "$TMP_DIR/flow" "$INSTALL_DIR/flow"
-	chmod 0755 "$INSTALL_DIR/flow"
+	cp "$TMP_DIR/$BINARY_IN_ARCHIVE" "$INSTALL_DIR/$BINARY_NAME"
+	chmod 0755 "$INSTALL_DIR/$BINARY_NAME"
 fi
 
-echo "Installed flow to $INSTALL_DIR/flow"
-echo "Ensure $INSTALL_DIR is on your PATH before running flow."
+echo "Installed flow to $INSTALL_DIR/$BINARY_NAME"
+
+# Ensure INSTALL_DIR is on PATH
+if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+	echo ""
+	echo "Note: $INSTALL_DIR is not on your PATH."
+	echo "To make 'flow' available, add it to your PATH:"
+	if [[ "$OS_NAME" == "windows" ]]; then
+		echo "  Windows (PowerShell): \$env:PATH += \";$INSTALL_DIR\""
+		echo "  Windows (persistent): setx PATH \"%PATH%;$INSTALL_DIR\""
+		echo "  Git Bash/MSYS:        echo 'export PATH=\"\$PATH:$INSTALL_DIR\"' >> ~/.bashrc && source ~/.bashrc"
+	else
+		# Detect shell rc file
+		SHELL_RC="~/.bashrc"
+		if [[ -n "${ZSH_VERSION:-}" ]]; then
+			SHELL_RC="~/.zshrc"
+		elif [[ "$SHELL" == *"zsh"* ]]; then
+			SHELL_RC="~/.zshrc"
+		fi
+		echo "  echo 'export PATH=\"\$PATH:$INSTALL_DIR\"' >> $SHELL_RC && source $SHELL_RC"
+		echo "  Or run: export PATH=\"\$PATH:$INSTALL_DIR\"  (current session only)"
+	fi
+	echo ""
+else
+	echo "Flow is now available on your PATH."
+fi

@@ -39,6 +39,9 @@ normalize_release_os_name() {
 		darwin|Darwin|macos|macOS|MacOS)
 			printf 'darwin\n'
 			;;
+		windows|Windows|WIN32|win32|MINGW*|MSYS*|CYGWIN*)
+			printf 'windows\n'
+			;;
 		*)
 			printf '\n'
 			return 1
@@ -63,7 +66,7 @@ normalize_release_arch_name() {
 
 release_target_supported() {
 	case "$1/$2" in
-		linux/amd64|darwin/amd64|darwin/arm64)
+		linux/amd64|darwin/amd64|darwin/arm64|windows/amd64|windows/arm64)
 			return 0
 			;;
 		*)
@@ -83,6 +86,10 @@ release_archive_name() {
 	local version="$1"
 	local os_name="$2"
 	local arch_name="$3"
+	if [[ "$os_name" == "windows" ]]; then
+		printf '%s.zip\n' "$(release_artifact_basename "$version" "$os_name" "$arch_name")"
+		return 0
+	fi
 	printf '%s.tar.gz\n' "$(release_artifact_basename "$version" "$os_name" "$arch_name")"
 }
 

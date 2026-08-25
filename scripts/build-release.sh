@@ -17,6 +17,8 @@ Supported targets:
   linux amd64
   darwin amd64
   darwin arm64
+  windows amd64
+  windows arm64
 EOF
 	exit 1
 fi
@@ -52,13 +54,23 @@ if [[ "${FLOW_SKIP_FRONTEND_BUILD:-0}" != "1" ]]; then
 fi
 
 pushd "$ROOT_DIR" >/dev/null
+	# Binary naming: Windows uses flow.exe.
+	if [[ "$TARGET_OS" == "windows" ]]; then
+		BINARY_NAME="flow.exe"
+	else
+		BINARY_NAME="flow"
+	fi
+
 	# Desktop mode (Wails) requires CGO and platform-specific WebView libraries.
 	# - Linux: webkit2gtk-4.1 (install libwebkit2gtk-4.1-dev before building)
 	# - macOS: WebKit.framework is always available; no extra install needed
+	# - Windows: WebView2 + mingw required for Wails; CLI-only build ships without Wails on Windows to avoid CGO toolchain
 	# The webkit2_41 tag switches Wails from webkit2gtk-4.0 to webkit2gtk-4.1,
 	# required on Ubuntu 24.04+ and other modern distros.
 	if [[ "$TARGET_OS" == "linux" ]]; then
 		WAILS_TAGS="wails,production,webkit2_41"
+	elif [[ "$TARGET_OS" == "windows" ]]; then
+		WAILS_TAGS="production"
 	else
 		WAILS_TAGS="wails,production"
 	fi
@@ -77,19 +89,39 @@ pushd "$ROOT_DIR" >/dev/null
 		export CGO_LDFLAGS="-framework UniformTypeIdentifiers"
 	fi
 
-	CGO_ENABLED=1 GOOS="$TARGET_OS" GOARCH="$TARGET_ARCH" go build \
-		-tags="$WAILS_TAGS" \
-		-trimpath \
-		-ldflags "-s -w -X main.version=${VERSION}" \
-		-o "$STAGING_DIR/flow" \
-		./cmd/flow
+	if [[ "$TARGET_OS" == "windows" ]]; then
+		# Windows: CLI-only, no CGO/Wails to allow cross-compile from Linux without mingw.
+		CGO_ENABLED=0 GOOS="$TARGET_OS" GOARCH="$TARGET_ARCH" go build \
+			-tags="$WAILS_TAGS" \
+			-trimpath \
+			-ldflags "-s -w -X main.version=${VERSION}" \
+			-o "$STAGING_DIR/$BINARY_NAME" \
+			./cmd/flow
+	else
+		CGO_ENABLED=1 GOOS="$TARGET_OS" GOARCH="$TARGET_ARCH" go build \
+			-tags="$WAILS_TAGS" \
+			-trimpath \
+			-ldflags "-s -w -X main.version=${VERSION}" \
+			-o "$STAGING_DIR/$BINARY_NAME" \
+			./cmd/flow
+	fi
 popd >/dev/null
 
 cp "$ROOT_DIR/LICENSE" "$STAGING_DIR/LICENSE"
 install -m 0755 "$ROOT_DIR/scripts/install.sh" "$DIST_DIR/$INSTALLER_NAME"
 install -m 0755 "$ROOT_DIR/flow-install.sh" "$DIST_DIR/$ROOT_INSTALLER_NAME"
 
-tar -C "$STAGING_DIR" -czf "$DIST_DIR/$ARCHIVE_NAME" flow LICENSE
+if [[ "$TARGET_OS" == "windows" ]]; then
+	# Windows releases ship as zip (flow.exe + LICENSE).
+	if command -v zip >/dev/null 2>&1; then
+		( cd "$STAGING_DIR" && zip -q "$DIST_DIR/$ARCHIVE_NAME" "$BINARY_NAME" LICENSE )
+	else
+		# Fallback to tar.gz if zip is unavailable (still extractable on Windows 10+)
+		tar -C "$STAGING_DIR" -czf "$DIST_DIR/$ARCHIVE_NAME" "$BINARY_NAME" LICENSE
+	fi
+else
+	tar -C "$STAGING_DIR" -czf "$DIST_DIR/$ARCHIVE_NAME" "$BINARY_NAME" LICENSE
+fi
 
 if ! sha256_tool_available; then
 	echo "No SHA-256 utility found; cannot create checksum file." >&2
