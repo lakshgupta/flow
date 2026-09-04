@@ -454,12 +454,28 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
       : TextSelection.near(resolved, 1).from
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, caretPos)))
 
-    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-      window.requestAnimationFrame(() => view.focus())
-      return
+    // Focus handling: For slash ("/") and heading ("#") shortcuts on the first
+    // textblock (the common case when a node is opened and the user clicks the
+    // first line), an immediate keystroke after the click was lost because the
+    // editor was only focused on the next animation frame. Focus synchronously
+    // there so the next keystroke lands in the editor. For other blocks
+    // (code blocks, diagrams) keep the original async focus to preserve the
+    // caret-settling timing that the mermaid tests rely on.
+    const parent = resolved.parent
+    const isFirstBlockText = parent.isTextblock && resolved.depth === 1 && resolved.index(0) === 0
+    const isSlashableBlock = isFirstBlockText && (parent.type.name === 'paragraph' || parent.type.name === 'heading')
+    if (isSlashableBlock) {
+      view.focus()
+      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(() => view.focus())
+      }
+    } else {
+      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(() => view.focus())
+        return
+      }
+      view.focus()
     }
-
-    view.focus()
   }, [editor])
 
   useEffect(() => {
