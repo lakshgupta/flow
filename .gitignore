@@ -50,3 +50,6 @@ dist/
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Codegraph daemon
+.codegraph/
