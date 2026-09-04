@@ -49,7 +49,7 @@ Use the matching section of the installed flow skill at [.agents/skills/flow/SKI
 
 ## Persistent Rules
 
-- **NEVER CHANGE THE GLOBAL WORKSPACE PATH.** The global workspace is always `/home/lex/Documents/notes/flow` (contains the canonical `.flow/` directory). Do not reconfigure it via `flow -g configure --workspace` or by editing `~/.config/flow/global-workspace.yaml`.
+- **NEVER CHANGE THE GLOBAL WORKSPACE PATH.** The global workspace is configured outside the repository (via `~/.config/flow/global-workspace.yaml`) and contains the canonical `.flow/` directory. Do not reconfigure it via `flow -g configure --workspace`, by editing `~/.config/flow/global-workspace.yaml` programmatically, or by overwriting the committed configuration. Each developer's global workspace location is local and must not be committed or overwritten.
 - Keep [docs/architecture.md](../docs/architecture.md) as the approved design source for feature work, including the arrangement and structure of UI components.
 - For UI look and feel, refer to [docs/DESIGN.md](../docs/DESIGN.md) for visual language, component styling, and design guidelines.
 - Keep Flow `design/YYYYMMDD-NNN-<type>-<title>` and `development/YYYYMMDD-NNN-<type>-<title>` sub-graphs and task/note nodes as the execution source of truth for planned feature work.
