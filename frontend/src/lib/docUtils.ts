@@ -212,3 +212,31 @@ export function generateTOC(markdownText: string): Array<{ level: number; text: 
   }
   return toc;
 }
+
+export function isBodyLeadingHeadingDuplicated(body: string, title: string): boolean {
+  if (typeof body !== "string" || typeof title !== "string") return false;
+  const trimmedTitle = title.trim();
+  if (trimmedTitle === "") return false;
+  const lines = body.trimStart().split("\n");
+  const first = lines[0]?.trim() ?? "";
+  const match = first.match(/^#{1,6}\s+(.+)$/);
+  if (!match) return false;
+  const rawHeading = (match[2] ?? "").trim();
+  if (rawHeading === "") return false;
+  const headingText = headingDisplayText(rawHeading);
+  return headingText.toLowerCase() === headingDisplayText(trimmedTitle).toLowerCase();
+}
+
+export function stripLeadingTitleHeading(body: string, title: string): string {
+  if (typeof body !== "string" || typeof title !== "string") return body ?? "";
+  if (!isBodyLeadingHeadingDuplicated(body, title)) return body;
+  const lines = body.split("\n");
+  // Find first non-empty line index
+  let firstIdx = 0;
+  while (firstIdx < lines.length && lines[firstIdx].trim() === "") firstIdx++;
+  if (firstIdx >= lines.length) return body;
+  lines.splice(firstIdx, 1);
+  // Also remove a single following empty line to avoid double gap
+  if (lines[firstIdx]?.trim() === "") lines.splice(firstIdx, 1);
+  return lines.join("\n");
+}

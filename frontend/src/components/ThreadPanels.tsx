@@ -9,7 +9,7 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Skeleton } from "./ui/skeleton";
 
-import { createDocumentFormState, formatDocumentType } from "../lib/docUtils";
+import { createDocumentFormState, formatDocumentType, stripLeadingTitleHeading, isBodyLeadingHeadingDuplicated } from "../lib/docUtils";
 import { graphDirectoryColorHex, resolveGraphDirectoryColor } from "../lib/graphColors";
 import { TASK_STATUS_OPTIONS } from "../lib/graphCanvasUtils";
 import { parseFlowAssetHref, parseFlowDateHref, parseFlowReferenceHref } from "../richText";
@@ -293,6 +293,7 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
   actions,
   searchQuery = "",
   searchIndex = 0,
+  isExpanded = false,
 }: {
   panel: ThreadPanelData;
   panelDocument: DocumentResponse;
@@ -309,6 +310,7 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
   actions: ThreadPanelActions;
   searchQuery?: string;
   searchIndex?: number;
+  isExpanded?: boolean;
 }) {
   const editorRef = useRef<RichTextEditorHandle | null>(null);
   const saveTimerRef = useRef<number | undefined>(undefined);
@@ -362,10 +364,17 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
   }, [actions, panel.documentId, scheduleSave]);
 
   const showCenterDocumentSidePanel = centerDocumentSidePanelMode !== "hidden";
+  const isDeduped = isExpanded && isBodyLeadingHeadingDuplicated(formState.body, formState.title);
+  const displayBody = isDeduped ? stripLeadingTitleHeading(formState.body, formState.title) : formState.body;
 
   return (
     <div className="thread-panel-shell">
-      <div className="thread-panel-title-block">
+      <div className={`thread-panel-title-block ${isExpanded ? "thread-panel-title-block-expanded" : ""}`}>
+        {isExpanded && (
+          <Badge variant="outline" className="center-document-type-badge thread-title-badge-inline">
+            {formatDocumentType(panelDocument.type)}
+          </Badge>
+        )}
         <input
           className="center-document-toolbar-title"
           placeholder="Document title"
@@ -373,6 +382,11 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
           onChange={(event) => handleFieldChange("title", event.target.value)}
           aria-label="Document title"
         />
+        {isDeduped && (
+          <span className="thread-title-deduped-hint" title="First heading matches title and is hidden in expanded view to avoid duplication">
+            heading hidden in body
+          </span>
+        )}
       </div>
 
       <div
@@ -395,7 +409,7 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
               onScrollCompleted={actions.clearEditorScrollTarget}
               placeholder="Type / for headings, lists, quotes, links, and highlights"
               scrollToHeadingSlug={editorScrollTarget}
-              value={formState.body}
+              value={displayBody}
               searchQuery={searchQuery}
               searchIndex={searchIndex}
             />
@@ -505,6 +519,7 @@ const ThreadPanelHeader = memo(function ThreadPanelHeader({
     actions.closeDocumentThreadFrom(index);
   }, [actions, index]);
 
+  const isHeaderBadgeHidden = panel.isActive && panelDocument !== null && (panelExpandMode === "full" || threadExpanded);
   return (
     <div className="thread-panel-header">
       <div className="thread-panel-header-leading">
@@ -514,7 +529,9 @@ const ThreadPanelHeader = memo(function ThreadPanelHeader({
           <Badge variant="outline" className="center-document-type-badge">{panelAsset.kind === "pdf" ? "PDF" : "Text"}</Badge>
         ) : panelDocument !== null ? (
           <>
-            <Badge variant="outline" className="center-document-type-badge">{formatDocumentType(panelDocument.type)}</Badge>
+            {!isHeaderBadgeHidden && (
+              <Badge variant="outline" className="center-document-type-badge">{formatDocumentType(panelDocument.type)}</Badge>
+            )}
             {panel.isActive && panelDocument.type === "task" ? (
               <select
                 className="center-document-status-select"
@@ -814,6 +831,7 @@ const ThreadPanelSection = memo(function ThreadPanelSection({
           panelDocument={panelDocument}
           formState={panelFormState}
           editorScrollTarget={panel.isActive ? editorScrollTarget : null}
+          isExpanded={panelExpandMode === "full" || (panel.isActive && threadExpanded)}
           centerDocumentSidePanelMode={centerDocumentSidePanelMode}
           showCenterDocumentSidePanel={panel.isActive && showCenterDocumentSidePanel && selectedDocument?.id === panel.documentId}
           centerDocumentSidePanelLabel={centerDocumentSidePanelLabel}
