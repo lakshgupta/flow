@@ -86,6 +86,42 @@ export async function loadGraphValidation(graphPath?: string): Promise<GraphVali
   return requestJSON<GraphValidationResponse>(`/api/graph-validation${query ? `?${query}` : ""}`);
 }
 
+export type SearchFilters = {
+  q: string;
+  tag: string;
+  title: string;
+  description: string;
+  content: string;
+};
+
+export function buildSearchRequestPath(filters: SearchFilters, limit: number): string {
+  const params = new URLSearchParams();
+  const q = filters.q.trim();
+  const tag = filters.tag.trim();
+  const title = filters.title.trim();
+  const description = filters.description.trim();
+  const content = filters.content.trim();
+
+  if (q !== "") {
+    params.set("q", q);
+  }
+  if (tag !== "") {
+    params.set("tag", tag);
+  }
+  if (title !== "") {
+    params.set("title", title);
+  }
+  if (description !== "") {
+    params.set("description", description);
+  }
+  if (content !== "") {
+    params.set("content", content);
+  }
+
+  params.set("limit", String(limit));
+  return `/api/search?${params.toString()}`;
+}
+
 export async function uploadGraphFiles(graphPath: string, files: FileList | File[]): Promise<GraphFileUploadResponse> {
   const form = new FormData();
   for (const file of Array.from(files)) {

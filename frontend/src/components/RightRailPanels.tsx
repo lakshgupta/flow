@@ -172,6 +172,7 @@ function RightRailViolationsPanelComponent({
   onFixViolation,
   onFixAll,
   onSelectViolation,
+  onClose,
 }: RightRailViolationsPanelProps) {
   const errorCount = violations.filter((violation) => violation.severity === "error").length;
   const warningCount = violations.length - errorCount;
@@ -201,6 +202,11 @@ function RightRailViolationsPanelComponent({
                 <span className="graph-violations-count graph-violations-count-warning">{warningCount} warning{warningCount === 1 ? "" : "s"}</span>
               )}
             </div>
+          )}
+          {onClose && (
+            <button type="button" className="graph-violations-close" onClick={onClose} aria-label="Close edge violations">
+              Close
+            </button>
           )}
         </div>
       </CardHeader>

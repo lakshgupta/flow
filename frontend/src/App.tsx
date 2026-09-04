@@ -46,7 +46,8 @@ import { Separator } from "./components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "./components/ui/sidebar";
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./components/ui/tooltip";
-import { requestJSON, deregisterLocalWorkspace, loadCalendarDocuments, loadGraphValidation, loadWorkspaceSnapshot, selectWorkspace, uploadGraphFiles } from "./lib/api";
+import { buildSearchRequestPath, requestJSON, deregisterLocalWorkspace, loadCalendarDocuments, loadGraphValidation, loadWorkspaceSnapshot, selectWorkspace, uploadGraphFiles } from "./lib/api";
+import type { SearchFilters } from "./lib/api";
 import { getWailsCreate, getWailsCreateGraph, getWailsDelete, getWailsDeleteGraph, getWailsMerge, getWailsRenameGraph, getWailsUpdate, getWailsUpdateGraphCanvasDisabled, getWailsUpdateGraphColor, getWailsUpdateHome, type WailsUpdateDocumentPatch } from "./lib/imageUploader";
 import { useGraphCanvasSurfaceActions } from "./hooks/useGraphCanvasSurfaceActions";
 import { useHomeSurfaceActions } from "./hooks/useHomeSurfaceActions";
@@ -178,14 +179,6 @@ const MUTATION_FEEDBACK_TIMEOUT_MS = 2000;
 // fetch keepalive bodies are limited to 64KB; stay safely under it.
 const KEEPALIVE_MAX_BODY_BYTES = 60_000;
 
-type SearchFilters = {
-  q: string;
-  tag: string;
-  title: string;
-  description: string;
-  content: string;
-};
-
 function clampThreadPanelWidth(width: number): number {
   const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1280;
   const maxWidth = Math.max(MIN_THREAD_PANEL_WIDTH_PX, viewportWidth - THREAD_PANEL_VIEWPORT_MARGIN_PX);
@@ -212,34 +205,6 @@ function remapGraphPath(path: string, currentPath: string, nextPath: string): st
     return `${nextPath}${path.slice(currentPath.length)}`;
   }
   return path;
-}
-
-function buildSearchRequestPath(filters: SearchFilters, limit: number): string {
-  const params = new URLSearchParams();
-  const q = filters.q.trim();
-  const tag = filters.tag.trim();
-  const title = filters.title.trim();
-  const description = filters.description.trim();
-  const content = filters.content.trim();
-
-  if (q !== "") {
-    params.set("q", q);
-  }
-  if (tag !== "") {
-    params.set("tag", tag);
-  }
-  if (title !== "") {
-    params.set("title", title);
-  }
-  if (description !== "") {
-    params.set("description", description);
-  }
-  if (content !== "") {
-    params.set("content", content);
-  }
-
-  params.set("limit", String(limit));
-  return `/api/search?${params.toString()}`;
 }
 
 function buildGraphTreeFile(document: DocumentResponse): GraphTreeFileData {
@@ -2259,7 +2224,34 @@ function FlowApp() {
   }, [selectedGraphPath]);
 
   async function refreshShellViews(options?: { nextDocument?: DocumentResponse | null; nextDocumentId?: string; reloadCurrentDocument?: boolean }): Promise<void> {
-    const snapshot = await loadWorkspaceSnapshot();
+    // Parallelize independent fetches: workspace snapshot, current document reload,
+    // and search. Snapshot is required for graph visibility, but document and
+    // search are independent of it and of each other, so they run concurrently
+    // to cut tail latency by one RTT when both are needed.
+    const shouldReloadDocument = options?.reloadCurrentDocument === true && selectedDocumentId !== "" && (options === undefined || options.nextDocument === undefined);
+    const shouldSearch = hasDeferredSearchFilter;
+
+    const snapshotPromise = loadWorkspaceSnapshot();
+    const documentPromise = shouldReloadDocument
+      ? requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(selectedDocumentId)}`).then(
+          (value) => ({ ok: true as const, value }),
+          (error) => ({ ok: false as const, error }),
+        )
+      : null;
+    const searchPromise = shouldSearch
+      ? requestJSON<SearchResult[]>(buildSearchRequestPath({
+          q: deferredSearchQuery,
+          tag: deferredSearchTagQuery,
+          title: deferredSearchTitleQuery,
+          description: deferredSearchDescriptionQuery,
+          content: deferredSearchContentQuery,
+        }, 8)).then(
+          (value) => ({ ok: true as const, value }),
+          (error) => ({ ok: false as const, error }),
+        )
+      : null;
+
+    const snapshot = await snapshotPromise;
     setWorkspace(snapshot.workspaceData);
     setGraphTree(snapshot.graphTreeData);
     void refreshCalendarDocumentList();
@@ -2274,14 +2266,14 @@ function FlowApp() {
         setActiveSurface({ kind: "graph", graphPath: options.nextDocument?.graph ?? selectedGraphPath });
       });
       setSelectedCanvasNodeId(options.nextDocument.id);
-    } else if (options?.reloadCurrentDocument && selectedDocumentId !== "") {
-      try {
-        const refreshedDocument = await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(selectedDocumentId)}`);
-        syncSelectedDocumentState(refreshedDocument);
+    } else if (documentPromise) {
+      const result = await documentPromise;
+      if (result.ok) {
+        syncSelectedDocumentState(result.value);
         setPanelError("");
-      } catch (loadError) {
+      } else {
         syncSelectedDocumentState(null);
-        setPanelError(toErrorMessage(loadError));
+        setPanelError(toErrorMessage(result.error));
       }
     }
 
@@ -2300,16 +2292,15 @@ function FlowApp() {
       }
     }
 
-    if (hasDeferredSearchFilter) {
-      const response = await requestJSON<SearchResult[]>(buildSearchRequestPath({
-        q: deferredSearchQuery,
-        tag: deferredSearchTagQuery,
-        title: deferredSearchTitleQuery,
-        description: deferredSearchDescriptionQuery,
-        content: deferredSearchContentQuery,
-      }, 8));
-      setSearchResults(response);
-      setSearchError("");
+    if (searchPromise) {
+      const result = await searchPromise;
+      if (result.ok) {
+        setSearchResults(result.value);
+        setSearchError("");
+      } else {
+        setSearchResults([]);
+        setSearchError(toErrorMessage((result as { error: unknown }).error));
+      }
     }
   }
 
