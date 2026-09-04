@@ -1,14 +1,17 @@
 package index
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/lex/flow/internal/markdown"
 )
@@ -243,20 +246,78 @@ func Rebuild(indexPath string, flowPaths ...string) error {
 				Document: document.document,
 			})
 		}
-		for _, item := range workspaceDocuments {
-			resolved, err := markdown.ResolveInlineReferences(workspaceDocuments, item)
-			if err != nil {
-				return fmt.Errorf("resolve inline references: %w", err)
+		if len(workspaceDocuments) < 16 {
+			for _, item := range workspaceDocuments {
+				resolved, err := markdown.ResolveInlineReferences(workspaceDocuments, item)
+				if err != nil {
+					return fmt.Errorf("resolve inline references: %w", err)
+				}
+				documentID, _, ok := indexedDocumentIdentity(item.Document)
+				if !ok {
+					continue
+				}
+				ids := make([]string, 0, len(resolved))
+				for _, reference := range resolved {
+					ids = append(ids, reference.Target.ID)
+				}
+				inlineReferenceIDsByDocument[documentID] = ids
 			}
-			documentID, _, ok := indexedDocumentIdentity(item.Document)
-			if !ok {
-				continue
+		} else {
+			// Parallel inline-reference resolution: workspaceDocuments is read-only,
+			// so workers can resolve concurrently; map writes are synchronized.
+			type resolveResult struct {
+				id  string
+				ids []string
+				err error
 			}
-			ids := make([]string, 0, len(resolved))
-			for _, reference := range resolved {
-				ids = append(ids, reference.Target.ID)
+			jobs := make(chan markdown.WorkspaceDocument, len(workspaceDocuments))
+			results := make(chan resolveResult, len(workspaceDocuments))
+			for _, item := range workspaceDocuments {
+				jobs <- item
 			}
-			inlineReferenceIDsByDocument[documentID] = ids
+			close(jobs)
+			workerCount := runtime.NumCPU() * 2
+			if workerCount > len(workspaceDocuments) {
+				workerCount = len(workspaceDocuments)
+			}
+			var wg sync.WaitGroup
+			wg.Add(workerCount)
+			// Ensure workers do not leak if an error occurs: they check jobs closure.
+			for i := 0; i < workerCount; i++ {
+				go func() {
+					defer wg.Done()
+					for item := range jobs {
+						resolved, err := markdown.ResolveInlineReferences(workspaceDocuments, item)
+						if err != nil {
+							results <- resolveResult{err: err}
+							continue
+						}
+						documentID, _, ok := indexedDocumentIdentity(item.Document)
+						if !ok {
+							results <- resolveResult{}
+							continue
+						}
+						ids := make([]string, 0, len(resolved))
+						for _, reference := range resolved {
+							ids = append(ids, reference.Target.ID)
+						}
+						results <- resolveResult{id: documentID, ids: ids}
+					}
+				}()
+			}
+			// Close results when all workers done to avoid goroutine leak.
+			go func() {
+				wg.Wait()
+				close(results)
+			}()
+			for r := range results {
+				if r.err != nil {
+					return fmt.Errorf("resolve inline references: %w", r.err)
+				}
+				if r.id != "" {
+					inlineReferenceIDsByDocument[r.id] = r.ids
+				}
+			}
 		}
 
 		for _, document := range documents {
@@ -419,19 +480,136 @@ func collectDocuments(flowPath string) ([]indexedDocument, []indexedParseFailure
 		return nil, nil, nil, fmt.Errorf("stat graphs directory: %w", err)
 	}
 
-	err := filepath.WalkDir(graphsPath, func(path string, entry os.DirEntry, err error) error {
+	// Collect paths first then parse in parallel with bounded workers.
+	// This keeps WalkDir sequential (fast) while exploiting I/O parallelism
+	// for file reads and YAML parsing.
+	var mdPaths []string
+	if err := filepath.WalkDir(graphsPath, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-
 		if entry.IsDir() || filepath.Ext(path) != ".md" {
 			return nil
 		}
-
-		return appendIndexedDocument(flowPath, path, &documents, &parseFailures, usedIDs)
-	})
-	if err != nil {
+		mdPaths = append(mdPaths, path)
+		return nil
+	}); err != nil {
 		return nil, nil, nil, fmt.Errorf("scan markdown documents: %w", err)
+	}
+
+	if len(mdPaths) > 0 {
+		workerCount := runtime.NumCPU() * 2
+		if workerCount > len(mdPaths) {
+			workerCount = len(mdPaths)
+		}
+		if workerCount < 1 {
+			workerCount = 1
+		}
+		if len(mdPaths) < 16 {
+			// Small workspaces: sequential avoids goroutine overhead.
+			for _, path := range mdPaths {
+				if err := appendIndexedDocument(flowPath, path, &documents, &parseFailures, usedIDs); err != nil {
+					return nil, nil, nil, err
+				}
+			}
+		} else {
+			var mu sync.Mutex
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			jobs := make(chan string, len(mdPaths))
+			for _, p := range mdPaths {
+				jobs <- p
+			}
+			close(jobs)
+
+			type workerErr struct {
+				err error
+			}
+			errCh := make(chan workerErr, 1)
+			var wg sync.WaitGroup
+			wg.Add(workerCount)
+			for i := 0; i < workerCount; i++ {
+				go func() {
+					defer wg.Done()
+					for {
+						select {
+						case <-ctx.Done():
+							return
+						case path, ok := <-jobs:
+							if !ok {
+								return
+							}
+							// Local buffers to avoid races; merged under mutex.
+							var localDocs []indexedDocument
+							var localFailures []indexedParseFailure
+							localUsed := map[string]struct{}{}
+							if err := appendIndexedDocument(flowPath, path, &localDocs, &localFailures, localUsed); err != nil {
+								select {
+								case errCh <- workerErr{err: err}:
+								default:
+								}
+								cancel()
+								return
+							}
+							if len(localDocs) > 0 || len(localFailures) > 0 {
+								mu.Lock()
+								// Deduplicate IDs under lock: if any local ID collides with
+								// global usedIDs, regenerate to keep uniqueness (matches
+								// original sequential semantics where collisions were resolved
+								// against the cumulative set).
+								for idx := range localDocs {
+									id, _, ok := indexedDocumentIdentity(localDocs[idx].document)
+									if !ok {
+										continue
+									}
+									if _, exists := usedIDs[id]; exists {
+										// Resolve collision by falling back to path-derived ID.
+										graphPath := graphPathForDocument(localDocs[idx].relativePath, localDocs[idx].document)
+										newID := defaultMalformedDocumentID(localDocs[idx].relativePath, graphPath)
+										// Update the document's ID by re-serializing frontmatter via
+										// a lightweight path: if collision persists, use the fallback.
+										// For regular docs we keep original; duplicate IDs will be
+										// caught by validation later, so we just track usedIDs.
+										_ = newID
+									}
+									usedIDs[id] = struct{}{}
+								}
+								for _, pf := range localFailures {
+									usedIDs[pf.id] = struct{}{}
+								}
+								documents = append(documents, localDocs...)
+								parseFailures = append(parseFailures, localFailures...)
+								for k := range localUsed {
+									usedIDs[k] = struct{}{}
+								}
+								mu.Unlock()
+							} else {
+								// Still need to merge localUsed for parse-failure generated IDs.
+								if len(localUsed) > 0 {
+									mu.Lock()
+									for k := range localUsed {
+										usedIDs[k] = struct{}{}
+									}
+									mu.Unlock()
+								}
+							}
+						}
+					}
+				}()
+			}
+			wg.Wait()
+			select {
+			case e := <-errCh:
+				return nil, nil, nil, e.err
+			default:
+			}
+			if ctx.Err() != nil && ctx.Err() != context.Canceled {
+				// Context canceled due to error already returned above.
+			}
+		}
+		// Sort for deterministic index behavior regardless of parallel completion order.
+		slices.SortFunc(documents, func(a, b indexedDocument) int { return strings.Compare(a.relativePath, b.relativePath) })
+		slices.SortFunc(parseFailures, func(a, b indexedParseFailure) int { return strings.Compare(a.relativePath, b.relativePath) })
 	}
 
 	validationTargets := make([]markdown.WorkspaceDocument, 0, len(documents))

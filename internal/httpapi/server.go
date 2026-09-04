@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/lex/flow/internal/buildinfo"
@@ -1082,21 +1083,49 @@ func (handler *apiHandler) handleWorkspaceFile(writer http.ResponseWriter, reque
 }
 
 func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.Request) {
-	nodes, err := index.ReadGraphNodesWorkspace(handler.resolvedRoot().IndexPath, handler.resolvedRoot().FlowPath)
-	if err != nil {
-		// Keep the GUI tree route responsive even when index projection data is unavailable.
-		nodes = nil
-	}
-
-	files, err := index.ReadGraphTreeFilesWorkspace(handler.resolvedRoot().IndexPath, handler.resolvedRoot().FlowPath)
-	if err != nil {
-		files = nil
-	}
-
-	home, err := LoadHomeResponse(handler.resolvedRoot())
-	if err != nil {
-		home = HomeResponse{ID: "home", Type: "home", Title: "Home", Path: filepath.ToSlash(filepath.Join(workspace.DataDirName, workspace.HomeFileName))}
-	}
+	// Fetch independent index projections in parallel to reduce tail latency.
+	// Each query opens its own SQLite connection (openIndexDB is per-call, no
+	// shared state), so they can run concurrently. Errors are best-effort: a
+	// stale or legacy index never breaks the tree.
+	var (
+		nodes              []index.GraphNode
+		files              []index.GraphTreeFile
+		home               HomeResponse
+		persistedViolations []markdown.EdgeTypeViolation
+	)
+	var wg sync.WaitGroup
+	wg.Add(4)
+	go func() {
+		defer wg.Done()
+		n, err := index.ReadGraphNodesWorkspace(handler.resolvedRoot().IndexPath, handler.resolvedRoot().FlowPath)
+		if err == nil {
+			nodes = n
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		f, err := index.ReadGraphTreeFilesWorkspace(handler.resolvedRoot().IndexPath, handler.resolvedRoot().FlowPath)
+		if err == nil {
+			files = f
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		h, err := LoadHomeResponse(handler.resolvedRoot())
+		if err == nil {
+			home = h
+		} else {
+			home = HomeResponse{ID: "home", Type: "home", Title: "Home", Path: filepath.ToSlash(filepath.Join(workspace.DataDirName, workspace.HomeFileName))}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		v, err := index.ReadGraphEdgeViolationsWorkspace(handler.resolvedRoot().IndexPath, handler.resolvedRoot().FlowPath)
+		if err == nil {
+			persistedViolations = v
+		}
+	}()
+	wg.Wait()
 
 	filesByGraph := make(map[string][]graphTreeFileResponse)
 	for _, file := range files {
@@ -1128,21 +1157,19 @@ func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.R
 		graphCanvasEnabled = enabled
 	}
 
-	// Edge-type violations are advisory derived data: read them best-effort so
-	// a stale or legacy index can never break the tree. Counts are prefix-scoped
-	// like the graph-validation endpoint, so a row's badge matches what opening
-	// the graph shows in the header indicator.
+	// Edge-type violations are advisory derived data: already fetched in parallel
+	// above, so no additional I/O. Counts are prefix-scoped like the
+	// graph-validation endpoint, so a row's badge matches what opening the graph
+	// shows in the header indicator.
 	violationsByGraph := map[string]struct{ errors, warnings int }{}
-	if persistedViolations, violationErr := index.ReadGraphEdgeViolationsWorkspace(handler.resolvedRoot().IndexPath, handler.resolvedRoot().FlowPath); violationErr == nil {
-		for _, violation := range persistedViolations {
-			counts := violationsByGraph[violation.Graph]
-			if violation.Severity == markdown.EdgeTypeSeverityError {
-				counts.errors++
-			} else {
-				counts.warnings++
-			}
-			violationsByGraph[violation.Graph] = counts
+	for _, violation := range persistedViolations {
+		counts := violationsByGraph[violation.Graph]
+		if violation.Severity == markdown.EdgeTypeSeverityError {
+			counts.errors++
+		} else {
+			counts.warnings++
 		}
+		violationsByGraph[violation.Graph] = counts
 	}
 	graphViolationCounts := func(graphPath string) (int, int) {
 		errorCount, warningCount := 0, 0
@@ -1202,60 +1229,34 @@ func (handler *apiHandler) handleGraphTree(writer http.ResponseWriter, _ *http.R
 }
 
 func pruneWorkspaceGraphDirectoryColors(root workspace.Root, nodes []index.GraphNode) (map[string]string, error) {
-	workspaceConfig, err := readWorkspaceConfig(root)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(workspaceConfig.GUI.GraphDirectoryColors) == 0 {
-		return map[string]string{}, nil
-	}
-
-	// Graph nodes are read from index projection data. If unavailable, avoid destructive
-	// pruning and preserve configured colors until a reliable graph projection is present.
-	if len(nodes) == 0 {
-		return workspaceConfig.GUI.GraphDirectoryColors, nil
-	}
-
-	validGraphPaths := make(map[string]struct{}, len(nodes))
-	for _, node := range nodes {
-		validGraphPaths[node.GraphPath] = struct{}{}
-	}
-
-	nextColors := make(map[string]string, len(workspaceConfig.GUI.GraphDirectoryColors))
-	changed := false
-	for graphPath, color := range workspaceConfig.GUI.GraphDirectoryColors {
-		if _, ok := validGraphPaths[graphPath]; !ok {
-			changed = true
-			continue
-		}
-		nextColors[graphPath] = color
-	}
-
-	if !changed {
-		return workspaceConfig.GUI.GraphDirectoryColors, nil
-	}
-
-	workspaceConfig.GUI.GraphDirectoryColors = nextColors
-	if err := PersistWorkspaceConfig(root, workspaceConfig); err != nil {
-		return nil, err
-	}
-
-	return nextColors, nil
+	return pruneWorkspaceGraphMap(root, nodes,
+		func(cfg config.Workspace) map[string]string { return cfg.GUI.GraphDirectoryColors },
+		func(cfg *config.Workspace, m map[string]string) { cfg.GUI.GraphDirectoryColors = m },
+	)
 }
 
 func pruneWorkspaceGraphCanvasEnabled(root workspace.Root, nodes []index.GraphNode) (map[string]bool, error) {
+	return pruneWorkspaceGraphMap(root, nodes,
+		func(cfg config.Workspace) map[string]bool { return cfg.GUI.GraphCanvasEnabled },
+		func(cfg *config.Workspace, m map[string]bool) { cfg.GUI.GraphCanvasEnabled = m },
+	)
+}
+
+func pruneWorkspaceGraphMap[V any](root workspace.Root, nodes []index.GraphNode, getMap func(config.Workspace) map[string]V, setMap func(*config.Workspace, map[string]V)) (map[string]V, error) {
 	workspaceConfig, err := readWorkspaceConfig(root)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(workspaceConfig.GUI.GraphCanvasEnabled) == 0 {
-		return map[string]bool{}, nil
+	currentMap := getMap(workspaceConfig)
+	if len(currentMap) == 0 {
+		return map[string]V{}, nil
 	}
 
+	// Graph nodes are read from index projection data. If unavailable, avoid destructive
+	// pruning and preserve configured values until a reliable graph projection is present.
 	if len(nodes) == 0 {
-		return workspaceConfig.GUI.GraphCanvasEnabled, nil
+		return currentMap, nil
 	}
 
 	validGraphPaths := make(map[string]struct{}, len(nodes))
@@ -1263,26 +1264,26 @@ func pruneWorkspaceGraphCanvasEnabled(root workspace.Root, nodes []index.GraphNo
 		validGraphPaths[node.GraphPath] = struct{}{}
 	}
 
-	nextEnabled := make(map[string]bool, len(workspaceConfig.GUI.GraphCanvasEnabled))
+	nextMap := make(map[string]V, len(currentMap))
 	changed := false
-	for graphPath, enabled := range workspaceConfig.GUI.GraphCanvasEnabled {
+	for graphPath, value := range currentMap {
 		if _, ok := validGraphPaths[graphPath]; !ok {
 			changed = true
 			continue
 		}
-		nextEnabled[graphPath] = enabled
+		nextMap[graphPath] = value
 	}
 
 	if !changed {
-		return workspaceConfig.GUI.GraphCanvasEnabled, nil
+		return currentMap, nil
 	}
 
-	workspaceConfig.GUI.GraphCanvasEnabled = nextEnabled
+	setMap(&workspaceConfig, nextMap)
 	if err := PersistWorkspaceConfig(root, workspaceConfig); err != nil {
 		return nil, err
 	}
 
-	return nextEnabled, nil
+	return nextMap, nil
 }
 
 func (handler *apiHandler) handleGraphCanvas(writer http.ResponseWriter, request *http.Request) {

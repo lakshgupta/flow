@@ -1,11 +1,15 @@
 package workspace
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sort"
 	"strings"
+	"sync"
 
 	"github.com/lex/flow/internal/markdown"
 )
@@ -60,27 +64,129 @@ func loadDocuments(flowPath string, bestEffort bool) ([]markdown.WorkspaceDocume
 		return nil, nil, fmt.Errorf("stat graphs directory: %w", err)
 	}
 
-	err := filepath.WalkDir(graphsPath, func(path string, entry os.DirEntry, err error) error {
+	// Collect candidate file paths sequentially (fast WalkDir), then parse in parallel
+	// to exploit I/O concurrency. This is bounded to avoid excessive goroutines or
+	// memory use on large workspaces.
+	var mdPaths []string
+	if err := filepath.WalkDir(graphsPath, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-
 		if entry.IsDir() || filepath.Ext(path) != ".md" {
 			return nil
 		}
-
-		issue, appendErr := appendWorkspaceDocument(flowPath, path, &documents, bestEffort)
-		if appendErr != nil {
-			return appendErr
-		}
-		if issue != nil {
-			issues = append(issues, *issue)
-		}
+		mdPaths = append(mdPaths, path)
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, nil, fmt.Errorf("scan workspace documents: %w", err)
 	}
+
+	if len(mdPaths) == 0 {
+		return documents, issues, nil
+	}
+
+	// Bounded parallel parsing: at most NumCPU*2 workers, but never more than files.
+	workerCount := runtime.NumCPU() * 2
+	if workerCount > len(mdPaths) {
+		workerCount = len(mdPaths)
+	}
+	if workerCount < 1 {
+		workerCount = 1
+	}
+	// For small workspaces sequential is faster (avoid goroutine overhead).
+	if len(mdPaths) < 16 {
+		for _, path := range mdPaths {
+			issue, appendErr := appendWorkspaceDocument(flowPath, path, &documents, bestEffort)
+			if appendErr != nil {
+				return nil, nil, appendErr
+			}
+			if issue != nil {
+				issues = append(issues, *issue)
+			}
+		}
+		return documents, issues, nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	jobs := make(chan string, len(mdPaths))
+	for _, p := range mdPaths {
+		jobs <- p
+	}
+	close(jobs)
+
+	type parseResult struct {
+		doc   *markdown.WorkspaceDocument
+		issue *DocumentLoadIssue
+		err   error
+	}
+
+	results := make(chan parseResult, len(mdPaths))
+	var wg sync.WaitGroup
+	wg.Add(workerCount)
+	for i := 0; i < workerCount; i++ {
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case path, ok := <-jobs:
+					if !ok {
+						return
+					}
+					// Each worker parses one file into a temporary slot to avoid
+					// races on shared slices; results are aggregated after wg.Wait.
+					var tmp []markdown.WorkspaceDocument
+					issue, appendErr := appendWorkspaceDocument(flowPath, path, &tmp, bestEffort)
+					if appendErr != nil {
+						// Non-best-effort parse error: cancel other workers and report.
+						select {
+						case results <- parseResult{err: appendErr}:
+						case <-ctx.Done():
+						}
+						cancel()
+						return
+					}
+					if issue != nil {
+						results <- parseResult{issue: issue}
+						continue
+					}
+					if len(tmp) == 1 {
+						doc := tmp[0]
+						results <- parseResult{doc: &doc}
+					}
+				}
+			}
+		}()
+	}
+
+	// Close results once all workers exit to avoid goroutine leak on the
+	// collector; this is done in a separate goroutine so wg.Wait does not block
+	// the main path from draining results.
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	for r := range results {
+		if r.err != nil {
+			return nil, nil, r.err
+		}
+		if r.issue != nil {
+			issues = append(issues, *r.issue)
+			continue
+		}
+		if r.doc != nil {
+			documents = append(documents, *r.doc)
+		}
+	}
+
+	// Sort to keep deterministic order regardless of parallel completion order,
+	// matching the stable WalkDir ordering expected by callers and tests.
+	sort.Slice(documents, func(i, j int) bool { return documents[i].Path < documents[j].Path })
+	sort.Slice(issues, func(i, j int) bool { return issues[i].Path < issues[j].Path })
 
 	return documents, issues, nil
 }

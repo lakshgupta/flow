@@ -407,12 +407,24 @@ func MergeDocuments(root Root, input MergeDocumentsInput) (markdown.WorkspaceDoc
 		return markdown.WorkspaceDocument{}, InvalidMutationError{Err: errors.New("merge requires at least 2 document IDs")}
 	}
 
-	// Resolve each document by ID.
+	// Resolve each document by ID with a single scan to avoid O(n) filesystem walks.
+	allDocuments, err := LoadDocuments(root.FlowPath)
+	if err != nil {
+		return markdown.WorkspaceDocument{}, err
+	}
+	docsByID := make(map[string]markdown.WorkspaceDocument, len(allDocuments))
+	for _, item := range allDocuments {
+		docsByID[documentID(item.Document)] = item
+	}
 	docs := make([]markdown.WorkspaceDocument, 0, len(input.DocumentIDs))
 	for _, id := range input.DocumentIDs {
-		doc, err := findDocumentByID(root.FlowPath, id)
-		if err != nil {
-			return markdown.WorkspaceDocument{}, err
+		trimmed := strings.TrimSpace(id)
+		if trimmed == "" {
+			return markdown.WorkspaceDocument{}, InvalidMutationError{Err: fmt.Errorf("document id must not be empty")}
+		}
+		doc, ok := docsByID[trimmed]
+		if !ok {
+			return markdown.WorkspaceDocument{}, DocumentNotFoundError{Selector: trimmed}
 		}
 		docs = append(docs, doc)
 	}
@@ -501,7 +513,7 @@ func MergeDocuments(root Root, input MergeDocumentsInput) (markdown.WorkspaceDoc
 	}
 
 	// Retarget incoming links that pointed at removed documents so they now point to the target.
-	allDocuments, err := LoadDocuments(root.FlowPath)
+	allDocuments, err = LoadDocuments(root.FlowPath)
 	if err != nil {
 		return markdown.WorkspaceDocument{}, err
 	}
@@ -604,13 +616,21 @@ func AddLink(root Root, fromID, toID, context string, relationships []string) er
 		return InvalidMutationError{Err: errors.New("link source and target must be different documents")}
 	}
 
-	if _, err := findDocumentByID(root.FlowPath, toID); err != nil {
-		return err
-	}
-
-	sourceDoc, err := findDocumentByID(root.FlowPath, fromID)
+	// Single scan to validate both endpoints and locate the source document.
+	allDocuments, err := LoadDocuments(root.FlowPath)
 	if err != nil {
 		return err
+	}
+	docsByID := make(map[string]markdown.WorkspaceDocument, len(allDocuments))
+	for _, item := range allDocuments {
+		docsByID[documentID(item.Document)] = item
+	}
+	if _, ok := docsByID[toID]; !ok {
+		return DocumentNotFoundError{Selector: toID}
+	}
+	sourceDoc, ok := docsByID[fromID]
+	if !ok {
+		return DocumentNotFoundError{Selector: fromID}
 	}
 
 	currentLinks := documentLinks(sourceDoc.Document)
