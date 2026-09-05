@@ -407,6 +407,8 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
                   placeholder="Document title"
                   value={formState.title}
                   onChange={(event) => handleFieldChange("title", event.target.value)}
+                  onClick={(event) => event.stopPropagation()}
+                  onMouseDown={(event) => event.stopPropagation()}
                   aria-label="Document title"
                 />
               )}
@@ -417,6 +419,8 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
               rows={3}
               value={formState.description}
               onChange={(event) => handleFieldChange("description", event.target.value)}
+              onClick={(event) => event.stopPropagation()}
+              onMouseDown={(event) => event.stopPropagation()}
               aria-label="Document description"
             />
           </>
@@ -428,6 +432,8 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
                 placeholder="Document title"
                 value={formState.title}
                 onChange={(event) => handleFieldChange("title", event.target.value)}
+                onClick={(event) => event.stopPropagation()}
+                onMouseDown={(event) => event.stopPropagation()}
                 aria-label="Document title"
               />
             )}
@@ -437,6 +443,8 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
               rows={2}
               value={formState.description}
               onChange={(event) => handleFieldChange("description", event.target.value)}
+              onClick={(event) => event.stopPropagation()}
+              onMouseDown={(event) => event.stopPropagation()}
               aria-label="Document description"
             />
           </>
@@ -795,7 +803,11 @@ const ThreadPanelSection = memo(function ThreadPanelSection({
       if (!(target instanceof HTMLElement)) {
         return;
       }
-      if (target.closest("button") !== null || target.closest("a") !== null) {
+      if (
+        target.closest("button") !== null ||
+        target.closest("a") !== null ||
+        target.closest("input, textarea, select, [contenteditable]") !== null
+      ) {
         return;
       }
       actions.activateThreadDocument(panel.documentId, panel.graphPath);
