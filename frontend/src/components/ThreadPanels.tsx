@@ -10,6 +10,7 @@ import { Button } from "./ui/button";
 import { Skeleton } from "./ui/skeleton";
 
 import { createDocumentFormState, formatDocumentType, isBodyLeadingHeadingDuplicated } from "../lib/docUtils";
+import { graphCanvasTypeLabel } from "../lib/graphCanvasUtils";
 import { graphDirectoryColorHex, resolveGraphDirectoryColor } from "../lib/graphColors";
 import { TASK_STATUS_OPTIONS } from "../lib/graphCanvasUtils";
 import { parseFlowAssetHref, parseFlowDateHref, parseFlowReferenceHref } from "../richText";
@@ -368,24 +369,51 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
 
   return (
     <div className="thread-panel-shell">
-      <div className="thread-panel-title-block">
-        {!isDeduped && (
-          <input
-            className="center-document-toolbar-title"
-            placeholder="Document title"
-            value={formState.title}
-            onChange={(event) => handleFieldChange("title", event.target.value)}
-            aria-label="Document title"
-          />
+      <div className={`thread-panel-title-block ${isExpanded ? "thread-panel-title-block-expanded" : ""}`}>
+        {isExpanded ? (
+          <>
+            <div className="thread-expanded-title-row">
+              <span className="graph-canvas-node-badge">{graphCanvasTypeLabel(panelDocument.type)}</span>
+              {!isDeduped && (
+                <input
+                  className="center-document-toolbar-title thread-expanded-title-input"
+                  placeholder="Document title"
+                  value={formState.title}
+                  onChange={(event) => handleFieldChange("title", event.target.value)}
+                  aria-label="Document title"
+                />
+              )}
+            </div>
+            <textarea
+              className="home-document-description thread-panel-description-full"
+              placeholder="Add a brief description…"
+              rows={2}
+              value={formState.description}
+              onChange={(event) => handleFieldChange("description", event.target.value)}
+              aria-label="Document description"
+            />
+          </>
+        ) : (
+          <>
+            {!isDeduped && (
+              <input
+                className="center-document-toolbar-title"
+                placeholder="Document title"
+                value={formState.title}
+                onChange={(event) => handleFieldChange("title", event.target.value)}
+                aria-label="Document title"
+              />
+            )}
+            <textarea
+              className="home-document-description thread-panel-description-full"
+              placeholder="Add a brief description…"
+              rows={2}
+              value={formState.description}
+              onChange={(event) => handleFieldChange("description", event.target.value)}
+              aria-label="Document description"
+            />
+          </>
         )}
-        <textarea
-          className="home-document-description thread-panel-description-full"
-          placeholder="Add a brief description…"
-          rows={2}
-          value={formState.description}
-          onChange={(event) => handleFieldChange("description", event.target.value)}
-          aria-label="Document description"
-        />
       </div>
 
       <div

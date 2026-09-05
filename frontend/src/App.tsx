@@ -1764,6 +1764,45 @@ function FlowApp() {
     }
   }
 
+  async function handleGraphCanvasNodeTitleSave(nodeId: string, title: string): Promise<void> {
+    const currentNode = graphCanvasData?.nodes.find((node) => node.id === nodeId) ?? null;
+    if (currentNode === null) {
+      return;
+    }
+
+    const nextTitle = title.trim();
+    if (nextTitle === "" || (currentNode.title ?? "").trim() === nextTitle) {
+      return;
+    }
+
+    try {
+      const wailsUpdate = getWailsUpdate();
+      const updatedDocument = wailsUpdate !== null
+        ? await wailsUpdate({ documentID: nodeId, patch: { title: nextTitle } })
+        : await requestJSON<DocumentResponse>(`/api/documents/${encodeURIComponent(nodeId)}`, {
+            method: "PUT",
+            body: JSON.stringify({ title: nextTitle }),
+          });
+
+      setGraphCanvasData((current) => {
+        if (current === null) return current;
+        return {
+          ...current,
+          nodes: current.nodes.map((node) => node.id !== updatedDocument.id ? node : { ...node, title: updatedDocument.title, updatedAt: updatedDocument.updatedAt }),
+        };
+      });
+      if (selectedDocumentRef.current?.id === updatedDocument.id) {
+        syncSelectedDocumentState(updatedDocument, { preserveFormState: false });
+      }
+      if (documentThreadRef.current.some((entry) => entry.documentId === updatedDocument.id)) {
+        setThreadDocumentsById((current) => ({ ...current, [updatedDocument.id]: updatedDocument }));
+      }
+      setGraphTree((current) => updateGraphTreeDocumentEntry(current, updatedDocument, updatedDocument));
+    } catch (mutationFailure) {
+      setMutationError(toErrorMessage(mutationFailure));
+    }
+  }
+
   async function handleGraphCanvasNodeStatusChange(nodeId: string, status: string): Promise<void> {
     const currentNode = graphCanvasData?.nodes.find((node) => node.id === nodeId) ?? null;
     if (currentNode === null) {
@@ -4598,6 +4637,7 @@ function FlowApp() {
     handleGraphCanvasOverlayPointerDown,
     handleConnectionHandlePointerDown,
     handleGraphCanvasNodeDescriptionSave,
+    handleGraphCanvasNodeTitleSave,
     handleGraphCanvasNodeStatusChange,
     previewGraphCanvasNodeLayout: updateGraphCanvasNodeLayout,
     persistGraphCanvasNodeLayout,

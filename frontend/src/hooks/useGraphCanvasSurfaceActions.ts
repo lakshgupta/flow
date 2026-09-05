@@ -56,6 +56,7 @@ type UseGraphCanvasSurfaceActionsArgs = {
   handleGraphCanvasOverlayPointerDown: (event: ReactPointerEvent<HTMLDivElement>, nodeId: string) => void;
   handleConnectionHandlePointerDown: (event: ReactPointerEvent<HTMLDivElement>, nodeId: string) => void;
   handleGraphCanvasNodeDescriptionSave: (nodeId: string, description: string) => Promise<void> | void;
+  handleGraphCanvasNodeTitleSave: (nodeId: string, title: string) => Promise<void> | void;
   handleGraphCanvasNodeStatusChange: (nodeId: string, status: string) => Promise<void> | void;
   previewGraphCanvasNodeLayout: (nodeId: string, layout: { width?: number; height?: number; zIndex?: number }) => void;
   persistGraphCanvasNodeLayout: (nodeId: string, layout: { width?: number; height?: number; zIndex?: number }) => Promise<void> | void;
@@ -104,6 +105,7 @@ export function useGraphCanvasSurfaceActions({
   handleGraphCanvasOverlayPointerDown,
   handleConnectionHandlePointerDown,
   handleGraphCanvasNodeDescriptionSave,
+  handleGraphCanvasNodeTitleSave,
   handleGraphCanvasNodeStatusChange,
   previewGraphCanvasNodeLayout,
   persistGraphCanvasNodeLayout,
@@ -154,6 +156,7 @@ export function useGraphCanvasSurfaceActions({
     handleGraphCanvasOverlayPointerDown,
     handleConnectionHandlePointerDown,
     handleGraphCanvasNodeDescriptionSave,
+    handleGraphCanvasNodeTitleSave,
     handleGraphCanvasNodeStatusChange,
     previewGraphCanvasNodeLayout,
     persistGraphCanvasNodeLayout,
@@ -230,6 +233,10 @@ export function useGraphCanvasSurfaceActions({
 
   const handleGraphCanvasNodeDescriptionSaveBridge = useCallback((nodeId: string, description: string) => {
     void actionRefs.current.handleGraphCanvasNodeDescriptionSave(nodeId, description);
+  }, []);
+
+  const handleGraphCanvasNodeTitleSaveBridge = useCallback((nodeId: string, title: string) => {
+    void actionRefs.current.handleGraphCanvasNodeTitleSave(nodeId, title);
   }, []);
 
   const handleGraphCanvasNodeStatusChangeBridge = useCallback((nodeId: string, status: string) => {
@@ -464,6 +471,7 @@ export function useGraphCanvasSurfaceActions({
     onNodePointerDown: handleGraphCanvasOverlayNodePointerDownBridge,
     onHandlePointerDown: handleGraphCanvasOverlayHandlePointerDownBridge,
     onNodeDescriptionSave: handleGraphCanvasNodeDescriptionSaveBridge,
+    onNodeTitleSave: handleGraphCanvasNodeTitleSaveBridge,
     onNodeStatusChange: handleGraphCanvasNodeStatusChangeBridge,
     onNodeResizePreview: handleGraphCanvasNodeResizePreviewBridge,
     onNodeResizeCommit: handleGraphCanvasNodeResizeCommitBridge,
@@ -491,6 +499,7 @@ export function useGraphCanvasSurfaceActions({
     handleGraphCanvasEdgeHoverBridge,
     handleGraphCanvasMergeDocumentsBridge,
     handleGraphCanvasNodeDescriptionSaveBridge,
+    handleGraphCanvasNodeTitleSaveBridge,
     handleGraphCanvasNodeStatusChangeBridge,
     handleGraphCanvasNodeResizeCommitBridge,
     handleGraphCanvasNodeResizePreviewBridge,

@@ -30,6 +30,7 @@ export function GraphCanvasOverlayNodes({
     onNodePointerDown,
     onHandlePointerDown,
     onNodeDescriptionSave,
+    onNodeTitleSave,
     onNodeStatusChange,
     onNodeResizePreview,
     onNodeResizeCommit,
@@ -39,6 +40,7 @@ export function GraphCanvasOverlayNodes({
     openNodeContextMenu,
   } = controller.actions;
   const [draftDescriptions, setDraftDescriptions] = useState<Record<string, string>>({});
+  const [draftTitles, setDraftTitles] = useState<Record<string, string>>({});
   const resizeSessionRef = useRef<{
     nodeId: string;
     startClientX: number;
@@ -70,6 +72,22 @@ export function GraphCanvasOverlayNodes({
     });
   }
 
+  function handleTitleCommit(nodeId: string, fallbackTitle: string): void {
+    const draft = draftTitles[nodeId];
+    if (draft === undefined) return;
+    const nextTitle = draft.trim();
+    if (nextTitle === "" || nextTitle === (fallbackTitle ?? "").trim()) {
+      setDraftTitles((c) => { const n = { ...c }; delete n[nodeId]; return n; });
+      return;
+    }
+    onNodeTitleSave(nodeId, nextTitle);
+    setDraftTitles((current) => {
+      const next = { ...current };
+      delete next[nodeId];
+      return next;
+    });
+  }
+
   function handleDescriptionKeyDown(event: KeyboardEvent<HTMLInputElement>, nodeId: string, fallbackDescription: string): void {
     if (event.key === "Enter") {
       event.preventDefault();
@@ -86,6 +104,21 @@ export function GraphCanvasOverlayNodes({
         delete next[nodeId];
         return next;
       });
+      (event.currentTarget as HTMLInputElement).blur();
+    }
+  }
+
+  function handleTitleKeyDown(event: KeyboardEvent<HTMLInputElement>, nodeId: string, fallbackTitle: string): void {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      (event.currentTarget as HTMLInputElement).blur();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      setDraftTitles((c) => { const n = { ...c }; delete n[nodeId]; return n; });
       (event.currentTarget as HTMLInputElement).blur();
     }
   }
@@ -222,6 +255,22 @@ export function GraphCanvasOverlayNodes({
                     <section className="graph-canvas-node-core">
                       <div className="graph-canvas-node-topline">
                         <span className="graph-canvas-node-badge">{graphCanvasTypeLabel(node.data.type)}</span>
+                        <input
+                          type="text"
+                          className="graph-canvas-node-title-input"
+                          value={draftTitles[node.id] ?? node.data.title}
+                          placeholder="Untitled"
+                          onChange={(event) => {
+                            const nextValue = event.target.value;
+                            setDraftTitles((current) => ({ ...current, [node.id]: nextValue }));
+                          }}
+                          onBlur={() => handleTitleCommit(node.id, node.data.title ?? "")}
+                          onKeyDown={(event) => handleTitleKeyDown(event, node.id, node.data.title ?? "")}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={(event) => event.stopPropagation()}
+                          onDoubleClick={(event) => event.stopPropagation()}
+                          aria-label={`Title for ${node.data.title}`}
+                        />
                         {node.data.type === "task" ? (
                           <select
                             className={`graph-canvas-node-status graph-canvas-node-status-${(node.data.status || "").toLowerCase()}`}
@@ -241,9 +290,23 @@ export function GraphCanvasOverlayNodes({
                             ) : null}
                           </select>
                         ) : null}
-                        <span className="graph-canvas-node-graph">{node.data.graph}</span>
                       </div>
-                      <strong className="graph-canvas-node-title">{node.data.title}</strong>
+                      <input
+                        type="text"
+                        className="graph-canvas-node-description-input"
+                        value={draftDescription}
+                        placeholder="Add a short description"
+                        onChange={(event) => {
+                          const nextValue = event.target.value;
+                          setDraftDescriptions((current) => ({ ...current, [node.id]: nextValue }));
+                        }}
+                        onBlur={() => handleDescriptionCommit(node.id, node.data.description ?? "")}
+                        onKeyDown={(event) => handleDescriptionKeyDown(event, node.id, node.data.description ?? "")}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => event.stopPropagation()}
+                        onDoubleClick={(event) => event.stopPropagation()}
+                        aria-label={`Description for ${node.data.title}`}
+                      />
                       {node.data.previewKind === "image" && node.data.previewURL ? (
                         <div className="graph-canvas-node-preview graph-canvas-node-preview-image graph-canvas-node-preview-resizable">
                           <img src={node.data.previewURL} alt={node.data.previewName ?? node.data.title} loading="lazy" />
@@ -265,22 +328,6 @@ export function GraphCanvasOverlayNodes({
                           <span className="graph-canvas-node-preview-file-name">{node.data.previewName ?? "Attached file"}</span>
                         </div>
                       ) : null}
-                      <input
-                        type="text"
-                        className="graph-canvas-node-description-input"
-                        value={draftDescription}
-                        placeholder="Add a short description"
-                        onChange={(event) => {
-                          const nextValue = event.target.value;
-                          setDraftDescriptions((current) => ({ ...current, [node.id]: nextValue }));
-                        }}
-                        onBlur={() => handleDescriptionCommit(node.id, node.data.description ?? "")}
-                        onKeyDown={(event) => handleDescriptionKeyDown(event, node.id, node.data.description ?? "")}
-                        onPointerDown={(event) => event.stopPropagation()}
-                        onClick={(event) => event.stopPropagation()}
-                        onDoubleClick={(event) => event.stopPropagation()}
-                        aria-label={`Description for ${node.data.title}`}
-                      />
                       {(node.data.previewKind === "image" || node.data.previewKind === "pdf" || node.data.previewKind === "file") && node.data.previewURL ? (
                         <div className="graph-canvas-node-preview-actions" onClick={(e) => e.stopPropagation()}>
                           {node.data.previewKind === "pdf" && (
