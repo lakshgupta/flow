@@ -1311,7 +1311,8 @@ function FlowApp() {
     setRightRailCollapsed(false);
   }
 
-  function toggleThreadExpanded(): void {
+  async function toggleThreadExpanded(): Promise<void> {
+    await flushAllPendingSaves();
     setThreadExpanded((current) => {
       const next = !current;
       if (next) {
@@ -1322,7 +1323,8 @@ function FlowApp() {
     });
   }
 
-  function togglePanelExpandMode(documentId: string): void {
+  async function togglePanelExpandMode(documentId: string): Promise<void> {
+    await flushAllPendingSaves();
     setPanelExpandModes((prev) => {
       const current = prev[documentId];
       const next = { ...prev };
@@ -1337,7 +1339,8 @@ function FlowApp() {
     });
   }
 
-  function toggleCenterDocumentSidePanel(panel: "properties"): void {
+  async function toggleCenterDocumentSidePanel(panel: "properties"): Promise<void> {
+    await flushAllPendingSaves();
     setCenterDocumentSidePanelMode((current) => (current === panel ? "hidden" : panel));
   }
 
@@ -1542,6 +1545,7 @@ function FlowApp() {
   }
 
   async function activateThreadDocument(documentId: string, graphPath: string): Promise<void> {
+    await flushAllPendingSaves();
     setSidebarView("toc");
     const threadAsset = threadAssetsById[documentId];
     if (threadAsset !== undefined) {
@@ -1584,8 +1588,9 @@ function FlowApp() {
   }
 
   async function closeDocumentThreadFrom(index: number): Promise<void> {
+    await flushAllPendingSaves();
     // Panels own their editors; persist every panel being torn down before the
-    // thread state prunes their documents.
+    // thread state prunes their documents (flushAllPendingSaves already did, but keep for safety).
     const closingIds = documentThreadRef.current.slice(index).map((entry) => entry.documentId);
     if (closingIds.length > 0) {
       await Promise.all(closingIds.map((id) => saveThreadDocument(id)));
@@ -1627,7 +1632,8 @@ function FlowApp() {
     });
   }
 
-  function toggleRightRailMaximized(): void {
+  async function toggleRightRailMaximized(): Promise<void> {
+    await flushAllPendingSaves();
     if (rightRailCollapsed) {
       return;
     }
@@ -5046,6 +5052,69 @@ function FlowApp() {
       void handleSaveHomeContent(homeFormStateRef.current, { keepalive: true });
     }
   };
+
+  // Explicit flush for UI actions (expand, close, minimize, threads, etc.)
+  // — ensures content is pushed to disk before the UI state changes,
+  // and Saved only flashes after the file is actually written.
+  async function flushAllPendingSaves(): Promise<void> {
+    // Sync live bodies from all thread editors first (debounced onChange may not have fired)
+    for (const [panelId, getMarkdown] of threadPanelEditorsRef.current.entries()) {
+      try {
+        const liveBody = getMarkdown();
+        const state = threadFormStatesRef.current[panelId];
+        if (state !== undefined && typeof liveBody === "string" && liveBody !== state.body) {
+          const next = { ...state, body: liveBody };
+          threadFormStatesRef.current = { ...threadFormStatesRef.current, [panelId]: next };
+          setThreadFormStates(threadFormStatesRef.current);
+          if (selectedDocumentIdRef.current === panelId) {
+            formStateRef.current = next;
+            setFormState(next);
+          }
+        }
+      } catch {}
+    }
+    syncDocumentBodyFromActiveEditor();
+    syncHomeBodyFromEditor();
+
+    const promises: Promise<void>[] = [];
+    if (documentAutoSaveTimerRef.current !== undefined) {
+      window.clearTimeout(documentAutoSaveTimerRef.current);
+      documentAutoSaveTimerRef.current = undefined;
+      if (selectedDocumentRef.current !== null) {
+        promises.push(handleSaveDocument(selectedDocumentRef.current, formStateRef.current));
+      }
+    }
+    if (homeAutoSaveTimerRef.current !== undefined) {
+      window.clearTimeout(homeAutoSaveTimerRef.current);
+      homeAutoSaveTimerRef.current = undefined;
+      promises.push(handleSaveHomeContent(homeFormStateRef.current));
+    }
+    const pendingPanels = Array.from(pendingPanelSavesRef.current);
+    // Also include any thread panels whose state.body differs from doc.body (dirty)
+    const dirtyExtra: string[] = [];
+    for (const [panelId, doc] of Object.entries(threadDocumentsByIdRef.current)) {
+      const state = threadFormStatesRef.current[panelId];
+      if (state && doc && state.body !== doc.body && !pendingPanels.includes(panelId)) {
+        dirtyExtra.push(panelId);
+      }
+      // Also if title/description/tags differ
+      if (state && doc && (state.title !== doc.title || state.description !== doc.description || state.tags !== doc.tags?.join("\n"))) {
+        if (!pendingPanels.includes(panelId) && !dirtyExtra.includes(panelId)) dirtyExtra.push(panelId);
+      }
+    }
+    const allPanelIds = [...new Set([...pendingPanels, ...dirtyExtra])];
+    for (const panelId of allPanelIds) {
+      pendingPanelSavesRef.current.delete(panelId);
+      const doc = threadDocumentsByIdRef.current[panelId];
+      const state = threadFormStatesRef.current[panelId];
+      if (doc !== undefined && state !== undefined) {
+        promises.push(handleSaveDocument(doc, state));
+      }
+    }
+    if (promises.length > 0) {
+      await Promise.all(promises);
+    }
+  }
 
   useEffect(() => {
     function handleVisibilityChange() {
