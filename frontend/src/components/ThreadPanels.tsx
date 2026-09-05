@@ -10,7 +10,6 @@ import { Button } from "./ui/button";
 import { Skeleton } from "./ui/skeleton";
 
 import { createDocumentFormState, formatDocumentType, isBodyLeadingHeadingDuplicated } from "../lib/docUtils";
-import { graphCanvasTypeLabel } from "../lib/graphCanvasUtils";
 import { graphDirectoryColorHex, resolveGraphDirectoryColor } from "../lib/graphColors";
 import { TASK_STATUS_OPTIONS } from "../lib/graphCanvasUtils";
 import { parseFlowAssetHref, parseFlowDateHref, parseFlowReferenceHref } from "../richText";
@@ -373,7 +372,7 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
         {isExpanded ? (
           <>
             <div className="thread-expanded-title-row">
-              <span className="graph-canvas-node-badge">{graphCanvasTypeLabel(panelDocument.type)}</span>
+              <span className="graph-canvas-node-badge">{formatDocumentType(panelDocument.type)}</span>
               {!isDeduped && (
                 <input
                   className="center-document-toolbar-title thread-expanded-title-input"
@@ -546,10 +545,12 @@ const ThreadPanelHeader = memo(function ThreadPanelHeader({
     actions.closeDocumentThreadFrom(index);
   }, [actions, index]);
 
+  const isHeaderExpanded = panelExpandMode === "full" || (panel.isActive && threadExpanded);
+  const hideHeaderBadgeForExpanded = isHeaderExpanded && panelDocument !== null && !panelIsHome && panelAsset === null;
   return (
     <div className="thread-panel-header">
       <div className="thread-panel-header-leading">
-        {panelIsHome ? (
+        {hideHeaderBadgeForExpanded ? null : panelIsHome ? (
           <Badge variant="outline" className="center-document-type-badge">Home</Badge>
         ) : panelAsset !== null ? (
           <Badge variant="outline" className="center-document-type-badge">{panelAsset.kind === "pdf" ? "PDF" : "Text"}</Badge>
