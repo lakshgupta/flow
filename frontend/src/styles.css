@@ -4160,6 +4160,12 @@ pre {
   gap: 0.5rem;
 }
 
+.thread-panel-description-full {
+  width: 100%;
+  min-height: 2.4rem;
+  resize: vertical;
+}
+
 .thread-panel-title-block-expanded {
   display: flex;
   align-items: center;

@@ -368,8 +368,8 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
 
   return (
     <div className="thread-panel-shell">
-      {!isDeduped && (
-        <div className="thread-panel-title-block">
+      <div className="thread-panel-title-block">
+        {!isDeduped && (
           <input
             className="center-document-toolbar-title"
             placeholder="Document title"
@@ -377,8 +377,16 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
             onChange={(event) => handleFieldChange("title", event.target.value)}
             aria-label="Document title"
           />
-        </div>
-      )}
+        )}
+        <textarea
+          className="home-document-description thread-panel-description-full"
+          placeholder="Add a brief description…"
+          rows={2}
+          value={formState.description}
+          onChange={(event) => handleFieldChange("description", event.target.value)}
+          aria-label="Document description"
+        />
+      </div>
 
       <div
         className="center-document-layout"
