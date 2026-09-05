@@ -15,7 +15,21 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: "./src/test/setup.ts",
-    exclude: ["**/node_modules/**", "**/tests/**"]
+    exclude: ["**/node_modules/**", "**/tests/**"],
+    // Limit concurrency to avoid freezing low-memory machines (41 test files x jsdom + mermaid/excalidraw is heavy).
+    // Forks isolate memory better than threads for jsdom; cap parallel files to 2 and run tests sequentially within a file.
+    pool: "forks",
+    forks: {
+      singleFork: false,
+      maxForks: 2,
+      minForks: 1,
+    },
+    maxConcurrency: 2,
+    sequence: {
+      concurrent: false,
+    },
+    testTimeout: 15000,
+    hookTimeout: 15000,
   },
   build: {
     outDir: "../internal/httpapi/static",
