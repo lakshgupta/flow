@@ -401,17 +401,15 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
           <>
             <div className="thread-expanded-title-row">
               <span className="graph-canvas-node-badge">{formatDocumentType(panelDocument.type)}</span>
-              {!isDeduped && (
-                <input
-                  className="center-document-toolbar-title thread-expanded-title-input"
-                  placeholder="Document title"
-                  value={formState.title}
-                  onChange={(event) => handleFieldChange("title", event.target.value)}
-                  onClick={(event) => event.stopPropagation()}
-                  onMouseDown={(event) => event.stopPropagation()}
-                  aria-label="Document title"
-                />
-              )}
+              <input
+                className="center-document-toolbar-title thread-expanded-title-input"
+                placeholder="Document title"
+                value={formState.title}
+                onChange={(event) => handleFieldChange("title", event.target.value)}
+                onClick={(event) => event.stopPropagation()}
+                onMouseDown={(event) => event.stopPropagation()}
+                aria-label="Document title"
+              />
             </div>
             <textarea
               className="home-document-description thread-panel-description-full thread-panel-description-expanded"
