@@ -9,7 +9,7 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Skeleton } from "./ui/skeleton";
 
-import { createDocumentFormState, formatDocumentType, stripLeadingTitleHeading, isBodyLeadingHeadingDuplicated } from "../lib/docUtils";
+import { createDocumentFormState, formatDocumentType, isBodyLeadingHeadingDuplicated } from "../lib/docUtils";
 import { graphDirectoryColorHex, resolveGraphDirectoryColor } from "../lib/graphColors";
 import { TASK_STATUS_OPTIONS } from "../lib/graphCanvasUtils";
 import { parseFlowAssetHref, parseFlowDateHref, parseFlowReferenceHref } from "../richText";
@@ -365,29 +365,20 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
 
   const showCenterDocumentSidePanel = centerDocumentSidePanelMode !== "hidden";
   const isDeduped = isExpanded && isBodyLeadingHeadingDuplicated(formState.body, formState.title);
-  const displayBody = isDeduped ? stripLeadingTitleHeading(formState.body, formState.title) : formState.body;
 
   return (
     <div className="thread-panel-shell">
-      <div className={`thread-panel-title-block ${isExpanded ? "thread-panel-title-block-expanded" : ""}`}>
-        {isExpanded && (
-          <Badge variant="outline" className="center-document-type-badge thread-title-badge-inline">
-            {formatDocumentType(panelDocument.type)}
-          </Badge>
-        )}
-        <input
-          className="center-document-toolbar-title"
-          placeholder="Document title"
-          value={formState.title}
-          onChange={(event) => handleFieldChange("title", event.target.value)}
-          aria-label="Document title"
-        />
-        {isDeduped && (
-          <span className="thread-title-deduped-hint" title="First heading matches title and is hidden in expanded view to avoid duplication">
-            heading hidden in body
-          </span>
-        )}
-      </div>
+      {!isDeduped && (
+        <div className="thread-panel-title-block">
+          <input
+            className="center-document-toolbar-title"
+            placeholder="Document title"
+            value={formState.title}
+            onChange={(event) => handleFieldChange("title", event.target.value)}
+            aria-label="Document title"
+          />
+        </div>
+      )}
 
       <div
         className="center-document-layout"
@@ -409,7 +400,7 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
               onScrollCompleted={actions.clearEditorScrollTarget}
               placeholder="Type / for headings, lists, quotes, links, and highlights"
               scrollToHeadingSlug={editorScrollTarget}
-              value={displayBody}
+              value={formState.body}
               searchQuery={searchQuery}
               searchIndex={searchIndex}
             />
@@ -519,7 +510,6 @@ const ThreadPanelHeader = memo(function ThreadPanelHeader({
     actions.closeDocumentThreadFrom(index);
   }, [actions, index]);
 
-  const isHeaderBadgeHidden = panel.isActive && panelDocument !== null && (panelExpandMode === "full" || threadExpanded);
   return (
     <div className="thread-panel-header">
       <div className="thread-panel-header-leading">
@@ -529,9 +519,7 @@ const ThreadPanelHeader = memo(function ThreadPanelHeader({
           <Badge variant="outline" className="center-document-type-badge">{panelAsset.kind === "pdf" ? "PDF" : "Text"}</Badge>
         ) : panelDocument !== null ? (
           <>
-            {!isHeaderBadgeHidden && (
-              <Badge variant="outline" className="center-document-type-badge">{formatDocumentType(panelDocument.type)}</Badge>
-            )}
+            <Badge variant="outline" className="center-document-type-badge">{formatDocumentType(panelDocument.type)}</Badge>
             {panel.isActive && panelDocument.type === "task" ? (
               <select
                 className="center-document-status-select"
