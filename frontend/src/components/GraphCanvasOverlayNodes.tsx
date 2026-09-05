@@ -137,6 +137,7 @@ export function GraphCanvasOverlayNodes({
     const finishResize = (): void => {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", finishResize);
+      window.removeEventListener("pointercancel", finishResize as any);
 
       const session = resizeSessionRef.current;
       if (session !== null) {
@@ -147,6 +148,7 @@ export function GraphCanvasOverlayNodes({
 
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", finishResize);
+    window.addEventListener("pointercancel", finishResize as any);
   }
 
   return (

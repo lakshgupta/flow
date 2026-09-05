@@ -532,8 +532,21 @@ function FlowApp() {
     if (trimmed === "" || container == null) {
       return 0;
     }
+    // Guard against single-char queries on large docs: limit walk to avoid
+    // layout thrash. Single-char matches are noisy and extremely expensive.
+    if (trimmed.length === 1) {
+      return countMatches(container.textContent ?? "", trimmed);
+    }
     const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const regex = new RegExp(escaped, "gi");
+    let regex: RegExp;
+    try {
+      regex = new RegExp(escaped, "gi");
+    } catch {
+      return 0;
+    }
+    // Cap total highlighted nodes to prevent DOM explosion on huge docs.
+    const MAX_HIGHLIGHTS = 1000;
+    const MAX_TEXT_NODES = 8000;
     const walker = document.createTreeWalker(container, globalThis.NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
         const parent = (node as Text).parentElement;
@@ -556,13 +569,19 @@ function FlowApp() {
     });
     const textNodes: Text[] = [];
     let current: globalThis.Node | null;
+    let walked = 0;
     while ((current = walker.nextNode()) !== null) {
       textNodes.push(current as Text);
+      walked += 1;
+      if (walked > MAX_TEXT_NODES) break;
     }
     let count = 0;
     const marks: HTMLElement[] = [];
     for (const textNode of textNodes) {
+      if (count >= MAX_HIGHLIGHTS) break;
       const text = textNode.textContent ?? "";
+      // Quick pre-check before regex to skip obvious non-matches
+      if (!text.toLowerCase().includes(trimmed.toLowerCase())) continue;
       let match: RegExpExecArray | null;
       const frag = document.createDocumentFragment();
       let lastIndex = 0;
@@ -578,17 +597,26 @@ function FlowApp() {
         frag.appendChild(mark);
         marks.push(mark);
         count += 1;
+        if (count >= MAX_HIGHLIGHTS) {
+          // Truncate: spill remaining text as plain
+          const remaining = text.slice(match.index + match[0].length);
+          if (remaining !== "") frag.appendChild(document.createTextNode(remaining));
+          lastIndex = text.length;
+          break;
+        }
         lastIndex = match.index + match[0].length;
         if (match[0].length === 0) regex.lastIndex += 1;
       }
       if (!hasMatch) continue;
-      const after = text.slice(lastIndex);
-      if (after !== "") frag.appendChild(document.createTextNode(after));
+      if (lastIndex < text.length) {
+        const after = text.slice(lastIndex);
+        if (after !== "") frag.appendChild(document.createTextNode(after));
+      }
       textNode.parentNode?.replaceChild(frag, textNode);
     }
     localSearchMarksRef.current = marks;
     return count;
-  }, [clearLocalSearchHighlights]);
+  }, [clearLocalSearchHighlights, countMatches]);
   const setLocalSearchCurrent = useCallback((index: number) => {
     const marks = localSearchMarksRef.current;
     for (const m of marks) m.classList.remove("local-search-match-current");
@@ -725,66 +753,79 @@ function FlowApp() {
       setLocalSearchIndex(0);
       return;
     }
-    // Defer to next frame so the newly rendered document/thread is in the DOM.
+    // Debounce heavy DOM walk: typing fires formState.body on every keystroke.
+    // A short debounce prevents layout thrash while still feeling instant.
+    let debounceTimer: number | undefined;
     let second: number | undefined;
-    const frame = requestAnimationFrame(() => {
-      // Scope DOM highlights: for thread search use the whole thread stack (all panels),
-      // for single node/Home use the active panel/home body only. ProseMirror bodies
-      // are skipped in the walker (decorations handle them).
-      let domContainer: HTMLElement | null = container;
-      if (isThreadStackOpen) {
-        domContainer = threadStackRef.current ?? container.querySelector<HTMLElement>('[data-active="true"] .thread-panel-scroll') ?? container;
-      } else if (isCenterDocumentOpen) {
-        const activeScroll = container.querySelector<HTMLElement>('[data-active="true"] .thread-panel-scroll');
-        if (activeScroll) domContainer = activeScroll;
-      } else if (isHomeVisible) {
-        const homeScroll = container.querySelector<HTMLElement>('.home-document-body');
-        if (homeScroll) domContainer = homeScroll;
-      }
-      const domCount = domContainer ? highlightLocalSearch(domContainer, localSearchQuery) : 0;
-      localSearchDomCountRef.current = domCount;
-      // Editor body matches are created by the decoration plugin; read the
-      // authoritative count from the active editor after it has applied the
-      // query in its own effect (next frame).
-      const readEditorCount = (): number => {
-        try {
-          if (activeThreadDocumentId === HOME_THREAD_DOCUMENT_ID) {
-            const c = (homeDocumentEditorRef.current as any)?.getSearchCount?.();
-            if (typeof c === "number") return c;
-          } else if (isCenterDocumentOpen || isThreadStackOpen) {
-            const c = (centerDocumentEditorRef.current as any)?.getSearchCount?.();
-            if (typeof c === "number") return c;
-          } else if (isHomeVisible) {
-            const c = (homeDocumentEditorRef.current as any)?.getSearchCount?.();
-            if (typeof c === "number") return c;
-          }
-        } catch {}
-        // Fallback while editor view is mounting
-        let fallback = "";
-        if (activeThreadDocumentId === HOME_THREAD_DOCUMENT_ID) fallback = homeFormState.body;
-        else if (isCenterDocumentOpen || isThreadStackOpen) fallback = formState.body;
-        else if (isHomeVisible) fallback = homeFormState.body;
-        return countMatches(fallback, localSearchQuery);
-      };
-      second = requestAnimationFrame(() => {
-        // Use the authoritative decoration count when available; otherwise fallback.
-        let editorCount = readEditorCount();
-        // If the walker incorrectly counted ProseMirror text, visibleCount will be the truth.
-        // Reconcile by querying the actual rendered matches in the active container.
-        let visibleCount: number | null = null;
-        try {
-          if (domContainer) visibleCount = domContainer.querySelectorAll(".local-search-match").length;
-        } catch {}
-        const total = visibleCount !== null && visibleCount > 0 ? visibleCount : domCount + editorCount;
-        // Fallback: if visibleCount is 0 but we expect matches (e.g. editor not yet painted), use sum.
-        const finalTotal = total === 0 ? domCount + editorCount : total;
-        setLocalSearchCount(finalTotal);
-        setLocalSearchIndex(0);
-        setLocalSearchCurrent(0);
+    let frame: number | undefined;
+    const isBodyOnlyChange = localSearchDocumentKey !== "";
+    const debounceMs = isBodyOnlyChange && localSearchQuery.trim().length >= 2 ? 120 : 0;
+    const run = () => {
+      frame = requestAnimationFrame(() => {
+        // Scope DOM highlights: for thread search use the whole thread stack (all panels),
+        // for single node/Home use the active panel/home body only. ProseMirror bodies
+        // are skipped in the walker (decorations handle them).
+        let domContainer: HTMLElement | null = container;
+        if (isThreadStackOpen) {
+          domContainer = threadStackRef.current ?? container.querySelector<HTMLElement>('[data-active="true"] .thread-panel-scroll') ?? container;
+        } else if (isCenterDocumentOpen) {
+          const activeScroll = container.querySelector<HTMLElement>('[data-active="true"] .thread-panel-scroll');
+          if (activeScroll) domContainer = activeScroll;
+        } else if (isHomeVisible) {
+          const homeScroll = container.querySelector<HTMLElement>('.home-document-body');
+          if (homeScroll) domContainer = homeScroll;
+        }
+        const domCount = domContainer ? highlightLocalSearch(domContainer, localSearchQuery) : 0;
+        localSearchDomCountRef.current = domCount;
+        // Editor body matches are created by the decoration plugin; read the
+        // authoritative count from the active editor after it has applied the
+        // query in its own effect (next frame).
+        const readEditorCount = (): number => {
+          try {
+            if (activeThreadDocumentId === HOME_THREAD_DOCUMENT_ID) {
+              const c = (homeDocumentEditorRef.current as any)?.getSearchCount?.();
+              if (typeof c === "number") return c;
+            } else if (isCenterDocumentOpen || isThreadStackOpen) {
+              const c = (centerDocumentEditorRef.current as any)?.getSearchCount?.();
+              if (typeof c === "number") return c;
+            } else if (isHomeVisible) {
+              const c = (homeDocumentEditorRef.current as any)?.getSearchCount?.();
+              if (typeof c === "number") return c;
+            }
+          } catch {}
+          // Fallback while editor view is mounting
+          let fallback = "";
+          if (activeThreadDocumentId === HOME_THREAD_DOCUMENT_ID) fallback = homeFormState.body;
+          else if (isCenterDocumentOpen || isThreadStackOpen) fallback = formState.body;
+          else if (isHomeVisible) fallback = homeFormState.body;
+          return countMatches(fallback, localSearchQuery);
+        };
+        second = requestAnimationFrame(() => {
+          // Use the authoritative decoration count when available; otherwise fallback.
+          let editorCount = readEditorCount();
+          // If the walker incorrectly counted ProseMirror text, visibleCount will be the truth.
+          // Reconcile by querying the actual rendered matches in the active container.
+          let visibleCount: number | null = null;
+          try {
+            if (domContainer) visibleCount = domContainer.querySelectorAll(".local-search-match").length;
+          } catch {}
+          const total = visibleCount !== null && visibleCount > 0 ? visibleCount : domCount + editorCount;
+          // Fallback: if visibleCount is 0 but we expect matches (e.g. editor not yet painted), use sum.
+          const finalTotal = total === 0 ? domCount + editorCount : total;
+          setLocalSearchCount(finalTotal);
+          setLocalSearchIndex(0);
+          setLocalSearchCurrent(0);
+        });
       });
-    });
+    };
+    if (debounceMs > 0) {
+      debounceTimer = window.setTimeout(run, debounceMs);
+    } else {
+      run();
+    }
     return () => {
-      cancelAnimationFrame(frame);
+      if (debounceTimer !== undefined) window.clearTimeout(debounceTimer);
+      if (frame !== undefined) cancelAnimationFrame(frame);
       if (second !== undefined) cancelAnimationFrame(second);
     };
   }, [localSearchOpen, localSearchQuery, localSearchDocumentKey, formState.body, homeFormState.body, highlightLocalSearch, clearLocalSearchHighlights, setLocalSearchCurrent, countMatches, activeThreadDocumentId, isCenterDocumentOpen, isThreadStackOpen, isHomeVisible]);
@@ -1816,17 +1857,22 @@ function FlowApp() {
       }
     };
 
-    const handleMouseUp = () => {
+    const cleanup = () => {
       setIsResizing(false);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("pointercancel", cleanup);
+      window.removeEventListener("blur", cleanup as any);
       setWidth(currentWidth);
     };
+    const handleMouseUp = () => cleanup();
 
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("pointercancel", cleanup);
+    window.addEventListener("blur", cleanup as any);
     event.preventDefault();
   }
 
@@ -3343,17 +3389,22 @@ function FlowApp() {
       }
     };
 
-    const handleMouseUp = () => {
+    const cleanup = () => {
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       panel.classList.remove("is-resizing");
       tooltip.remove();
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("pointercancel", cleanup);
+      window.removeEventListener("blur", cleanup as any);
     };
+    const handleMouseUp = () => cleanup();
 
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("pointercancel", cleanup);
+    window.addEventListener("blur", cleanup as any);
     event.preventDefault();
     event.stopPropagation();
   }
@@ -3889,27 +3940,30 @@ function FlowApp() {
       }
     };
 
-    const handlePointerUp = (pointerEvent: PointerEvent) => {
+    const cleanupDrag = (pointerEvent?: PointerEvent) => {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
-
+      window.removeEventListener("pointercancel", cleanupDrag as any);
       const dragState = graphCanvasDragRef.current;
       graphCanvasDragRef.current = null;
       if (dragState === null || !dragState.moved) {
+        if (dragState !== null) clearGraphCanvasIntersections();
         return;
       }
-
+      const srcEvent = pointerEvent ?? ({ clientX: 0, clientY: 0 } as PointerEvent);
       const nextPosition = {
-        x: (pointerEvent.clientX - dragState.shellLeft - dragState.offsetX - vpX) / zoom,
-        y: (pointerEvent.clientY - dragState.shellTop - dragState.offsetY - vpY) / zoom,
+        x: (srcEvent.clientX - dragState.shellLeft - dragState.offsetX - vpX) / zoom,
+        y: (srcEvent.clientY - dragState.shellTop - dragState.offsetY - vpY) / zoom,
       };
       updateGraphCanvasNodePosition(dragState.documentId, nextPosition);
       clearGraphCanvasIntersections();
       void persistGraphCanvasPosition(dragState.documentId, nextPosition);
     };
+    const handlePointerUp = (pointerEvent: PointerEvent) => cleanupDrag(pointerEvent);
 
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", cleanupDrag as any);
   }
 
   function handleLeftSidebarMouseDown(event: React.MouseEvent<HTMLDivElement>): void {
@@ -4126,9 +4180,10 @@ function FlowApp() {
       connectingTargetRef.current = hit;
     }
 
-    function onPointerUp(): void {
+    const cleanupConnect = (): void => {
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", cleanupConnect as any);
       const target = connectingTargetRef.current;
       connectingTargetRef.current = null;
       setConnectingFrom(null);
@@ -4136,10 +4191,12 @@ function FlowApp() {
       setConnectingPointerPos(null);
       setConnectingTarget(null);
       if (target !== null) void handleCreateEdge(sourceId, target);
-    }
+    };
+    function onPointerUp(): void { cleanupConnect(); }
 
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", cleanupConnect as any);
   }
 
   async function handleCreateEdge(sourceId: string, targetId: string): Promise<void> {

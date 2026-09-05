@@ -489,6 +489,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
       return
     }
 
+    let raf: number | null = null
     const syncPosition = () => {
       if (!anchor.isConnected) {
         selectedAssetAnchorRef.current = null
@@ -499,13 +500,18 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
     }
 
     const handleScroll = () => {
-      syncPosition()
+      if (raf !== null) return
+      raf = window.requestAnimationFrame(() => {
+        raf = null
+        syncPosition()
+      })
     }
 
     window.addEventListener('resize', handleScroll)
-    container.addEventListener('scroll', handleScroll)
+    container.addEventListener('scroll', handleScroll, { passive: true })
 
     return () => {
+      if (raf !== null) window.cancelAnimationFrame(raf)
       window.removeEventListener('resize', handleScroll)
       container.removeEventListener('scroll', handleScroll)
     }

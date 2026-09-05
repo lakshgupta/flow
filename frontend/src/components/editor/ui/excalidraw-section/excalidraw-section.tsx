@@ -260,6 +260,7 @@ export default function ExcalidrawSection(props: ReactNodeViewProps) {
       const handlePointerUp = () => {
         window.removeEventListener('pointermove', handlePointerMove)
         window.removeEventListener('pointerup', handlePointerUp)
+        window.removeEventListener('pointercancel', handlePointerUp as any)
         document.body.style.cursor = ''
         cancelPendingSave()
         writeScene()
@@ -268,6 +269,7 @@ export default function ExcalidrawSection(props: ReactNodeViewProps) {
       document.body.style.cursor = 'ns-resize'
       window.addEventListener('pointermove', handlePointerMove)
       window.addEventListener('pointerup', handlePointerUp)
+      window.addEventListener('pointercancel', handlePointerUp as any)
     },
     [cancelPendingSave, writeScene],
   )
