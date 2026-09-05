@@ -56,6 +56,8 @@ type ThreadPanelActions = {
   updateLinkDetail: (nodeId: string, field: "linkType" | "context", value: string) => void;
   beginThreadPanelResize: (event: ReactMouseEvent<HTMLDivElement>, panelKey: string) => void;
   resetThreadPanelWidth: (panelKey: string) => void;
+  registerThreadPanelEditor: (documentId: string, getMarkdown: () => string) => void;
+  unregisterThreadPanelEditor: (documentId: string) => void;
 };
 
 export type ThreadPanelStackProps = {
@@ -324,14 +326,31 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
     actions.setThreadPanelSavePending(panel.documentId, false);
   }, [actions, panel.documentId]);
 
+  const syncBodyFromEditor = useCallback(() => {
+    const liveBody = editorRef.current?.getMarkdown?.();
+    if (typeof liveBody === "string" && liveBody !== stateRef.current.body) {
+      actions.updateThreadFormField(panel.documentId, "body", liveBody);
+    }
+  }, [actions, panel.documentId]);
+
   const flushSave = useCallback(() => {
     if (saveTimerRef.current !== undefined) {
       window.clearTimeout(saveTimerRef.current);
       saveTimerRef.current = undefined;
+      syncBodyFromEditor();
       actions.saveThreadDocument(panel.documentId);
       markSaved();
+    } else {
+      // Even without a pending timer, flush any live editor content that
+      // hasn't yet propagated via the debounced onChange (100ms).
+      const liveBody = editorRef.current?.getMarkdown?.();
+      if (typeof liveBody === "string" && liveBody !== stateRef.current.body) {
+        syncBodyFromEditor();
+        actions.saveThreadDocument(panel.documentId);
+        markSaved();
+      }
     }
-  }, [actions, panel.documentId, markSaved]);
+  }, [actions, panel.documentId, markSaved, syncBodyFromEditor]);
 
   const scheduleSave = useCallback(() => {
     // First edit after a long idle gap saves immediately (bounds the unsaved
@@ -340,6 +359,7 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
     if (now - lastSaveAtRef.current >= AUTO_SAVE_MAX_GAP_MS) {
       lastSaveAtRef.current = now;
       actions.setThreadPanelSavePending(panel.documentId, false);
+      syncBodyFromEditor();
       actions.saveThreadDocument(panel.documentId);
       return;
     }
@@ -350,10 +370,18 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
     }
     saveTimerRef.current = window.setTimeout(() => {
       saveTimerRef.current = undefined;
+      syncBodyFromEditor();
       actions.saveThreadDocument(panel.documentId);
       markSaved();
     }, AUTO_SAVE_DEBOUNCE_MS);
-  }, [actions, panel.documentId, markSaved]);
+  }, [actions, panel.documentId, markSaved, syncBodyFromEditor]);
+
+  // Register live editor for global flushOnHide (pagehide/visibilitychange).
+  useEffect(() => {
+    const getMarkdown = () => editorRef.current?.getMarkdown?.() ?? stateRef.current.body;
+    actions.registerThreadPanelEditor(panel.documentId, getMarkdown);
+    return () => actions.unregisterThreadPanelEditor(panel.documentId);
+  }, [actions, panel.documentId]);
 
   // Persist pending edits when the panel closes.
   useEffect(() => flushSave, [flushSave]);

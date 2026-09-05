@@ -449,6 +449,7 @@ function FlowApp() {
   const threadDocumentsByIdRef = useRef<Record<string, DocumentResponse>>({});
   const threadFormStatesRef = useRef<Record<string, DocumentFormState>>({});
   const threadStackRef = useRef<HTMLDivElement | null>(null);
+  const threadPanelEditorsRef = useRef<Map<string, () => string>>(new Map());
   const selectedDocumentOpenModeRef = useRef<DocumentOpenMode>("right-rail");
   const formStateRef = useRef<DocumentFormState>(emptyDocumentFormState);
   const editableLinkDetailsRef = useRef<Record<string, { context: string; linkType: string }>>({});
@@ -2545,6 +2546,14 @@ function FlowApp() {
     }
   }
 
+  function registerThreadPanelEditor(documentId: string, getMarkdown: () => string): void {
+    threadPanelEditorsRef.current.set(documentId, getMarkdown);
+  }
+
+  function unregisterThreadPanelEditor(documentId: string): void {
+    threadPanelEditorsRef.current.delete(documentId);
+  }
+
   /** Mirror a legacy form-state write into the active panel's per-thread draft
    * so both save paths always send identical payloads. */
   function mirrorLegacyFormStateToThread(): void {
@@ -4584,6 +4593,8 @@ function FlowApp() {
     updateEditableLinkDetail,
     beginThreadPanelResize,
     resetThreadPanelWidth,
+    registerThreadPanelEditor,
+    unregisterThreadPanelEditor,
   });
 
   const rightRailDocumentActions = useRightRailDocumentActions({
@@ -4980,7 +4991,28 @@ function FlowApp() {
     const hasDocTimer = documentAutoSaveTimerRef.current !== undefined;
     const hasHomeTimer = homeAutoSaveTimerRef.current !== undefined;
     const pendingPanels = Array.from(pendingPanelSavesRef.current);
-    if (!hasDocTimer && !hasHomeTimer && pendingPanels.length === 0) {
+    // Collect live bodies from all thread editors that haven't yet propagated
+    // via the debounced onChange (100ms). This catches the case where the user
+    // typed and immediately hid/closed the tab before onChange fired.
+    const dirtyPanelIds: string[] = [];
+    for (const [panelId, getMarkdown] of threadPanelEditorsRef.current.entries()) {
+      try {
+        const liveBody = getMarkdown();
+        const state = threadFormStatesRef.current[panelId];
+        if (state !== undefined && typeof liveBody === "string" && liveBody !== state.body) {
+          const next = { ...state, body: liveBody };
+          threadFormStatesRef.current = { ...threadFormStatesRef.current, [panelId]: next };
+          setThreadFormStates(threadFormStatesRef.current);
+          if (selectedDocumentIdRef.current === panelId) {
+            formStateRef.current = next;
+            setFormState(next);
+          }
+          dirtyPanelIds.push(panelId);
+        }
+      } catch {}
+    }
+    const allPanelIdsToSave = new Set<string>([...pendingPanels, ...dirtyPanelIds]);
+    if (!hasDocTimer && !hasHomeTimer && allPanelIdsToSave.size === 0) {
       return;
     }
     if (hasDocTimer) {
@@ -5002,7 +5034,7 @@ function FlowApp() {
     if (hasDocTimer && selectedDocumentRef.current !== null) {
       void handleSaveDocument(selectedDocumentRef.current, formStateRef.current, { keepalive: true });
     }
-    for (const panelId of pendingPanels) {
+    for (const panelId of allPanelIdsToSave) {
       pendingPanelSavesRef.current.delete(panelId);
       const doc = threadDocumentsByIdRef.current[panelId];
       const state = threadFormStatesRef.current[panelId];

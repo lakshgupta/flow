@@ -37,6 +37,8 @@ type UseThreadPanelActionsArgs = {
   updateEditableLinkDetail: (nodeId: string, field: "linkType" | "context", value: string) => void;
   beginThreadPanelResize: (event: ReactMouseEvent<HTMLDivElement>, panelElement: HTMLElement | null, panelKey: string) => void;
   resetThreadPanelWidth: (panelKey: string) => void;
+  registerThreadPanelEditor: (documentId: string, getMarkdown: () => string) => void;
+  unregisterThreadPanelEditor: (documentId: string) => void;
 };
 
 export function useThreadPanelActions({
@@ -61,6 +63,8 @@ export function useThreadPanelActions({
   updateEditableLinkDetail,
   beginThreadPanelResize,
   resetThreadPanelWidth,
+  registerThreadPanelEditor,
+  unregisterThreadPanelEditor,
 }: UseThreadPanelActionsArgs): ThreadPanelStackProps["actions"] {
   const actionRefs = useLatestRef<UseThreadPanelActionsArgs>({
     activateThreadDocument,
@@ -84,6 +88,8 @@ export function useThreadPanelActions({
     updateEditableLinkDetail,
     beginThreadPanelResize,
     resetThreadPanelWidth,
+    registerThreadPanelEditor,
+    unregisterThreadPanelEditor,
   });
 
   const handleThreadPanelActivate = useCallback((documentId: string, graphPath: string) => {
@@ -171,6 +177,14 @@ export function useThreadPanelActions({
     actionRefs.current.resetThreadPanelWidth(panelKey);
   }, []);
 
+  const handleRegisterThreadPanelEditor = useCallback((documentId: string, getMarkdown: () => string) => {
+    actionRefs.current.registerThreadPanelEditor(documentId, getMarkdown);
+  }, []);
+
+  const handleUnregisterThreadPanelEditor = useCallback((documentId: string) => {
+    actionRefs.current.unregisterThreadPanelEditor(documentId);
+  }, []);
+
   return useMemo(() => ({
     activateThreadDocument: handleThreadPanelActivate,
     toggleThreadExpanded: handleThreadExpandedToggle,
@@ -193,6 +207,8 @@ export function useThreadPanelActions({
     updateLinkDetail: handleThreadUpdateLinkDetail,
     beginThreadPanelResize: handleThreadPanelResizeMouseDown,
     resetThreadPanelWidth: handleResetThreadPanelWidth,
+    registerThreadPanelEditor: handleRegisterThreadPanelEditor,
+    unregisterThreadPanelEditor: handleUnregisterThreadPanelEditor,
   }), [
     handleRightRailMinimize,
     handleThreadAddOutgoingLink,
@@ -214,6 +230,8 @@ export function useThreadPanelActions({
     handleThreadPanelResizeMouseDown,
     handleThreadRemoveOutgoingLink,
     handleResetThreadPanelWidth,
+    handleRegisterThreadPanelEditor,
     handleThreadUpdateLinkDetail,
+    handleUnregisterThreadPanelEditor,
   ]);
 }
