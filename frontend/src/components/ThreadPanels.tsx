@@ -412,9 +412,9 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
               )}
             </div>
             <textarea
-              className="home-document-description thread-panel-description-full"
+              className="home-document-description thread-panel-description-full thread-panel-description-expanded"
               placeholder="Add a brief description…"
-              rows={2}
+              rows={3}
               value={formState.description}
               onChange={(event) => handleFieldChange("description", event.target.value)}
               aria-label="Document description"

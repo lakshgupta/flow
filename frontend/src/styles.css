@@ -4191,6 +4191,10 @@ pre {
   resize: vertical;
 }
 
+.thread-panel-description-expanded {
+  min-height: 3.2rem;
+}
+
 .thread-panel-title-block-expanded {
   display: grid;
   gap: 0.12rem;
