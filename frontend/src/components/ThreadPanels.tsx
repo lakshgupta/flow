@@ -15,6 +15,28 @@ import { TASK_STATUS_OPTIONS } from "../lib/graphCanvasUtils";
 import { parseFlowAssetHref, parseFlowDateHref, parseFlowReferenceHref } from "../richText";
 import type { DocumentFormState, DocumentResponse, HomeFormState, HomeResponse } from "../types";
 
+function useExpandingTextarea(value: string) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const resize = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, []);
+  useEffect(() => {
+    resize();
+  }, [value, resize]);
+  const onInput = useCallback(
+    (e: React.FormEvent<HTMLTextAreaElement>) => {
+      const el = e.currentTarget;
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+    },
+    [],
+  );
+  return { ref, onInput };
+}
+
 type CenterDocumentSidePanelMode = "hidden" | "properties";
 
 type ThreadPanelData = {
@@ -320,6 +342,7 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
   // Latest values for the unmount flush without re-creating callbacks.
   const stateRef = useRef(formState);
   stateRef.current = formState;
+  const descExpanding = useExpandingTextarea(formState.description);
 
   const markSaved = useCallback(() => {
     lastSaveAtRef.current = Date.now();
@@ -412,11 +435,13 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
               />
             </div>
             <textarea
+              ref={descExpanding.ref}
               className="home-document-description thread-panel-description-full thread-panel-description-expanded"
               placeholder="Add a brief description…"
-              rows={3}
+              rows={1}
               value={formState.description}
               onChange={(event) => handleFieldChange("description", event.target.value)}
+              onInput={descExpanding.onInput}
               onClick={(event) => event.stopPropagation()}
               onMouseDown={(event) => event.stopPropagation()}
               aria-label="Document description"
@@ -436,11 +461,13 @@ const EditableThreadDocumentPanel = memo(function EditableThreadDocumentPanel({
               />
             )}
             <textarea
+              ref={descExpanding.ref}
               className="home-document-description thread-panel-description-full"
               placeholder="Add a brief description…"
-              rows={2}
+              rows={1}
               value={formState.description}
               onChange={(event) => handleFieldChange("description", event.target.value)}
+              onInput={descExpanding.onInput}
               onClick={(event) => event.stopPropagation()}
               onMouseDown={(event) => event.stopPropagation()}
               aria-label="Document description"

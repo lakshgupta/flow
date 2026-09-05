@@ -4124,7 +4124,7 @@ pre {
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
-  gap: 0.12rem;
+  gap: 0.06rem;
   min-width: 0;
   padding: 0 0.7rem 0.35rem;
   position: relative;
@@ -4182,13 +4182,15 @@ pre {
 
 .thread-panel-title-block {
   display: grid;
-  gap: 0.15rem;
+  gap: 0.08rem;
 }
 
 .thread-panel-description-full {
   width: 100%;
   min-height: 2.4rem;
   resize: vertical;
+  field-sizing: content;
+  overflow: hidden;
 }
 
 .thread-panel-description-expanded {
@@ -4197,7 +4199,7 @@ pre {
 
 .thread-panel-title-block-expanded {
   display: grid;
-  gap: 0.12rem;
+  gap: 0.06rem;
   padding-bottom: 0;
 }
 
@@ -5018,14 +5020,14 @@ pre {
 .home-document {
   display: flex;
   flex-direction: column;
-  gap: 0.12rem;
+  gap: 0.06rem;
   min-width: 0;
 }
 
 .home-document-header {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.1rem;
 }
 
 .home-document-title,
@@ -6121,8 +6123,8 @@ pre {
   min-height: var(--graph-node-core-height, 8.125rem);
   display: grid;
   align-content: start;
-  gap: 0.12rem;
-  padding: 0.5rem 1rem 0.3rem;
+  gap: 0.06rem;
+  padding: 0.4rem 1rem 0.2rem;
   background: var(--card);
   border-bottom: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
   box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--border) 36%, transparent);
